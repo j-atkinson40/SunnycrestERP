@@ -159,8 +159,37 @@ _NOISE_WORDS: frozenset = frozenset({
 })
 
 
-def _mark(spans: list[tuple[int, int]], m: re.Match) -> None:
-    spans.append((m.start(), m.end()))
+def _free(spans: list[tuple[int, int]], a: int, b: int) -> bool:
+    """Is `[a, b)` unclaimed by every span recorded so far?
+
+    ⚠️ HALF-OPEN, SO ABUTTING IS NOT OVERLAPPING. `(0, 5)` and `(5, 9)` are adjacent
+    and both legal; only a shared character counts.
+    """
+    return not any(a < end and start < b for start, end in spans)
+
+
+def _claim(spans: list[tuple[int, int]], a: int, b: int) -> bool:
+    """Claim `[a, b)` for one field, or REFUSE because another field has it.
+
+    ⚠️ THE RULE THIS ENFORCES: NO SPAN FEEDS TWO FIELDS. Ruled 2026-10-12 after
+    James walked production and found "start an order for Hopkins Funeral Home" had
+    set `service_location = funeral_home` — the words "Funeral Home" were read once
+    as part of the party's NAME and again as the place the service is held, so the
+    Service row claimed an answer he had never given.
+
+    ⚠️ AND A REFUSED CLAIM MUST NOT SET A VALUE, which is why callers check the
+    return BEFORE writing. Appending the span after writing the value — the shape
+    this replaces — records the overlap without preventing it.
+    """
+    if not _free(spans, a, b):
+        return False
+    spans.append((a, b))
+    return True
+
+
+def _mark(spans: list[tuple[int, int]], m: re.Match) -> bool:
+    """`_claim` for a regex match. Returns False when the span is already taken."""
+    return _claim(spans, m.start(), m.end())
 
 
 def _leftovers(line: str, spans: list[tuple[int, int]]) -> tuple[str, ...]:
@@ -232,6 +261,27 @@ def _narrower(alt, base) -> bool:
     if not base.candidates:
         return True
     return len(alt.candidates) < len(base.candidates)
+
+
+def _unclaimed_slices(
+    line: str, spans: list[tuple[int, int]]
+) -> tuple[tuple[int, str], ...]:
+    """`(offset_in_line, slice)` for each unclaimed run of the line.
+
+    ⚠️ THE OFFSET IS THE POINT. A pass that scans a slice finds a match at a position
+    relative to THAT SLICE, and claiming it needs the position in the LINE. Returning
+    the slice alone forces the caller to `line.find()` it back, which is wrong the
+    moment the same words appear twice.
+    """
+    out: list[tuple[int, str]] = []
+    cur = 0
+    for a, b in sorted(spans):
+        if a > cur:
+            out.append((cur, line[cur:a]))
+        cur = max(cur, b)
+    if cur < len(line):
+        out.append((cur, line[cur:]))
+    return tuple(out)
 
 
 def out_fragments(line: str, spans: list[tuple[int, int]]) -> tuple[str, ...]:
@@ -328,8 +378,8 @@ class DeterministicExtractor:
             m = re.search(pat, low)
             if m:
                 if once("cemetery_equipment"):
-                    values["cemetery_equipment"] = val
-                    _mark(spans, m)
+                    if _mark(spans, m):
+                        values["cemetery_equipment"] = val
                 else:
                     note_restated("cemetery_equipment", m)
                 break
@@ -339,8 +389,8 @@ class DeterministicExtractor:
             m = re.search(pat, low)
             if m:
                 if once(QUESTION_PERSONALIZATION):
-                    values[QUESTION_PERSONALIZATION] = val
-                    _mark(spans, m)
+                    if _mark(spans, m):
+                        values[QUESTION_PERSONALIZATION] = val
                 else:
                     note_restated(QUESTION_PERSONALIZATION, m)
                 break
@@ -350,8 +400,8 @@ class DeterministicExtractor:
             for pat, val in _LEGACY_SERIES:
                 m = re.search(pat, low)
                 if m:
-                    values["legacy_series"] = val
-                    _mark(spans, m)
+                    if _mark(spans, m):
+                        values["legacy_series"] = val
                     break
 
         # ── nameplate date format ───────────────────────────────────────
@@ -360,18 +410,8 @@ class DeterministicExtractor:
                 m = re.search(pat, low)
                 if m:
                     assert val in NAMEPLATE_DATE_FORMATS, val
-                    values["nameplate_date_format"] = val
-                    _mark(spans, m)
-                    break
-
-        # ── service location ────────────────────────────────────────────
-        if once("service_location"):
-            for words, val in _LOCATION_WORDS.items():
-                i = low.find(words)
-                if i >= 0:
-                    assert val in SERVICE_LOCATIONS, val
-                    values["service_location"] = val
-                    spans.append((i, i + len(words)))
+                    if _mark(spans, m):
+                        values["nameplate_date_format"] = val
                     break
 
         # ── named legacy print ──────────────────────────────────────────
@@ -383,8 +423,8 @@ class DeterministicExtractor:
             if m:
                 pr = resolve_print(m.group(1).strip())
                 if pr.print_name:
-                    values["legacy_print_name"] = pr.print_name
-                    _mark(spans, m)
+                    if _mark(spans, m):
+                        values["legacy_print_name"] = pr.print_name
                 elif len(pr.candidates) > 1:
                     picks.append(Pick(
                         "legacy_print_name", m.group(1).strip(),
@@ -399,16 +439,15 @@ class DeterministicExtractor:
         yp = _year_pair(line)
         if yp and once("date_of_birth") and once("date_of_death"):
             (b, d), span = yp
-            values["date_of_birth"] = b
-            values["date_of_death"] = d
-            spans.append(span)
+            if _claim(spans, span[0], span[1]):
+                values["date_of_birth"] = b
+                values["date_of_death"] = d
 
         # ── explicit decedent name ──────────────────────────────────────
         if once("deceased_name"):
             en = _explicit_name(line)
-            if en:
+            if en and _claim(spans, en[1][0], en[1][1]):
                 values["deceased_name"] = en[0]
-                spans.append(en[1])
 
         # ── grave location ──────────────────────────────────────────────
         if once("grave_location"):
@@ -422,8 +461,8 @@ class DeterministicExtractor:
                     parts.append(f"Lot {m.group(2)}")
                 if m.group(3):
                     parts.append(f"Space {m.group(3)}")
-                values["grave_location"] = ", ".join(parts)
-                _mark(spans, m)
+                if _mark(spans, m):
+                    values["grave_location"] = ", ".join(parts)
 
         # ── burial date ─────────────────────────────────────────────────
         # ⚠️ ADDED AFTER A TEST FAILED FOR THE RIGHT REASON. `burial_date` is REQUIRED on
@@ -436,9 +475,8 @@ class DeterministicExtractor:
             if m:
                 from app.services.nl_creation.structured_parsers import parse_date as _pd
                 pd = _pd(m.group(1).strip())
-                if pd and pd.get("value"):
+                if pd and pd.get("value") and _mark(spans, m):
                     values["burial_date"] = pd["value"]
-                    _mark(spans, m)
 
         # ── cemetery (+ city) ───────────────────────────────────────────
         # ⚠️ THE CITY IS PARSED FROM THE SAME CLAUSE AND PASSED AS A HINT, not stored
@@ -466,10 +504,10 @@ class DeterministicExtractor:
                 phrase, city = m.group(1).strip(), (m.group(2) or "").strip() or None
                 cr = resolve_cemetery(db, tenant_id, phrase, city_hint=city)
                 if cr.party_id:
-                    values["cemetery"] = cr.candidates[0].name
-                    if cr.candidates[0].city:
-                        values["cemetery_city"] = cr.candidates[0].city
-                    _mark(spans, m)
+                    if _mark(spans, m):
+                        values["cemetery"] = cr.candidates[0].name
+                        if cr.candidates[0].city:
+                            values["cemetery_city"] = cr.candidates[0].city
                 elif len(cr.candidates) > 1 or cr.city_conflict:
                     # ⚠️ A CITY CONFLICT BECOMES A PICK EVEN WITH ONE CANDIDATE. The
                     # director named a town no candidate is in; showing them
@@ -492,8 +530,8 @@ class DeterministicExtractor:
             if m:
                 fr = resolve_funeral_home(db, tenant_id, m.group(1).strip())
                 if fr.party_id:
-                    values["funeral_home"] = fr.candidates[0].name
-                    _mark(spans, m)
+                    if _mark(spans, m):
+                        values["funeral_home"] = fr.candidates[0].name
                 elif len(fr.candidates) > 1:
                     picks.append(Pick(
                         "funeral_home", m.group(1).strip(),
@@ -501,6 +539,52 @@ class DeterministicExtractor:
                         fr.discriminators[0].value if fr.discriminators else None,
                     ))
                     _mark(spans, m)
+
+        # ── service location ────────────────────────────────────────────
+        # ⚠️ MOVED HERE 2026-10-12, AFTER THE FUNERAL HOME, AND THE ORDER IS THE FIX.
+        # It used to run eighth, scanning the WHOLE line with `low.find`, so "start an
+        # order for Hopkins Funeral Home" matched the words "funeral home" inside the
+        # party's own name and answered a question James never asked. `_claim` alone
+        # would not have fixed it: this pass ran FIRST and would simply have won the
+        # span, blocking the funeral home instead. The specific entity has to claim its
+        # name before a bare vocabulary scan is allowed to look at the text.
+        #
+        # ⚠️ IT SCANS `out_fragments`, THE RAW UNCLAIMED SLICES — NOT `_leftovers`.
+        # `_leftovers` strips noise words, and `funeral`, `home` and `service` are all
+        # in `_NOISE_WORDS`, so a noise-stripped fragment can never contain the phrase
+        # "funeral home" and "the service is at the funeral home" would resolve to
+        # nothing. The distinction is invisible until you try it.
+        if once("service_location"):
+            for frag_start, frag in _unclaimed_slices(line, spans):
+                folded = frag.casefold()
+                # ⚠️ THE MATCH THAT CONSUMES THE MOST TEXT WINS, NOT THE EARLIEST ONE.
+                # My first version took the earliest start and a probe caught it:
+                # "service at the graveside" matched `at the grave` (8-20) before
+                # `graveside` (15-24), claimed the shorter span, and left "side" in
+                # `unrecognized`. Maximising the END offset picks `graveside` and
+                # consumes the whole word; `at the grave` on its own still matches,
+                # because then it is the only candidate.
+                #
+                # ⚠️ AND THIS IS WHY THE VOCABULARY'S DICT ORDER IS NOT THE RULE.
+                # Relying on insertion order worked here by luck and would break the
+                # first time someone added a key in the wrong place — the same trap
+                # `_EQUIPMENT` documents as "ORDERED LONGEST-INTENT FIRST", made
+                # structural instead of conventional.
+                hit = None
+                for words, val in _LOCATION_WORDS.items():
+                    i = folded.find(words)
+                    if i < 0:
+                        continue
+                    cand = (i + len(words), -i, words, val)
+                    if hit is None or cand > hit:
+                        hit = cand
+                if hit:
+                    end, neg_start, words, val = hit
+                    assert val in SERVICE_LOCATIONS, val
+                    a = frag_start + (-neg_start)
+                    if _claim(spans, a, a + len(words)):
+                        values["service_location"] = val
+                    break
 
         # ── vault ───────────────────────────────────────────────────────
         # ⚠️ RUNS LATE AND OVER THE WHOLE LINE, because a vault phrase is bare words
@@ -521,10 +605,14 @@ class DeterministicExtractor:
                     if _narrower(alt, vr):
                         vr, frag = alt, raw
                 if vr.variant_template_id:
-                    values["vault"] = vr.candidates[0].display_name
+                    # ⚠️ `low.find` CAN LAND ON AN EARLIER, ALREADY-CLAIMED COPY of
+                    # the same words, which is why this claims rather than appends.
+                    # The fragment itself came from the unclaimed complement, so the
+                    # claim normally succeeds; a refusal means `find` pointed at the
+                    # wrong occurrence and the value must not be written from it.
                     i = low.find(raw.casefold())
-                    if i >= 0:
-                        spans.append((i, i + len(raw)))
+                    if i >= 0 and _claim(spans, i, i + len(raw)):
+                        values["vault"] = vr.candidates[0].display_name
                     break
                 if len(vr.candidates) > 1:
                     picks.append(Pick(
@@ -535,7 +623,7 @@ class DeterministicExtractor:
                     ))
                     i = low.find(raw.casefold())
                     if i >= 0:
-                        spans.append((i, i + len(raw)))
+                        _claim(spans, i, i + len(raw))
                     break
 
         # ── service date / time / eta ───────────────────────────────────
@@ -545,18 +633,35 @@ class DeterministicExtractor:
             if once("service_date"):
                 pd = parse_date(frag)
                 if pd and pd.get("value"):
-                    values["service_date"] = pd["value"]
                     i = low.find(frag.casefold())
-                    if i >= 0:
-                        spans.append((i, i + len(frag)))
-                    continue
+                    if i >= 0 and _claim(spans, i, i + len(frag)):
+                        values["service_date"] = pd["value"]
+                        continue
             if once("service_time"):
                 pt = parse_time(frag)
                 if pt and pt.get("value"):
-                    values["service_time"] = pt["value"]
                     i = low.find(frag.casefold())
-                    if i >= 0:
-                        spans.append((i, i + len(frag)))
+                    if i >= 0 and _claim(spans, i, i + len(frag)):
+                        values["service_time"] = pt["value"]
+
+        # ⚠️ A DISJOINTNESS ASSERTION STOOD HERE AND WAS DELETED, BECAUSE A BREAK
+        # TEST PROVED IT WAS A TAUTOLOGY. It asserted that no two entries in `spans`
+        # overlap. `_claim` refuses an overlapping span, so the list is disjoint BY
+        # CONSTRUCTION and the assertion could not fail.
+        #
+        # The break: the original defective `service_location` pass was restored, so
+        # "start an order for Hopkins Funeral Home" again produced BOTH
+        # `service_location='funeral_home'` AND `funeral_home='Hopkins Funeral Home'`
+        # from overlapping words. The assertion stayed SILENT — because the second
+        # claim was refused, leaving one span, while the VALUE had already been
+        # written on the line above the claim.
+        #
+        # ⚠️ THAT IS THE WHOLE LESSON AND IT IS WHY EVERY SITE NOW CLAIMS BEFORE IT
+        # WRITES. The guarantee is not "the span list is disjoint" — that is free and
+        # meaningless. It is "a field is only set from text no other field has taken",
+        # which lives at each call site and is tested behaviourally in
+        # `test_no_span_feeds_two_fields.py`. CLAUDE.md §11: a check that cannot be
+        # made to fail is documentation, so it was filed as a comment and removed.
 
         # ⚠️ RE-STATEMENTS JOIN `unrecognized` RATHER THAN GETTING THEIR OWN FIELD.
         # The pane's job is the same for both: show the director text the engine did
