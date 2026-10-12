@@ -1,8 +1,17 @@
-"""The three aliases that named one form of a two-form product. LOCAL ONLY.
+"""The three aliases that named one form of a two-form product.
 
-⚠️ NOT TO BE PUSHED WITHOUT A SEPARATE GO. The dispatch of 2026-10-07 ruled "no
-migration expected for 1-2; if one is needed, local only." One is needed, and this is
-it, and it stays local until James says otherwise.
+⚠️ APPROVED AND PUSHED 2026-10-12. This docstring read "LOCAL ONLY — NOT TO BE PUSHED
+WITHOUT A SEPARATE GO" from the 2026-10-07 ruling ("no migration expected for 1-2; if
+one is needed, local only"). The separate go was given on 2026-10-12: "r207
+(form-counterpart aliases) is approved". The prohibition is lifted and is recorded
+here rather than deleted, because the original wording is part of the record.
+
+⚠️ THE SUPERSEDED LINE IS SWEPT HERE AND NOT ONLY WHERE THE ANSWER LANDED. A stale
+"do not run this" in a migration's own docstring is read by someone standing at a
+terminal about to run it, which is the one place where being wrong has an effect
+rather than a cost. See CLAUDE.md §11, *answering a question does not retract it*.
+⚠️ The commit that introduced this file carries "r207 LOCAL ONLY" in its subject.
+That is history and stays; the FILE is the thing that instructs.
 
 ⚠️ WHY A MIGRATION WAS NEEDED AT ALL, since the ruling did not expect one. The form
 filter in `product_name_resolver.resolve` makes "Veteran urn vault" refuse to answer
