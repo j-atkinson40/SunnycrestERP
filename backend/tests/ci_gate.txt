@@ -310,6 +310,21 @@ tests/test_whole_text_extraction.py
 # Each part is tested alone and break-tested alone; see the table in the module
 # docstring for which break turns which assertion red.
 tests/test_cemetery_clause_parts.py
+# The typed session when the WHOLE TEXT is the source. In the gate because
+# `extract_text` was complete, correct and called by nothing for three days —
+# machinery behind an unprovisioned entrance — so these go through
+# `session_service`, which is what the route layer calls. It also pins E6 from
+# the typed side: `add_line` still accumulates and still wins FIRST, asserted on
+# the same two phrases that the whole-text path resolves the opposite way.
+tests/test_whole_text_session.py
+# BLOCKING: 150 ms per re-extraction. In the gate because the typed pane re-reads
+# the WHOLE text on every pause, which is quadratic in principle — n keystrokes
+# each re-reading n characters — so the thing that degrades is the end of a long
+# order, which is exactly where nobody looks. Measured warm: p50 15.2 ms,
+# longest text 24.2 ms. The first call in a fresh process costs ~226 ms (process
+# warm-up, not text length) and is excluded, with the number recorded in the
+# module docstring so the exclusion is auditable.
+tests/test_typed_capture_latency.py
 tests/test_typed_capture_slice1.py
 tests/test_vault_resolution_wiring.py
 tests/test_void_payment_reverses_ar2.py

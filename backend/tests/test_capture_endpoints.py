@@ -63,6 +63,10 @@ def db():
 @pytest.mark.parametrize("method,path", [
     ("post", "/api/v1/capture/sessions"),
     ("post", "/api/v1/capture/sessions/anything/lines"),
+    # ⚠️ THE HOT PATH IS IN THIS LIST. `PUT .../text` is called on every pause while
+    # someone types, so it is the endpoint an unauthenticated caller would reach for
+    # most, and the one whose absence from an auth list would be least visible.
+    ("put", "/api/v1/capture/sessions/anything/text"),
     ("post", "/api/v1/capture/sessions/anything/choose"),
     ("get", "/api/v1/capture/sessions/anything"),
 ])
@@ -79,7 +83,7 @@ def test_every_endpoint_refuses_a_junk_token_at_TOKEN_DECODE(client, method, pat
     else:
         r = getattr(client, method)(
             path,
-            json={"line": "x", "field_id": "vault", "index": 1},
+            json={"line": "x", "text": "x", "field_id": "vault", "index": 1},
             headers=headers,
         )
     assert r.status_code == 401, (

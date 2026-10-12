@@ -27,7 +27,12 @@ from app.models.capture_session import (
     CaptureSession,
 )
 from app.services import capture
-from app.services.capture.typed_extraction import EXTRACTOR, evaluate_typed
+from app.services.capture.typed_extraction import (
+    EXTRACTOR,
+    evaluate_typed,
+    extract_text,
+    segments,
+)
 
 #: ⚠️ THE DONE-SIGNAL, VERBATIM FROM THE OPAS OVERLAY PROTOTYPE
 #: (`docs/prototypes/2026-10-01-opas-overlay.html:539`). Not re-worded: the prototype is
@@ -142,6 +147,47 @@ def add_line(
     return row
 
 
+def set_text(
+    db: Session, session_id: str, *, company_id: str, user_id: str, text: str
+) -> CaptureSession:
+    """Re-read the WHOLE text. The source of truth for the typed pane.
+
+    ⚠️ IT REPLACES, IT DOES NOT ACCUMULATE, AND THAT IS THE POINT OF THE WHOLE
+    MODEL. `values`, `unrecognized` and `pending_picks` are rebuilt from this text
+    every time. If the director deletes a word, whatever that word captured is
+    un-captured and whatever it failed to place stops being reported. `add_line`
+    accumulates — correct when each line was a separate event, wrong now that the
+    text is editable and on screen.
+
+    ⚠️ `add_line` IS NOT TOUCHED AND IS NOT DEPRECATED (E6). It is the only path the
+    call pipeline's shape resembles, it is the path every existing session was
+    captured through, and its FIRST_WINS policy is right for a source that arrives
+    one utterance at a time. Two sources, two policies, stated per source.
+
+    ⚠️ THE STATUS IS RE-DERIVED FROM THE TEXT, NOT LATCHED. A director who types
+    "that's it" and then deletes it is still capturing. Latching would make the
+    done signal the one thing on screen that editing could not take back.
+    """
+    row = _load(db, session_id, company_id=company_id, user_id=user_id)
+    resolutions = dict(row.resolutions or {})
+
+    ex = extract_text(db, tenant_id=company_id, text=text, resolutions=resolutions)
+
+    row.full_text = text
+    row.values = dict(ex.values)
+    row.unrecognized = list(ex.unrecognized)
+    row.pending_picks = [asdict(pk) for pk in ex.picks]
+    db.flush()
+
+    # ⚠️ ABANDONED IS NOT RE-DERIVED. It is not a statement about the text.
+    if row.status in (STATUS_CAPTURING, STATUS_REVIEW):
+        if any(is_done_signal(seg) for seg in segments(text)):
+            return _signal_done(db, row)
+        row.status = STATUS_CAPTURING
+        db.flush()
+    return row
+
+
 def choose(
     db: Session, session_id: str, *, company_id: str, user_id: str,
     field_id: str, index: int,
@@ -161,10 +207,37 @@ def choose(
     if not (1 <= index <= len(options)):
         raise ValueError(f"pick {index} is outside 1..{len(options)}")
 
-    values = dict(row.values or {})
-    values[field_id] = options[index - 1][0]
-    row.values = values
-    row.pending_picks = [p for p in picks if p["field_id"] != field_id]
+    chosen = options[index - 1][0]
+
+    # ⚠️ RECORDED DURABLY, NOT JUST APPLIED. Under whole-text re-extraction a value
+    # written into `values` is erased by the next keystroke, because the next read
+    # rebuilds `values` from the text — and the text is still ambiguous, so the same
+    # question comes straight back. The resolution is the director's decision ABOUT
+    # that text and has to outlive every re-read of it.
+    resolutions = dict(row.resolutions or {})
+    resolutions[field_id] = chosen
+    row.resolutions = resolutions
+
+    if row.full_text is not None:
+        # ⚠️ RE-EXTRACTED THROUGH THE SAME CALL THE NEXT PAUSE WILL MAKE, so the
+        # response cannot disagree with what the pane is about to be sent. Writing
+        # `values[field_id]` here instead would be a second place that decides what a
+        # settled pick means, and it would differ the moment resolutions gained any
+        # behaviour beyond overwrite.
+        ex = extract_text(
+            db, tenant_id=company_id, text=row.full_text, resolutions=resolutions
+        )
+        row.values = dict(ex.values)
+        row.unrecognized = list(ex.unrecognized)
+        row.pending_picks = [asdict(pk) for pk in ex.picks]
+    else:
+        # ⚠️ THE LINE PATH, BYTE-FOR-BYTE AS IT WAS. A session with no whole-text
+        # record is one captured line-by-line, and E6 says that path does not change.
+        values = dict(row.values or {})
+        values[field_id] = chosen
+        row.values = values
+        row.pending_picks = [p for p in picks if p["field_id"] != field_id]
+
     db.flush()
     return row
 
@@ -237,9 +310,12 @@ def read_state(db: Session, session_id: str, *, company_id: str, user_id: str) -
     # trace on the row. Rather than add a column for it, the signal is DERIVED FROM
     # THE TEXT — which is where the director actually put it, and which survives the
     # move to whole-text re-extraction, where the text is the only source there is.
+    # ⚠️ FROM WHICHEVER SOURCE THIS SESSION ACTUALLY HAS. A line-captured session has
+    # lines and no text; a typed-pane session has text and no lines. Reading only one
+    # would make the done signal work in one pane and silently not in the other.
     said_done = any(
         is_done_signal(ln.get("line") or "") for ln in (row.typed_lines or [])
-    )
+    ) or any(is_done_signal(seg) for seg in segments(row.full_text or ""))
     rendered = resolve_surface(surface, resolved, answers, done_signal=said_done)
 
     return {
@@ -247,6 +323,13 @@ def read_state(db: Session, session_id: str, *, company_id: str, user_id: str) -
         "status": row.status,
         "object_type": row.object_type,
         "typed_lines": [ln["line"] for ln in (row.typed_lines or [])],
+        # ⚠️ BOTH ARE RETURNED SO A RELOAD RESTORES THE PANE EXACTLY. The text goes
+        # back in the bar; the resolutions keep the settled picks settled. Returning
+        # the text alone would re-raise every question the director already answered.
+        # `None`, not `""` — the pane must be able to tell "no whole-text record"
+        # from "the bar is empty", and only the first means fall back to the lines.
+        "full_text": row.full_text,
+        "resolutions": dict(row.resolutions or {}),
         "values": answers,
         # ⚠️ ALL FIVE SETS, NOT JUST `missing`. The pane renders a row per state and
         # `not_applicable` vs `indeterminate` is the distinction the amber dashed row

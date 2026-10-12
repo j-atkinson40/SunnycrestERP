@@ -74,6 +74,22 @@ class CaptureSession(Base):
     #: Ambiguous resolutions awaiting a numbered pick.
     pending_picks: Mapped[list | None] = mapped_column(JSONB, nullable=True)
 
+    #: ⚠️ THE WHOLE TYPED TEXT, AND IN THE TYPED PANE IT IS THE SOURCE. Typed capture
+    #: re-reads this from scratch on every pause rather than appending — so deleting a
+    #: word un-captures what it said, which is the behaviour a bar the director can
+    #: edit has to have. `typed_lines` is kept alongside as history: it is what the
+    #: CALL pipeline still produces, and it is all a session captured before r208 has.
+    #:
+    #: ⚠️ NULL IS NOT THE EMPTY STRING HERE. NULL means "this session has no whole-text
+    #: record" — true of every row that predates r208 — and "" means the director
+    #: cleared the bar. `read_state` branches on `is not None`, never on truthiness.
+    full_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: ⚠️ field_id -> the value the director CHOSE, and it outranks re-extraction.
+    #: Without this, every re-read would raise a settled question again on the next
+    #: keystroke: the text that was ambiguous is still on screen and still ambiguous.
+    #: Applied LAST, after extraction. Durable, so a reload restores the picks too.
+    resolutions: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

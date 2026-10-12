@@ -4,10 +4,18 @@
 `app/api/routes/` referenced the capture engine at all — it was reachable only from
 `call_extraction_service`, driven by the RingCentral webhook.
 
-⚠️ FOUR ENDPOINTS, WHICH IS THE SMALLEST SET THE PANE NEEDS: start, add a line, settle a
-pick, read state. `GET` exists because a session must survive a tuck — the pane is
-re-rendered from the server rather than from client memory, so tucking and reopening
-cannot lose a half-typed order.
+⚠️ FIVE ENDPOINTS. The fifth, `PUT .../text`, is the one the typed pane actually drives:
+it re-reads the WHOLE text on every pause rather than appending a line. `POST .../lines`
+is kept and unchanged — it is the path every existing session was captured through, and
+appending is right for a source that arrives one utterance at a time.
+
+⚠️ `PUT`, NOT `POST`, AND THAT IS THE CONTRACT NOT A PREFERENCE. The request sets the
+text to a value; sending the same text twice must leave the session identical. A `POST`
+would read as "add this", which is what the line endpoint does and what this must not do.
+
+`GET` exists because a session must survive a tuck — the pane is re-rendered from the
+server rather than from client memory, so tucking and reopening cannot lose a half-typed
+order.
 
 ⚠️ NO APPROVE ENDPOINT, BY RULING (E5). The slice ends at a read-only summary. A stub
 that returned 501 would read as an intention this slice does not carry out, and the next
@@ -38,6 +46,20 @@ class StartRequest(BaseModel):
 
 class LineRequest(BaseModel):
     line: str = Field(min_length=1, max_length=2000)
+
+
+class TextRequest(BaseModel):
+    #: ⚠️ EMPTY IS LEGAL. The director clearing the bar is a real edit and must
+    #: un-capture everything, so this has no `min_length`. The line endpoint has
+    #: `min_length=1` because an empty line is not an utterance.
+    text: str = Field(max_length=8000)
+    #: ⚠️ THE CLIENT'S SEQUENCE NUMBER, ECHOED BACK UNINTERPRETED. The server does
+    #: NOT order by it and does not reject a low one: requests can overtake each
+    #: other on the wire, and a server that dropped the "stale" one would be
+    #: deciding which of the director's keystrokes counted. The CLIENT holds the
+    #: latest number it issued and ignores any response whose `seq` is lower — it
+    #: is the only party that knows what the bar currently contains.
+    seq: int = Field(default=0, ge=0)
 
 
 class ChooseRequest(BaseModel):
@@ -90,6 +112,30 @@ def add_line(
         raise HTTPException(status_code=404, detail="capture session not found")
     db.commit()
     return _state(db, session_id, current_user)
+
+
+@router.put("/sessions/{session_id}/text")
+def set_text(
+    session_id: str,
+    body: TextRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Re-read the whole typed text. The hot path — one call per pause."""
+    try:
+        session_service.set_text(
+            db, session_id,
+            company_id=current_user.company_id, user_id=current_user.id,
+            text=body.text,
+        )
+    except session_service.SessionNotFound:
+        raise HTTPException(status_code=404, detail="capture session not found")
+    db.commit()
+    state = _state(db, session_id, current_user)
+    # ⚠️ ECHOED, NOT ACTED ON. See `TextRequest.seq` — the client drops stale
+    # responses because the client is the only party that knows what is in the bar.
+    state["seq"] = body.seq
+    return state
 
 
 @router.post("/sessions/{session_id}/choose")
