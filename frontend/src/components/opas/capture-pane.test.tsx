@@ -25,6 +25,12 @@ vi.mock("@/services/opas-capture-service", () => ({
   addLine: vi.fn(),
   choosePick: vi.fn(),
   readCapture: vi.fn(),
+  // ⚠️ ADDED WHEN THE PANE MOVED TO WHOLE-TEXT EXTRACTION. A mock that omits a
+  // function the component imports does not fail at import — it fails when the
+  // component CALLS it, as `undefined is not a function`, mid-effect, which
+  // surfaces as the pane rendering nothing. `opas-capture-service.test.ts` is what
+  // pins this module's real exports; this double only has to keep up with them.
+  setCaptureText: vi.fn(),
 }))
 vi.mock("@/services/opas-catalog-service", () => ({
   resolvePhrase: vi.fn(async () => ({ candidates: [], discriminators: [] })),
@@ -46,6 +52,7 @@ import {
   addLine,
   choosePick,
   readCapture,
+  setCaptureText,
   startCapture,
 } from "@/services/opas-capture-service"
 
@@ -56,6 +63,13 @@ function state(over: Record<string, unknown> = {}) {
     status: "capturing",
     object_type: "sales_order",
     typed_lines: [],
+    // ⚠️ `null`, NOT `""`, AND THE DISTINCTION IS THE DEFAULT FOR A REASON. A fresh
+    // session has NO whole-text record, which is what the server returns and what
+    // makes the pane fall back to the lines. Defaulting to `""` here would have the
+    // fixture assert "the director cleared the bar" on every test that does not
+    // mention text — and would hide the branch entirely.
+    full_text: null,
+    resolutions: {},
     values: {},
     answered: [],
     missing: [],
@@ -110,6 +124,7 @@ beforeEach(() => {
   window.sessionStorage.clear()
   vi.mocked(startCapture).mockResolvedValue(state() as never)
   vi.mocked(addLine).mockResolvedValue(state() as never)
+  vi.mocked(setCaptureText).mockResolvedValue(state() as never)
   vi.mocked(choosePick).mockResolvedValue(state() as never)
   vi.mocked(readCapture).mockResolvedValue(state() as never)
 })
@@ -260,16 +275,55 @@ describe("the rows", () => {
         ],
       },
     })
-    vi.mocked(addLine).mockResolvedValue(withFollowUp as never)
+    // ⚠️ DRIVEN THROUGH THE BAR, NOT A PANE TEXT BOX. The pane has no field of its own
+    // — the bar is the only input, by ruling (2026-10-12). This test used to type into
+    // `capture-input` and assert `addLine`; both are gone, and the replacement asserts
+    // the same CLAIM through the new seam.
+    vi.mocked(setCaptureText).mockResolvedValue(withFollowUp as never)
     openOverlay()
     await type(user, "start an order")
-    await waitFor(() => expect(screen.getByTestId("capture-input")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTestId("capture-rows")).toBeInTheDocument())
 
-    await user.type(screen.getByTestId("capture-input"), "legacy print{Enter}")
+    await user.type(screen.getByTestId("opas-input"), "legacy print")
 
     await waitFor(() =>
       expect(screen.getByTestId("capture-row-legacy_series")).toBeInTheDocument(),
     )
+  })
+
+  it("the pane has NO text field of its own — the bar is the only input", async () => {
+    // ⚠️ THE RULING, ASSERTED AS AN ABSENCE, AND THE POSITIVE CONTROL IS WHAT MAKES THE
+    // ABSENCE MEAN ANYTHING. `queryByTestId(...)` returning null is also what a pane
+    // that failed to render returns, so the rows are asserted PRESENT first. Without
+    // that, this test passes against a blank pane.
+    const user = userEvent.setup()
+    openOverlay()
+    await type(user, "start an order")
+    await waitFor(() => expect(screen.getByTestId("capture-rows")).toBeInTheDocument())
+
+    // ⚠️ THERE IS NO PANE TEXT BOX IN ANY STATE NOW (the bar is the only input), so
+    // this assertion no longer distinguishes review from capturing. Kept because it
+    // still holds, and the review-specific claim is the absent Approve above.
+    expect(screen.queryByTestId("capture-input")).not.toBeInTheDocument()
+    // exactly one text input in the whole overlay, and it is the bar
+    const inputs = screen.getAllByRole("textbox")
+    expect(inputs).toHaveLength(1)
+    expect(inputs[0]).toBe(screen.getByTestId("opas-input"))
+  })
+
+  it("the bar becomes the ORDER'S field when an entry pane is in front", async () => {
+    const user = userEvent.setup()
+    openOverlay()
+    await type(user, "start an order")
+    await waitFor(() => expect(screen.getByTestId("capture-rows")).toBeInTheDocument())
+
+    const bar = screen.getByTestId("opas-input")
+    // ⚠️ `data-entry-mode` IS THE OBSERVABLE FORM OF "which job is the bar doing". It
+    // is derived from the FRONT pane's TYPE (`pane-mode.ts`), not from a flag anyone
+    // sets, so there is no state in which the attribute and the behaviour disagree.
+    expect(bar).toHaveAttribute("data-entry-mode", "true")
+    await user.type(bar, "tent only")
+    expect(bar).toHaveValue("tent only")
   })
 })
 
@@ -367,20 +421,86 @@ describe("never dropped", () => {
 })
 
 describe("the done signal and the summary", () => {
-  it("sends the done phrase as a line and renders the summary when the server advances", async () => {
+  it("sends the done phrase as TEXT and renders the summary when the server advances", async () => {
     const user = userEvent.setup()
-    vi.mocked(addLine).mockResolvedValue(state({ status: "review" }) as never)
+    vi.mocked(setCaptureText).mockResolvedValue(state({ status: "review" }) as never)
     openOverlay()
     await type(user, "start an order")
-    await waitFor(() => expect(screen.getByTestId("capture-input")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTestId("capture-rows")).toBeInTheDocument())
 
-    await user.type(screen.getByTestId("capture-input"), "that's everything{Enter}")
+    // ⚠️ NO `{Enter}`, AND THAT IS THE RULING RATHER THAN AN OMISSION. Enter is a hard
+    // no-op while capturing; the done phrase reaches the server because it is IN THE
+    // TEXT, which the pane re-reads on a pause. A test that pressed Enter would pass
+    // today for the wrong reason — the debounce would have fired anyway.
+    await user.type(screen.getByTestId("opas-input"), "that's everything")
 
     // ⚠️ THE SERVER DECIDES. The pane does not test the phrase itself — the done-signal
     // regex lives in `session_service.DONE_SIGNAL`, and a second copy here could
     // disagree with it.
-    await waitFor(() => expect(addLine).toHaveBeenCalledWith("sess-1", "that's everything"))
+    await waitFor(() =>
+      expect(setCaptureText).toHaveBeenCalledWith(
+        "sess-1",
+        "that's everything",
+        expect.any(Number),
+      ),
+    )
     await waitFor(() => expect(screen.getByTestId("capture-summary")).toBeInTheDocument())
+  })
+
+  /** Dispatch Enter at the bar and report whether anything claimed it. */
+  function pressEnter(): boolean {
+    const e = new KeyboardEvent("keydown", {
+      key: "Enter",
+      bubbles: true,
+      cancelable: true,
+    })
+    screen.getByTestId("opas-input").dispatchEvent(e)
+    return e.defaultPrevented
+  }
+
+  it("ENTER IS A HARD NO-OP in entry mode — the keypress is CLAIMED, not merely ignored", async () => {
+    // ⚠️ `defaultPrevented` IS THE ASSERTION BECAUSE NOTHING ELSE DISTINGUISHES.
+    //
+    // My first version typed "the catalog{Enter}" and asserted no second pane opened
+    // and the bar kept its text. It passed with `preventDefault` DELETED — because in
+    // entry mode the bar's keystrokes go to `opas.setEntryText`, so the request-text
+    // state is empty, and `submit()` returns at `if (phrase === "")` before doing
+    // anything. The test was asserting an outcome that was already guaranteed by an
+    // unrelated fact, which is a check whose success condition is invariant under the
+    // failure it catches (CLAUDE.md §11, shape 7).
+    //
+    // The ruling says Enter does NOTHING, and "nothing" includes not reaching the
+    // browser's default handling inside the form-like layouts this bar sits in. That
+    // is `preventDefault`, and it is directly observable.
+    const user = userEvent.setup()
+    openOverlay()
+    await type(user, "start an order")
+    await waitFor(() => expect(screen.getByTestId("capture-rows")).toBeInTheDocument())
+    const before = vi.mocked(startCapture).mock.calls.length
+
+    expect(pressEnter()).toBe(true)
+
+    // and nothing happened: no second pane, no new session, text untouched
+    expect(
+      document.querySelectorAll('[data-testid^="opas-pane-opas-pane-"]'),
+    ).toHaveLength(1)
+    expect(vi.mocked(startCapture).mock.calls.length).toBe(before)
+  })
+
+  it("Enter is NOT claimed with no entry pane in front — the positive control", async () => {
+    // ⚠️ WITHOUT THIS, THE TEST ABOVE PASSES AGAINST A BAR THAT SWALLOWS EVERY ENTER
+    // ALWAYS — which would break the request line for good and leave the catalog
+    // unreachable by keyboard.
+    const user = userEvent.setup()
+    openOverlay()
+    // ⚠️ THE SPHERE FIRST. The command line only renders while the overlay is open, so
+    // without this the bar does not exist — and my first version of this control
+    // failed with "unable to find opas-input", which is the right failure: a control
+    // that cannot find its subject must not report a verdict about it.
+    await user.click(screen.getByTestId("opas-sphere"))
+    await screen.findByTestId("opas-input")
+
+    expect(pressEnter()).toBe(false)
   })
 
   it("has NO approve control in the summary, by ruling", async () => {

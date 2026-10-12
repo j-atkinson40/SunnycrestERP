@@ -23,18 +23,84 @@
  * does not compute which fields are missing, does not resolve anything, and does not
  * choose between candidates — those are the engine's and the resolvers' jobs, and a
  * second implementation here would be the duplication the capture engine removed.
+ *
+ * ⚠️ IT HAS NO TEXT FIELD, BY RULING (2026-10-12). THE BAR IS THE ONLY INPUT. The pane
+ * receives `text` as a prop and never owns it — see `opas-context.tsx::entryText`. The
+ * prototype's pane had its own box and the pane-plus-bar arrangement had TWO places to
+ * type, which is the thing the ruling removed: a director with a half-typed line in one
+ * of them and the cursor in the other.
+ *
+ * ⚠️ IT EXTRACTS ON A PAUSE, NOT ON A SUBMIT. `EXTRACT_DEBOUNCE_MS` after the last
+ * keystroke the whole text is re-read, so the rows fill in while someone types. Two
+ * consequences worth stating because they look like bugs otherwise:
+ *
+ *   deleting a word UN-CAPTURES what it said — the text is the source, the server
+ *   rebuilds from scratch, and that is the behaviour an editable bar has to have.
+ *
+ *   responses can arrive out of order, and the stale ones are DROPPED HERE. See
+ *   `capture-sequence.ts` for why the client decides and not the server.
  */
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import { writeStoredCaptureSession } from "@/contexts/opas-context"
 import {
-  addLine,
   choosePick,
   readCapture,
+  setCaptureText,
   startCapture,
   type CapturePick,
   type CaptureState,
 } from "@/services/opas-capture-service"
+import { EXTRACT_DEBOUNCE_MS, createSequencer } from "./capture-sequence"
+
+/** What the pane tells the command line about itself.
+ *
+ * ⚠️ IT TRAVELS UPWARD BECAUSE THE INPUT IS UP THERE. The bar needs the placeholder
+ * (which must describe what is happening NOW), the pending picks (so ⌘1..9 can settle
+ * one), and whether the session is still capturing (so Enter can be a no-op). All
+ * three are facts about the pane; the bar is where they are used.
+ */
+export interface EntryPaneStatus {
+  /** ⚠️ DERIVED ON EVERY RENDER, NEVER LATCHED — see `placeholderFor`. */
+  readonly placeholder: string
+  readonly picks: readonly CapturePick[]
+  readonly capturing: boolean
+  readonly ready: boolean
+}
+
+/** The placeholder, derived from what is true right now.
+ *
+ * ⚠️ THE RULING IS "SAYS WHAT IT IS DOING, NEVER STALE", AND THAT RULES OUT THE OBVIOUS
+ * IMPLEMENTATION. A message set on an event — `setPlaceholder("Reading…")` when a
+ * request starts — survives whatever happens next, including the request failing, the
+ * pane being tucked, or the director deleting everything. This is a pure function of
+ * the current state, so there is no stored message that can outlive its cause.
+ *
+ * ⚠️ ORDER IS BY URGENCY, AND THE PICK COMES FIRST. A pending pick is the one thing
+ * that needs the director's hand; reporting "reading…" over the top of it would hide a
+ * question behind a progress note.
+ */
+export function placeholderFor(args: {
+  readonly ready: boolean
+  readonly inFlight: boolean
+  readonly text: string
+  readonly picks: readonly CapturePick[]
+  readonly needed: number
+  readonly reviewing: boolean
+}): string {
+  if (!args.ready) return "Starting the order…"
+  if (args.picks.length > 0) {
+    const n = args.picks[0].options.length
+    return `Which one? 1–${Math.min(n, 9)}, or ⌘ and the number`
+  }
+  if (args.reviewing) return "Ready to review"
+  if (args.inFlight) return "Reading what you typed…"
+  if (args.text.trim() === "") return "Say what the director said"
+  if (args.needed > 0) {
+    return `${args.needed} still needed — keep typing`
+  }
+  return "Nothing needed — say “that’s it”"
+}
 
 /** ⚠️ Per-state classes, named after the prototype's own selectors so a reader can find
  *  them in the source file. */
@@ -90,6 +156,10 @@ export function CapturePane({
   openingLine,
   sessionId: existingSessionId,
   onSessionStarted,
+  text = "",
+  onStatus,
+  onRestoreText,
+  pickRequest,
 }: {
   /** Fed through extraction on start, per the prototype (`:568` calls `feed` at once). */
   readonly openingLine?: string
@@ -97,30 +167,85 @@ export function CapturePane({
    *  the pane is re-mounted and reconstructed from the server, not from client memory. */
   readonly sessionId?: string
   readonly onSessionStarted?: (id: string) => void
+  /** ⚠️ WHAT IS IN THE BAR. The pane does not own this and has no field of its own —
+   *  the bar is the only input, by ruling. */
+  readonly text?: string
+  /** Reports the placeholder, the picks and the capturing flag up to the bar. */
+  readonly onStatus?: (s: EntryPaneStatus) => void
+  /** ⚠️ RESTORES THE BAR AFTER A RELOAD. The server holds the full text; the bar is
+   *  empty on a fresh mount, so the pane hands it back exactly once. Without it a
+   *  reload would show every captured row above an empty bar, and the first keystroke
+   *  would re-extract from one character and un-capture the whole order. */
+  readonly onRestoreText?: (text: string) => void
+  /** ⚠️ A PICK REQUESTED FROM THE BAR (⌘1..9), as a counter-stamped value so the same
+   *  option chosen twice still fires. A bare `{field_id, index}` object would be
+   *  compared by identity and the second identical press would be a no-op. */
+  readonly pickRequest?: { readonly fieldId: string; readonly index: number; readonly nonce: number }
 }) {
   const [state, setState] = useState<CaptureState | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [draft, setDraft] = useState("")
-  const inputRef = useRef<HTMLInputElement | null>(null)
+  const [inFlight, setInFlight] = useState(false)
   // ⚠️ A REF, NOT STATE. Two StrictMode mounts would otherwise start two sessions, and
   // the second would orphan the first — a half-typed order nobody can reach.
   const started = useRef(false)
+  // ⚠️ ONE SEQUENCER PER PANE INSTANCE, created once. Inside the render body it would be
+  // rebuilt every keystroke, `applied` would reset to 0, and every response would be
+  // accepted — the sequencer would be present, consulted, and useless, which is worse
+  // than absent because it reads as handled.
+  const seqRef = useRef(createSequencer())
+  const restored = useRef(false)
+  /** ⚠️ IS THIS COMPONENT STILL MOUNTED — a ref with a lifetime, not a per-effect flag.
+   *
+   *  ⚠️ THIS REPLACES AN `alive` FLAG LOCAL TO THE START EFFECT, AND THE BUG IT CAUSED
+   *  IS WORTH RECORDING BECAUSE IT WAS INVISIBLE UNTIL THE PARENT CHANGED. That effect
+   *  was gated by `started.current` and listed `onSessionStarted` — an inline arrow in
+   *  `OpasHost` — among its dependencies. Once the host began re-rendering while the
+   *  start call was in flight (it now holds per-pane entry status), the dependency's
+   *  identity changed, React ran the CLEANUP, `alive` went false, the re-run hit the
+   *  ref guard and returned immediately, and `setState` was never reached. The pane sat
+   *  on "Starting…" forever, with no error and no failed request.
+   *
+   *  ⚠️ THE CALLBACKS ARE HELD IN REFS BELOW SO THEY ARE NOT DEPENDENCIES AT ALL. That
+   *  is the actual repair: an effect that must run exactly once cannot depend on a
+   *  value whose identity changes, and a ref guard does not save it — it makes the
+   *  failure silent. */
+  const mounted = useRef(true)
+  useEffect(
+    () => () => {
+      mounted.current = false
+    },
+    [],
+  )
+  // ⚠️ REFS, UPDATED EVERY RENDER. The start effect calls the LATEST callback without
+  // listing it, which is the point; a stale closure here would report the session id to
+  // a pane id that no longer exists.
+  const onSessionStartedRef = useRef(onSessionStarted)
+  const onRestoreTextRef = useRef(onRestoreText)
+  onSessionStartedRef.current = onSessionStarted
+  onRestoreTextRef.current = onRestoreText
 
   useEffect(() => {
     if (started.current) return
     started.current = true
-    let alive = true
     const run = async () => {
       try {
         const s = existingSessionId
           ? await readCapture(existingSessionId)
           : await startCapture(openingLine)
-        if (!alive) return
+        if (!mounted.current) return
         setState(s)
-        if (!existingSessionId) onSessionStarted?.(s.session_id)
+        if (!existingSessionId) onSessionStartedRef.current?.(s.session_id)
+        // ⚠️ ONCE, AND ONLY WHEN THERE IS A RECORD. `full_text === null` means this
+        // session has no whole-text record at all (it was captured line-by-line), and
+        // handing `""` to the bar in that case would be indistinguishable from the
+        // director having cleared it — so the check is `!== null`, not truthiness.
+        if (!restored.current && s.full_text !== null) {
+          restored.current = true
+          onRestoreTextRef.current?.(s.full_text)
+        }
       } catch {
-        if (!alive) return
+        if (!mounted.current) return
         // ⚠️ A STALE RESTORED ID CLEARS ITSELF. If this mount was a restore and the server
         // no longer has that session, carrying the id forward would resurrect a ghost pane
         // on every reload. The wording distinguishes the two causes, because "could not
@@ -134,34 +259,76 @@ export function CapturePane({
       }
     }
     void run()
-    return () => {
-      alive = false
-    }
-  }, [existingSessionId, openingLine, onSessionStarted])
+    // ⚠️ NO CLEANUP, AND NO CALLBACK DEPENDENCIES. Both were the bug: the cleanup
+    // cancelled a start that was still needed, and the callback dependency was what
+    // made the cleanup run at all.
+  }, [existingSessionId, openingLine])
 
-  const send = useCallback(
-    async (line: string) => {
-      if (!state || !line.trim()) return
-      setBusy(true)
-      try {
-        setState(await addLine(state.session_id, line))
-        setDraft("")
-      } catch {
-        setError("That line did not reach the server")
-      } finally {
-        setBusy(false)
-        inputRef.current?.focus()
-      }
-    },
-    [state],
-  )
+  /**
+   * LIVE EXTRACTION. One call per pause, the whole text, stale responses dropped.
+   *
+   * ⚠️ IT RUNS ON `text` CHANGING, INCLUDING TO THE EMPTY STRING. Deleting everything
+   * is a real edit that must un-capture everything, so there is no `if (!text) return`
+   * — that guard is exactly how the pane would come to show values for words that are
+   * no longer on screen.
+   *
+   * ⚠️ THE SESSION ID IS READ OFF `state`, SO THE EFFECT WAITS FOR THE START CALL. A
+   * keystroke before the session exists is not lost: `text` is held in the context, the
+   * effect re-runs when `state` arrives, and the first extraction gets the whole thing.
+   *
+   * ⚠️ THE TIMER IS CLEARED ON EVERY CHANGE, which is what makes this a debounce rather
+   * than a throttle. Nine keystrokes in a second produce ONE request, not nine.
+   */
+  const sessionId = state?.session_id
+  useEffect(() => {
+    if (sessionId === undefined) return
+    // ⚠️ THE OPENING LINE WAS ALREADY EXTRACTED BY `start`, so the first effect run on
+    // a restored or just-started session would re-send identical text for no reason.
+    // Skipping when the server's text already equals ours costs one comparison and
+    // removes a request per mount.
+    if (state?.full_text === text) return
+    const timer = window.setTimeout(() => {
+      const seq = seqRef.current.issue()
+      setInFlight(true)
+      void setCaptureText(sessionId, text, seq)
+        .then((next) => {
+          // ⚠️ THE DROP. A response that arrives behind a newer one describes text the
+          // director has already changed; applying it makes the pane show an older
+          // reading, which looks like the extractor failing to see words on screen.
+          if (!seqRef.current.accept(next.seq ?? seq)) return
+          setState(next)
+        })
+        .catch(() => {
+          setError("The order did not reach the server")
+        })
+        .finally(() => {
+          // ⚠️ CLEARED UNCONDITIONALLY, INCLUDING FOR A DROPPED RESPONSE. Gating this
+          // on `accept` would leave the placeholder saying "Reading…" forever after a
+          // single out-of-order delivery — a stale message, which is the one thing the
+          // placeholder ruling forbids.
+          setInFlight(false)
+        })
+    }, EXTRACT_DEBOUNCE_MS)
+    return () => window.clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, text])
 
   const pick = useCallback(
-    async (p: CapturePick, oneBased: number) => {
+    async (fieldId: string, oneBased: number) => {
       if (!state) return
       setBusy(true)
       try {
-        setState(await choosePick(state.session_id, p.field_id, oneBased))
+        const next = await choosePick(state.session_id, fieldId, oneBased)
+        // ⚠️ A CHOICE IS NOT SEQUENCED AND MUST NOT BE DROPPED. The sequencer orders
+        // EXTRACTIONS, which are all readings of the same text; a pick is a decision,
+        // it has no competitor, and the server has already applied it. Running it
+        // through `accept` would let an extraction in flight discard it.
+        //
+        // ⚠️ BUT THE SEQUENCE IS ADVANCED, so an extraction already in flight — issued
+        // before the pick and describing text the pick has since reinterpreted —
+        // cannot land on top of this and re-raise the settled question.
+        seqRef.current.accept(seqRef.current.issue())
+        setState(next)
       } catch {
         setError("That choice did not reach the server")
       } finally {
@@ -170,6 +337,50 @@ export function CapturePane({
     },
     [state],
   )
+
+  /** ⚠️ ⌘1..9 ARRIVES FROM THE BAR, because the bar holds the focus. The pane is the
+   *  only thing that knows which picks are pending and how to settle one, so the bar
+   *  sends an INTENT and this turns it into the call. */
+  useEffect(() => {
+    if (pickRequest === undefined) return
+    void pick(pickRequest.fieldId, pickRequest.index)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickRequest?.nonce])
+
+  /**
+   * Tell the bar what to say and what it can settle.
+   *
+   * ⚠️ ABOVE THE EARLY RETURNS, because a hook cannot be conditional. It is also the
+   * reason the "Starting the order…" placeholder works at all: while `state` is null
+   * the pane renders a loading line, and if this effect sat below that return the bar
+   * would have nothing to say during exactly the moment it most needs to.
+   *
+   * ⚠️ THE REPORTED OBJECT IS REBUILT EVERY RENDER, SO THE PARENT MUST NOT STORE IT
+   * NAIVELY. `OpasHost` compares field by field before setting state; without that,
+   * parent setState -> child re-render -> new object -> parent setState is an infinite
+   * loop. That is a real constraint on the parent and is stated at both ends.
+   */
+  const liveRows = state?.surface.rows ?? []
+  const liveNeeded = liveRows.filter((r) => r.state === "needed").length
+  const liveReviewing = state?.status === "review"
+  const livePicks = state?.pending_picks ?? []
+  const placeholder = placeholderFor({
+    ready: state !== null,
+    inFlight,
+    text,
+    picks: livePicks,
+    needed: liveNeeded,
+    reviewing: liveReviewing,
+  })
+  useEffect(() => {
+    onStatus?.({
+      placeholder,
+      picks: livePicks,
+      capturing: state !== null && state.status === "capturing",
+      ready: state !== null,
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [placeholder, livePicks, state?.status, state !== null])
 
   if (error) {
     return (
@@ -289,16 +500,38 @@ export function CapturePane({
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => void pick(p, i + 1)}
+                      onClick={() => void pick(p.field_id, i + 1)}
                       data-testid={`capture-pick-option-${p.field_id}-${i + 1}`}
-                      className="w-full rounded-base px-2 py-1 text-left text-body-sm hover:bg-surface-sunken focus-ring-accent"
+                      className="flex w-full items-center gap-2 rounded-base px-2 py-1 text-left text-body-sm hover:bg-surface-sunken focus-ring-accent"
                     >
-                      <span className="mr-2 text-content-subtle">{i + 1}</span>
-                      {label}
+                      {/* ⚠️ THE NUMBER IS VISIBLE BECAUSE ⌘N IS ONLY AVAILABLE WHILE IT
+                          IS, by ruling. A keyboard shortcut whose number is not on
+                          screen is a shortcut nobody can use and a key nobody can
+                          predict. Past 9 the number is dropped rather than shown
+                          un-pressable — ⌘0 is not a pick and labelling it "10" would
+                          promise a key that does nothing. */}
+                      {i < 9 ? (
+                        <kbd
+                          data-testid={`capture-pick-number-${p.field_id}-${i + 1}`}
+                          className="flex h-5 min-w-5 items-center justify-center rounded-[4px] border border-border-base px-1 text-micro text-content-muted"
+                        >
+                          {i + 1}
+                        </kbd>
+                      ) : (
+                        <span aria-hidden className="h-5 min-w-5" />
+                      )}
+                      <span className="min-w-0 flex-1">{label}</span>
                     </button>
                   </li>
                 ))}
               </ol>
+              {/* ⚠️ THE SHORTCUT IS ADVERTISED WHERE THE NUMBERS ARE. ⌘ and not plain
+                  digits: a bare "3" is text the director may be typing — a grave
+                  depth, a vault size, a time — and stealing it would make numbers
+                  untypable while a question is open. */}
+              <div className="mt-1 text-micro text-content-subtle" data-testid={`capture-pick-hint-${p.field_id}`}>
+                Click, or ⌘ and the number. Typed digits go into the text.
+              </div>
             </div>
           ))}
 
@@ -326,37 +559,34 @@ export function CapturePane({
             </div>
           )}
 
-          {/* the typed transcript, so a line can be attributed */}
-          {state.typed_lines.length > 0 && (
-            <ul
-              className="flex flex-col gap-0.5 border-t border-border-subtle pt-2"
-              data-testid="capture-lines"
-            >
-              {state.typed_lines.map((l, i) => (
-                <li key={`${l}-${i}`} className="text-micro text-content-subtle">
-                  {l}
-                </li>
-              ))}
-            </ul>
+          {/* ⚠️ WHAT THE SERVER IS READING, SHOWN BACK. Not an input — the bar is the
+              only input, by ruling. This is the text the rows above were derived
+              from, so a director who sees a row they did not expect can see the words
+              that produced it. On a line-captured session the server has no text and
+              the lines are shown instead, which is the only thing there is. */}
+          {state.full_text !== null ? (
+            state.full_text.trim() !== "" && (
+              <div
+                className="border-t border-border-subtle pt-2 text-micro text-content-subtle"
+                data-testid="capture-text-echo"
+              >
+                {state.full_text}
+              </div>
+            )
+          ) : (
+            state.typed_lines.length > 0 && (
+              <ul
+                className="flex flex-col gap-0.5 border-t border-border-subtle pt-2"
+                data-testid="capture-lines"
+              >
+                {state.typed_lines.map((l, i) => (
+                  <li key={`${l}-${i}`} className="text-micro text-content-subtle">
+                    {l}
+                  </li>
+                ))}
+              </ul>
+            )
           )}
-
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              void send(draft)
-            }}
-          >
-            <input
-              ref={inputRef}
-              value={draft}
-              disabled={busy}
-              onChange={(e) => setDraft(e.target.value)}
-              placeholder="Type what the director said…"
-              aria-label="Type what the director said"
-              data-testid="capture-input"
-              className="w-full rounded-base border border-border-base bg-surface-raised px-2 py-1.5 text-body-sm focus-ring-accent"
-            />
-          </form>
         </>
       )}
 

@@ -24,8 +24,9 @@ import { useCallback, useEffect, useRef, useState } from "react"
 
 import { useAuth } from "@/contexts/auth-context"
 import { readStoredCaptureSession, useOpas } from "@/contexts/opas-context"
-import { CapturePane } from "./CapturePane"
+import { CapturePane, type EntryPaneStatus } from "./CapturePane"
 import { CAPTURE_START, isCatalogRequest, routeResolution } from "./opas-routing"
+import { isEntryPane } from "./pane-mode"
 import { resolvePhrase } from "@/services/opas-catalog-service"
 import { ProductListPane } from "./ProductListPane"
 import { ProductPane } from "./ProductPane"
@@ -47,6 +48,41 @@ export function OpasHost() {
   const inputRef = useRef<HTMLInputElement>(null)
   const [text, setText] = useState("")
   const [busy, setBusy] = useState(false)
+  /** ⚠️ WHAT EACH ENTRY PANE IS DOING, keyed by pane id. The bar renders the FRONT
+   *  pane's placeholder and settles the FRONT pane's picks, so it needs the status of
+   *  whichever pane is in front — not of the last one to report. */
+  const [entryStatus, setEntryStatus] = useState<Record<string, EntryPaneStatus>>({})
+  /** ⌘1..9, as a counter-stamped intent. The pane turns it into the call. */
+  const [pickRequest, setPickRequest] = useState<
+    Record<string, { fieldId: string; index: number; nonce: number }>
+  >({})
+  const pickNonce = useRef(0)
+
+  /**
+   * ⚠️ FIELD-BY-FIELD COMPARISON, AND IT IS LOAD-BEARING RATHER THAN AN OPTIMISATION.
+   * `CapturePane` rebuilds its status object on every render (it contains a derived
+   * string and an array), so storing it unconditionally is
+   * `setState -> child re-render -> new object -> setState` — an infinite loop that
+   * renders as a frozen tab, not as an error. Compared here because this is the side
+   * that stores it; the pane says so too, at the other end.
+   */
+  const reportStatus = useCallback((paneId: string, next: EntryPaneStatus) => {
+    setEntryStatus((prev) => {
+      const cur = prev[paneId]
+      if (
+        cur !== undefined &&
+        cur.placeholder === next.placeholder &&
+        cur.capturing === next.capturing &&
+        cur.ready === next.ready &&
+        cur.picks.length === next.picks.length &&
+        cur.picks.every((p, i) => p.field_id === next.picks[i].field_id &&
+          p.options.length === next.picks[i].options.length)
+      ) {
+        return prev
+      }
+      return { ...prev, [paneId]: next }
+    })
+  }, [])
 
   /** ⚠️ RESTORE A CAPTURE SESSION AFTER A RELOAD, and ONLY a capture session.
    *
@@ -199,6 +235,76 @@ export function OpasHost() {
     [opas],
   )
 
+  /**
+   * THE FRONT ENTRY PANE, which is what decides whether the bar is a request line or
+   * an order's text field.
+   *
+   * ⚠️ FRONT, NOT "ANY OPEN ENTRY PANE". With two orders open, typing must go to the
+   * one the director is looking at. `frontPaneId` is already the prototype's own
+   * notion of which that is (`raise`), so this reuses it rather than inventing a
+   * second idea of focus that could disagree with the shadow on the pane.
+   */
+  const frontPane = opas.panes.find((p) => p.id === opas.frontPaneId)
+  const entryPane = frontPane !== undefined && isEntryPane(frontPane.kind) ? frontPane : undefined
+  const entryMode = entryPane !== undefined
+  const status = entryPane !== undefined ? entryStatus[entryPane.id] : undefined
+  const entryValue = entryPane !== undefined ? (opas.entryText[entryPane.id] ?? "") : ""
+  const picks = status?.picks ?? []
+
+  /**
+   * ⌘1..9 SETTLES A PICK — and ONLY while the front entry pane has one, by ruling.
+   *
+   * ⚠️ THE GUARD IS `picks.length > 0`, SO THE KEYS ARE NOT BOUND AT ANY OTHER TIME.
+   * An always-live ⌘1..9 would collide with the Spaces shortcuts (`Cmd+Shift+1..7`
+   * differ by Shift, but `Cmd+1..5`-style bindings are used elsewhere in this app) and
+   * would do nothing visible, which is the worst kind of taken key: unavailable to
+   * everyone and useful to no one.
+   *
+   * ⚠️ PLAIN DIGITS ARE NOT TOUCHED, DELIBERATELY. A bare "3" is text the director may
+   * be typing — a grave depth, a vault size, a time — so it goes into the text. That
+   * is the ruling and it is also why the ⌘ hint is printed next to the numbers.
+   *
+   * ⚠️ IT DOES NOT FIRE PAST THE NUMBER OF OPTIONS. ⌘7 against a 3-option question is
+   * ignored rather than clamped; clamping would settle a question with an answer the
+   * director did not choose.
+   */
+  useEffect(() => {
+    if (!opas.isOpen || entryPane === undefined || picks.length === 0) return
+    // ⚠️ BOUND TO LOCALS BEFORE THE CLOSURE. TypeScript cannot carry the narrowing of
+    // `entryPane` into a function defined below the guard — it has no way to know the
+    // listener runs before the next render — so reading `entryPane.id` inside
+    // `onKeyDown` is `possibly undefined`. Capturing the id is also the correct
+    // runtime behaviour: the listener should settle the pick for the pane that was in
+    // front when it was attached, which is the pane the numbers are visible on.
+    //
+    // ⚠️ THE `picks.length === 0` GUARD IS WHAT MAKES ⌘N UNBOUND AT OTHER TIMES, and
+    // it is OBSERVABLE rather than merely defensive: with no listener attached, ⌘2
+    // is not `preventDefault`ed and reaches whatever else wants it. A break test
+    // removing this guard produced NO red at first — the handler simply crashed on
+    // `picks[0].options` and vitest reported exit 1 with no named failing test, which
+    // is a signal nobody would read as "this guard matters". The test now dispatches
+    // the event and asserts on `defaultPrevented`, which distinguishes "not bound"
+    // from "bound and inert".
+    const paneId = entryPane.id
+    const pick = picks[0]
+    function onKeyDown(e: KeyboardEvent) {
+      if (!(e.metaKey || e.ctrlKey)) return
+      if (e.altKey || e.shiftKey) return
+      if (!/^[1-9]$/.test(e.key)) return
+      const index = Number(e.key)
+      if (index > pick.options.length) return
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      pickNonce.current += 1
+      setPickRequest((prev) => ({
+        ...prev,
+        [paneId]: { fieldId: pick.field_id, index, nonce: pickNonce.current },
+      }))
+    }
+    document.addEventListener("keydown", onKeyDown, true)
+    return () => document.removeEventListener("keydown", onKeyDown, true)
+  }, [opas.isOpen, entryPane, picks])
+
   const submit = useCallback(async () => {
     const phrase = text.trim()
     if (phrase === "" || busy) return
@@ -302,9 +408,18 @@ export function OpasHost() {
               // ⚠️ A DRAGGED PANE USES left/top; AN ANCHORED ONE CASCADES FROM right/top.
               // Mixing them is what keeps "new panes still cascade" true after another pane
               // has been moved: `anchored` decides which pair applies, per pane.
+              // ⚠️ AN ENTRY PANE GROWS FROM THE BAR, AN INFO PANE CASCADES FROM THE
+              // TOP RIGHT, and the difference is the pane TYPE rather than a per-pane
+              // setting (`pane-mode.ts`). The bar is a pill at right 24 / bottom 24,
+              // so an entry pane is anchored to its right edge and sits directly above
+              // it — `bottom: 96` clears the 30px orb plus the pill's padding with a
+              // gap. It comes out of the thing the director is typing into, which is
+              // the whole point: the order appears where the words are going.
               ...(placed !== undefined && !placed.anchored
                 ? { left: placed.x, top: placed.y }
-                : { right: 24 + i * 18, top: 72 + i * 22 }),
+                : isEntryPane(pane.kind)
+                  ? { right: 24, bottom: 96 }
+                  : { right: 24 + i * 18, top: 72 + i * 22 }),
               zIndex: opas.zOf(pane.id),
               cursor: "grab",
               touchAction: "none",
@@ -320,6 +435,11 @@ export function OpasHost() {
               overflowY: "auto",
               borderRadius: 22,
               pointerEvents: opas.isOpen ? "auto" : "none",
+              // ⚠️ THE ORIGIN IS WHAT MAKES "GROWS FROM THE BAR" VISIBLE. With the
+              // default centre origin, the same scale animation reads as a pane fading
+              // in place; anchored bottom-right it reads as unfolding out of the bar.
+              // Info panes keep the top-right origin they cascade from.
+              transformOrigin: isEntryPane(pane.kind) ? "100% 100%" : "100% 0%",
               transform: opas.isOpen ? "none" : "translateY(12px) scale(.96)",
               transition: "opacity .4s cubic-bezier(0.2,0,0.1,1), transform .45s cubic-bezier(0.2,0,0.1,1)",
             }}
@@ -365,6 +485,10 @@ export function OpasHost() {
                   openingLine={pane.openingLine}
                   sessionId={pane.captureSessionId}
                   onSessionStarted={(id) => opas.setCaptureSession(pane.id, id)}
+                  text={opas.entryText[pane.id] ?? ""}
+                  onStatus={(st) => reportStatus(pane.id, st)}
+                  onRestoreText={(t) => opas.setEntryText(pane.id, t)}
+                  pickRequest={pickRequest[pane.id]}
                 />
               ) : (
                 <ProductPane variantTemplateId={pane.variantTemplateId!} />
@@ -393,16 +517,50 @@ export function OpasHost() {
                 boxShadow: "0 0 12px 1px rgba(138,164,189,.35)",
               }}
             />
+            {/* ⚠️ ONE INPUT, TWO JOBS, AND WHICH ONE IS DECIDED BY THE PANE TYPE IN
+                FRONT — not by a mode the director has to set or notice. An entry pane
+                in front makes this that order's text field; otherwise it is the
+                request line. `pane-mode.ts` owns the classification. */}
             <input
               ref={inputRef}
               data-testid="opas-input"
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void submit()
+              data-entry-mode={entryMode ? "true" : "false"}
+              value={entryMode ? entryValue : text}
+              onChange={(e) => {
+                if (entryMode && entryPane !== undefined) {
+                  opas.setEntryText(entryPane.id, e.target.value)
+                } else {
+                  setText(e.target.value)
+                }
               }}
-              placeholder="the catalog"
-              aria-label="Ask Opas"
+              onKeyDown={(e) => {
+                if (e.key !== "Enter") return
+                // ⚠️ ENTER IS A HARD NO-OP IN ENTRY MODE, AND `preventDefault` IS THE
+                // WHOLE MECHANISM. Without it the keypress reaches the browser's
+                // default handling and — inside the form-like layouts this bar sits in
+                // — can submit something. "Does nothing" has to be enforced, not
+                // merely un-handled.
+                //
+                // ⚠️ IT IS RESERVED, not repurposed. The ruling keeps Enter free for
+                // whatever ends an order later; binding it to "extract now" would make
+                // that reservation unavailable and would duplicate the debounce.
+                //
+                // ⚠️ ONE BRANCH, AND IT WAS TWO UNTIL A BREAK TEST SHOWED THE FIRST WAS
+                // DEAD. The condition read `entryMode && (status?.capturing ?? true)`
+                // followed by a bare `if (entryMode)` — the second subsumed the first
+                // completely, so deleting the capturing check changed NOTHING and the
+                // break produced no red. The ruling says "while capturing"; the wider
+                // rule is the one that is actually true, because an entry pane in
+                // review must not submit the order's text as a fresh request either.
+                // Stating it once makes it testable.
+                if (entryMode) {
+                  e.preventDefault()
+                  return
+                }
+                void submit()
+              }}
+              placeholder={entryMode ? (status?.placeholder ?? "Starting the order…") : "the catalog"}
+              aria-label={entryMode ? "Say what the director said" : "Ask Opas"}
               style={{
                 flex: 1, minWidth: 0, background: "transparent", border: 0, padding: "10px 0",
                 color: "#f2f2f2", fontFamily: "'IBM Plex Mono', ui-monospace, Menlo, monospace",

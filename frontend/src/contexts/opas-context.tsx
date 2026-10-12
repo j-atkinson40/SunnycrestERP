@@ -34,12 +34,23 @@ import {
 import { useCommandBar } from "@/core/CommandBarProvider"
 import { useFocus } from "@/contexts/focus-context"
 
+/** What a pane renders.
+ *
+ * ⚠️ EXPORTED AS A NAMED UNION so `pane-mode.ts` can declare its map as
+ * `Record<OpasPaneKind, PaneMode>` and fail to COMPILE when a kind is added without
+ * being classified as entry or info. Inline on the interface, the map could only
+ * have been keyed by `string`, and a missing row would have been a silent `undefined`
+ * — a new entry pane opening in the wrong place with the bar not wired to it, and
+ * nothing failing.
+ */
+export type OpasPaneKind = "product-list" | "product" | "capture"
+
 /** One pane opened from the command line. */
 export interface OpasPane {
   /** Stable within a session; the pane's identity for close/focus. */
   readonly id: string
-  /** What the pane renders. The slice has two. */
-  readonly kind: "product-list" | "product" | "capture"
+  /** What the pane renders. */
+  readonly kind: OpasPaneKind
   /** Uppercase eyebrow in the pane header, from the prototype's `.whead .kind`. */
   readonly label: string
   /** For `kind: "product"`. */
@@ -103,6 +114,16 @@ interface OpasValue {
   readonly raisePane: (id: string) => void
   /** Monotonic, like the prototype's `++z`. */
   readonly zOf: (id: string) => number
+  /** ⚠️ WHAT IS IN THE BAR, PER ENTRY PANE, AND IT LIVES HERE BECAUSE TWO COMPONENTS
+   *  NEED IT. The command line renders it (the bar is the only input, by ruling) and
+   *  the pane extracts from it. Holding it in either one would make the other reach
+   *  across; holding it in both would be two sources of truth about one string.
+   *
+   *  ⚠️ KEYED BY PANE ID so switching panes does not lose a half-typed order. With a
+   *  single string, raising a second entry pane would show its predecessor's text in
+   *  the bar and the next keystroke would send it to the wrong session. */
+  readonly entryText: Readonly<Record<string, string>>
+  readonly setEntryText: (paneId: string, text: string) => void
 }
 
 const OpasContext = createContext<OpasValue | null>(null)
@@ -162,6 +183,15 @@ export function OpasProvider({ children }: { children: ReactNode }) {
   const [isOpen, setIsOpen] = useState(false)
   const [panes, setPanes] = useState<readonly OpasPane[]>([])
   const [pendingPick, setPendingPick] = useState<readonly string[] | null>(null)
+  const [entryText, setEntryTextMap] = useState<Record<string, string>>({})
+
+  /** ⚠️ IDENTITY-STABLE ON A NO-OP WRITE. The bar's onChange fires on every keystroke
+   *  including ones that do not change the value (IME composition, a re-render echoing
+   *  the same string back); returning the same object keeps the pane's extraction
+   *  effect from re-running on a value that did not move. */
+  const setEntryText = useCallback((paneId: string, text: string) => {
+    setEntryTextMap((prev) => (prev[paneId] === text ? prev : { ...prev, [paneId]: text }))
+  }, [])
 
 
   /** ⚠️ IDEMPOTENT BY `paneId`, and it must be: the pane calls this once per start, but a
@@ -303,6 +333,14 @@ export function OpasProvider({ children }: { children: ReactNode }) {
         const { [id]: _gone, ...rest } = prev
         return rest
       })
+      // ⚠️ THE TEXT GOES WITH THE PANE. A closed pane's id is never reused, so a
+      // surviving entry would leak for the tab's lifetime — and if an id ever were
+      // reused, the new pane would open holding someone else's half-typed order.
+      setEntryTextMap((prev) => {
+        if (!(id in prev)) return prev
+        const { [id]: _text, ...rest } = prev
+        return rest
+      })
     },
     [zs],
   )
@@ -327,8 +365,10 @@ export function OpasProvider({ children }: { children: ReactNode }) {
       frontPaneId,
       raisePane,
       zOf: (id: string) => zs[id] ?? 0,
+      entryText,
+      setEntryText,
     }),
-    [isOpen, focusIsOpen, panes, open, close, openPane, closePane, pendingPick, tuck, onEscape, placements, movePane, frontPaneId, raisePane, zs],
+    [isOpen, focusIsOpen, panes, open, close, openPane, closePane, pendingPick, tuck, onEscape, placements, movePane, frontPaneId, raisePane, zs, entryText, setEntryText],
   )
 
   return <OpasContext.Provider value={value}>{children}</OpasContext.Provider>

@@ -35,6 +35,20 @@ export interface CapturePick {
 
 export interface CaptureState {
   readonly session_id: string
+  /** ⚠️ THE WHOLE TYPED TEXT, AND IN THE TYPED PANE IT IS THE SOURCE. `null` means the
+   *  session has no whole-text record — it was captured line-by-line — which is a
+   *  DIFFERENT FACT from `""`, the director having cleared the bar. The pane restores
+   *  the bar from this on mount, so `?? ""` at the point of use is correct and
+   *  `|| ""` at the point of reading would destroy the distinction. */
+  readonly full_text: string | null
+  /** field_id -> the value the director CHOSE. Returned so a reload restores settled
+   *  picks instead of re-asking every question. */
+  readonly resolutions: Readonly<Record<string, unknown>>
+  /** ⚠️ ECHOED BACK FROM THE REQUEST, UNINTERPRETED BY THE SERVER. Present only on a
+   *  `setCaptureText` response. The CLIENT drops a response whose `seq` is not higher
+   *  than the highest it has applied — see `capture-sequence.ts` for why the client
+   *  and not the server. */
+  readonly seq?: number
   readonly status: "capturing" | "review" | "abandoned"
   readonly object_type: string
   readonly typed_lines: readonly string[]
@@ -76,6 +90,30 @@ export async function addLine(
   line: string,
 ): Promise<CaptureState> {
   const r = await apiClient.post<CaptureState>(`${BASE}/${sessionId}/lines`, { line })
+  return r.data
+}
+
+/**
+ * Re-read the WHOLE typed text. The hot path — one call per pause while typing.
+ *
+ * ⚠️ `PUT`, AND THAT IS THE CONTRACT NOT A PREFERENCE. It SETS the text to a value, so
+ * sending the same text twice leaves the session identical. `addLine` is a `POST`
+ * because it ADDS; the two must not be confused, and the method is the only thing in
+ * the request that says which one you meant.
+ *
+ * ⚠️ EMPTY TEXT IS LEGAL AND MUST BE SENT. The director clearing the bar is a real
+ * edit that un-captures everything, so a guard like `if (!text) return` here would
+ * leave the pane showing values for words that are no longer on screen.
+ *
+ * ⚠️ `seq` IS THE CALLER'S, and the caller is the only party that can use it. See
+ * `capture-sequence.ts`.
+ */
+export async function setCaptureText(
+  sessionId: string,
+  text: string,
+  seq: number,
+): Promise<CaptureState> {
+  const r = await apiClient.put<CaptureState>(`${BASE}/${sessionId}/text`, { text, seq })
   return r.data
 }
 

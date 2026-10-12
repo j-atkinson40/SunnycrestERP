@@ -15,7 +15,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@/lib/api-client", () => ({
-  default: { post: vi.fn(), get: vi.fn() },
+  default: { post: vi.fn(), get: vi.fn(), put: vi.fn() },
 }))
 
 import apiClient from "@/lib/api-client"
@@ -23,16 +23,19 @@ import {
   addLine,
   choosePick,
   readCapture,
+  setCaptureText,
   startCapture,
 } from "./opas-capture-service"
 
 const post = vi.mocked(apiClient.post)
 const get = vi.mocked(apiClient.get)
+const put = vi.mocked(apiClient.put)
 
 beforeEach(() => {
   vi.clearAllMocks()
   post.mockResolvedValue({ data: { session_id: "s1" } } as never)
   get.mockResolvedValue({ data: { session_id: "s1" } } as never)
+  put.mockResolvedValue({ data: { session_id: "s1" } } as never)
 })
 
 describe("the four paths match the registered routes", () => {
@@ -66,6 +69,27 @@ describe("the four paths match the registered routes", () => {
     })
   })
 
+  it("setCaptureText PUTs /capture/sessions/{id}/text with the text and the seq", async () => {
+    // ⚠️ `PUT`, NOT `POST`, AND THIS IS THE ASSERTION THAT PINS IT. The two verbs mean
+    // different things on this session — set versus add — and nothing else in the
+    // request distinguishes them. A `post` here would reach the LINES endpoint's
+    // neighbour, 405, and only at runtime.
+    await setCaptureText("abc", "tent only", 7)
+    expect(put).toHaveBeenCalledWith("/capture/sessions/abc/text", {
+      text: "tent only",
+      seq: 7,
+    })
+    expect(post).not.toHaveBeenCalled()
+  })
+
+  it("setCaptureText SENDS EMPTY TEXT rather than skipping the call", async () => {
+    // ⚠️ THE CLEARED BAR. An early return on empty text would leave the pane showing
+    // values for words that are no longer on screen — the exact defect whole-text
+    // re-extraction exists to fix, reintroduced one layer up.
+    await setCaptureText("abc", "", 2)
+    expect(put).toHaveBeenCalledWith("/capture/sessions/abc/text", { text: "", seq: 2 })
+  })
+
   it("readCapture GETs /capture/sessions/{id}", async () => {
     await readCapture("abc")
     expect(get).toHaveBeenCalledWith("/capture/sessions/abc")
@@ -77,13 +101,15 @@ describe("the four paths match the registered routes", () => {
     // and 404 — and every pane test would still pass, because they mock this module.
     await startCapture()
     await addLine("a", "x")
+    await setCaptureText("a", "x", 1)
     await choosePick("a", "f", 1)
     await readCapture("a")
     const paths = [
       ...post.mock.calls.map((c) => c[0]),
       ...get.mock.calls.map((c) => c[0]),
+      ...put.mock.calls.map((c) => c[0]),
     ]
-    expect(paths.length).toBe(4)
+    expect(paths.length).toBe(5)
     for (const p of paths) {
       expect(p).not.toContain("/api/")
       expect(p.startsWith("/capture/sessions")).toBe(true)
