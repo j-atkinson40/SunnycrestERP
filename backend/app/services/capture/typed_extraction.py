@@ -30,6 +30,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import date, time
+from enum import Enum
 from typing import Protocol
 
 from sqlalchemy.orm import Session
@@ -718,6 +719,40 @@ class DeterministicExtractor:
         # ── service date / time / eta ───────────────────────────────────
         # ⚠️ LAST, AND OVER LEFTOVERS ONLY. `parse_date` is greedy about bare numbers,
         # so running it over the whole line would swallow "34 inch" and the year pair.
+        # ── cemetery arrival (ETA) ──────────────────────────────────────
+        # ⚠️ MARKER-GATED AND BEFORE THE SERVICE TIME, because "eta 11:30" and
+        # "service at 11:30" are different facts and the generic time pass would
+        # claim either. The marker is what distinguishes them, exactly as
+        # `burial_date` is marker-gated against `service_date`.
+        if once("eta"):
+            mk = _ETA_MARKER.search(line)
+            if mk:
+                tail = line[mk.end():]
+                tm = _TIME_TOKEN.search(tail)
+                if tm:
+                    pt = parse_time(tm.group(0))
+                    if pt and pt.get("value"):
+                        a = mk.start()
+                        b = mk.end() + tm.end()
+                        if _claim(spans, a, b):
+                            values["eta"] = pt["value"]
+
+        # ── the service TIME, claimed before the date can swallow it ────
+        # ⚠️ A TIME TOKEN IS NARROW AND A DATE IS NOT. `parse_date` on the fragment
+        # "Thursday 10am" consumed the whole thing, so the time was lost. The time is
+        # found and claimed first; the date pass below then sees only what is left.
+        if once("service_time"):
+            for frag_start, frag in _unclaimed_slices(line, spans):
+                tm = _TIME_TOKEN.search(frag)
+                if not tm:
+                    continue
+                pt = parse_time(tm.group(0))
+                if pt and pt.get("value"):
+                    a = frag_start + tm.start()
+                    if _claim(spans, a, frag_start + tm.end()):
+                        values["service_time"] = pt["value"]
+                    break
+
         for frag in _leftovers(line, spans):
             if once("service_date"):
                 pd = parse_date(frag)
@@ -767,6 +802,163 @@ class DeterministicExtractor:
 #: names the seam rather than the implementation — swapping in a model-backed
 #: extractor later is one line here and no change anywhere else.
 EXTRACTOR: LineExtractor = DeterministicExtractor()
+
+
+class MentionPolicy(str, Enum):
+    """What happens when one field is mentioned twice.
+
+    ⚠️ EXPLICIT PER INPUT SOURCE, BY RULING (2026-10-12), because the two sources
+    genuinely disagree and a single default would be wrong for one of them.
+
+        FIRST_WINS   One line at a time, each a fresh statement the director just
+                     made. An earlier answer is not silently overwritten; the
+                     re-statement is reported so the pane can say "equipment is
+                     already Full Equipment". This is `extract_line`'s behaviour and
+                     it is unchanged.
+
+        LAST_WINS    The WHOLE TEXT is the source and is re-read from scratch on every
+                     pause. "full setup ... actually tent only" is ONE statement
+                     containing a correction, and the director can see both words on
+                     screen — so the later mention is simply the answer, and there is
+                     nothing to report as a re-statement.
+
+    ⚠️ AND THE CALL PIPELINE HAS NO POLICY HERE, WHICH IS WHY E6 IS SAFE BY
+    CONSTRUCTION RATHER THAN BY CARE. `call_extraction_service.resolve_and_evaluate`
+    does not import this module at all — measured: `typed_extraction` is imported by
+    exactly ONE module in `app/`, `capture/session_service.py`. The call path reaches
+    `capture.evaluate` through `_captured_from_result`, never through a line
+    extractor, so no change here can reach it. Asserted in
+    `test_whole_text_extraction.py` by enumeration, not by reading.
+    """
+
+    FIRST_WINS = "first_wins"
+    LAST_WINS = "last_wins"
+
+
+#: A clock time as a director writes one: "10am", "10:30", "2:30 pm", "11:30".
+#:
+#: ⚠️ THIS EXISTS BECAUSE THE DATE PASS SWALLOWED THE TIME. `parse_date` is greedy and
+#: the pass claimed the WHOLE leftover fragment, so "Thursday 10am" produced a date and
+#: NO TIME — measured on James's own sample order, where "service at the church
+#: Thursday 10am" captured the location and the date and lost the 10am. A time token is
+#: narrowly shaped and a date is not, so the time is found and claimed FIRST and the
+#: date gets what remains. Same rule as everywhere else today: no span feeds two
+#: fields, and the more specific claim goes first.
+_TIME_TOKEN = re.compile(
+    r"\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)\b|\b(\d{1,2}):(\d{2})\b",
+    re.I,
+)
+
+#: Markers that mean the CEMETERY ARRIVAL rather than the service.
+#:
+#: ⚠️ `eta` HAD NO PARSER AT ALL. The field is on the template, is applicable whenever
+#: the service is not graveside, and nothing could ever fill it — "eta 11:30", "eta is
+#: 11:30" and "arrival 11:30" all extracted nothing. Third instance today of complete
+#: machinery behind an unprovisioned entrance, after the vinyl symbol field and
+#: `RowState.NEEDED`. ⚠️ ADDED SCOPE, FLAGGED: no ruling asked for this parser; the
+#: dispatch's own walk sentence contains "eta 11:30", so without it the walk loses a
+#: field in front of James.
+_ETA_MARKER = re.compile(r"\b(?:eta|e\.t\.a\.?|arrival|arriv(?:e|ing)|at the cemetery(?: at)?)\b", re.I)
+
+#: Where one statement ends and the next begins.
+#:
+#: ⚠️ NOT ON BARE " and ", AND THAT IS THE WHOLE DIFFICULTY. Three real phrases depend
+#: on it: "device and grass" (one equipment package), "Loved and Cherished" (a product
+#: name), "nameplate and vinyl" (one personalization answer). Splitting there would cut
+#: each in half and leave both halves unrecognized.
+#:
+#: ⚠️ " actually " IS A SEPARATOR BECAUSE IT IS HOW A CORRECTION SOUNDS. James's own
+#: sample order ends "full setup actually tent only", and under LAST_WINS the later
+#: segment is the answer — which is exactly what he described.
+_SEGMENT_RE = re.compile(
+    r"\n|[,;]|\bactually\b|\bscratch that\b|\bno wait\b|\bmake that\b",
+    re.I,
+)
+
+
+@dataclass(frozen=True)
+class TextExtraction:
+    """Everything one re-read of the whole text yields.
+
+    ⚠️ NOTHING ACCUMULATES. `unrecognized` is rebuilt from scratch every time, because
+    the text is the source: if the director deletes a word, the pane must stop
+    reporting it. The line-append model accumulated, which was right when each line
+    was a separate event and is wrong now.
+    """
+
+    text: str
+    values: dict[str, object]
+    picks: tuple[Pick, ...] = ()
+    unrecognized: tuple[str, ...] = ()
+    policy: MentionPolicy = MentionPolicy.LAST_WINS
+
+
+def segments(text: str) -> tuple[str, ...]:
+    """The text as separate statements, in order. Empty pieces dropped."""
+    return tuple(
+        piece for piece in (p.strip() for p in _SEGMENT_RE.split(text or "")) if piece
+    )
+
+
+def extract_text(
+    db: Session,
+    *,
+    tenant_id: str,
+    text: str,
+    resolutions: dict[str, object] | None = None,
+) -> TextExtraction:
+    """Re-read the WHOLE typed text. Last mention wins; resolutions outrank it.
+
+    ⚠️ IT COMPOSES `extract_line` RATHER THAN REPLACING IT, which is why the span rule,
+    every vocabulary, the party resolvers and the claim-before-write discipline all
+    still apply unchanged. Each segment is extracted in isolation — so spans cannot
+    collide across a comma, which they never should — and later segments overwrite
+    earlier ones.
+
+    ⚠️ A LATER MENTION REPLACES WHATEVER THE EARLIER ONE PRODUCED, VALUE OR QUESTION.
+    "Continental, actually 34 inch Continental" must end with the vault RESOLVED and
+    NO pending pick; "34 inch Continental, actually Continental" must end with the
+    pick and no value. So the last segment to say anything about a field decides which
+    of the two it is — tracked per field rather than by merging two dicts, because
+    `values.update()` plus a separate pick list cannot express "the pick replaced the
+    value".
+
+    ⚠️ RESOLUTIONS OUTRANK RE-EXTRACTION, BY RULING. A pick the director settled by
+    CLICKING is a decision about text that is still on screen and still ambiguous;
+    re-reading that text would raise the same question again on the next keystroke and
+    the pane would be unusable.
+    """
+    assert isinstance(text, str), type(text)
+    last: dict[str, tuple[str, object]] = {}
+    unrecognized: list[str] = []
+
+    for segment in segments(text):
+        ex = EXTRACTOR.extract_line(db, tenant_id=tenant_id, line=segment, answers={})
+        for field_id, value in ex.values.items():
+            last[field_id] = ("value", value)
+        for pick in ex.picks:
+            last[pick.field_id] = ("pick", pick)
+        unrecognized.extend(ex.unrecognized)
+
+    values: dict[str, object] = {}
+    picks: list[Pick] = []
+    for field_id, (kind, payload) in last.items():
+        if kind == "value":
+            values[field_id] = payload
+        else:
+            picks.append(payload)
+
+    for field_id, value in (resolutions or {}).items():
+        values[field_id] = value
+        picks = [p for p in picks if p.field_id != field_id]
+
+    return TextExtraction(
+        text=text,
+        values=values,
+        picks=tuple(picks),
+        unrecognized=tuple(unrecognized),
+        policy=MentionPolicy.LAST_WINS,
+    )
 
 
 def evaluate_typed(db: Session, *, tenant_id: str | None, answers: dict[str, object]):

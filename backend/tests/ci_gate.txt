@@ -301,6 +301,7 @@ tests/test_row_state_follows_the_row.py
 tests/test_no_span_feeds_two_fields.py
 tests/test_noise_is_a_hint_not_a_filter.py
 tests/test_oversized_class_alias.py
+tests/test_whole_text_extraction.py
 tests/test_typed_capture_slice1.py
 tests/test_vault_resolution_wiring.py
 tests/test_void_payment_reverses_ar2.py
