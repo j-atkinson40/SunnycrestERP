@@ -234,6 +234,52 @@ Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end 
   and `setText("")` — either alone suffices (147 green), both removed collapses it
   (45 red). Recorded as a table at the call site, with the note that the
   `opens ONCE` test cannot distinguish which is doing the work.
+- **2026-10-12** — ⚠️ **WALK NOTE 2 (James, production, 14:28 ET): "Order for hopkins",
+  paused, still no pane.** The 13:54 fix (`0fea3975`) WAS live when he tried: frontend
+  `version.json` = `0fea3975`, asset `index-aIhB5gS3.js` with `last-modified
+  18:24:50 UTC` against his 18:28 attempt, CI `38290568841` success on both jobs. Proof
+  the served bundle was the fix and not a stamped `version.json`: the count of
+  `kind:"capture"` call sites — **2** in the pre-fix bundle (`zT5HGUTt`, 17:57), **3**
+  in the served bundle now, **3** in a local build of HEAD. Source-derived, so
+  build-env differences do not affect it. (Vite content HASHES differ between Railway
+  and this laptop because Railway inlines `VITE_*` build args; a hash mismatch is NOT
+  evidence of staleness and was not used as such.)
+- **2026-10-12** — **REPRODUCED IN REAL CHROME over the DevTools Protocol** — not
+  Playwright (channel abandoned), not jsdom. Against localhost, because reproducing on
+  production needs a production login and no credential transits this session; the dev
+  credential comes from the project's own seed file and is never printed, and the token
+  is minted over HTTP and injected into localStorage so no password is typed into a
+  browser. Characters dispatched one at a time as real key events, no Enter.
+- **2026-10-12** — ⚠️ **MY FIRST REAL-BROWSER RUN WAS INVALID AND READ EXACTLY LIKE A
+  CONFIRMATION.** The bar held `'OOrrddeerr  ffoorr  hhooppkkiinnss'` — I sent `text`
+  on BOTH `keyDown` and `char`, so Chrome inserted every character twice and no order
+  phrase matched. Caught by reading the bar back; the harness now asserts the bar holds
+  the phrase EXACTLY before any verdict is read.
+- **2026-10-12** — DEFECT C, found only in the real browser: **the pane opened and sat
+  on "Starting the order…" forever with `POST /capture/sessions` returning 200.**
+  `main.tsx` wraps the app in `<StrictMode>`, which in development runs effect →
+  cleanup → effect; `CapturePane`'s mount effect set `mounted.current = false` in its
+  cleanup and never set it back to `true` in the body, so the resolved start call hit
+  `if (!mounted.current) return` and never reached `setState`. ⚠️ **IT IS THE SAME
+  CLASS AS THE BUG IT REPLACED** — I swapped an `alive` flag for a ref guard and
+  reintroduced "a guard left in the blocking position with nothing to report it".
+  ⚠️ **DEVELOPMENT-ONLY, MEASURED NOT ASSUMED:** with the fix reverted, a PRODUCTION
+  build served by `vite preview` and driven by the same browser rendered the rows
+  correctly. So it never reached James; his "no pane" was the Enter-only path.
+  ⚠️ Testing Library does not render in StrictMode, so no component test could
+  double-invoke anything — all 147 passed. Three tests now render inside
+  `<StrictMode>`, the way `main.tsx` does.
+- **2026-10-12** — DEFECT D, seen in the same run: **the bar read "Nothing needed — say
+  'that's it'" while EIGHT required fields were unanswered.** `placeholderFor` counted
+  rows in the `needed` STATE, and a row only reaches that state AFTER a done signal —
+  before then a required-unanswered row renders `not_mentioned`. So it was answering
+  "has the director said they are finished", not "is anything outstanding", and invited
+  them to finish an unfinishable order. Now reads `state.missing.length`, the same set
+  `is_complete` is computed from. Real browser now shows `8 still needed — keep typing`.
+- **2026-10-12** — REAL-BROWSER CONFIRMATION, all fixes in place: pane opens after 9
+  characters of `Order for hopkins` with NO Enter; `capture-rows` present; bar in entry
+  mode holding the phrase; funeral-home row `✓ | FUNERAL HOME | Hopkins Funeral Home`
+  from the LOWERCASE name; nothing in "Not understood".
 - **2026-10-12** — Walk steps for James:
   `docs/investigations/2026-10-12-typed-capture-round-2-walk.md`. ⚠️ Its first
   instruction is to RESTART the dev backend — the process on :8000 was started before

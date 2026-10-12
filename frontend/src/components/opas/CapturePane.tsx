@@ -85,7 +85,16 @@ export function placeholderFor(args: {
   readonly inFlight: boolean
   readonly text: string
   readonly picks: readonly CapturePick[]
-  readonly needed: number
+  /** ⚠️ THE SIZE OF THE SERVER'S `missing` SET — NOT A COUNT OF ROWS IN THE
+   *  `needed` STATE, WHICH IS WHAT THIS USED TO READ. A row only reaches `needed`
+   *  AFTER a done signal; before that a required-and-unanswered row renders as
+   *  `not_mentioned`. So the bar said "Nothing needed — say "that's it"" while eight
+   *  required fields were unanswered. Measured in a real browser on the walk phrase:
+   *  one funeral home captured, and the bar inviting the director to finish.
+   *
+   *  ⚠️ `missing` IS ALSO THE SET `is_complete` IS COMPUTED FROM, so the bar and the
+   *  engine now answer "is this order finishable" from the same place. */
+  readonly missing: number
   readonly reviewing: boolean
 }): string {
   if (!args.ready) return "Starting the order…"
@@ -96,8 +105,8 @@ export function placeholderFor(args: {
   if (args.reviewing) return "Ready to review"
   if (args.inFlight) return "Reading what you typed…"
   if (args.text.trim() === "") return "Say what the director said"
-  if (args.needed > 0) {
-    return `${args.needed} still needed — keep typing`
+  if (args.missing > 0) {
+    return `${args.missing} still needed — keep typing`
   }
   return "Nothing needed — say “that’s it”"
 }
@@ -211,12 +220,29 @@ export function CapturePane({
    *  value whose identity changes, and a ref guard does not save it — it makes the
    *  failure silent. */
   const mounted = useRef(true)
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    // ⚠️ SET TO TRUE IN THE BODY, NOT JUST FALSE IN THE CLEANUP, AND OMITTING THIS
+    // WAS A DEFECT I SHIPPED. `main.tsx` wraps the app in `<StrictMode>`, which in
+    // development runs effect -> cleanup -> effect. With only the cleanup assigning,
+    // `mounted.current` was left FALSE after the double-invoke and never restored —
+    // so the start call's promise resolved, hit `if (!mounted.current) return`, and
+    // never reached `setState`. The pane sat on "Starting the order…" forever with a
+    // 200 OK in the network log.
+    //
+    // ⚠️ FOUND IN A REAL BROWSER, NOT BY A TEST. Testing Library renders without
+    // StrictMode, so no component test could double-invoke the effect; all 147
+    // passed. It took driving actual Chrome over CDP to see it.
+    //
+    // ⚠️ AND IT IS THE SAME CLASS AS THE BUG IT REPLACED. The previous version used
+    // an `alive` flag local to the start effect, which a dependency change cancelled
+    // — a ref guard turning a failure silent. I swapped it for this ref and
+    // reintroduced the shape one layer along: a guard whose state can be left in the
+    // blocking position with nothing to report it.
+    mounted.current = true
+    return () => {
       mounted.current = false
-    },
-    [],
-  )
+    }
+  }, [])
   // ⚠️ REFS, UPDATED EVERY RENDER. The start effect calls the LATEST callback without
   // listing it, which is the point; a stale closure here would report the session id to
   // a pane id that no longer exists.
@@ -360,8 +386,7 @@ export function CapturePane({
    * parent setState -> child re-render -> new object -> parent setState is an infinite
    * loop. That is a real constraint on the parent and is stated at both ends.
    */
-  const liveRows = state?.surface.rows ?? []
-  const liveNeeded = liveRows.filter((r) => r.state === "needed").length
+  const liveMissing = state?.missing.length ?? 0
   const liveReviewing = state?.status === "review"
   const livePicks = state?.pending_picks ?? []
   const placeholder = placeholderFor({
@@ -369,7 +394,7 @@ export function CapturePane({
     inFlight,
     text,
     picks: livePicks,
-    needed: liveNeeded,
+    missing: liveMissing,
     reviewing: liveReviewing,
   })
   useEffect(() => {

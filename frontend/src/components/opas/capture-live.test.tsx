@@ -30,6 +30,7 @@
  * component being broken and is entirely the harness. `until()` below is the
  * fake-timer equivalent: it advances the clock between attempts.
  */
+import { StrictMode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
@@ -338,6 +339,79 @@ describe("the placeholder says what is happening and is never stale", () => {
     )
   })
 
+  it("counts the MISSING SET, not rows in the `needed` state", async () => {
+    // ⚠️ THE DEFECT, SEEN IN A REAL BROWSER ON THE WALK PHRASE. The bar read
+    // "Nothing needed — say "that's it"" while EIGHT required fields were
+    // unanswered. A row only reaches the `needed` state AFTER a done signal; before
+    // that a required-and-unanswered row renders `not_mentioned`. So counting rows
+    // in the `needed` state answers "has the director said they are finished", not
+    // "is anything outstanding" — and the bar invited them to finish an order that
+    // could not be completed.
+    //
+    // ⚠️ THE FIXTURE IS THE POINT: `missing` is non-empty and NO row is in the
+    // `needed` state, which is exactly the state the whole walk happens in. A
+    // fixture with `needed` rows would pass under either implementation.
+    vi.mocked(startCapture).mockResolvedValue(
+      state({
+        missing: ["vault", "deceased_name", "cemetery"],
+        surface: {
+          id: "capture",
+          rows: [
+            { row_id: "funeral_home", label: "Funeral Home", state: "done",
+              value: "Hopkins Funeral Home", secondary_value: null },
+            { row_id: "vault", label: "Vault / Product", state: "not_mentioned",
+              value: null, secondary_value: null },
+          ],
+        },
+      }) as never,
+    )
+    // ⚠️ TYPED AND NOT CLEARED. `placeholderFor` short-circuits to "Say what the
+    // director said" on an EMPTY bar, before it ever reaches the missing count — so
+    // `openOrder()`, which clears, makes this unmeasurable. My first version used it
+    // and both of these failed in the control, which is the harness saying so.
+    render(
+      <OpasProvider>
+        <OpasHost />
+      </OpasProvider>,
+    )
+    await user.click(screen.getByTestId("opas-sphere"))
+    await user.type(screen.getByTestId("opas-input"), "order for hopkins")
+    await waitFor(() =>
+      expect(screen.getByTestId("capture-rows")).toBeInTheDocument(),
+    )
+
+    await waitFor(() =>
+      expect(screen.getByTestId("opas-input")).toHaveAttribute(
+        "placeholder", expect.stringContaining("3 still needed"),
+      ),
+    )
+    expect(screen.getByTestId("opas-input")).not.toHaveAttribute(
+      "placeholder", expect.stringContaining("Nothing needed"),
+    )
+  })
+
+  it("says nothing is needed only when the missing set is EMPTY", async () => {
+    // ⚠️ THE POSITIVE CONTROL. Without it the test above passes against a bar that
+    // never says "Nothing needed" at all, which would be a different bug.
+    vi.mocked(startCapture).mockResolvedValue(state({ missing: [] }) as never)
+    render(
+      <OpasProvider>
+        <OpasHost />
+      </OpasProvider>,
+    )
+    await user.click(screen.getByTestId("opas-sphere"))
+    await user.type(screen.getByTestId("opas-input"), "order for hopkins")
+    await waitFor(() =>
+      expect(screen.getByTestId("capture-rows")).toBeInTheDocument(),
+    )
+
+    await waitFor(() =>
+      expect(screen.getByTestId("opas-input")).toHaveAttribute(
+        "placeholder", expect.stringContaining("Nothing needed"),
+      ),
+    )
+  })
+
   it("STOPS saying 'reading' once the response lands, including a DROPPED one", async () => {
     // ⚠️ A DROPPED RESPONSE STILL CLEARS THE IN-FLIGHT FLAG. Gating that on `accept`
     // would leave "Reading what you typed…" on screen forever after one out-of-order
@@ -489,6 +563,74 @@ describe("⌘1..9 settles a pick", () => {
   })
 })
 
+describe("under StrictMode, as the app actually mounts", () => {
+  /**
+   * ⚠️ THIS BLOCK EXISTS BECAUSE 147 GREEN TESTS MISSED A STUCK PANE. Driving real
+   * Chrome over CDP showed the pane opening from typing and then sitting on
+   * "Starting the order…" forever, with `POST /capture/sessions` returning 200 in the
+   * network log. Cause: `main.tsx` wraps the app in `<StrictMode>`, which in
+   * development runs effect -> cleanup -> effect, and `CapturePane`'s mount effect
+   * assigned `mounted.current = false` in its cleanup without setting it back to
+   * `true` in the body. After the double-invoke the ref was stuck in the blocking
+   * position, so the resolved start call returned before `setState`.
+   *
+   * ⚠️ TESTING LIBRARY DOES NOT RENDER IN STRICTMODE, so no test in this file could
+   * double-invoke anything. The whole suite passed. That is the gap, and these tests
+   * close it by rendering the way `main.tsx` does.
+   *
+   * ⚠️ IT IS A DEVELOPMENT-ONLY DEFECT AND THAT WAS MEASURED, NOT ASSUMED. With the
+   * fix reverted, a PRODUCTION build served by `vite preview` and driven by the same
+   * real browser rendered the rows correctly — React only double-invokes effects in
+   * development. So it never reached James on production; the "no pane" he reported
+   * was the Enter-only path, which is a different fix.
+   */
+  async function typeOnlyStrict(phrase: string) {
+    render(
+      <StrictMode>
+        <OpasProvider>
+          <OpasHost />
+        </OpasProvider>
+      </StrictMode>,
+    )
+    await user.click(screen.getByTestId("opas-sphere"))
+    await user.type(screen.getByTestId("opas-input"), phrase)
+  }
+
+  it("THE SESSION STARTS — the pane does not sit on \"Starting the order…\"", async () => {
+    vi.mocked(setCaptureText).mockResolvedValue(withValue("Hopkins Funeral Home") as never)
+    await typeOnlyStrict("Order for hopkins")
+
+    // ⚠️ THE ROWS ARE THE ASSERTION. `capture-rows` renders only once `state` is
+    // non-null, which is exactly what the double-invoked effect prevented.
+    await waitFor(() =>
+      expect(screen.getByTestId("capture-rows")).toBeInTheDocument(),
+    )
+    expect(screen.queryByTestId("capture-loading")).not.toBeInTheDocument()
+  })
+
+  it("starts exactly ONE session despite the double-invoked effect", async () => {
+    // ⚠️ THE OTHER HALF. The `started` ref exists so StrictMode's second mount does
+    // not open a second session and orphan the first — a half-typed order nobody can
+    // reach. Fixing the `mounted` ref must not cost that.
+    await typeOnlyStrict("Order for hopkins")
+    await waitFor(() =>
+      expect(screen.getByTestId("capture-rows")).toBeInTheDocument(),
+    )
+    expect(vi.mocked(startCapture).mock.calls.length).toBe(1)
+  })
+
+  it("still extracts the carried text under StrictMode", async () => {
+    await typeOnlyStrict("Order for hopkins")
+    await waitFor(() =>
+      expect(screen.getByTestId("capture-rows")).toBeInTheDocument(),
+    )
+    await settle()
+    expect(setCaptureText).toHaveBeenCalledWith(
+      "sess-1", "Order for hopkins", expect.any(Number),
+    )
+  })
+})
+
 describe("an order pane opens from TYPING, with no Enter", () => {
   /**
    * ⚠️ THE DEFECT JAMES HIT ON PRODUCTION, 2026-10-12 13:54 ET. He typed
@@ -518,10 +660,18 @@ describe("an order pane opens from TYPING, with no Enter", () => {
     await user.type(screen.getByTestId("opas-input"), phrase)
   }
 
-  it("opens a pane on \"order for hopkins\" — lowercase, no punctuation, NO ENTER", async () => {
-    await typeOnly("order for hopkins")
+  it.each([
+    "order for hopkins",
+    // ⚠️ CAPITAL O — THE EXACT STRING FROM THE 14:28 WALK NOTE. The lowercase form
+    // was already covered and the capitalised one was not; `CAPTURE_START` is tested
+    // against `phrase.toLowerCase()`, so both must reach the same place, and "both
+    // must" is not the same as "both were tried".
+    "Order for hopkins",
+  ])("opens a pane on %j — NO ENTER, waiting past the debounce", async (phrase) => {
+    await typeOnly(phrase)
 
     await waitFor(() => expect(panes()).toHaveLength(1))
+    await settle()
     await waitFor(() =>
       expect(screen.getByTestId("capture-rows")).toBeInTheDocument(),
     )
