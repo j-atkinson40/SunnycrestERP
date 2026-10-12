@@ -37,9 +37,16 @@ from app.services.capture.typed_extraction import (
 from app.services.personalization.questions import VINYL_ANSWERS
 
 #: ⚠️ A VAULT THAT PERMITS VINYL. Measured while writing this file: the Continental
-#: 34" permits `nameplate_only` ALONE, so `evaluate_typed` raises `UnpermittedAnswer`
-#: on it — correctly, that is availability doing its job. A test that reached for the
-#: nearest vault would have read that refusal as a bug in the extractor.
+#: 34" permits `nameplate_only` ALONE, so availability REFUSES vinyl on it —
+#: correctly, that is availability doing its job. A test that reached for the nearest
+#: vault would have read that refusal as a bug in the extractor.
+#:
+#: ⚠️ CORRECTED 2026-10-12. This comment read "`evaluate_typed` raises
+#: `UnpermittedAnswer` on it", which was accurate and was the only place in the
+#: repository that said so — nothing in `app/` caught it, so the live pane returned
+#: 500 on that combination for as long as the behaviour existed. The raise was found
+#: over HTTP on dev, not by any test. `evaluate_typed` now REPORTS the conflict; see
+#: `test_an_unavailable_combination_is_reported.py`.
 VINYL_VAULT = "Bronze Triune Burial Vault"
 
 
@@ -95,11 +102,18 @@ def test_the_symbol_vocabulary_covers_seven_of_the_eight(db):
 
 def test_the_vinyl_vault_really_does_permit_vinyl(db, tenant):
     """⚠️ READ THIS BEFORE ANY ASSERTION BELOW. If the chosen vault did not permit
-    `lifes_reflections`, `evaluate_typed` would raise and every "asks for the symbol"
-    test would fail for a reason that has nothing to do with the word "vinyl"."""
+    `lifes_reflections`, every "asks for the symbol" test below would be measuring an
+    availability refusal rather than the word "vinyl"."""
     answers, _ = _type(db, tenant, [VINYL_VAULT, "vinyl"])
     assert answers["personalization"] == "lifes_reflections"
-    evaluate_typed(db, tenant_id=tenant, answers=answers)  # must not raise
+    # ⚠️ ASSERTED ON THE CONFLICT LIST, NOT ON "DOES NOT RAISE". Since `evaluate_typed`
+    # stopped raising, a bare call could no longer fail here — the check would have
+    # gone silently vacuous, which is how a precondition stops protecting the tests
+    # that depend on it.
+    _, _, conflicts = evaluate_typed(db, tenant_id=tenant, answers=answers)
+    assert conflicts == (), (
+        f"{VINYL_VAULT!r} does not permit vinyl after all: {conflicts}"
+    )
 
 
 # ── the word itself ─────────────────────────────────────────────────────
@@ -159,7 +173,7 @@ def test_vinyl_alone_leaves_the_symbol_ASKED_but_not_demanded(db, tenant):
     the row and asks, and the done signal is not blocked on it. `missing` would stop a
     director completing an order over a detail the family may not have given yet."""
     answers, _ = _type(db, tenant, [VINYL_VAULT, "vinyl"])
-    _, state = evaluate_typed(db, tenant_id=tenant, answers=answers)
+    _, state, _c = evaluate_typed(db, tenant_id=tenant, answers=answers)
     assert "lifes_reflections_symbol" in state.unanswered_optional, (
         f"symbol is not being asked. answered={sorted(state.answered)} "
         f"missing={sorted(state.missing)} optional={sorted(state.unanswered_optional)}"
@@ -170,7 +184,7 @@ def test_vinyl_alone_leaves_the_symbol_ASKED_but_not_demanded(db, tenant):
 
 def test_vinyl_with_a_symbol_moves_it_into_answered(db, tenant):
     answers, _ = _type(db, tenant, [VINYL_VAULT, "vinyl cross"])
-    _, state = evaluate_typed(db, tenant_id=tenant, answers=answers)
+    _, state, _c = evaluate_typed(db, tenant_id=tenant, answers=answers)
     assert "lifes_reflections_symbol" in state.answered, sorted(state.answered)
 
 

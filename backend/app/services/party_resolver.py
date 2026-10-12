@@ -94,16 +94,39 @@ class PartyResolution:
 
 
 def normalize(s: str | None) -> str:
-    """Casefold, expand `&`, strip punctuation, collapse whitespace.
+    """Casefold, expand `&`, drop apostrophes, strip punctuation, collapse whitespace.
 
     ⚠️ TRIM FIRST. Stripping punctuation before trimming leaves a separator behind on
-    trailing whitespace — the `normalizeRequest` defect of 2026-10-03. Apostrophes
-    matter here: "St. Mary's" and "St Marys" must normalize together.
+    trailing whitespace — the `normalizeRequest` defect of 2026-10-03.
+
+    ⚠️ APOSTROPHES ARE DELETED, NOT TURNED INTO SPACES, AND THIS DOCSTRING USED TO
+    CLAIM THE OUTCOME WITHOUT THE CODE PRODUCING IT. It read: 'Apostrophes matter
+    here: "St. Mary's" and "St Marys" must normalize together.' They did not —
+    measured 2026-10-12:
+
+        "St. Mary's Cemetery"  ->  'st mary s cemetery'
+        "St Marys"             ->  'st marys'
+
+    because `[^a-z0-9]+ -> " "` replaced the apostrophe with a separator. A stated
+    reason redirects the reader's question from "does this work" to "does the code
+    match the explanation", and the code matched an explanation that was backwards
+    about its own result (CLAUDE.md §11).
+
+    ⚠️ WHAT IT COST, measured over HTTP on dev rather than in a test. A director
+    typing "to St Marys in Auburn" did not match the seeded "St. Mary's Cemetery", so
+    no cemetery resolved — and the decedent-by-elimination pass then took "St Marys"
+    as the only person-like span in that segment and, under LAST_WINS, OVERWROTE the
+    real decedent "Mary Smith" from an earlier segment. One missing apostrophe put a
+    cemetery's name in the deceased's row.
     """
     if not s:
         return ""
     out = s.strip().casefold()
     out = out.replace("&", " and ")
+    # ⚠️ BEFORE the separator pass, and that order is the whole fix. Both the typed
+    # apostrophe and the typographic one, because a director's keyboard and a pasted
+    # record do not agree about which they produce.
+    out = out.replace("'", "").replace("\u2019", "")
     out = re.sub(r"[^a-z0-9]+", " ", out)
     return re.sub(r"\s+", " ", out).strip()
 

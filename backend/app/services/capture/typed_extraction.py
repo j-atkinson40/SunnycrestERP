@@ -92,7 +92,13 @@ class LineExtractor(Protocol):
     """⚠️ THE SEAM. A model-backed extractor implements this and nothing else changes."""
 
     def extract_line(
-        self, db: Session, *, tenant_id: str, line: str, answers: dict[str, object]
+        self,
+        db: Session,
+        *,
+        tenant_id: str,
+        line: str,
+        answers: dict[str, object],
+        gating: dict[str, object] | None = None,
     ) -> LineExtraction: ...
 
 
@@ -395,8 +401,37 @@ class DeterministicExtractor:
     """The E1 extractor. Rules only."""
 
     def extract_line(
-        self, db: Session, *, tenant_id: str, line: str, answers: dict[str, object]
+        self,
+        db: Session,
+        *,
+        tenant_id: str,
+        line: str,
+        answers: dict[str, object],
+        gating: dict[str, object] | None = None,
     ) -> LineExtraction:
+        """Extract one line.
+
+        ⚠️ `answers` AND `gating` ARE DIFFERENT THINGS AND MUST STAY SEPARATE.
+
+            answers   what has already been ANSWERED. Used for FIRST_WINS
+                      re-statement reporting — "equipment is already Full
+                      Equipment". Passing values here changes what the line is
+                      allowed to overwrite.
+
+            gating    context a GATED pass needs in order to fire at all, and
+                      nothing else. The vinyl-symbol pass only runs when the
+                      chosen personalization bears vinyl; a line that says only
+                      "cross" cannot know that from its own words.
+
+        ⚠️ WHY `gating` EXISTS. `extract_text` extracts each segment in isolation
+        with `answers={}`, which is what makes LAST_WINS possible — a later
+        segment must be free to overwrite an earlier one. But isolation also hid
+        the personalization answer from the symbol gate, so a director typing
+        "nameplate and vinyl, cross" had the WORD "cross" come back UNRECOGNIZED
+        while the vinyl answer sat two segments earlier. Measured over HTTP on
+        dev. Passing the accumulated answers as `answers` would have fixed the
+        gate and broken LAST_WINS; two parameters is the whole repair.
+        """
         from app.services.legacy_print_resolver import resolve as resolve_print
         from app.services.nl_creation.structured_parsers import parse_date, parse_time
         from app.services.party_resolver import (
@@ -803,7 +838,16 @@ class DeterministicExtractor:
         # — the identical defect James found in the Service row, one field over.
         # ⚠️ Raw unclaimed slices, not `_leftovers`: "of" is a noise word, so a
         # noise-stripped fragment can never contain "star of david".
-        chosen = values.get(QUESTION_PERSONALIZATION, answers.get(QUESTION_PERSONALIZATION))
+        # ⚠️ THREE SOURCES, IN THIS ORDER, AND THE THIRD IS WHY `gating` EXISTS. This
+        # line's own words win; then what is already answered; then the gating
+        # context, which is the only one a segment-isolated re-read has.
+        chosen = values.get(
+            QUESTION_PERSONALIZATION,
+            answers.get(
+                QUESTION_PERSONALIZATION,
+                (gating or {}).get(QUESTION_PERSONALIZATION),
+            ),
+        )
         if chosen in VINYL_BEARING_ANSWERS and once("lifes_reflections_symbol"):
             for frag_start, frag in _unclaimed_slices(line, spans):
                 hit = None
@@ -1245,12 +1289,58 @@ def extract_text(
     last: dict[str, tuple[str, object]] = {}
     unrecognized: list[str] = []
 
-    for segment in segments(text):
+    segs = segments(text)
+
+    # ── pass 1: each segment in isolation, which is what makes LAST_WINS possible ──
+    for segment in segs:
         ex = EXTRACTOR.extract_line(db, tenant_id=tenant_id, line=segment, answers={})
         for field_id, value in ex.values.items():
             last[field_id] = ("value", value)
         for pick in ex.picks:
             last[pick.field_id] = ("pick", pick)
+
+    # ── pass 2: the same segments, re-read with what pass 1 learned as GATING ──
+    #
+    # ⚠️ A SECOND PASS, NOT A SMARTER FIRST ONE, AND THE ORDER IS THE REASON. A GATED
+    # pass can only fire once something ELSEWHERE in the text has been read: the
+    # vinyl-symbol pass runs only when the chosen personalization bears vinyl, and a
+    # segment that says just "cross" cannot know that from its own words. Measured
+    # over HTTP on dev: "nameplate and vinyl, cross" came back with `cross`
+    # UNRECOGNIZED and no symbol captured, because segment isolation hid the answer
+    # that was two segments earlier.
+    #
+    # ⚠️ IT CAN ONLY ADD, NEVER OVERWRITE, and that is what keeps LAST_WINS intact. A
+    # field pass 1 decided — value or pick — is left exactly as it was; pass 2's
+    # result for it is discarded. So the second read cannot reorder anything, and the
+    # policy stays "the last segment to SAY something about a field decides".
+    #
+    # ⚠️ UNRECOGNIZED IS COLLECTED FROM PASS 2, NOT PASS 1. Pass 1's leftovers include
+    # every word a gated pass was about to claim, so reporting them would tell the
+    # director "cross" was not understood in the same response that captures it.
+    gating = {
+        field_id: payload
+        for field_id, (kind, payload) in last.items()
+        if kind == "value"
+    }
+    # ⚠️ SNAPSHOT TAKEN BEFORE THE LOOP, NOT TESTED AGAINST `last` INSIDE IT, AND THE
+    # DIFFERENCE IS LAST_WINS. My first version guarded with `if field_id not in last`,
+    # which made pass 2 FIRST_WINS WITHIN ITSELF: the first segment to produce a
+    # gated field put it in `last`, and every later segment was then skipped. Measured
+    # — "vinyl, cross, actually praying hands" captured `cross` and discarded the
+    # correction, which is the exact policy whole-text extraction exists to provide.
+    # Guarding against the SNAPSHOT lets pass-2 segments overwrite each other while
+    # still never touching what pass 1 decided.
+    decided = frozenset(last)
+    for segment in segs:
+        ex = EXTRACTOR.extract_line(
+            db, tenant_id=tenant_id, line=segment, answers={}, gating=gating
+        )
+        for field_id, value in ex.values.items():
+            if field_id not in decided:
+                last[field_id] = ("value", value)
+        for pick in ex.picks:
+            if pick.field_id not in decided:
+                last[pick.field_id] = ("pick", pick)
         unrecognized.extend(ex.unrecognized)
 
     values: dict[str, object] = {}
@@ -1274,10 +1364,58 @@ def extract_text(
     )
 
 
+@dataclass(frozen=True)
+class Conflict:
+    """The director said something the vault does not allow.
+
+    ⚠️ THIS IS NOT "NOT UNDERSTOOD". The extractor understood both phrases perfectly;
+    they contradict each other. "Continental 34, nameplate and vinyl" names a vault
+    that offers `nameplate_only` and a personalization that is not in that set. Filing
+    it under `unrecognized` would tell the director the words were unreadable, when
+    the problem is that the combination is not available.
+
+    ⚠️ AND IT IS NOT DROPPED. `value` and `permitted` are both carried, so the pane can
+    say what was asked for AND what is available — which is the only form of this
+    message a director can act on.
+    """
+
+    field_id: str
+    value: object
+    permitted: tuple[str, ...]
+    message: str
+
+
 def evaluate_typed(db: Session, *, tenant_id: str | None, answers: dict[str, object]):
     """Resolve the vault from a typed session's answers and evaluate the capture.
 
-    Returns `(resolution, CaptureState)` — the same pair `resolve_and_evaluate` returns.
+    Returns `(resolution, CaptureState, conflicts)`.
+
+    ⚠️ A THIRD ELEMENT WAS ADDED 2026-10-12 BECAUSE THIS FUNCTION USED TO RAISE INTO A
+    500. Measured over HTTP on dev, not in a test: typing "Continental 34 … nameplate
+    and vinyl" made the extractor produce `personalization=
+    'nameplate_and_lifes_reflections'` against a vault whose availability permits only
+    `nameplate_only`, `capture.evaluate` raised `UnpermittedAnswer`, and the request
+    returned `Internal Server Error`. The pane died mid-sentence.
+
+    ⚠️ IT WAS INVISIBLE TO EVERY TEST BECAUSE THE TEST TENANTS HAVE NO PRODUCTS. With
+    no vault resolving, availability never narrows, `permitted_answers` is empty, and
+    `_reject_unpermitted` returns early by design. A test can pass because data is
+    MISSING (CLAUDE.md §11) — and the raise was documented in a test comment
+    (`test_vinyl_is_what_the_office_says.py:40`) as expected behaviour, with no handler
+    anywhere in `app/`. A raise whose only reader is a test is an unhandled error on
+    every live path.
+
+    ⚠️ THE CALL PIPELINE HAS THE SAME HOLE AND IT IS NOT CLOSED HERE. `evaluate_typed`
+    is reached only from `capture/session_service.py` (measured by enumeration), so
+    this change cannot touch the call path — which is required (E6) and also means
+    `resolve_and_evaluate` still raises into a 500 on the same input. Reported, not
+    fixed: closing it is a change to call-overlay behaviour and that needs James.
+
+    ⚠️ THE CONFLICTING ANSWER IS WITHHELD FROM `evaluate`, NOT FROM THE DIRECTOR. It
+    cannot go into `evaluate` — that is what raises — so the capture is evaluated
+    without it and the conflict is returned alongside, for the pane to show. The
+    WORDING, and whether this should instead become a numbered pick, is James's call;
+    not crashing is not.
 
     ⚠️ THIS IS A SIBLING OF `call_extraction_service.resolve_and_evaluate`, NOT A REUSE
     OF IT, AND THE REASON IS A KEY-SHAPE MISMATCH RATHER THAN A PREFERENCE. That
@@ -1312,11 +1450,81 @@ def evaluate_typed(db: Session, *, tenant_id: str | None, answers: dict[str, obj
     if resolution.variant_template_id and resolution.candidates:
         vault_form = resolution.candidates[0].form
 
-    state = capture.evaluate(
-        answers,
-        vault_product_id=resolution.variant_template_id,
-        personalization_config=resolve_availability_config(db, tenant_id),
-        vault_form=vault_form,
-        platform_fields=capture.template_for(capture.SALES_ORDER),
+    from app.services.capture.missing import UnpermittedAnswer
+
+    config = resolve_availability_config(db, tenant_id)
+    template = capture.template_for(capture.SALES_ORDER)
+    conflicts: list[Conflict] = []
+    trial = dict(answers)
+
+    # ⚠️ A BOUNDED LOOP, NOT `while True`. `evaluate` reports ONE unpermitted answer per
+    # call, so several contradictions need several passes — and a loop with no ceiling
+    # would hang the request if a pass ever failed to remove the field it named. The
+    # ceiling is the number of answers, which is the most passes that can make progress.
+    for _ in range(len(answers) + 1):
+        try:
+            state = capture.evaluate(
+                trial,
+                vault_product_id=resolution.variant_template_id,
+                personalization_config=config,
+                vault_form=vault_form,
+                platform_fields=template,
+            )
+            break
+        except UnpermittedAnswer as e:
+            field_id = _conflicting_field(e, trial)
+            if field_id is None:
+                # ⚠️ RE-RAISED RATHER THAN SWALLOWED. If the message cannot be
+                # attributed to a field, removing a guess would silently discard an
+                # answer; a 500 with a real traceback is better than a quiet wrong
+                # order. This is the one path that still produces one, deliberately.
+                raise
+            conflicts.append(
+                Conflict(
+                    field_id=field_id,
+                    value=trial[field_id],
+                    permitted=_permitted_from(e),
+                    message=str(e),
+                )
+            )
+            del trial[field_id]
+    else:  # pragma: no cover - the ceiling is unreachable while each pass removes one
+        raise RuntimeError(
+            f"evaluate_typed did not settle after {len(answers) + 1} passes"
+        )
+
+    return resolution, state, tuple(conflicts)
+
+
+#: The field id at the front of an `UnpermittedAnswer` message.
+#:
+#: ⚠️ PARSED FROM THE MESSAGE, AND THAT IS A REAL WEAKNESS WORTH NAMING RATHER THAN
+#: HIDING. `UnpermittedAnswer` is a bare `ValueError` carrying only a formatted string
+#: (`missing.py:272`), so there is no structured field to read. The alternative —
+#: giving the exception attributes — is a change to `missing.py`, which the CALL
+#: PIPELINE shares, and E6 says that path does not change in this slice. So the parse
+#: is confined here, anchored to the message's own leading `field_id=` shape, and a
+#: test pins it against the real exception rather than against a string I wrote.
+_CONFLICT_FIELD = re.compile(r"^([a-z_][a-z0-9_]*)=")
+_CONFLICT_PERMITTED = re.compile(r"permitted: \[([^\]]*)\]")
+
+
+def _conflicting_field(e: Exception, answers: dict[str, object]) -> str | None:
+    m = _CONFLICT_FIELD.match(str(e))
+    if m is None:
+        return None
+    field_id = m.group(1)
+    # ⚠️ CONFIRMED AGAINST THE ANSWERS. A parsed name that is not a key would make
+    # `del` raise, turning a reportable conflict into a KeyError.
+    return field_id if field_id in answers else None
+
+
+def _permitted_from(e: Exception) -> tuple[str, ...]:
+    m = _CONFLICT_PERMITTED.search(str(e))
+    if m is None:
+        return ()
+    return tuple(
+        part.strip().strip("'").strip('"')
+        for part in m.group(1).split(",")
+        if part.strip()
     )
-    return resolution, state

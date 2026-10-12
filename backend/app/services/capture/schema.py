@@ -197,6 +197,57 @@ class FieldDefinition:
         `resolve_schema`, which is what display callers should read."""
         return isinstance(self.required_when, Always)
 
+    @property
+    def availability_governed(self) -> bool:
+        """Does this field's applicability depend on what the LICENSEE enrolled?
+
+        ⚠️ THIS IS NOT `is_conditional`, AND CONFLATING THEM PUT "NOT CONFIGURED FOR
+        THIS LICENSEE" ON THREE ROWS THAT HAD CAPTURED VALUES. `is_conditional` means
+        "applicability is conditional" — by ANY condition, including "the service is
+        not at the graveside" (`eta`) and "a nameplate was chosen"
+        (`nameplate_date_format`). Only an `AvailabilityOffered` condition means the
+        licensee's enrollment decides it, and only there does an empty
+        `permitted_answers` mean "not configured" rather than "availability does not
+        govern this question".
+
+        ⚠️ MEASURED: exactly ONE field in the sales-order template is availability-
+        governed today — `personalization`. The other six conditional fields are not,
+        and every one of them would have made its row announce a configuration gap
+        about something a licensee cannot configure.
+
+        ⚠️ IT WALKS THE CONDITION TREE rather than testing the top node, because
+        `applies_when` composes — an availability condition can sit inside an `All`
+        or `Any`, and a top-node test would read those as ungoverned.
+        """
+        return _mentions_availability(self.applies_when)
+
+
+def _mentions_availability(node: object) -> bool:
+    """Is there an `AvailabilityOffered` anywhere in this condition tree?
+
+    ⚠️ STRUCTURAL, NOT A LIST OF KNOWN COMBINATOR CLASSES. Walking the dataclass
+    fields means a new combinator added to `conditions.py` is handled the day it
+    lands; an `isinstance(node, (All, Any))` ladder would silently stop recursing
+    into whatever was added next and report its subtree as ungoverned.
+    """
+    from dataclasses import fields as dc_fields
+    from dataclasses import is_dataclass
+
+    from app.services.capture.conditions import AvailabilityOffered
+
+    if isinstance(node, AvailabilityOffered):
+        return True
+    if not is_dataclass(node):
+        return False
+    for f in dc_fields(node):
+        v = getattr(node, f.name)
+        if isinstance(v, (tuple, list)):
+            if any(_mentions_availability(x) for x in v):
+                return True
+        elif _mentions_availability(v):
+            return True
+    return False
+
 
 #: Display labels for the one personalization question's answers.
 #:

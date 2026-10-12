@@ -129,7 +129,7 @@ def test_a_whole_typed_order_fills_the_capture(db, tenant):
         "section C, lot 14, space 2",
         "tent only",
     ])
-    resolution, state = evaluate_typed(db, tenant_id=tenant, answers=answers)
+    resolution, state, _c = evaluate_typed(db, tenant_id=tenant, answers=answers)
 
     assert resolution.variant_template_id, "the vault did not resolve"
     assert resolution.candidates[0].sku == "BV-CON34", resolution.candidates[0].sku
@@ -189,7 +189,7 @@ def test_an_equipment_only_drop_is_complete(db, tenant):
         "service at 10am",
         "section A, lot 2",
     ])
-    _, state = evaluate_typed(db, tenant_id=tenant, answers=answers)
+    _, state, _c = evaluate_typed(db, tenant_id=tenant, answers=answers)
 
     assert QUESTION_PERSONALIZATION in state.not_applicable
     assert QUESTION_PERSONALIZATION not in state.missing
@@ -501,7 +501,7 @@ def test_evaluate_typed_and_the_call_seam_agree_on_a_shared_case(db, tenant):
     disagree about the same order."""
     from app.services.call_extraction_service import resolve_and_evaluate
 
-    _, typed = evaluate_typed(
+    _, typed, _c = evaluate_typed(
         db, tenant_id=tenant,
         answers={"vault": "Bronze Triune Burial Vault", "deceased_name": "A B"},
     )

@@ -230,10 +230,28 @@ class TestTheFourStates:
         A conditional field with an EMPTY permitted set is NOT_CONFIGURED — the
         one meaning it can have, since NOT_OFFERED never becomes a ResolvedField.
         """
-        # ⚠️ `applies_when=AvailabilityOffered(...)` since Piece 4 — `question_id`
-        # was the one conditional shape the engine had, and is now one node among six.
-        defn = FieldDefinition("personalization", "Personalization",
-                               applies_when=AvailabilityOffered("personalization"))
+        # ⚠️ THE REAL DEFINITION FROM THE TEMPLATE, NOT A HAND-BUILT ONE, AND THE
+        # SWAP IS THE POINT. This test used to construct
+        # `FieldDefinition("personalization", ..., applies_when=AvailabilityOffered(...))`
+        # — which carries NO `options`, while the schema's actual personalization
+        # field declares six. The row layer now requires a field to HAVE an answer
+        # vocabulary before calling its row "not configured" (`rows.py`, 2026-10-12),
+        # because `is_conditional` means "applicability is conditional" and reading
+        # `permitted_answers` off a free-text field classified `eta` as unconfigured
+        # and made the Cemetery row say so on a live request.
+        #
+        # A hand-built stand-in could not have caught that: it was a fixture shaped
+        # like the implementation rather than like the field, so it agreed with the
+        # old rule and with nothing else. Reading the template means this test is
+        # about the field it names.
+        defn = next(
+            f for f in template_for(SALES_ORDER) if f.field_id == "personalization"
+        )
+        assert defn.availability_governed, (
+            "the personalization field is no longer governed by availability, so "
+            "'not configured' is no longer a thing that can be true of it — this "
+            "test's premise has expired"
+        )
         unconfigured = ResolvedField(defn, permitted_answers=())
         fields = _resolved() + (unconfigured,)
         out = resolve_surface(CAPTURE_SALES_ORDER, fields, {}, done_signal=True)
@@ -242,6 +260,147 @@ class TestTheFourStates:
             "an unconfigured conditional rendered as NEEDED — the licensee's "
             "missing setup is being reported as an unanswered question"
         )
+
+    def test_a_conditional_field_NOT_GOVERNED_BY_AVAILABILITY_is_not_unconfigured(self):
+        """⚠️ THE OTHER SIDE OF THE RULE, AND IT COST A LIVE DEFECT TO LEARN.
+
+        `is_conditional` means "applicability is conditional" (`schema.py:188`).
+        `permitted_answers` is about personalization AVAILABILITY. Those are
+        different facts, and the row layer used to test the first while reading the
+        second — so EVERY conditional free-text field made its row announce that the
+        licensee had not configured something.
+
+        Measured over HTTP on dev: "eta 11:30" with no cemetery named rendered the
+        Cemetery row as **"Not configured for this licensee"** above the time
+        11:30 AM. `eta` is conditional (it does not apply at a graveside service) and
+        has no enum answers for anyone to permit or withhold.
+
+        Three fields carry this shape — `eta`, `service_location_other` and
+        `legacy_print_name` — on three of the nine rows, so this was not an `eta`
+        quirk. The other two were latent only because they were inapplicable in the
+        sentence that exposed the first.
+        """
+        eta = next(f for f in template_for(SALES_ORDER) if f.field_id == "eta")
+        assert eta.is_conditional, "eta stopped being conditional; premise expired"
+        assert not eta.availability_governed, (
+            "eta became availability-governed; premise expired"
+        )
+
+        fields = _resolved() + (ResolvedField(eta, permitted_answers=()),)
+        out = resolve_surface(
+            CAPTURE_SALES_ORDER, fields, {"eta": "11:30"}, done_signal=False
+        )
+        row = next(r for r in out.rows if r.row_id == "cemetery")
+        assert row.state is not RowState.NOT_CONFIGURED, (
+            "a row carrying a conditional FREE-TEXT field reported the licensee's "
+            "setup as missing, about a field a licensee cannot configure"
+        )
+        # ⚠️ AND IT IS PARTIAL, NOT MERELY NOT-NOT_CONFIGURED. Something was captured
+        # (the ETA renders) and the required cemetery is still missing, which is
+        # exactly what PARTIAL was added for.
+        assert row.state is RowState.PARTIAL, row.state
+        assert row.value is not None
+
+    @pytest.mark.parametrize("field_id", ["lifes_reflections_symbol"])
+    def test_a_FOLLOW_UP_question_with_a_vocabulary_is_not_unconfigured(self, field_id):
+        """⚠️ THE CASE THAT SURVIVED THE FIRST FIX, AND IT IS WHY THE RULE IS
+        `availability_governed` RATHER THAN `options`.
+
+        My first repair required a field to HAVE an answer vocabulary before its row
+        could read "not configured", which caught `eta` and missed these. Both are
+        conditional, both declare vocabularies (8 symbols, 3 date formats), and
+        NEITHER is governed by what the licensee enrolled — the licensee enrolls
+        personalization OPTIONS, not which symbols exist in the world. So an empty
+        `permitted_answers` on them means "availability says nothing about this
+        question", and reading it as "not configured" put
+
+            [not_configured] Personalization  Nameplate & Life's Reflections® Vinyl · Cross
+
+        on a live response — a row announcing a configuration gap directly above the
+        value it had just captured. Measured over HTTP on dev after the first fix
+        shipped, which is the argument for measuring again after a fix rather than
+        assuming the class is closed.
+        """
+        defn = next(f for f in template_for(SALES_ORDER) if f.field_id == field_id)
+        assert defn.is_conditional
+        assert defn.options, f"{field_id} lost its vocabulary; premise expired"
+        assert not defn.availability_governed, (
+            f"{field_id} became availability-governed; premise expired"
+        )
+
+        fields = _resolved() + (ResolvedField(defn, permitted_answers=()),)
+        out = resolve_surface(
+            CAPTURE_SALES_ORDER, fields, {field_id: "cross"}, done_signal=False
+        )
+        # ⚠️ ASSERTED AGAINST THE ROW THAT ACTUALLY CARRIES THE FIELD. My first
+        # version parametrized `nameplate_date_format` in here too and checked the
+        # personalization row — which does not source it, so the assertion measured
+        # other fields entirely and failed for an unrelated reason. The source map is
+        # pinned by `test_three_template_fields_are_on_NO_capture_row` below.
+        row = next(r for r in out.rows if r.row_id == "personalization")
+        assert row.state is not RowState.NOT_CONFIGURED, (
+            f"a row carrying {field_id} reported the licensee's setup as missing, "
+            f"about a question availability does not govern"
+        )
+
+    def test_three_template_fields_are_on_NO_capture_row(self):
+        """⚠️ A RATCHET OVER A GAP, NAMED RATHER THAN SILENT, AND IT IS NOT A CLAIM
+        THAT THE GAP IS RIGHT.
+
+        Three of the twenty template fields are sourced by no row on the capture
+        surface, so a director can say them, the engine can capture them, and the
+        pane shows nothing:
+
+            burial_date            captured, invisible
+            grave_location         captured, invisible
+            nameplate_date_format  captured, invisible
+
+        Found 2026-10-12 while fixing a different defect, by enumerating the source
+        map instead of reading it. All three are REQUIRED or prompted, so a director
+        who answers them sees no acknowledgement — and `burial_date` and
+        `grave_location` are among the nine fields that block completion, which
+        means the pane can report an order incomplete while showing no row for the
+        thing that is missing.
+
+        ⚠️ WHETHER THEY GET ROWS IS A DISPLAY DECISION AND NOT MINE. This test exists
+        so the set cannot grow unnoticed; adding a row for any of them should make it
+        go red, and the right response is to remove that field from this list in the
+        same diff.
+        """
+        from app.services.capture import SALES_ORDER as _SO
+        from app.services.capture import template_for as _tf
+        from app.services.capture.rows import FieldSource as _FS
+
+        def ids(src):
+            if isinstance(src, _FS):
+                return [src.field_id]
+            for attr in ("sources", "options", "parts"):
+                v = getattr(src, attr, None)
+                if v:
+                    return [i for p in v for i in ids(p)]
+            return []
+
+        sourced = {
+            i for r in CAPTURE_SALES_ORDER.rows for s in r.sources for i in ids(s)
+        }
+        unsourced = sorted(
+            f.field_id for f in _tf(_SO) if f.field_id not in sourced
+        )
+        assert unsourced == [
+            "burial_date",
+            "grave_location",
+            "nameplate_date_format",
+        ], unsourced
+
+    def test_EXACTLY_ONE_template_field_is_availability_governed_today(self):
+        """⚠️ A RATCHET ON THE DISCRIMINATOR ITSELF. If a second field becomes
+        availability-governed, its row gains the ability to read "not configured" —
+        which may be right, and should be a decision rather than a side effect of
+        someone reusing an `AvailabilityOffered` condition for a follow-up."""
+        governed = [
+            f.field_id for f in template_for(SALES_ORDER) if f.availability_governed
+        ]
+        assert governed == ["personalization"], governed
 
     def test_an_offered_conditional_is_not_the_fourth_state(self):
         """⚠️ THE CONTROL. A resolver that returned NOT_CONFIGURED for every

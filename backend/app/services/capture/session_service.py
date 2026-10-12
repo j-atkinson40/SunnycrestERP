@@ -262,7 +262,9 @@ def _signal_done(db: Session, row: CaptureSession) -> CaptureSession:
     advance and names them; otherwise it goes to review. The difference here is that
     the gaps come from `capture.evaluate` rather than from a seven-field list.
     """
-    _, state = evaluate_typed(db, tenant_id=row.company_id, answers=dict(row.values or {}))
+    _, state, _conflicts = evaluate_typed(
+        db, tenant_id=row.company_id, answers=dict(row.values or {})
+    )
     if state.missing:
         row.status = STATUS_CAPTURING
     else:
@@ -281,7 +283,9 @@ def read_state(db: Session, session_id: str, *, company_id: str, user_id: str) -
     """
     row = _load(db, session_id, company_id=company_id, user_id=user_id)
     answers = dict(row.values or {})
-    resolution, state = evaluate_typed(db, tenant_id=company_id, answers=answers)
+    resolution, state, conflicts = evaluate_typed(
+        db, tenant_id=company_id, answers=answers
+    )
 
     from app.services.capture.rows import resolve_surface
     from app.services.capture.surfaces import (
@@ -316,7 +320,20 @@ def read_state(db: Session, session_id: str, *, company_id: str, user_id: str) -
     said_done = any(
         is_done_signal(ln.get("line") or "") for ln in (row.typed_lines or [])
     ) or any(is_done_signal(seg) for seg in segments(row.full_text or ""))
-    rendered = resolve_surface(surface, resolved, answers, done_signal=said_done)
+    # ⚠️ THE CONFLICTING ANSWERS ARE WITHHELD FROM THE RENDER TOO, AND THAT IS NOT
+    # TIDINESS. `evaluate` never saw them, so they are absent from `state.answered` —
+    # but `resolve_surface` renders from `answers`, so passing the full dict made the
+    # Personalization row read DONE, showing "Nameplate & Life's Reflections® Vinyl",
+    # while the same response reported that value as unavailable on this vault.
+    # Measured over HTTP on dev. One response contradicting itself is the defect class
+    # that produced `not_configured`-vs-`answered` earlier in this arc; the fix then
+    # was to read the state's own resolution rather than re-deriving, and the fix here
+    # is the same move — render from exactly what was evaluated.
+    conflicted = {c.field_id for c in conflicts}
+    rendered_answers = {k: v for k, v in answers.items() if k not in conflicted}
+    rendered = resolve_surface(
+        surface, resolved, rendered_answers, done_signal=said_done
+    )
 
     return {
         "session_id": row.id,
@@ -341,6 +358,20 @@ def read_state(db: Session, session_id: str, *, company_id: str, user_id: str) -
         "indeterminate": list(state.indeterminate),
         "is_complete": state.is_complete,
         "unrecognized": list(row.unrecognized or []),
+        # ⚠️ A SEPARATE LIST FROM `unrecognized`, BY NATURE NOT BY TASTE. The extractor
+        # understood these phrases; they contradict each other. Reporting a conflict as
+        # "not understood" would send the director back to re-type words that were read
+        # correctly. This list is why the pane no longer 500s on
+        # "Continental 34 … nameplate and vinyl".
+        "conflicts": [
+            {
+                "field_id": c.field_id,
+                "value": c.value,
+                "permitted": list(c.permitted),
+                "message": c.message,
+            }
+            for c in conflicts
+        ],
         "pending_picks": list(row.pending_picks or []),
         "vault_resolution": {
             "resolved": bool(resolution.variant_template_id),

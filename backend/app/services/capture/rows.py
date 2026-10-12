@@ -491,10 +491,39 @@ def resolve_surface(
             i for i in ids
             if i in by_id and by_id[i].required and not is_answered(values.get(i))
         ]
+        # ⚠️ "NOT CONFIGURED" MEANS THE LICENSEE WITHHELD AN ANSWER VOCABULARY, AND
+        # THAT REQUIRES THERE TO BE A VOCABULARY. The `options` clause is new
+        # (2026-10-12) and it fixes a live defect: `is_conditional` means
+        # "applicability is conditional" (`schema.py:188`), while `permitted_answers`
+        # is about personalization AVAILABILITY. Those are different facts, and
+        # testing the first while reading the second classified every conditional
+        # FREE-TEXT field as unconfigured.
+        #
+        # Measured over HTTP on dev: with "eta 11:30" and no cemetery named, the
+        # Cemetery row rendered **"Not configured for this licensee"** above the
+        # time 11:30 AM — because `eta` is conditional (it does not apply at a
+        # graveside service) and has no enum answers to permit. It should have read
+        # PARTIAL: something captured, the required cemetery still missing.
+        #
+        # ⚠️ THREE FIELDS CARRY THIS SHAPE, NOT ONE, and the other two were latent
+        # only because they were inapplicable in that sentence — measured:
+        # `eta` (Cemetery row), `service_location_other` (Service row, via FirstOf)
+        # and `legacy_print_name` (Personalization row). So three of nine rows could
+        # tell a director their licensee had not configured something, about fields
+        # a licensee cannot configure.
         not_configured = [
             i for i in ids
             if i in by_id
-            and by_id[i].definition.is_conditional
+            # ⚠️ AVAILABILITY-GOVERNED, NOT MERELY CONDITIONAL. See
+            # `FieldDefinition.availability_governed`. An earlier version of this
+            # clause tested `is_conditional and options`, which was closer and still
+            # wrong: `lifes_reflections_symbol` and `nameplate_date_format` are
+            # conditional AND have vocabularies AND are not governed by availability,
+            # so an empty permitted set on them means "availability says nothing
+            # about this question" — and the Personalization row reported
+            # "Not configured for this licensee" while displaying
+            # "Nameplate & Life's Reflections® Vinyl · Cross". Measured over HTTP.
+            and by_id[i].definition.availability_governed
             and not by_id[i].permitted_answers
         ]
 
