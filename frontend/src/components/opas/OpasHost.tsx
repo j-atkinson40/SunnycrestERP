@@ -305,6 +305,76 @@ export function OpasHost() {
     return () => document.removeEventListener("keydown", onKeyDown, true)
   }, [opas.isOpen, entryPane, picks])
 
+  /**
+   * AN ORDER PANE OPENS AS SOON AS THE PHRASE SAYS SO — NO ENTER.
+   *
+   * ⚠️ THIS IS THE DEFECT JAMES HIT ON PRODUCTION, 2026-10-12 13:54 ET. He typed
+   * "order for hopkins" in the bar and waited; no pane appeared and no error. The
+   * cause: `openPane` for a capture pane was reached from exactly two places — the
+   * reload-restore effect, and `submit()` — and `submit()` ran only inside
+   * `if (e.key === "Enter")`. So there was NO code path that opened an entry pane
+   * from typing, and his own walk instruction said to type it WITHOUT pressing
+   * Enter. Confirmed against production: zero `capture_sessions` rows were created
+   * in that window, so `POST /capture/sessions` was never called — the pane never
+   * opened rather than a request failing.
+   *
+   * ⚠️ NO DEBOUNCE ON THE OPEN, DELIBERATELY, AND THIS IS THE PART THAT IS EASY TO
+   * GET WRONG. A debounce resets on every keystroke, so during continuous typing it
+   * never fires — the pane would appear only once the director STOPPED, which is the
+   * opposite of "watch it grow out of the bar and fill in as you type". The match is
+   * an unambiguous signal and firing on it is what makes the pane arrive while they
+   * are still talking. Re-extraction keeps its 350 ms debounce; opening does not
+   * need one.
+   *
+   * ⚠️ THE TYPED TEXT MOVES INTO THE PANE, which is the whole reason `openPane` now
+   * returns an id. Without that the director would watch their words vanish at the
+   * moment the pane appeared.
+   *
+   * ⚠️ NO `openingLine`, SO THERE IS ONE WRITE PATH AND NOT TWO. Passing the phrase
+   * to `startCapture` would extract it through `add_line` — the FIRST_WINS line
+   * model — and the pane's own re-extraction would then replace that reading through
+   * the LAST_WINS text model. One of the two would always be redundant, and
+   * `typed_lines` would carry a row the text model does not own.
+   */
+  useEffect(() => {
+    if (!opas.isOpen) return
+    // ⚠️ ONE PANE PER PHRASE IS HELD BY TWO THINGS JOINTLY, AND NEITHER ONE IS "THE
+    // GUARD". Every keystroke after "order for" still matches, so something has to
+    // stop a second pane. Measured by removing each in turn, over 147 tests:
+    //
+    //     removed                              result
+    //     an `openedFromBar` ref (all of it)   147 green  <- genuinely dead
+    //     this `entryMode` check only          147 green
+    //     the `setText("")` below only         1 red (the second-order test)
+    //     BOTH entryMode and setText("")       45 red — a pane per keystroke
+    //
+    // So each is sufficient on its own and both are kept, because each also has an
+    // independent job: `entryMode` is what makes the bar the order's field at all,
+    // and clearing the host's request-text is what stops a closed pane from
+    // instantly reopening and what leaves the bar clean for a catalog request.
+    //
+    // ⚠️ I NAMED A SINGLE MECHANISM HERE TWICE AND WAS WRONG BOTH TIMES. First an
+    // `openedFromBar` ref — deleted; removing the flag, its check and its re-arm
+    // together left everything green, though removing only its re-arm DID turn a
+    // test red, which is why it read as load-bearing (half of a redundant pair is
+    // not the pair). Then this `entryMode` check, which also removes clean. Only
+    // elimination found the real answer, and the real answer is "jointly". CLAUDE.md
+    // §11, a guard whose protection is supplied by a layer beneath it — twice over.
+    //
+    // ⚠️ AND `opens ONCE for a phrase typed continuously` CANNOT TELL WHICH IS
+    // DOING THE WORK. It stayed green for either single removal and only fell to
+    // both. It is a true assertion about the behaviour and not evidence about the
+    // mechanism; the table above is the evidence.
+    if (entryMode) return
+    const phrase = text.trim()
+    if (phrase === "") return
+    if (!CAPTURE_START.test(phrase.toLowerCase())) return
+    const id = opas.openPane({ kind: "capture", label: "Order" })
+    opas.setEntryText(id, phrase)
+    setText("")
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text, entryMode, opas.isOpen])
+
   const submit = useCallback(async () => {
     const phrase = text.trim()
     if (phrase === "" || busy) return

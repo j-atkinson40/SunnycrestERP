@@ -151,8 +151,20 @@ async function openOrder() {
   )
   await user.click(screen.getByTestId("opas-sphere"))
   await user.type(screen.getByTestId("opas-input"), "start an order")
-  await user.keyboard("{Enter}")
   await waitFor(() => expect(screen.getByTestId("capture-rows")).toBeInTheDocument())
+  // ⚠️ THE BAR IS CLEARED, AND IT HAS TO BE SINCE 2026-10-12. The pane now opens on
+  // the PHRASE with no Enter, and the phrase is carried into the pane as the order's
+  // text — so after this helper the bar legitimately holds "start an order", and a
+  // test that then typed "tent only" would be sending "start an ordertent only".
+  // Two tests in this file failed exactly that way when the opening changed, which
+  // is the harness telling the truth about a real behaviour change rather than a
+  // problem with it.
+  //
+  // ⚠️ THE `{Enter}` THAT USED TO BE HERE IS GONE, deliberately. Enter was never what
+  // opened the pane in a director's hands — it was what every TEST did, which is why
+  // "no pane without Enter" shipped. Leaving it would keep that blind spot in the
+  // one helper every test in this file goes through.
+  await user.clear(screen.getByTestId("opas-input"))
   return screen.getByTestId("opas-input")
 }
 
@@ -474,6 +486,129 @@ describe("⌘1..9 settles a pick", () => {
     await user.click(screen.getByTestId("capture-pick-option-vault-3"))
 
     await waitFor(() => expect(choosePick).toHaveBeenCalledWith("sess-1", "vault", 3))
+  })
+})
+
+describe("an order pane opens from TYPING, with no Enter", () => {
+  /**
+   * ⚠️ THE DEFECT JAMES HIT ON PRODUCTION, 2026-10-12 13:54 ET. He typed
+   * "order for hopkins" in the bar and waited. No pane, no error. `openPane` for a
+   * capture pane was reachable from exactly two places — the reload-restore effect
+   * and `submit()` — and `submit()` ran only inside `if (e.key === "Enter")`. There
+   * was no path from typing to a pane, and his own walk instruction said to type it
+   * WITHOUT Enter.
+   *
+   * ⚠️ WHY NO TEST CAUGHT IT. Every frontend test pressed Enter. The helper in
+   * `capture-pane.test.tsx` is `user.type(input, `${text}{Enter}`)` — Enter is
+   * APPENDED to every phrase it is ever given — and `openOrder()` in this file sends
+   * an explicit `{Enter}`. The backend's `test_the_whole_sentence_James_walks` calls
+   * `session_service` directly and never touches the bar at all. So the one thing
+   * the walk instruction asked for was the one thing nothing exercised.
+   */
+
+  /** ⚠️ TYPES AND DOES NOT PRESS ENTER. That is the entire point of this block, so
+   *  it deliberately does not reuse `openOrder()`, which presses it. */
+  async function typeOnly(phrase: string) {
+    render(
+      <OpasProvider>
+        <OpasHost />
+      </OpasProvider>,
+    )
+    await user.click(screen.getByTestId("opas-sphere"))
+    await user.type(screen.getByTestId("opas-input"), phrase)
+  }
+
+  it("opens a pane on \"order for hopkins\" — lowercase, no punctuation, NO ENTER", async () => {
+    await typeOnly("order for hopkins")
+
+    await waitFor(() => expect(panes()).toHaveLength(1))
+    await waitFor(() =>
+      expect(screen.getByTestId("capture-rows")).toBeInTheDocument(),
+    )
+  })
+
+  it("MOVES THE TYPED TEXT INTO THE PANE, so the words are not lost", async () => {
+    // ⚠️ WITHOUT THIS THE DIRECTOR WATCHES THEIR WORDS VANISH at the moment the pane
+    // appears — which would read as a worse bug than no pane at all.
+    await typeOnly("order for hopkins")
+
+    await waitFor(() =>
+      expect(screen.getByTestId("opas-input")).toHaveValue("order for hopkins"),
+    )
+    expect(screen.getByTestId("opas-input")).toHaveAttribute("data-entry-mode", "true")
+  })
+
+  it("the opened pane EXTRACTS the carried text, so rows fill in", async () => {
+    vi.mocked(setCaptureText).mockResolvedValue(withValue("Hopkins Funeral Home") as never)
+    await typeOnly("order for hopkins")
+    await waitFor(() => expect(screen.getByTestId("capture-rows")).toBeInTheDocument())
+
+    await settle()
+
+    expect(setCaptureText).toHaveBeenCalledWith(
+      "sess-1", "order for hopkins", expect.any(Number),
+    )
+  })
+
+  it("does NOT send an openingLine — one write path, not two", async () => {
+    // ⚠️ `startCapture(undefined)`. Passing the phrase would extract it through
+    // `add_line` (FIRST_WINS, the line model) and the pane's own re-extraction would
+    // then replace that reading through the text model (LAST_WINS). One of the two
+    // would always be redundant, and `typed_lines` would carry a row the text model
+    // does not own.
+    await typeOnly("order for hopkins")
+    await waitFor(() => expect(screen.getByTestId("capture-rows")).toBeInTheDocument())
+
+    expect(startCapture).toHaveBeenCalledWith(undefined)
+  })
+
+  it("opens ONCE for a phrase typed continuously, not once per keystroke", async () => {
+    // ⚠️ THE MATCH FIRES ON "order for" AND EVERY LATER KEYSTROKE STILL MATCHES. A
+    // guard that only checked the regex would open a pane per character from that
+    // point on.
+    await typeOnly("order for hopkins, mary smith, tent only")
+
+    await waitFor(() => expect(panes()).toHaveLength(1))
+    await settle()
+    expect(panes()).toHaveLength(1)
+  })
+
+  it("opens a SECOND order after the bar is cleared — the guard re-arms", async () => {
+    // ⚠️ WITHOUT RE-ARMING, one order per session would be the limit and the second
+    // "order for ..." would silently do nothing — the same symptom James reported,
+    // reintroduced one step along.
+    await typeOnly("order for hopkins")
+    await waitFor(() => expect(panes()).toHaveLength(1))
+
+    // close it, which clears that pane's text, then type a fresh order
+    await user.click(
+      screen.getByTestId(`opas-pane-close-${panes()[0].getAttribute("data-testid")!.replace("opas-pane-", "")}`),
+    )
+    await waitFor(() => expect(panes()).toHaveLength(0))
+    await user.type(screen.getByTestId("opas-input"), "order for riverside")
+
+    await waitFor(() => expect(panes()).toHaveLength(1))
+  })
+
+  it("does NOT open a pane for a phrase that is not an order", async () => {
+    // ⚠️ THE POSITIVE CONTROL. A host that opened an entry pane on ANY typing would
+    // satisfy every test above, and would make the catalog unreachable.
+    await typeOnly("the catalog")
+
+    await settle()
+    expect(panes()).toHaveLength(0)
+    expect(screen.getByTestId("opas-input")).toHaveAttribute("data-entry-mode", "false")
+  })
+
+  it("does NOT open while the bar is empty", async () => {
+    render(
+      <OpasProvider>
+        <OpasHost />
+      </OpasProvider>,
+    )
+    await user.click(screen.getByTestId("opas-sphere"))
+    await settle()
+    expect(panes()).toHaveLength(0)
   })
 })
 

@@ -347,6 +347,15 @@ tests/test_a_gated_pass_sees_the_whole_text.py
 # elimination and overwrote the real one. `normalize` is shared with the call
 # pipeline, so this file guards a change that reaches it.
 tests/test_punctuation_is_not_identity.py
+# A director types lowercase. In the gate because James typed "order for hopkins"
+# on PRODUCTION and the name came back unrecognized while "order for Hopkins"
+# resolved — the marker path required a capital. Two independent gaps conspired
+# and the second is pinned here too, so nobody fixes the wrong one: the
+# marker-LESS record scan is already case-insensitive but needs 2+ words, so a
+# one-word name could not match there either. Also pins, as a GAP rather than a
+# feature, that the decedent pass still requires capitals — a decedent has no
+# record to check against, so loosening it is a behaviour decision.
+tests/test_a_director_types_lowercase.py
 tests/test_typed_capture_slice1.py
 tests/test_vault_resolution_wiring.py
 tests/test_void_payment_reverses_ar2.py

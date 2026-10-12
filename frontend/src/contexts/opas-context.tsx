@@ -86,7 +86,11 @@ interface OpasValue {
   readonly panes: readonly OpasPane[]
   readonly open: () => void
   readonly close: () => void
-  readonly openPane: (pane: Omit<OpasPane, "id">) => void
+  /** ⚠️ RETURNS THE NEW PANE'S ID since 2026-10-12. The bar opens an entry pane and
+   *  must immediately hand it the text already typed, which needs the id. Before
+   *  this it returned void and the caller had no way to address the pane it had just
+   *  created. */
+  readonly openPane: (pane: Omit<OpasPane, "id">) => string
   readonly closePane: (id: string) => void
   /** ⚠️ True only when Opas may render at all. A Focus open makes this false. */
   readonly canRender: boolean
@@ -300,12 +304,15 @@ export function OpasProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const openPane = useCallback(
-    (pane: Omit<OpasPane, "id">) => {
+    (pane: Omit<OpasPane, "id">): string => {
       paneSeq += 1
       const id = `opas-pane-${paneSeq}`
       setPanes((prev) => [...prev, { ...pane, id }])
       // A new pane arrives at the front, as the prototype's `raise` on creation does.
       raisePane(id)
+      // ⚠️ RETURNED so the caller can address the pane it just made — the bar needs
+      // this to move the already-typed text into the new entry pane.
+      return id
     },
     [raisePane],
   )

@@ -613,9 +613,46 @@ class DeterministicExtractor:
 
         # ── funeral home ────────────────────────────────────────────────
         if once("funeral_home"):
+            # ⚠️ CASE-INSENSITIVE SINCE 2026-10-12, AND IT USED TO REQUIRE CAPITALS.
+            # The pattern was `([A-Z][A-Za-z'&\-]*(?:\s+[A-Z]...){0,3})`, so a
+            # director typing fast on a call — lowercase, as James did on production
+            # with "order for hopkins" — matched NOTHING here and the name came back
+            # unrecognized. Measured: "order for Hopkins" resolved, "order for
+            # hopkins" did not.
+            #
+            # ⚠️ AND THE MARKER-LESS RECORD LOOKUP BELOW COULD NOT COVER IT EITHER,
+            # which is why one fix is not two. That scan IS case-insensitive but
+            # tries n-gram sizes (5, 4, 3, 2) — minimum TWO words — so the
+            # single-word "hopkins" fell through both paths. Two independent gaps,
+            # and neither alone explains the failure.
+            #
+            # ⚠️ WIDENING THE CASE CANNOT INVENT A FUNERAL HOME. The span is only
+            # claimed when `resolve_funeral_home` returns a party or a candidate set
+            # (the two branches below); a span that resolves to nothing claims
+            # nothing and falls through to every later pass unchanged. So the cost of
+            # a wrong match is bounded by the resolver, not by this regex.
+            #
+            # ⚠️ `re.I` IS THE OPERATIVE CHANGE AND THE WIDENED CHARSET IS REDUNDANT
+            # UNDER IT. Measured, because a break test removing the charset change
+            # produced no red and I would otherwise have left both reading as
+            # load-bearing:
+            #
+            #     phrase               [A-Z] no I   [A-Z]+I   [A-Za-z] no I   both
+            #     order for hopkins    -            hopkins   hopkins         hopkins
+            #     order for Hopkins    Hopkins      Hopkins   Hopkins         Hopkins
+            #     ORDER FOR HOPKINS    -            HOPKINS   -               HOPKINS
+            #
+            # `[A-Z]` under `re.I` already matches lowercase, so `re.I` alone fixes
+            # the reported defect. The charset is kept DEFENSIVELY, not because it is
+            # needed: it means the pattern's basic meaning does not depend on a flag
+            # at the far end of the call, so removing `re.I` later degrades to
+            # "lowercase names work, SHOUTED markers do not" rather than to the
+            # original defect. That is a stated reason for keeping redundant code,
+            # which is the alternative to it reading as a second fix.
             m = re.search(
                 r"\b(?:for|from|with)\s+"
-                r"([A-Z][A-Za-z'&\-]*(?:\s+[A-Z][A-Za-z'&\-]*){0,3})", line)
+                r"([A-Za-z][A-Za-z'&\-]*(?:\s+[A-Za-z][A-Za-z'&\-]*){0,3})",
+                line, re.I)
             if m:
                 fr = resolve_funeral_home(db, tenant_id, m.group(1).strip())
                 if fr.party_id:

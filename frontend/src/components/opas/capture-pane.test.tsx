@@ -138,9 +138,15 @@ describe("the entrance", () => {
     await type(user, "start an order for Hopkins")
 
     await waitFor(() => expect(screen.getByTestId("capture-pane")).toBeInTheDocument())
-    // ⚠️ THE WHOLE LINE, not a stripped remainder. The prototype feeds the same text it
-    // started with (`:568`), which is what captures the funeral home immediately.
-    expect(startCapture).toHaveBeenCalledWith("start an order for Hopkins")
+    // ⚠️ THE WHOLE LINE STILL ARRIVES — BY A DIFFERENT MECHANISM SINCE 2026-10-12, and
+    // the claim in this test's name is unchanged. It used to assert
+    // `startCapture("start an order for Hopkins")`: the phrase rode in as an
+    // `openingLine` and was extracted through the LINE model. The pane now opens from
+    // typing and the phrase is carried into it as the order's TEXT, so it arrives via
+    // `setCaptureText` and `startCapture` takes nothing. One write path instead of
+    // two — see the host's opening effect for why.
+    expect(startCapture).toHaveBeenCalledWith(undefined)
+    expect(screen.getByTestId("opas-input")).toHaveValue("start an order for Hopkins")
   })
 
   it("does NOT open a capture pane for a catalog phrase", async () => {
@@ -323,6 +329,11 @@ describe("the rows", () => {
     // is derived from the FRONT pane's TYPE (`pane-mode.ts`), not from a flag anyone
     // sets, so there is no state in which the attribute and the behaviour disagree.
     expect(bar).toHaveAttribute("data-entry-mode", "true")
+    // ⚠️ CLEARED FIRST SINCE 2026-10-12. The opening phrase is now CARRIED into the
+    // pane as the order's text, so the bar legitimately holds it and typing appends.
+    // Without the clear this asserted "tent only" against "start an ordertent only"
+    // — the harness reporting a real behaviour change, not a problem with it.
+    await user.clear(bar)
     await user.type(bar, "tent only")
     expect(bar).toHaveValue("tent only")
   })
@@ -433,6 +444,10 @@ describe("the done signal and the summary", () => {
     // no-op while capturing; the done phrase reaches the server because it is IN THE
     // TEXT, which the pane re-reads on a pause. A test that pressed Enter would pass
     // today for the wrong reason — the debounce would have fired anyway.
+    //
+    // ⚠️ CLEARED FIRST — the opening phrase is carried into the pane since
+    // 2026-10-12, so without this the text sent is the phrase plus the done signal.
+    await user.clear(screen.getByTestId("opas-input"))
     await user.type(screen.getByTestId("opas-input"), "that's everything")
 
     // ⚠️ THE SERVER DECIDES. The pane does not test the phrase itself — the done-signal

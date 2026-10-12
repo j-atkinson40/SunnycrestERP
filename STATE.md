@@ -179,6 +179,61 @@ Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end 
   tree, not the deployed build, and cannot distinguish them. Abandoned one such check
   rather than report it; the deploy was verified instead by the chain
   `/api/health` commit == `git rev-parse HEAD` == `origin/main`, tree clean.
+- **2026-10-12** — ⚠️ **WALK NOTE (James, production, 13:54 ET): typed "order for
+  hopkins" in the Opas bar, waited, NO PANE APPEARED, no error.** Diagnosed read-only
+  against production before any change. TWO independent defects, neither of which
+  alone explains it.
+- **2026-10-12** — DEFECT A, the cause of "no pane": **an entry pane could only be
+  opened by pressing ENTER.** `openPane` for a capture pane was reached from exactly
+  two places — the reload-restore effect and `submit()` — and `submit()` ran only
+  inside `if (e.key === "Enter")`. There was NO path from typing to a pane, and the
+  walk instruction said to type it WITHOUT Enter. The host had no debounce and no
+  `setTimeout` at all, so nothing ran on pause before a pane existed. FIXED: the bar
+  opens an order pane as soon as the phrase matches, no Enter, no debounce on the
+  open (a debounce resets per keystroke and would fire only once the director
+  STOPPED), and the typed text is carried into the pane so the words are not lost.
+  `openPane` now returns the new pane id, which is what makes carrying it possible.
+- **2026-10-12** — DEFECT B, what he would have hit next: **lowercase party names did
+  not resolve.** `order for hopkins` → `hopkins` UNRECOGNIZED; `order for Hopkins` →
+  `Hopkins Funeral Home`. TWO gaps conspired: the marker path
+  `\b(?:for|from|with)\s+([A-Z]...)` required a CAPITAL, and the marker-LESS record
+  scan is case-insensitive but tries n-gram sizes (5,4,3,2) — **two words minimum** —
+  so the single word `hopkins` fell through both. FIXED at the marker path with
+  `re.I`. ⚠️ Measured: `re.I` is the OPERATIVE change and the widened charset is
+  REDUNDANT under it (`[A-Z]` matches lowercase when `re.I` is set); the charset is
+  kept defensively with that stated.
+- **2026-10-12** — PRODUCTION EVIDENCE, read-only. `capture_sessions` held exactly
+  ONE row, created **12:44:15 UTC**, against a db clock of 17:57 — so **no session
+  was created at 17:54 or on the hard-refresh retry.** `POST /capture/sessions` was
+  never called: the pane never opened, no request failed, and the retry did not
+  differ. The frontend service's own `version.json` reported **`d0fdca21`** (not the
+  backend's commit) and the served bundle `index-zT5HGUTt.js` contains
+  `data-entry-mode`, `Say what the director said`, `Reading what you typed`,
+  `Not available on this vault` and `capture-pick-number`, with the removed pane text
+  box (`Type what the director said`) absent — so the bundle WAS round 2.
+  `Hopkins Funeral Home` exists as a `company_entities` row on the `sunnycrest`
+  tenant, so the lookup would have resolved had the case matched.
+- **2026-10-12** — WHY NO TEST CAUGHT DEFECT A: **every frontend test pressed Enter.**
+  `capture-pane.test.tsx`'s helper is `user.type(input, `${text}{Enter}`)` — Enter
+  APPENDED to every phrase it is ever given — and `capture-live.test.tsx`'s
+  `openOrder()` sent an explicit `{Enter}`. The backend's
+  `test_the_whole_sentence_James_walks` calls `session_service` directly and never
+  touches the bar. The one thing the walk instruction asked for was the one thing
+  nothing exercised. The `{Enter}` is now gone from `openOrder()`.
+- **2026-10-12** — ⚠️ ACTIVE GAP, pinned as a gap not a feature: **the decedent pass
+  still requires capitals.** `mary smith` is unrecognized; `Mary Smith` is captured.
+  Unlike a funeral home, a decedent's name has NO RECORD to check against, so making
+  that pass case-insensitive loosens it with no backstop — nearly every two-word
+  phrase becomes person-like. That is a behaviour decision, James's, not a defect fix.
+  Test asserts the gap and says to delete itself if the gap closes.
+- **2026-10-12** — ⚠️ I NAMED A SINGLE ONCE-GUARD MECHANISM TWICE AND WAS WRONG BOTH
+  TIMES. An `openedFromBar` ref: deleted — removing the flag, its check and its
+  re-arm together left all 147 tests green, though removing only its re-arm DID turn
+  one red, which is why it read as load-bearing. Then the `entryMode` check: also
+  removes clean. Measured by elimination: the property is held JOINTLY by `entryMode`
+  and `setText("")` — either alone suffices (147 green), both removed collapses it
+  (45 red). Recorded as a table at the call site, with the note that the
+  `opens ONCE` test cannot distinguish which is doing the work.
 - **2026-10-12** — Walk steps for James:
   `docs/investigations/2026-10-12-typed-capture-round-2-walk.md`. ⚠️ Its first
   instruction is to RESTART the dev backend — the process on :8000 was started before
