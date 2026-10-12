@@ -1,0 +1,9 @@
+{
+  "files": 345,
+  "tests": 4560,
+  "measured_on": "2026-10-12",
+  "measured_by": "npx vitest run --reporter=json, full suite, 0 failures, 0 errors",
+  "_what_this_is": "A FLOOR, not an equality. A run that executes fewer files or tests than this has not tested what this number says it tests. Growth passes and prints a reminder to raise these. Removing tests on purpose means lowering these IN THE SAME DIFF -- the number may only move in a reviewed commit, never by drift.",
+  "_why_it_exists": "2026-10-07, run cap6_10 of a worker-cap experiment: vitest printed 'Test Files 338 passed (338)' while six files never ran, because [vitest-pool-runner] timed out starting their workers. The denominator fell from 344 and the summary line still read complete. vitest cannot catch this alone -- the six were never counted, so its own collected total was already 338. Only a number written down earlier can disagree.",
+  "_files_is": "len(summary.testResults) -- NOT numTotalTestSuites, which counts describe blocks (a 2-file subset reported 4)."
+}

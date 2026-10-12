@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# vitest JSON reporter output, read by scripts/assert-suite-size.mjs in CI
+.vitest-summary.json

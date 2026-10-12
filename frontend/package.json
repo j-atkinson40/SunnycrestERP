@@ -10,6 +10,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:ci": "vitest run --reporter=dot --reporter=json --outputFile.json=.vitest-summary.json",
+    "test:assert-size": "node scripts/assert-suite-size.mjs .vitest-summary.json",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test --project=chromium",

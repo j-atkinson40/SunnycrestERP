@@ -191,7 +191,22 @@ jobs:
       # described vitest as part of the check — the coverage was documented
       # before it existed.
       - name: Run frontend tests
-        run: npm test
+        run: npm run test:ci
+
+      # ⚠️ A RUN CAN BE GREEN AND HAVE TESTED LESS THAN IT CLAIMS. Measured
+      # 2026-10-07: vitest printed `Test Files 338 passed (338)` while SIX FILES
+      # NEVER RAN -- `[vitest-pool-runner]: Timeout waiting for worker to respond`
+      # -- so the denominator fell from 344 and the summary line still read
+      # complete. vitest cannot catch that alone: the six were never counted, so
+      # its own collected total was already 338 and ran-against-collected compares
+      # 338 to 338. Only a number written down earlier can disagree.
+      #
+      # ⚠️ `if: always()` IS LOAD-BEARING. Without it this step is skipped exactly
+      # when the run also failed for another reason -- which is when a shortfall is
+      # most likely and least likely to be noticed.
+      - name: Assert the suite did not shrink
+        if: always()
+        run: npm run test:assert-size
 
       - name: Build production bundle
         run: npm run build
