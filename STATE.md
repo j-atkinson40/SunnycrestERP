@@ -376,6 +376,31 @@ Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end 
   the attribute unchanged. Fixed by binding the width ONCE and having both the style and
   the attribute read that binding. An attribute derived from the same input as the thing it
   describes is not evidence about it.
+- **2026-10-13** — ⚠️ **CI WENT RED ON `37223dc4` AND IT WAS A SECOND COPY OF A GATE I
+  FIXED THE DAY BEFORE.** Backend CI run `38399807233`: 1 failed, 3144 passed —
+  `test_whole_text_extraction.py::test_one_re_extraction_of_a_full_order_is_well_under_the_budget`
+  at **p50 152.4 ms** against a 150 ms line. The commit had NOT made extraction slower;
+  measured on this laptop across the same change: before `14820337` **p50 66.2 ms / max
+  74.7 ms**, with the n-gram vault scan **p50 65.8 ms / max 133.8 ms**. The p50 did not
+  move. The runner is ~2.3x this laptop — the factor `ci.yml` records for its own seed
+  step — so 66 becomes ~152 there and the assertion had been sitting ON the line, passing
+  by luck, until it tipped.
+- **2026-10-13** — The absolute-wall-clock design was removed from
+  `test_typed_capture_latency.py` on 2026-10-12, with a commit body explaining why a gate
+  green on one machine and red on another cannot be read — and this assertion, in a
+  DIFFERENT FILE, kept it. **Third instance in two days of a fix landing on one copy**,
+  after the cemetery town pattern and the needed-count chip. FIXED: this one is now a
+  500 ms catastrophe ceiling and the ruled 150 ms budget is owned by ONE file,
+  `test_typed_capture_latency.py`, which measures the hardware-independent curve.
+- **2026-10-13** — ⚠️ POPULATION, MEASURED RATHER THAN GUESSED: **17 backend test files
+  assert an absolute millisecond budget. THREE are in the blocking gate** —
+  `test_typed_capture_latency.py` (fixed), `test_command_bar_latency.py` and
+  `test_command_bar_portal_latency.py`. The other two are NOT near the line and that is
+  measured, not assumed: p50 **8.0 ms against 100** (12.5x headroom) and **3.7 ms against
+  150** (40x). Mine had 2.3x, which is why mine tipped on a 2.3x-slower runner and theirs
+  did not. The design flaw is shared; the risk is not. **Whether the class gets swept is
+  James's call** — not swept here, because 14 of the 17 are outside the gate and
+  rewriting other arcs' gates unasked is scope I do not have.
 - **2026-10-12** — Walk steps for James:
   `docs/investigations/2026-10-12-typed-capture-round-2-walk.md`. ⚠️ Its first
   instruction is to RESTART the dev backend — the process on :8000 was started before
