@@ -2,6 +2,75 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 2026-10-13 — Four rulings: the form default, plain-digit picks, closing ends it, no restore
+
+- **2026-10-13** — Migration head advances `r208_capture_session_text` →
+  **`r209_capture_session_switches`**. One nullable JSONB column on
+  `capture_sessions`: `switches`. No server default and no model-side `default=`
+  (both layers checked). **Merging to `main` applies it to production**
+  (`railway-start.sh:45` runs `alembic upgrade head` per deploy). The dialect is
+  imported explicitly — `sa.dialects.postgresql` does not resolve on a bare
+  interpreter, and the first version of this migration ran on dev only because
+  alembic's `env.py` had already imported the submodule.
+- **2026-10-13** — **A vault ambiguous ONLY by form takes the burial vault** and
+  offers a one-click switch to the urn vault; "urn" anywhere in the vault phrase
+  selects the urn vault. Fires on `discriminators == ("form",)` exactly. Recorded in
+  DECISIONS as James's decision. New: `Switch` dataclass, `switches` on
+  `LineExtraction`/`TextExtraction`, `POST /api/v1/capture/sessions/{id}/switch`,
+  `session_service.take_switch()`.
+  ⚠️ **The exact-tuple test is load-bearing and `graveliner` does NOT prove it** —
+  `"form" in discs` would silently resolve `triune`, `venetian` and `oversize`
+  (each has a `burial_vault` candidate plus a second discriminator), while
+  graveliner has no `burial_vault` candidate and asks either way. The first test
+  written used graveliner and a break test with the loose condition left the whole
+  suite green. Measured across all 207 indexed phrases.
+- **2026-10-13** — **A plain number picks**, and the number leaves the order text.
+  Supersedes the 2026-10-12 ruling that typed digits go into the text. Five
+  conditions live in `frontend/src/components/opas/pick-digit.ts`: whole token at
+  the END, in range 1..N, digits only, no leading zero, not after a number label
+  (`lot`, `section`, `space`, …). ⌘1..9 is unchanged.
+  ⚠️ **It is DEBOUNCED on the same pause as extraction, and that is not optional** —
+  checked per keystroke, a number is judged on its prefixes: "34" passes through "3"
+  and with three options showing the 3 was consumed and the 4 left behind. James's
+  own counter-example failed in the first version.
+- **2026-10-13** — **Closing Opas ends the capture.** Escape, the veil and the per-pane
+  close button clear the bar, close the entry pane and `POST .../abandon` (idempotent,
+  marks `STATUS_ABANDONED`, never deletes). Logout clears all Opas client state via
+  `clearOpasClientState()`, now a **sweep of the `opas.` namespace** in both storages
+  rather than a named-key list — measured 2026-10-13: nothing in the shipping bundle
+  writes an Opas key any more, so the keys that matter on logout are leftovers from
+  builds already replaced, which this build cannot name.
+  ⚠️ **The pane closes BEFORE the server is told.** Ordered the other way, anything
+  that threw en route to the network left the pane open — and an entry pane holds the
+  bar in entry mode, so that tab could no longer start an order. Found by a test mock
+  that omitted `abandonCapture`: the handler threw mid-click and the close button did
+  nothing, which is the production symptom exactly.
+- **2026-10-13** — **Opening Opas never restores a capture pane.** Restore-on-mount is
+  removed and the session id is no longer persisted; server rows are untouched. Nine
+  tests across two files that asserted restore behaviour were rewritten to the new
+  ruling rather than deleted, each carrying the reason the old claim existed.
+- **2026-10-13** — ⚠️ **A BLANK PANE SHIPPED-SHAPED BUG, found by running the suite.**
+  `CapturePane` read `state.switches.length` unguarded, and `switches`/`conflicts` are
+  keys an older server does not send — the normal state for the seconds around a
+  deploy, and for any tab not hard-refreshed. Reading `.length` off an absent key
+  throws during render and React unmounts the tree: **no pane, nothing in the bar to
+  explain it** — the same symptom as three walk rounds. Both keys are now optional in
+  the TS type and defaulted at every read; `capture-pane.test.tsx` pins an
+  old-server payload.
+- **2026-10-13** — ⚠️ **The pick hint contradicted the behaviour on production for a
+  round.** It read "Typed digits go into the text" — the superseded ruling — while the
+  code did the opposite. No test asserted the sentence, so nothing went red; found by
+  reading the pane in real Chrome. Now "Click, or type the number.", with a test.
+- **2026-10-13** — Verified in **real Chrome over CDP** (not jsdom, not Playwright):
+  19/19 checks across all four rulings, typed character by character with no Enter.
+  ⚠️ Two harness faults caught first, both of which would have produced a confident
+  wrong answer: the backend's CORS allowlist contains only port **5173**, so on 5174
+  the OPTIONS preflight is rejected 400, `/auth/me` never leaves the browser and the
+  app redirects to `/login` — indistinguishable from a broken token; and the picks
+  selector was `capture-picks` where the real testid is `capture-pick-<field>`, so
+  one check failed honestly while **two beside it passed vacuously** ("the pick is
+  gone" and "34 survived" are both true when no pick ever appeared).
+
 ## 2026-10-12 — Typed capture round 2: the bar is the only input, the text is the source
 
 - **2026-10-12** — Migration head advances `r207_form_counterpart_aliases` →

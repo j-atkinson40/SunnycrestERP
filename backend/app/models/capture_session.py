@@ -89,6 +89,15 @@ class CaptureSession(Base):
     #: keystroke: the text that was ambiguous is still on screen and still ambiguous.
     #: Applied LAST, after extraction. Durable, so a reload restores the picks too.
     resolutions: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    #: ⚠️ VALUES CHOSEN FOR THE DIRECTOR, EACH WITH ITS ONE ALTERNATIVE. A switch is
+    #: NOT a pick: the field is captured and the order can be completed without
+    #: touching it. Ruled 2026-10-13 for a vault ambiguous only by form — the burial
+    #: vault is taken and the urn vault offered, because a pick there asks a question
+    #: the office already knows the answer to.
+    #:
+    #: ⚠️ NULLABLE, NO DEFAULT IN EITHER LAYER. A non-null value would assert
+    #: something about every session row that predates r209, and nothing measured one.
+    switches: Mapped[list | None] = mapped_column(JSONB, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)

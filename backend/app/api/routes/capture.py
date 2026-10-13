@@ -4,7 +4,7 @@
 `app/api/routes/` referenced the capture engine at all — it was reachable only from
 `call_extraction_service`, driven by the RingCentral webhook.
 
-⚠️ FIVE ENDPOINTS. The fifth, `PUT .../text`, is the one the typed pane actually drives:
+⚠️ SEVEN ENDPOINTS. The fifth, `PUT .../text`, is the one the typed pane actually drives:
 it re-reads the WHOLE text on every pause rather than appending a line. `POST .../lines`
 is kept and unchanged — it is the path every existing session was captured through, and
 appending is right for a source that arrives one utterance at a time.
@@ -60,6 +60,13 @@ class TextRequest(BaseModel):
     #: latest number it issued and ignores any response whose `seq` is lower — it
     #: is the only party that knows what the bar currently contains.
     seq: int = Field(default=0, ge=0)
+
+
+class SwitchRequest(BaseModel):
+    field_id: str = Field(min_length=1, max_length=64)
+    #: ⚠️ VALIDATED AGAINST THE SERVER'S OWN OFFER in `take_switch`, not accepted on
+    #: trust. Without that this is a write path with no vocabulary.
+    to_value: str = Field(min_length=1, max_length=200)
 
 
 class ChooseRequest(BaseModel):
@@ -158,6 +165,47 @@ def choose(
         raise HTTPException(status_code=400, detail=str(e))
     db.commit()
     return _state(db, session_id, current_user)
+
+
+@router.post("/sessions/{session_id}/switch")
+def take_switch(
+    session_id: str,
+    body: SwitchRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Take the one alternative a switch offered."""
+    try:
+        session_service.take_switch(
+            db, session_id,
+            company_id=current_user.company_id, user_id=current_user.id,
+            field_id=body.field_id, to_value=body.to_value,
+        )
+    except session_service.SessionNotFound:
+        raise HTTPException(status_code=404, detail="capture session not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    db.commit()
+    return _state(db, session_id, current_user)
+
+
+@router.post("/sessions/{session_id}/abandon")
+def abandon(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Closing Opas ends the capture. ⚠️ MARKED abandoned, never deleted — the row
+    is the recovery path James accepted the screen-level loss against."""
+    try:
+        session_service.abandon(
+            db, session_id,
+            company_id=current_user.company_id, user_id=current_user.id,
+        )
+    except session_service.SessionNotFound:
+        raise HTTPException(status_code=404, detail="capture session not found")
+    db.commit()
+    return {"session_id": session_id, "status": "abandoned"}
 
 
 @router.get("/sessions/{session_id}")

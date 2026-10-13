@@ -31,6 +31,13 @@ vi.mock("@/services/opas-capture-service", () => ({
   // surfaces as the pane rendering nothing. `opas-capture-service.test.ts` is what
   // pins this module's real exports; this double only has to keep up with them.
   setCaptureText: vi.fn(),
+  // ⚠️ ADDED WHEN CLOSING OPAS BEGAN ENDING THE CAPTURE AND THE FORM DEFAULT GAINED
+  // A SWITCH (both ruled 2026-10-13). Same reasoning as `setCaptureText` above, and
+  // this file's own warning was right: the omission does not fail at import, it
+  // fails as `undefined is not a function` inside an effect — which the director
+  // sees as a pane that does not appear.
+  takeSwitch: vi.fn(),
+  abandonCapture: vi.fn(),
 }))
 vi.mock("@/services/opas-catalog-service", () => ({
   resolvePhrase: vi.fn(async () => ({ candidates: [], discriminators: [] })),
@@ -49,6 +56,7 @@ vi.mock("@/core/CommandBarProvider", () => ({
 vi.mock("@/contexts/focus-context", () => ({ useFocus: () => ({ isOpen: false }) }))
 
 import {
+  abandonCapture,
   addLine,
   choosePick,
   readCapture,
@@ -57,6 +65,73 @@ import {
 } from "@/services/opas-capture-service"
 
 /** The real shape, with the five sets and a four-state surface. */
+/**
+ * A RESPONSE FROM AN OLDER SERVER MUST STILL RENDER.
+ *
+ * ⚠️ THIS IS A REGRESSION TEST FOR A REAL BLANK PANE, found 2026-10-13 by running
+ * this suite after the switch control shipped. `switches` arrived in r209 and
+ * `conflicts` in the gated pass. A browser holding a cached bundle while the server
+ * is older — the normal state for the seconds around a deploy, and for any tab not
+ * hard-refreshed since — receives a payload with those keys ABSENT. Reading
+ * `.length` off an absent key throws during render and React unmounts the tree: the
+ * director sees NO PANE, with nothing in the bar to explain it. That symptom has
+ * cost three walk rounds already.
+ *
+ * ⚠️ IT ASSERTS THE ROWS ARE THERE, not that nothing threw. "It didn't crash" is
+ * satisfied by a component that renders an empty div, which is the bug.
+ */
+describe("the pick hint", () => {
+  it("tells the office that typing the number PICKS", async () => {
+    /**
+     * ⚠️ THE COPY SHIPPED WRONG FOR A ROUND BECAUSE NOTHING ASSERTED IT. It read
+     * "Typed digits go into the text" — the superseded ruling — while the code did
+     * the opposite. A hint that contradicts the behaviour is worse than none, and
+     * only reading the pane in a real browser caught it.
+     *
+     * ⚠️ IT ASSERTS THE OLD SENTENCE IS ABSENT, not just that the new one is present.
+     * Both could sit in the pane at once, which is the state that confuses somebody.
+     */
+    const user = userEvent.setup()
+    vi.mocked(setCaptureText).mockResolvedValue(
+      state({
+        pending_picks: [
+          {
+            field_id: "vault",
+            phrase: "Continental",
+            options: [["a", "A"], ["b", "B"]],
+            discriminator: "size",
+          },
+        ],
+      }) as never,
+    )
+    openOverlay()
+    await type(user, "start an order for Hopkins")
+
+    const hint = await screen.findByTestId("capture-pick-hint-vault")
+    expect(hint).toHaveTextContent(/type the number/i)
+    expect(hint.textContent).not.toMatch(/go into the text/i)
+  })
+})
+
+describe("a payload missing the newest fields", () => {
+  it("renders the rows when switches and conflicts are BOTH absent", async () => {
+    const user = userEvent.setup()
+    const old = state() as Record<string, unknown>
+    delete old.conflicts
+    // ⚠️ `switches` IS ALREADY ABSENT — the fixture never carried it, and that is
+    // exactly how a pane that crashed on every real response reached a green suite.
+    expect("switches" in old).toBe(false)
+    vi.mocked(setCaptureText).mockResolvedValue(old as never)
+    openOverlay()
+
+    await type(user, "start an order for Hopkins")
+
+    await waitFor(() =>
+      expect(screen.getByTestId("capture-rows")).toBeInTheDocument(),
+    )
+  })
+})
+
 function state(over: Record<string, unknown> = {}) {
   return {
     session_id: "sess-1",
@@ -549,50 +624,79 @@ describe("the done signal and the summary", () => {
 })
 
 describe("surviving a tuck and a reload", () => {
-  it("tuck does NOT unmount the pane, so no re-read is needed", async () => {
-    // ⚠️ I ASSERTED THE WRONG MECHANISM FIRST. This test expected `readCapture` on
-    // reopen; it failed, and the reason is in `OpasHost.tsx:258-259`: "`tucked` hides
-    // without unmounting, so the session survives". Tuck is a CSS state, not a teardown
-    // — the prototype's own `.win.tucked`. So tuck-survival needs no round trip, and a
-    // test demanding one was testing an implementation I had imagined.
+  it("ESCAPE ENDS THE CAPTURE — it does not tuck an order away", async () => {
+    /**
+     * ⚠️ THIS TEST ASSERTED THE OPPOSITE UNTIL 2026-10-13, and it was right at the
+     * time: Escape tucked the pane and the order survived, because tuck is a CSS
+     * state and not a teardown. James ruled the behaviour the other way — "closing
+     * Opas should clear everything" — so the claim is inverted here rather than
+     * deleted, and the mechanism it documented (`tucked` hides without unmounting)
+     * is still what INFO panes do. Only ENTRY panes end.
+     *
+     * ⚠️ IT ASSERTS THREE THINGS BECAUSE CLOSING IS THREE THINGS: the pane is gone,
+     * the bar is empty, and the server is told. A close that dropped the pane and
+     * left the text would re-extract the old order into the next one.
+     */
     const user = userEvent.setup()
     openOverlay()
     await type(user, "start an order for Hopkins")
-    await waitFor(() => expect(startCapture).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(screen.getByTestId("capture-pane")).toBeInTheDocument())
 
     await user.keyboard("{Escape}")
     await user.click(screen.getByTestId("opas-sphere"))
 
-    await waitFor(() => expect(screen.getByTestId("capture-pane")).toBeInTheDocument())
-    expect(startCapture).toHaveBeenCalledTimes(1)
-    // The pane never unmounted, so it never re-read.
-    expect(readCapture).not.toHaveBeenCalled()
+    await waitFor(() =>
+      expect(screen.queryByTestId("capture-pane")).not.toBeInTheDocument(),
+    )
+    expect(screen.getByTestId("opas-input")).toHaveValue("")
+    // ⚠️ ABANDONED, NOT DELETED. The row stays for the office to look at later; what
+    // ends is this browser's claim on it.
+    expect(abandonCapture).toHaveBeenCalledWith("sess-1")
   })
 
-  it("stores the session id so a RELOAD can come back to it", async () => {
-    // ⚠️ RELOAD IS THE CASE THAT IS GENUINELY LOST WITHOUT HELP. Panes are React state —
-    // true of every pane kind — so a reload drops them. Reopening "the catalog" costs a
-    // keystroke; losing a half-typed ORDER loses the way back to a row that still exists.
+  it("stores NO session id — a reload must not come back to an order", async () => {
+    /**
+     * ⚠️ SUPERSEDED RULING, 2026-10-13. This test used to require the id be stored so
+     * a reload could restore the pane, and the reasoning was that losing a half-typed
+     * order loses the way back to a row that still exists. James ruled against it:
+     * "no order pane until you start an order". The row does still exist on the
+     * server, so nothing is destroyed — what is removed is the pane appearing
+     * uninvited, which is what made one of his tabs unable to start a new order at
+     * all.
+     *
+     * ⚠️ IT ASSERTS THE KEY IS ABSENT, not that restore-on-mount is gone. A build
+     * that kept writing the key would restore again the moment anyone re-added a
+     * mount effect, and this is the cheap guard against that.
+     */
     const user = userEvent.setup()
     openOverlay()
     await type(user, "start an order for Hopkins")
+    await waitFor(() => expect(screen.getByTestId("capture-pane")).toBeInTheDocument())
 
-    await waitFor(() =>
-      expect(window.sessionStorage.getItem(CAPTURE_SESSION_KEY)).toBe("sess-1"),
-    )
+    expect(window.sessionStorage.getItem(CAPTURE_SESSION_KEY)).toBeNull()
   })
 
-  it("re-creates the pane from storage on a fresh mount and RE-READS the session", async () => {
+  it("IGNORES a stored id left by an older build — no pane, no read", async () => {
+    /**
+     * ⚠️ THE STORED KEY OUTLIVES THE BUILD THAT WROTE IT. Nothing writes
+     * `CAPTURE_SESSION_KEY` any more, but a director's tab can still be carrying one
+     * from a deploy that did — James's was, for three walk rounds. So the absence of
+     * a writer is not enough; the reader has to be gone too, and that is what this
+     * asserts.
+     */
     window.sessionStorage.setItem(CAPTURE_SESSION_KEY, "sess-1")
     openOverlay()
+    const user = userEvent.setup()
+    await user.click(screen.getByTestId("opas-sphere"))
 
-    await waitFor(() => expect(readCapture).toHaveBeenCalledWith("sess-1"))
-    // ⚠️ AND IT DOES NOT START A SECOND SESSION. A restore that called `startCapture`
-    // would orphan the order it was restoring.
-    expect(startCapture).not.toHaveBeenCalled()
+    await waitFor(() => expect(screen.getByTestId("opas-input")).toBeInTheDocument())
+    expect(screen.queryByTestId("capture-pane")).not.toBeInTheDocument()
+    // ⚠️ AND IT NEVER ASKED THE SERVER. A read that happened and was then discarded
+    // would still be a tab announcing an order nobody opened.
+    expect(readCapture).not.toHaveBeenCalled()
   })
 
-  it("a stale stored id leaves NO pane at all, not an error pane", async () => {
+  it("OPENING OPAS SHOWS NO CAPTURE PANE, whatever is stored", async () => {
     /**
      * ⚠️ THIS TEST ASSERTED THE DEFECT UNTIL 2026-10-13. It read:
      *
@@ -607,22 +711,21 @@ describe("surviving a tuck and a reload", () => {
      * `sessionStorage` survives a reload and dies only with the tab, so his hard
      * refreshes never cleared it.
      *
-     * The claim the old test was protecting — a stale id does not resurrect a ghost
-     * on every reload — still holds and is asserted below. What changed is that the
-     * pane goes too, which is strictly more than clearing the id.
+     * ⚠️ IT USES A DEAD ID ON PURPOSE. Under the current ruling no stored id is read
+     * at all, so a stale one and a live one must behave identically — and asserting
+     * the stale case is the stronger of the two, because that is the state a real
+     * tab is in.
      */
     window.sessionStorage.setItem(CAPTURE_SESSION_KEY, "gone")
     vi.mocked(readCapture).mockRejectedValue(new Error("404"))
     openOverlay()
+    const user = userEvent.setup()
+    await user.click(screen.getByTestId("opas-sphere"))
 
-    await waitFor(() =>
-      expect(window.sessionStorage.getItem(CAPTURE_SESSION_KEY)).toBeNull(),
-    )
-    await waitFor(() =>
-      expect(
-        document.querySelectorAll('[data-testid^="opas-pane-opas-pane-"]'),
-      ).toHaveLength(0),
-    )
+    await waitFor(() => expect(screen.getByTestId("opas-input")).toBeInTheDocument())
+    expect(
+      document.querySelectorAll('[data-testid^="opas-pane-opas-pane-"]'),
+    ).toHaveLength(0)
     expect(screen.queryByTestId("capture-error")).not.toBeInTheDocument()
   })
 })

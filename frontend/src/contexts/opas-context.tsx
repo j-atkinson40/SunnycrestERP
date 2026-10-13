@@ -147,35 +147,67 @@ export function useOpasOptional(): OpasValue | null {
 
 let paneSeq = 0
 
-/** ⚠️ THE ONE PIECE OF OPAS STATE THAT OUTLIVES THE TAB, AND ONLY THIS ONE.
+/** Opas client state that outlives a render, and the one call that clears it.
  *
- * Panes are React state and a RELOAD loses them — true of every pane kind, not just
- * capture, and not changed here. For the catalog panes that is fine: reopening "the
- * catalog" costs a keystroke. A half-typed ORDER is different: the session is a row on
- * the server, and losing the id means losing the way back to it.
+ * ⚠️ NOTHING IS WRITTEN HERE ANY MORE, AND THAT IS THE POINT. The capture session id
+ * used to be stored so a reload could re-open the pane. Restore-on-mount is removed
+ * by ruling (2026-10-13) — opening Opas never shows an order — so the id has NO
+ * READER, and a write with no reader is dead machinery that still leaks a half-typed
+ * order's identity into a shared browser.
  *
- * ⚠️ `sessionStorage`, NOT `localStorage`. The order belongs to this tab's sitting; a
- * week-old id in localStorage would reopen a stale pane on a machine nobody expected it
- * on. sessionStorage dies with the tab, which is the right lifetime.
+ * ⚠️ THE KEYS ARE STILL CLEARED, FOR A MEASURED REASON RATHER THAN TIDINESS. A
+ * director's tab can carry a key written by an EARLIER DEPLOY — James's own tab did,
+ * for three walk rounds — so logout has to remove what a previous build left behind,
+ * not just what this one writes. That is also why `clearOpasClientState` enumerates
+ * the keys rather than trusting that none exist.
  */
 export const CAPTURE_SESSION_KEY = "opas.capture.session"
+
+/** Every Opas key, so logout can clear the set rather than a remembered subset. */
+export const OPAS_CLIENT_KEYS: readonly string[] = [CAPTURE_SESSION_KEY]
 
 export function readStoredCaptureSession(): string | null {
   try {
     return window.sessionStorage.getItem(CAPTURE_SESSION_KEY)
   } catch {
-    // ⚠️ Storage can throw (private mode, disabled). Losing the id is a degradation,
-    // not a failure — the order is still on the server.
     return null
   }
 }
 
-export function writeStoredCaptureSession(id: string | null): void {
-  try {
-    if (id === null) window.sessionStorage.removeItem(CAPTURE_SESSION_KEY)
-    else window.sessionStorage.setItem(CAPTURE_SESSION_KEY, id)
-  } catch {
-    /* see above */
+/**
+ * Clear all Opas client state. Called on logout, by ruling.
+ *
+ * ⚠️ FOR A SHARED OFFICE COMPUTER. The next person to sign in must not inherit
+ * anything about the last person's order. That is why this is on the logout path and
+ * not only on close: closing is a gesture the same person makes, signing out is a
+ * handover.
+ *
+ * ⚠️ BOTH STORAGES, because a key written by an earlier build may be in either and
+ * this function's job is to leave none behind.
+ */
+export const OPAS_KEY_PREFIX = "opas."
+
+export function clearOpasClientState(): void {
+  for (const store of [window.sessionStorage, window.localStorage]) {
+    try {
+      // ⚠️ A PREFIX SWEEP, NOT JUST THE KEYS THIS BUILD KNOWS. The named list below
+      // covers what the current code knows about — which, measured 2026-10-13, is
+      // ONE key that nothing writes any more. The keys that actually matter on
+      // logout are the ones written by builds that have since been replaced, and
+      // this build cannot name those. Anything under `opas.` is ours, so sweeping
+      // the namespace clears them without having to have predicted them.
+      //
+      // ⚠️ COLLECTED FIRST, THEN REMOVED. `removeItem` during a `key(i)` walk
+      // reindexes the store and skips entries.
+      const doomed: string[] = []
+      for (let i = 0; i < store.length; i += 1) {
+        const k = store.key(i)
+        if (k !== null && k.startsWith(OPAS_KEY_PREFIX)) doomed.push(k)
+      }
+      for (const k of [...doomed, ...OPAS_CLIENT_KEYS]) store.removeItem(k)
+    } catch {
+      /* storage can throw in private mode; a failure to clear is not fatal here */
+    }
   }
 }
 
@@ -210,10 +242,10 @@ export function OpasProvider({ children }: { children: ReactNode }) {
       next[i] = { ...next[i], captureSessionId: sessionId }
       return next
     })
-    // ⚠️ PERSISTED HERE RATHER THAN IN THE PANE, because this is the one place that knows
-    // the id is now attached to a pane. The pane could write it too, but then two things
-    // would own the same fact.
-    writeStoredCaptureSession(sessionId)
+    // ⚠️ NOT PERSISTED ANY MORE. Restore-on-mount is removed by ruling, so the id
+    // had no reader — and a half-typed order's identity sitting in a shared
+    // browser's storage with nothing reading it is pure exposure. The id lives on
+    // the pane object for as long as the pane does, which is now its whole life.
   }, [])
   const [placements, setPlacements] = useState<Record<string, PanePlacement>>({})
   const [frontPaneId, setFrontPaneId] = useState<string | null>(null)

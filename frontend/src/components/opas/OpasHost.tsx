@@ -23,10 +23,13 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import { useAuth } from "@/contexts/auth-context"
-import { readStoredCaptureSession, useOpas } from "@/contexts/opas-context"
+import { useOpas } from "@/contexts/opas-context"
+import { abandonCapture } from "@/services/opas-capture-service"
 import { CapturePane, type EntryPaneStatus } from "./CapturePane"
 import { CAPTURE_START, isCatalogRequest, routeResolution } from "./opas-routing"
 import { isEntryPane } from "./pane-mode"
+import { EXTRACT_DEBOUNCE_MS } from "./capture-sequence"
+import { consumePickDigit } from "./pick-digit"
 import { resolvePhrase } from "@/services/opas-catalog-service"
 import { ProductListPane } from "./ProductListPane"
 import { ProductPane } from "./ProductPane"
@@ -109,29 +112,25 @@ export function OpasHost() {
     })
   }, [])
 
-  /** ⚠️ RESTORE A CAPTURE SESSION AFTER A RELOAD, and ONLY a capture session.
+  /** ⚠️ THERE IS NO RESTORE-ON-MOUNT, BY RULING (2026-10-13), AND THIS COMMENT
+   *  STANDS WHERE IT WAS.
    *
-   * Panes are React state, so a reload loses every pane — true of the catalog panes too,
-   * and not changed here. Reopening "the catalog" costs a keystroke; losing the id of a
-   * half-typed ORDER loses the way back to a row that still exists on the server.
+   *  Opening Opas used to re-create a capture pane from a `sessionStorage` id. That
+   *  is removed: **opening Opas never shows an order.** The pane appears only once
+   *  the typed text is recognised as one.
    *
-   * ⚠️ IT DOES NOT OPEN THE OVERLAY. The pane is re-created tucked, so a reload does not
-   * throw an overlay in front of someone who was doing something else — it is there when
-   * they next summon Opas, which is what "comes back where you left it" means.
+   *  ⚠️ IT WAS ALSO THE DEFECT THAT COST THREE WALK ROUNDS. A restored pane raises
+   *  itself to front, which puts the bar in entry mode, which made the opening
+   *  effect return before it looked at the phrase — so a tab that had ever started
+   *  an order could never start another. The fix that shipped closed an UNUSABLE
+   *  restored pane; this ruling removes the restore itself, which is the smaller
+   *  mechanism and the one that cannot have the bug.
    *
-   * ⚠️ A STALE ID CLEARS ITSELF. `CapturePane` re-reads the session; if the server no
-   * longer has it the pane reports an error, and the id is dropped so the next reload is
-   * clean rather than carrying a ghost forever.
+   *  ⚠️ THE SERVER ROWS ARE KEPT (`abandon` marks, never deletes), so nothing is
+   *  destroyed by not reading them back. What is gone is the client's habit of
+   *  re-opening one unasked.
    */
-  const restored = useRef(false)
-  useEffect(() => {
-    if (restored.current) return
-    restored.current = true
-    const id = readStoredCaptureSession()
-    if (!id) return
-    opas.openPane({ kind: "capture", label: "Order", captureSessionId: id })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+
   const [said, setSaid] = useState<string | null>(null)
 
   // ⚠️ Escape at the document level, with the prototype's three branches. `onEscape` owns
@@ -144,6 +143,11 @@ export function OpasHost() {
       const outcome = opas.onEscape(tag)
       e.preventDefault()
       if (outcome === "refocused-input") inputRef.current?.focus()
+      // ⚠️ ONLY WHEN IT ACTUALLY TUCKED. Escape has three branches and the other two
+      // are not a close: cancelling a pending pick must not throw the order away,
+      // and re-focusing the bar is not leaving at all. Ending the capture on every
+      // Escape would make "never mind" destroy the order.
+      if (outcome === "tucked") endEntryCaptures()
     }
     document.addEventListener("keydown", onKeyDown)
     return () => document.removeEventListener("keydown", onKeyDown)
@@ -416,6 +420,75 @@ export function OpasHost() {
     return () => ro.disconnect()
   }, [opas.isOpen])
 
+  /**
+   * CLOSING OPAS ENDS THE CAPTURE — Esc, the veil, and the close button.
+   *
+   * ⚠️ RULED FOR A SHARED OFFICE COMPUTER, NOT TIDINESS. The next person at that
+   * machine must never see someone else's half-typed order, so an entry pane is
+   * CLOSED rather than tucked and its text is cleared. Info panes keep tuck: a
+   * catalog list is not somebody's private order.
+   *
+   * ⚠️ THE SERVER ROW IS MARKED ABANDONED, NEVER DELETED. James accepted the
+   * consequence — an accidental click away loses the order from the screen — on the
+   * basis that a copy survives for recovery. Deleting would make that promise false
+   * while looking identical from here.
+   *
+   * ⚠️ IT RUNS ON THE CLOSE PATHS, NOT ON UNMOUNT. An unmount effect would also fire
+   * when a Focus opens over Opas, or on a hot reload, and would abandon an order the
+   * director had not finished with.
+   */
+  const endEntryCaptures = useCallback(() => {
+    for (const pane of opas.panes) {
+      if (!isEntryPane(pane.kind)) continue
+      const sid = pane.captureSessionId
+      if (sid !== undefined) void abandonCapture(sid)
+      opas.closePane(pane.id)
+    }
+    setText("")
+  }, [opas])
+
+  /**
+   * A PLAIN NUMBER PICKS, and the number leaves the order text. Ruled 2026-10-13,
+   * superseding "typed digits go into the text".
+   *
+   * ⚠️ IT WATCHES THE TEXT RATHER THAN THE KEY, because the digit must be REMOVED.
+   * A key handler would select the option and leave the digit in the sentence, where
+   * the next extraction reads it as a size or a year. `consumePickDigit` owns the
+   * five conditions and is tested as a pure function.
+   *
+   * ⚠️ IT CANNOT LOOP. Stripping the digit leaves text that no longer ends in a bare
+   * number, so the effect re-runs once and matches nothing.
+   *
+   * ⚠️ ⌘1..9 IS UNTOUCHED and still works; this is the plain-number path beside it.
+   */
+  useEffect(() => {
+    if (entryPane === undefined || picks.length === 0) return
+    const pick = picks[0]
+    const paneId = entryPane.id
+    // ⚠️ DEBOUNCED ON THE SAME PAUSE AS EXTRACTION, AND NOT OPTIONAL. Checked on
+    // every keystroke, a number is judged on its PREFIXES: typing "34" passes
+    // through "3", and with three options showing the 3 was consumed and the 4 left
+    // behind. James's own counter-example ("34 is not consumed") failed this way in
+    // the first version — the rule was right and the timing was wrong. Waiting for
+    // the pause means the number is judged once, finished.
+    const timer = window.setTimeout(() => {
+      const hit = consumePickDigit(entryValue, pick.options.length)
+      if (hit === null) return
+      opas.setEntryText(paneId, hit.text)
+      pickNonce.current += 1
+      setPickRequest((prev) => ({
+        ...prev,
+        [paneId]: {
+          fieldId: pick.field_id,
+          index: hit.index,
+          nonce: pickNonce.current,
+        },
+      }))
+    }, EXTRACT_DEBOUNCE_MS)
+    return () => window.clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entryValue, entryPane, picks])
+
   const submit = useCallback(async () => {
     const phrase = text.trim()
     if (phrase === "" || busy) return
@@ -482,7 +555,12 @@ export function OpasHost() {
       <div
         data-testid="opas-veil"
         aria-hidden="true"
-        onPointerDown={() => opas.tuck()}
+        onPointerDown={() => {
+          // ⚠️ THE VEIL IS A CLOSE, so it ends the capture — the accidental
+          // click-away James was warned about and accepted.
+          endEntryCaptures()
+          opas.tuck()
+        }}
         style={{
           position: "fixed",
           inset: 0,
@@ -613,7 +691,24 @@ export function OpasHost() {
                 type="button"
                 aria-label="Close pane"
                 data-testid={`opas-pane-close-${pane.id}`}
-                onClick={() => opas.closePane(pane.id)}
+                onClick={() => {
+                  // ⚠️ AN ENTRY PANE'S CLOSE BUTTON ENDS THE CAPTURE; an info pane's
+                  // just closes the pane. Same control, two meanings, because one of
+                  // them is somebody's order and the other is a catalog list.
+                  // ⚠️ THE PANE CLOSES FIRST, AND THE SERVER IS TOLD AFTERWARDS.
+                  // Ordered the other way, anything that threw on the way to the
+                  // network — a missing export, an offline tab — left the pane
+                  // OPEN, and since an entry pane holds the bar in entry mode that
+                  // tab could no longer start an order. That is the shape of the
+                  // bug James walked into, and it cost a test run here to see it.
+                  opas.closePane(pane.id)
+                  if (isEntryPane(pane.kind)) {
+                    setText("")
+                    if (pane.captureSessionId !== undefined) {
+                      void abandonCapture(pane.captureSessionId)
+                    }
+                  }
+                }}
                 style={{
                   marginLeft: "auto", width: 26, height: 26, borderRadius: "50%", border: 0,
                   background: "rgba(255,255,255,.06)", color: "#9a9a9a", cursor: "pointer",
@@ -635,25 +730,10 @@ export function OpasHost() {
               ) : pane.kind === "capture" ? (
                 <CapturePane
                   openingLine={pane.openingLine}
-                  sessionId={pane.captureSessionId}
                   onSessionStarted={(id) => opas.setCaptureSession(pane.id, id)}
                   text={opas.entryText[pane.id] ?? ""}
                   onStatus={(st) => reportStatus(pane.id, st)}
-                  onRestoreText={(t) => opas.setEntryText(pane.id, t)}
                   pickRequest={pickRequest[pane.id]}
-                  onRestoreUnusable={(carryText) => {
-                    // ⚠️ THE WORDS COME WITH IT. The dead pane is closed and whatever
-                    // the director had typed into it becomes the BAR'S request text,
-                    // so the opening effect sees the phrase and opens a real order on
-                    // the next tick. Closing alone would discard what they typed and
-                    // leave them typing it twice.
-                    //
-                    // ⚠️ READ BEFORE CLOSING. `closePane` deletes that pane's
-                    // `entryText`, so the carry has to happen first — which is why the
-                    // pane passes its text rather than the host reading it after.
-                    if (carryText.trim() !== "") setText(carryText)
-                    opas.closePane(pane.id)
-                  }}
                 />
               ) : (
                 <ProductPane variantTemplateId={pane.variantTemplateId!} />

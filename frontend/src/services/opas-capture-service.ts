@@ -72,7 +72,25 @@ export interface CaptureState {
    *
    *  ⚠️ `permitted` IS WHAT MAKES THE MESSAGE ACTIONABLE. "That is not available"
    *  with no alternatives is a dead end. */
-  readonly conflicts: readonly {
+  /** ⚠️ A VALUE CHOSEN FOR THE DIRECTOR, WITH ITS ONE ALTERNATIVE — NOT A PICK.
+   *  The field is CAPTURED and the order can be completed without touching it. Ruled
+   *  2026-10-13: a vault ambiguous only by form takes the burial vault and offers the
+   *  urn vault, because a pick there asks a question the office already knows. */
+  /**
+   * ⚠️ OPTIONAL BECAUSE THE SERVER MAY NOT SEND IT, not because it is unimportant.
+   * `switches` and `conflicts` arrived in later deploys (r209 and the gated pass).
+   * A browser talking to an instance that predates them gets a response with the
+   * key ABSENT — and a component that read `.length` off it rendered a BLANK PANE,
+   * which is indistinguishable from "no pane appeared". Optional here forces every
+   * read site to default.
+   */
+  readonly switches?: readonly {
+    readonly field_id: string
+    readonly from_label: string
+    readonly to_value: string
+    readonly to_label: string
+  }[]
+  readonly conflicts?: readonly {
     readonly field_id: string
     readonly value: unknown
     readonly permitted: readonly string[]
@@ -144,6 +162,44 @@ export async function choosePick(
     index,
   })
   return r.data
+}
+
+/**
+ * Take the one alternative a switch offered.
+ *
+ * ⚠️ THE SERVER VALIDATES `to_value` AGAINST ITS OWN OFFER, so this cannot be used
+ * to set an arbitrary value — and it writes a RESOLUTION, which is what makes the
+ * click survive the next keystroke. A plain value would be erased ~350 ms later when
+ * the text is re-read and the burial vault would come back.
+ */
+export async function takeSwitch(
+  sessionId: string,
+  fieldId: string,
+  toValue: string,
+): Promise<CaptureState> {
+  const r = await apiClient.post<CaptureState>(`${BASE}/${sessionId}/switch`, {
+    field_id: fieldId,
+    to_value: toValue,
+  })
+  return r.data
+}
+
+/**
+ * Closing Opas ends the capture: the server row is MARKED abandoned, never deleted.
+ *
+ * ⚠️ FIRE-AND-FORGET BY DESIGN. It runs while the pane is being torn down, so there
+ * is nothing left to show an error to and nothing a retry could achieve. The row is
+ * a recovery path, not state the client depends on.
+ *
+ * ⚠️ RULED FOR A SHARED OFFICE COMPUTER, not tidiness: the next person at that
+ * machine must never see someone else's half-typed order.
+ */
+export async function abandonCapture(sessionId: string): Promise<void> {
+  try {
+    await apiClient.post(`${BASE}/${sessionId}/abandon`, {})
+  } catch {
+    /* see above — nothing to tell and nothing to retry */
+  }
 }
 
 /** ⚠️ THE TUCK-SURVIVAL CALL. A tucked pane is re-read from the server rather than kept

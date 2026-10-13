@@ -42,12 +42,11 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react"
 
-import { writeStoredCaptureSession } from "@/contexts/opas-context"
 import {
   choosePick,
-  readCapture,
   setCaptureText,
   startCapture,
+  takeSwitch,
   type CapturePick,
   type CaptureState,
 } from "@/services/opas-capture-service"
@@ -218,49 +217,23 @@ export function splitIntoColumns<T extends { readonly row_id: string }>(
 
 export function CapturePane({
   openingLine,
-  sessionId: existingSessionId,
   onSessionStarted,
   text = "",
   onStatus,
-  onRestoreText,
   pickRequest,
-  onRestoreUnusable,
 }: {
   /** Fed through extraction on start, per the prototype (`:568` calls `feed` at once). */
   readonly openingLine?: string
-  /** ⚠️ WHEN PRESENT THE PANE RE-READS RATHER THAN STARTING. This is how a tuck survives:
-   *  the pane is re-mounted and reconstructed from the server, not from client memory. */
-  readonly sessionId?: string
   readonly onSessionStarted?: (id: string) => void
   /** ⚠️ WHAT IS IN THE BAR. The pane does not own this and has no field of its own —
    *  the bar is the only input, by ruling. */
   readonly text?: string
   /** Reports the placeholder, the picks and the capturing flag up to the bar. */
   readonly onStatus?: (s: EntryPaneStatus) => void
-  /** ⚠️ RESTORES THE BAR AFTER A RELOAD. The server holds the full text; the bar is
-   *  empty on a fresh mount, so the pane hands it back exactly once. Without it a
-   *  reload would show every captured row above an empty bar, and the first keystroke
-   *  would re-extract from one character and un-capture the whole order. */
-  readonly onRestoreText?: (text: string) => void
   /** ⚠️ A PICK REQUESTED FROM THE BAR (⌘1..9), as a counter-stamped value so the same
    *  option chosen twice still fires. A bare `{field_id, index}` object would be
    *  compared by identity and the second identical press would be a no-op. */
   readonly pickRequest?: { readonly fieldId: string; readonly index: number; readonly nonce: number }
-  /** ⚠️ THE RESTORED SESSION CANNOT BE USED — CLOSE THIS PANE.
-   *
-   *  Called when a pane restored from `sessionStorage` either fails to read or comes
-   *  back in a status that is not an order in progress. The pane must GO, not sit
-   *  there showing an error: it is an ENTRY pane, so while it exists it is the front
-   *  pane, which puts the bar in entry mode, which means a typed opening phrase is
-   *  routed into this dead session instead of opening a new order. The tab becomes
-   *  permanently unable to start one.
-   *
-   *  ⚠️ MEASURED IN A REAL BROWSER, 2026-10-13, against a stale stored id: the pane
-   *  rendered "That order is no longer on the server", the id cleared itself, and
-   *  typing "Order for hopkins" opened nothing — for as long as the tab lived.
-   *  `sessionStorage` survives a reload and dies only with the tab, which is why
-   *  James's hard refreshes never cleared it and why a NEW TAB would have worked. */
-  readonly onRestoreUnusable?: (carryText: string) => void
 }) {
   const [state, setState] = useState<CaptureState | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -274,7 +247,6 @@ export function CapturePane({
   // accepted — the sequencer would be present, consulted, and useless, which is worse
   // than absent because it reads as handled.
   const seqRef = useRef(createSequencer())
-  const restored = useRef(false)
   /** ⚠️ IS THIS COMPONENT STILL MOUNTED — a ref with a lifetime, not a per-effect flag.
    *
    *  ⚠️ THIS REPLACES AN `alive` FLAG LOCAL TO THE START EFFECT, AND THE BUG IT CAUSED
@@ -318,70 +290,38 @@ export function CapturePane({
   // listing it, which is the point; a stale closure here would report the session id to
   // a pane id that no longer exists.
   const onSessionStartedRef = useRef(onSessionStarted)
-  const onRestoreTextRef = useRef(onRestoreText)
-  const onRestoreUnusableRef = useRef(onRestoreUnusable)
-  const textRef = useRef(text)
   onSessionStartedRef.current = onSessionStarted
-  onRestoreTextRef.current = onRestoreText
-  onRestoreUnusableRef.current = onRestoreUnusable
-  // ⚠️ THE LATEST TEXT, FOR THE CARRY-ACROSS. The start effect does not depend on
-  // `text`, so it would otherwise close over whatever was in the bar at mount —
-  // which is "" — and the director's words would be lost on recovery.
-  textRef.current = text
 
   useEffect(() => {
     if (started.current) return
     started.current = true
     const run = async () => {
       try {
-        const s = existingSessionId
-          ? await readCapture(existingSessionId)
-          : await startCapture(openingLine)
+        // ⚠️ ALWAYS A NEW SESSION. THE RESTORE BRANCH IS GONE, BY RULING
+        // (2026-10-13): opening Opas never shows an order, so no pane is ever
+        // created from a stored id and `readCapture` had no caller here.
+        //
+        // ⚠️ WHAT WENT WITH IT WAS THIS MORNING'S FIX, and that is the right
+        // outcome rather than wasted work. A restored pane raises itself to front,
+        // which puts the bar in entry mode, which made the opening effect return
+        // before it looked at the phrase — so a tab that had ever started an order
+        // could never start another. The fix closed an UNUSABLE restored pane;
+        // removing the restore removes the whole class, including the usable case
+        // that still held the bar. Smaller mechanism, no bug to have.
+        const s = await startCapture(openingLine)
         if (!mounted.current) return
-        // ⚠️ A RESTORED SESSION THAT IS NOT AN ORDER IN PROGRESS MUST NOT HOLD THE
-        // BAR. `abandoned` is finished with; keeping its pane in front would block
-        // every new order in this tab, exactly as a failed read does.
-        // `capturing` and `review` are both live things to look at and are kept.
-        if (existingSessionId && s.status === "abandoned") {
-          writeStoredCaptureSession(null)
-          onRestoreUnusableRef.current?.(textRef.current)
-          return
-        }
         setState(s)
-        if (!existingSessionId) onSessionStartedRef.current?.(s.session_id)
-        // ⚠️ ONCE, AND ONLY WHEN THERE IS A RECORD. `full_text === null` means this
-        // session has no whole-text record at all (it was captured line-by-line), and
-        // handing `""` to the bar in that case would be indistinguishable from the
-        // director having cleared it — so the check is `!== null`, not truthiness.
-        if (!restored.current && s.full_text !== null) {
-          restored.current = true
-          onRestoreTextRef.current?.(s.full_text)
-        }
+        onSessionStartedRef.current?.(s.session_id)
       } catch {
         if (!mounted.current) return
-        // ⚠️ A STALE RESTORED ID CLEARS ITSELF. If this mount was a restore and the server
-        // no longer has that session, carrying the id forward would resurrect a ghost pane
-        // on every reload. The wording distinguishes the two causes, because "could not
-        // start" on a restore would send someone looking for the wrong fault.
-        if (existingSessionId) {
-          // ⚠️ CLEAR THE ID **AND** CLOSE THE PANE. Clearing alone was the defect:
-          // the next reload was clean, but THIS tab kept a dead entry pane in front
-          // for as long as it lived, so no new order could ever open in it. The
-          // error text is no longer rendered because there is no pane to render it
-          // in — the recovery is to carry the director's words into the bar and let
-          // them open a real order, which is more use than a red line.
-          writeStoredCaptureSession(null)
-          onRestoreUnusableRef.current?.(textRef.current)
-        } else {
-          setError("Could not start the capture")
-        }
+        setError("Could not start the capture")
       }
     }
     void run()
-    // ⚠️ NO CLEANUP, AND NO CALLBACK DEPENDENCIES. Both were the bug: the cleanup
+    // ⚠️ NO CLEANUP, AND NO CALLBACK DEPENDENCIES. Both were a bug: the cleanup
     // cancelled a start that was still needed, and the callback dependency was what
     // made the cleanup run at all.
-  }, [existingSessionId, openingLine])
+  }, [openingLine])
 
   /**
    * LIVE EXTRACTION. One call per pause, the whole text, stale responses dropped.
@@ -450,6 +390,26 @@ export function CapturePane({
         setState(next)
       } catch {
         setError("That choice did not reach the server")
+      } finally {
+        setBusy(false)
+      }
+    },
+    [state],
+  )
+
+  const takeTheSwitch = useCallback(
+    async (fieldId: string, toValue: string) => {
+      if (!state) return
+      setBusy(true)
+      try {
+        const next = await takeSwitch(state.session_id, fieldId, toValue)
+        // ⚠️ THE SEQUENCE IS ADVANCED, like a pick. An extraction already in flight
+        // was issued before the click and would otherwise land on top of it and put
+        // the burial vault straight back.
+        seqRef.current.accept(seqRef.current.issue())
+        setState(next)
+      } catch {
+        setError("That change did not reach the server")
       } finally {
         setBusy(false)
       }
@@ -528,6 +488,12 @@ export function CapturePane({
   // of one fact, one of them corrected. That is why they are now computed from the
   // same expression and tested together (`capture-live.test.tsx`): a second place
   // that derives the same number is a second place to get it wrong.
+  // ⚠️ DEFAULTED, NOT ASSUMED. An instance older than r209 sends no `switches`, and
+  // reading `.length` off the missing key threw during render — which React turns
+  // into an EMPTY PANE, the exact symptom James walked into three times. Defaulting
+  // is what keeps a missing wire field from looking like a missing feature.
+  const switches = state.switches ?? []
+  const conflicts = state.conflicts ?? []
   const needed = state.missing.length
   const reviewing = state.status === "review"
 
@@ -674,15 +640,45 @@ export function CapturePane({
                   </li>
                 ))}
               </ol>
-              {/* ⚠️ THE SHORTCUT IS ADVERTISED WHERE THE NUMBERS ARE. ⌘ and not plain
-                  digits: a bare "3" is text the director may be typing — a grave
-                  depth, a vault size, a time — and stealing it would make numbers
-                  untypable while a question is open. */}
+              {/* ⚠️ THE SHORTCUT IS ADVERTISED WHERE THE NUMBERS ARE, and this copy
+                  WAS WRONG ON PRODUCTION for a round. It read "Typed digits go into
+                  the text" — the ruling of 2026-10-12, superseded on 10-13 by "a
+                  plain number picks". The behaviour changed and the sentence
+                  telling the office the opposite stayed, which is worse than no
+                  hint at all. Found by reading the pane in a real browser; no test
+                  asserted the sentence, so nothing went red.
+
+                  ⚠️ IT NO LONGER PROMISES WHAT HAPPENS TO OTHER NUMBERS. The old
+                  copy made a blanket claim about digits; the rule is narrower than
+                  a sentence this size can carry (see `pick-digit.ts`), and a
+                  half-stated rule is what just misled everybody. */}
               <div className="mt-1 text-micro text-content-subtle" data-testid={`capture-pick-hint-${p.field_id}`}>
-                Click, or ⌘ and the number. Typed digits go into the text.
+                Click, or type the number.
               </div>
             </div>
           ))}
+
+          {/* ⚠️ A SWITCH IS NOT A PICK, AND IT IS RENDERED DIFFERENTLY ON PURPOSE.
+              The field is already captured — the row above shows the value with a
+              tick — so this is a quiet one-click correction, not a question. A pick
+              is a numbered list that blocks the field; styling them alike would make
+              a settled field look unsettled. Ruled 2026-10-13. */}
+          {switches.length > 0 && (
+            <div className="flex flex-col gap-1" data-testid="capture-switches">
+              {switches.map((sw) => (
+                <button
+                  key={`${sw.field_id}-${sw.to_value}`}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void takeTheSwitch(sw.field_id, sw.to_value)}
+                  data-testid={`capture-switch-${sw.field_id}`}
+                  className="self-start rounded-base border border-border-subtle px-2 py-0.5 text-micro text-content-muted hover:bg-surface-sunken focus-ring-accent"
+                >
+                  {sw.to_label}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* ⚠️ A CONFLICT IS NOT "NOT UNDERSTOOD", AND IT GETS ITS OWN BLOCK ABOVE
               THAT ONE. The extractor read both phrases correctly; the combination is
@@ -694,7 +690,7 @@ export function CapturePane({
               ⚠️ IT NAMES WHAT IS AVAILABLE. "Not available on this vault" with no
               alternatives is a dead end; the permitted list is what turns the
               message into a next step. */}
-          {state.conflicts.length > 0 && (
+          {conflicts.length > 0 && (
             <div
               className="rounded-base border border-[rgba(224,168,74,0.55)] bg-[rgba(224,168,74,0.08)] p-2"
               data-testid="capture-conflicts"
@@ -703,7 +699,7 @@ export function CapturePane({
                 Not available on this vault
               </div>
               <ul className="mt-1 flex flex-col gap-1">
-                {state.conflicts.map((c) => (
+                {conflicts.map((c) => (
                   <li
                     key={c.field_id}
                     className="text-body-sm text-content-base"

@@ -2793,3 +2793,57 @@ directors to be unable to finish orders they can finish today.
 approval, or at the point the vault goes to production. Prompted-never-required is the
 answer for the capture stage, which is the only stage that exists. The summary and approve
 step is unbuilt, and it is the natural place to ask the question again.
+
+---
+
+## 2026-10-13 — An ambiguous vault that differs ONLY by form takes the burial vault
+
+**Decided by James.** When a typed vault phrase matches more than one catalog record and
+the *only* thing separating those records is FORM — a burial vault and an urn vault of the
+same name — the capture resolves to the **burial vault**, captures it, and shows a
+one-click control to switch to the urn vault. The word **"urn" anywhere in the vault
+phrase** selects the urn vault instead. Any other discriminator still raises a pick.
+
+**Why.** The office means a burial vault nine times in ten, and the question costs more
+than the occasional correction does — provided the correction is visible and takes one
+click. James's words: default to the burial vault, and put a "switch to urn vault" next
+to it.
+
+**The mechanism, so the decision is checkable against the code.**
+`typed_extraction.py` computes `discs = tuple(d.value for d in vr.discriminators)` and the
+default fires on `discs == ("form",)` **exactly**. The offer is a `Switch` record
+(`field_id`, `from_label`, `to_value`, `to_label`) carried on `LineExtraction` and
+`TextExtraction`, persisted in `capture_sessions.switches` (migration
+`r209_capture_session_switches`), taken through `POST /api/v1/capture/sessions/{id}/switch`
+→ `session_service.take_switch()`, which writes a durable resolution and re-extracts.
+A switch is retired once a resolution settles the field, and is only shown while the
+captured value still equals the `from_label` it was offered against.
+
+⚠️ **THE EXACT-TUPLE TEST IS LOAD-BEARING, AND THE PHRASE THAT PROVES IT IS NOT THE
+OBVIOUS ONE.** `"form" in discs` would silently resolve `triune` and `venetian` (form AND
+option) and `oversize` (form, line AND size) — each has a `burial_vault` candidate for a
+loose check to seize on, so the office would get an option or a size chosen for it. It
+would *not* mis-resolve `graveliner`, whose forms are `grave_liner` and `urn_vault` with
+no `burial_vault` among them; graveliner asks either way. The first test written for this
+used graveliner, and a break test with the loose condition left the whole suite green.
+Measured over all 207 indexed phrases; pinned in
+`backend/tests/test_the_form_default_picks_burial.py`.
+
+⚠️ **AND THE LIVE BUG THIS REPLACES.** Before the default, typing "Veteran urn vault"
+resolved to the Veteran *burial* vault, because the stripped reading "Veteran" reached two
+candidates and the raw reading was consulted only on a total miss. The default makes that
+failure mode worse if the form word is read from the wrong string: a first implementation
+took "urn" from the n-gram that matched the catalog record rather than from the words the
+director typed, so `monticello urn` matched the record `monticello` — which contains no
+"urn" — and took the burial vault. The word is read from the **unclaimed slice**, which is
+already delimited by every other pass's claims.
+
+**What reversing it would take.** Delete the `discs == ("form",)` branch; form-only
+ambiguity returns to raising a pick with two options. Nothing else depends on it — the
+`Switch` machinery would become unreachable rather than broken, and the stored
+`switches` column would simply stay empty. Anyone making that change should expect the
+office to be asked "burial or urn?" on every bare product name.
+
+⚠️ **NOT DECIDED HERE:** whether the burial-vault default should also apply at the
+*approval* stage, or whether an order completed on the default should be flagged for a
+second look. The ruling covers capture, which is the only stage that exists.

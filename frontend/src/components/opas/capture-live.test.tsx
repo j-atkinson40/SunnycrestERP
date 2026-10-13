@@ -45,6 +45,12 @@ vi.mock("@/services/opas-capture-service", () => ({
   choosePick: vi.fn(),
   readCapture: vi.fn(),
   setCaptureText: vi.fn(),
+  // ⚠️ A DOUBLE THAT OMITS WHAT THE COMPONENT IMPORTS FAILS AT CALL TIME, NOT IMPORT
+  // TIME. Omitting `abandonCapture` here did not fail loudly — it made the close
+  // button's handler throw mid-click, so the pane stayed open and the next order
+  // could not start. Exactly the production symptom, found only by running this.
+  takeSwitch: vi.fn(),
+  abandonCapture: vi.fn(),
 }))
 vi.mock("@/services/opas-catalog-service", () => ({
   resolvePhrase: vi.fn(async () => ({ candidates: [], discriminators: [] })),
@@ -574,19 +580,57 @@ describe("⌘1..9 settles a pick", () => {
     expect(choosePick).not.toHaveBeenCalled()
   })
 
-  it("A TYPED DIGIT GOES INTO THE TEXT, even while a pick is open", async () => {
-    // ⚠️ THE OTHER HALF OF THE RULING, AND THE REASON ⌘ IS REQUIRED. A bare "3" is
-    // text the director may be typing — a grave depth, a vault size, a time — so
-    // stealing it would make numbers untypable for as long as a question is open.
+  it("A PLAIN NUMBER PICKS, and the number LEAVES the text", async () => {
+    /**
+     * ⚠️ THIS TEST ASSERTED THE OPPOSITE UNTIL 2026-10-13, and quoted the ruling it
+     * was built on: "a bare 3 is text the director may be typing — a grave depth, a
+     * vault size, a time — so stealing it would make numbers untypable for as long
+     * as a question is open." James superseded that: pressing 1 to choose from a
+     * numbered list is what a person expects. The old reasoning was not wrong, which
+     * is why the replacement is NARROW — the five conditions live in
+     * `pick-digit.ts` and are tested exhaustively in `pick-digit.test.ts`. The two
+     * tests below this one are the cases that reasoning was protecting, and they
+     * still pass.
+     *
+     * ⚠️ IT ASSERTS THE NUMBER IS GONE FROM THE BAR, not just that the pick fired.
+     * A version that selected the option and left the digit in place would send
+     * "monticello 1" to the next extraction, where the 1 reads as a size.
+     */
     vi.mocked(startCapture).mockResolvedValue(state({ pending_picks: [PICK] }) as never)
     const bar = await openOrder()
 
-    await user.type(bar, "depth 3")
+    await user.type(bar, "monticello 1")
     await settle()
 
-    expect(bar).toHaveValue("depth 3")
+    expect(choosePick).toHaveBeenCalledWith("sess-1", PICK.field_id, 1)
+    expect(bar).toHaveValue("monticello")
+  })
+
+  it("A NUMBER THAT IS NOT AN OPTION STAYS IN THE TEXT", async () => {
+    // ⚠️ THE CASE THE OLD RULING EXISTED TO PROTECT. A 2-option pick is showing and
+    // the director types a vault size; it must survive untouched.
+    vi.mocked(startCapture).mockResolvedValue(state({ pending_picks: [PICK] }) as never)
+    const bar = await openOrder()
+
+    await user.type(bar, "depth 34")
+    await settle()
+
     expect(choosePick).not.toHaveBeenCalled()
-    expect(setCaptureText).toHaveBeenCalledWith("sess-1", "depth 3", expect.any(Number))
+    expect(bar).toHaveValue("depth 34")
+    expect(setCaptureText).toHaveBeenCalledWith("sess-1", "depth 34", expect.any(Number))
+  })
+
+  it("A NUMBER AFTER A PLACE WORD STAYS IN THE TEXT", async () => {
+    // ⚠️ "lot 2" IS A GRAVE LOCATION, and 2 is in range for this pick. Range alone
+    // would have eaten it; the preceding word is what saves it.
+    vi.mocked(startCapture).mockResolvedValue(state({ pending_picks: [PICK] }) as never)
+    const bar = await openOrder()
+
+    await user.type(bar, "lot 2")
+    await settle()
+
+    expect(choosePick).not.toHaveBeenCalled()
+    expect(bar).toHaveValue("lot 2")
   })
 
   it("a CLICK settles the same pick — both routes, per the ruling", async () => {
@@ -913,161 +957,83 @@ describe("an entry pane grows from the bar", () => {
   })
 })
 
-describe("a stale or closed stored session never blocks a new order", () => {
+describe("opening Opas never shows a capture pane", () => {
   /**
-   * ⚠️ THE PRODUCTION-ONLY FAILURE, 2026-10-13. James typed "order for hopkins" in
-   * the SAME TAB he had walked the day before and no pane opened — on a commit where
-   * dev and a real-browser harness both passed.
+   * ⚠️ THIS BLOCK REPLACES SIX TESTS OF RESTORE-ON-MOUNT, which James removed on
+   * 2026-10-13 ("no order pane until you start an order"). They were not wrong
+   * tests — they were careful tests of machinery that is now deleted, and they
+   * documented the production-only failure that led here: James typed "order for
+   * hopkins" in the SAME TAB he had walked the day before, and nothing opened,
+   * because a stored session id restored a capture pane on mount, an entry pane
+   * holds the bar in entry mode, and the opening effect returns before it looks at
+   * the phrase. `sessionStorage` dies with the tab and not with a hard refresh, so
+   * his refreshes never cleared it.
    *
-   * `sessionStorage` carries `opas.capture.session` from an earlier order. It
-   * survives a reload and dies only with the tab, which is why his hard refreshes
-   * never cleared it and why a NEW TAB would have worked. On mount the host restores
-   * a capture pane for that id; `openPane` RAISES it, so `entryMode` is true before
-   * any keystroke — and the opening effect's guard is `if (entryMode) return`. The
-   * typed phrase went into the restored pane instead of opening an order, and when
-   * that pane's session was gone it sat there showing "That order is no longer on
-   * the server" forever. The tab could never start an order again.
-   *
-   * ⚠️ WHY NEITHER DEV NOR THE HARNESS CAUGHT IT. Both start from a clean slate —
-   * the harness launches Chrome with a FRESH `--user-data-dir` every run, so
-   * `sessionStorage` is always empty. The failure needs state a real person
-   * accumulates across days. Same blind-spot shape as "every test pressed Enter":
-   * the suite only ever exercised the easy starting condition.
-   *
-   * ⚠️ PRODUCTION CONFIRMED IT: exactly ONE `capture_sessions` row has ever existed
-   * (created 2026-10-12 12:44:15, status `capturing`), ZERO rows were created in his
-   * 07:15–07:25 ET window, and ZERO rows were created OR UPDATED that day — so no
-   * POST completed and the restored session was never written to either.
+   * ⚠️ WHAT IS KEPT IS THE CLAIM, NOT THE MECHANISM. The old tests asserted that a
+   * stale or abandoned session did not block a new order. That claim is now true by
+   * construction — nothing is restored — and these tests pin the construction,
+   * including for a tab still carrying a key an older build wrote.
    */
-  const STORED = "a-session-from-yesterday"
-
-  async function tabWithAStoredSession(phrase: string) {
-    window.sessionStorage.setItem(CAPTURE_SESSION_KEY, STORED)
+  it("opens no pane on mount with NOTHING stored", async () => {
     render(
       <OpasProvider>
         <OpasHost />
       </OpasProvider>,
     )
     await user.click(screen.getByTestId("opas-sphere"))
-    await user.type(screen.getByTestId("opas-input"), phrase)
-  }
+    await waitFor(() => expect(screen.getByTestId("opas-input")).toBeInTheDocument())
 
-  it("a STALE stored session does not stop a new order opening", async () => {
-    // the restore 404s, as a session from a previous day does
-    vi.mocked(readCapture).mockRejectedValue(new Error("404"))
-    vi.mocked(startCapture).mockResolvedValue(state() as never)
-
-    await tabWithAStoredSession("order for hopkins")
-
-    await waitFor(() => expect(startCapture).toHaveBeenCalled())
-    await waitFor(() =>
-      expect(screen.getByTestId("capture-rows")).toBeInTheDocument(),
-    )
-    // ⚠️ AND THE DEAD PANE IS GONE, not merely outnumbered. One pane, and it is the
-    // new order — a lingering error pane would still hold the bar.
-    expect(panes()).toHaveLength(1)
-    expect(screen.queryByTestId("capture-error")).not.toBeInTheDocument()
+    expect(panes()).toHaveLength(0)
+    expect(readCapture).not.toHaveBeenCalled()
   })
 
-  it("CARRIES THE TYPED WORDS when the restore fails AFTER they are typed", async () => {
-    /**
-     * ⚠️ THE REJECTION IS HELD UNTIL THE WHOLE PHRASE IS TYPED, AND THAT TIMING IS
-     * THE ENTIRE TEST. My first version rejected immediately, so the dead pane closed
-     * after a character or two and the REMAINING keystrokes refilled the bar on their
-     * own — a break test removing the carry produced no red at all. The test was
-     * passing because of the typing, not because of the fix.
-     *
-     * The case that needs the carry is the slow one, which is the real one: the
-     * restore request is in flight while the director types, so every character goes
-     * into the doomed pane's text, and the failure lands only after they stop. Without
-     * the carry the bar is empty at that moment and their words are gone.
-     */
-    let rejectRestore: (e: Error) => void = () => {}
-    vi.mocked(readCapture).mockImplementation(
-      () => new Promise((_res, rej) => { rejectRestore = rej }) as never,
-    )
-    vi.mocked(startCapture).mockResolvedValue(state() as never)
-
-    await tabWithAStoredSession("order for hopkins")
-    // still in flight: the pane is alive, so every character went into IT
-    expect(startCapture).not.toHaveBeenCalled()
-    expect(screen.getByTestId("opas-input")).toHaveValue("order for hopkins")
-
-    rejectRestore(new Error("404"))
-
-    await waitFor(() => expect(startCapture).toHaveBeenCalled())
-    await waitFor(() =>
-      expect(screen.getByTestId("capture-rows")).toBeInTheDocument(),
-    )
-    // ⚠️ THE WORDS SURVIVED THE PANE THEY WERE TYPED INTO.
-    await waitFor(() =>
-      expect(screen.getByTestId("opas-input")).toHaveValue("order for hopkins"),
-    )
-    await settle()
-    expect(setCaptureText).toHaveBeenCalledWith(
-      "sess-1", "order for hopkins", expect.any(Number),
-    )
-  })
-
-  it("an ABANDONED stored session does not stop a new order either", async () => {
-    // ⚠️ A SESSION THAT READS FINE BUT IS FINISHED WITH. The read succeeds, so the
-    // error path never runs — and an abandoned order holding the bar is the same
-    // defect by a different route.
-    vi.mocked(readCapture).mockResolvedValue(state({ status: "abandoned" }) as never)
-    vi.mocked(startCapture).mockResolvedValue(state() as never)
-
-    await tabWithAStoredSession("order for hopkins")
-
-    await waitFor(() => expect(startCapture).toHaveBeenCalled())
-    await waitFor(() =>
-      expect(screen.getByTestId("capture-rows")).toBeInTheDocument(),
-    )
-    expect(panes()).toHaveLength(1)
-  })
-
-  it("clears the stored id so the next reload is clean", async () => {
-    vi.mocked(readCapture).mockRejectedValue(new Error("404"))
-    vi.mocked(startCapture).mockResolvedValue(state() as never)
-
-    await tabWithAStoredSession("order for hopkins")
-    await waitFor(() => expect(startCapture).toHaveBeenCalled())
-
-    // ⚠️ THE NEW session's id replaces it — not the stale one, and not nothing.
-    expect(window.sessionStorage.getItem(CAPTURE_SESSION_KEY)).toBe("sess-1")
-  })
-
-  it("a VALID capturing stored session IS still restored — tuck survival intact", async () => {
-    // ⚠️ THE POSITIVE CONTROL, AND IT IS THE ONE THAT MATTERS MOST. A fix that closed
-    // every restored pane would make this test pass by destroying the feature the
-    // storage exists for: a half-typed order surviving a reload. The restored pane
-    // must stay, and no new session may be started.
-    vi.mocked(readCapture).mockResolvedValue(
-      state({ status: "capturing", full_text: "tent only" }) as never,
-    )
-
-    window.sessionStorage.setItem(CAPTURE_SESSION_KEY, STORED)
+  it("opens no pane on mount with a LIVE session id stored by an older build", async () => {
+    // ⚠️ A LIVE ID, NOT A DEAD ONE. A build that only skipped restore when the read
+    // FAILED would pass a stale-id test and still resurrect this one.
+    window.sessionStorage.setItem(CAPTURE_SESSION_KEY, "sess-1")
+    vi.mocked(readCapture).mockResolvedValue(state() as never)
     render(
       <OpasProvider>
         <OpasHost />
       </OpasProvider>,
     )
     await user.click(screen.getByTestId("opas-sphere"))
+    await waitFor(() => expect(screen.getByTestId("opas-input")).toBeInTheDocument())
 
-    await waitFor(() =>
-      expect(screen.getByTestId("capture-rows")).toBeInTheDocument(),
+    expect(panes()).toHaveLength(0)
+    expect(readCapture).not.toHaveBeenCalled()
+  })
+
+  it("AND A NEW ORDER STILL OPENS in that tab — the claim the old tests protected", async () => {
+    // ⚠️ THE POSITIVE CONTROL, AND THE WHOLE POINT. A build that opened no pane ever
+    // would satisfy both tests above. This is the one that says the feature works in
+    // the exact tab state that broke on production.
+    window.sessionStorage.setItem(CAPTURE_SESSION_KEY, "sess-1")
+    render(
+      <OpasProvider>
+        <OpasHost />
+      </OpasProvider>,
     )
-    expect(readCapture).toHaveBeenCalledWith(STORED)
-    expect(startCapture).not.toHaveBeenCalled()
-    await waitFor(() =>
-      expect(screen.getByTestId("opas-input")).toHaveValue("tent only"),
-    )
+    await user.click(screen.getByTestId("opas-sphere"))
+    await user.type(screen.getByTestId("opas-input"), "order for hopkins")
+
+    await waitFor(() => expect(panes()).toHaveLength(1))
   })
 })
 
-describe("a reload restores the bar", () => {
-  it("puts the server's full text back into the bar", async () => {
-    // ⚠️ WITHOUT THIS, A RELOAD SHOWS EVERY CAPTURED ROW ABOVE AN EMPTY BAR, and the
-    // first keystroke re-extracts from one character — un-capturing the whole order.
+
+describe("a reload restores NOTHING", () => {
+  /**
+   * ⚠️ THIS BLOCK ASSERTED THE REVERSE UNTIL 2026-10-13 — three tests of putting the
+   * server's text back into the bar on reload. James removed the feature ("no order
+   * pane until you start an order"), so the tests go with it, but the hazard the
+   * first of them documented is worth keeping written down: a pane restored WITHOUT
+   * its text shows every captured row above an empty bar, and the next keystroke
+   * re-extracts from one character, un-capturing the whole order. Restore was only
+   * ever safe if the text came back with it. Not restoring at all removes the pairing
+   * problem instead of solving it, and the server row is untouched either way.
+   */
+  it("leaves the bar EMPTY and opens no pane, however much text the session has", async () => {
     window.sessionStorage.setItem(CAPTURE_SESSION_KEY, "sess-1")
     vi.mocked(readCapture).mockResolvedValue(
       state({ full_text: "tent only, nameplate only" }) as never,
@@ -1078,52 +1044,17 @@ describe("a reload restores the bar", () => {
       </OpasProvider>,
     )
     await user.click(screen.getByTestId("opas-sphere"))
-
-    await waitFor(() =>
-      expect(screen.getByTestId("opas-input")).toHaveValue("tent only, nameplate only"),
-    )
-  })
-
-  it("does NOT re-send the restored text as a fresh edit", async () => {
-    // ⚠️ THE SERVER ALREADY HAS THIS TEXT. Re-sending it is a wasted round trip on
-    // every reload, and it would also issue a sequence number for a reading nobody
-    // asked for.
-    window.sessionStorage.setItem(CAPTURE_SESSION_KEY, "sess-1")
-    vi.mocked(readCapture).mockResolvedValue(
-      state({ full_text: "tent only" }) as never,
-    )
-    render(
-      <OpasProvider>
-        <OpasHost />
-      </OpasProvider>,
-    )
-    await user.click(screen.getByTestId("opas-sphere"))
-    await waitFor(() => expect(screen.getByTestId("opas-input")).toHaveValue("tent only"))
-
+    await waitFor(() => expect(screen.getByTestId("opas-input")).toBeInTheDocument())
     await settle()
 
+    expect(screen.getByTestId("opas-input")).toHaveValue("")
+    expect(panes()).toHaveLength(0)
+    // ⚠️ AND NO WRITE WENT OUT. A restore that re-sent the text it had just read
+    // would issue a sequence number for a reading nobody asked for; a build that
+    // restored and then cleared would do worse — it would blank the order's text on
+    // the server. Neither can happen if nothing is read.
+    expect(readCapture).not.toHaveBeenCalled()
     expect(setCaptureText).not.toHaveBeenCalled()
   })
-
-  it("leaves the bar EMPTY when the session has no whole-text record", async () => {
-    // ⚠️ `full_text: null` IS NOT `""`. A line-captured session has no text to
-    // restore, and handing the bar an empty string is correct — but it must come
-    // from there being no record, not from a `|| ""` that would also fire on a
-    // cleared bar.
-    window.sessionStorage.setItem(CAPTURE_SESSION_KEY, "sess-1")
-    vi.mocked(readCapture).mockResolvedValue(
-      state({ full_text: null, typed_lines: ["tent only"] }) as never,
-    )
-    render(
-      <OpasProvider>
-        <OpasHost />
-      </OpasProvider>,
-    )
-    await user.click(screen.getByTestId("opas-sphere"))
-    await waitFor(() => expect(screen.getByTestId("capture-rows")).toBeInTheDocument())
-
-    expect(screen.getByTestId("opas-input")).toHaveValue("")
-    // the lines are still shown — they are all there is for that session
-    expect(screen.getByTestId("capture-lines")).toHaveTextContent("tent only")
-  })
 })
+

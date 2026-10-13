@@ -68,6 +68,8 @@ def db():
     # most, and the one whose absence from an auth list would be least visible.
     ("put", "/api/v1/capture/sessions/anything/text"),
     ("post", "/api/v1/capture/sessions/anything/choose"),
+    ("post", "/api/v1/capture/sessions/anything/switch"),
+    ("post", "/api/v1/capture/sessions/anything/abandon"),
     ("get", "/api/v1/capture/sessions/anything"),
 ])
 def test_every_endpoint_refuses_a_junk_token_at_TOKEN_DECODE(client, method, path):
@@ -83,7 +85,8 @@ def test_every_endpoint_refuses_a_junk_token_at_TOKEN_DECODE(client, method, pat
     else:
         r = getattr(client, method)(
             path,
-            json={"line": "x", "text": "x", "field_id": "vault", "index": 1},
+            json={"line": "x", "text": "x", "field_id": "vault", "index": 1,
+                  "to_value": "x"},
             headers=headers,
         )
     assert r.status_code == 401, (

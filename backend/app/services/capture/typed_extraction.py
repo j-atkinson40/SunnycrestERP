@@ -82,10 +82,36 @@ class LineExtraction:
     picks: tuple[Pick, ...] = ()
     #: ⚠️ TEXT THE EXTRACTOR COULD NOT PLACE. Shown to the director, never dropped.
     unrecognized: tuple[str, ...] = ()
+    #: Values chosen on the director's behalf, each with its one alternative.
+    switches: tuple[Switch, ...] = ()
 
     @property
     def understood_nothing(self) -> bool:
         return not self.values and not self.picks
+
+
+@dataclass(frozen=True)
+class Switch:
+    """A value we CHOSE for the director, with the one alternative, one click away.
+
+    ⚠️ THIS IS NOT A PICK AND THE DIFFERENCE IS THE WHOLE POINT. A pick means "I do
+    not know which you meant" and blocks the field. A switch means "I took the
+    common one; here is the other" — the field is CAPTURED and the order can be
+    completed without touching it. Ruled 2026-10-13: a vault ambiguous ONLY by form
+    resolves to the burial vault and offers the urn vault as a switch, because the
+    burial vault is what an office means nine times in ten and a pick there is a
+    question with a known answer.
+
+    ⚠️ `to_value` IS WHAT GETS STORED, and it is validated against this offer by the
+    endpoint — so the one-click control cannot be used to set an arbitrary value.
+    """
+
+    field_id: str
+    #: What we chose, for the pane to show as the current reading.
+    from_label: str
+    #: The alternative: stored value and the label on the control.
+    to_value: str
+    to_label: str
 
 
 class LineExtractor(Protocol):
@@ -447,6 +473,7 @@ class DeterministicExtractor:
         spans: list[tuple[int, int]] = []
         values: dict[str, object] = {}
         picks: list[Pick] = []
+        switches: list[Switch] = []
         low = line.casefold()
 
         restated: list[str] = []
@@ -1025,6 +1052,73 @@ class DeterministicExtractor:
                                 hit = True
                             break
                         if len(vr.candidates) > 1:
+                            # ⚠️ AMBIGUOUS ONLY BY FORM -> TAKE THE BURIAL VAULT,
+                            # BY RULING (2026-10-13). "Monticello" matches a burial
+                            # vault and an urn vault and nothing else distinguishes
+                            # them, so a pick there asks a question whose answer the
+                            # office already knows nine times in ten. The urn vault
+                            # is offered as a one-click SWITCH instead, so the
+                            # order is complete and still correctable.
+                            #
+                            # ⚠️ THE TEST IS `discriminators == ("form",)` EXACTLY,
+                            # measured rather than inferred: "Continental" is
+                            # ambiguous by SIZE (both burial vaults) and must still
+                            # ask. A check for "form is among the discriminators"
+                            # silently resolves "triune" and "venetian" (form AND
+                            # option) and "oversize" (form, line AND size) — each
+                            # has a burial_vault candidate for the loose check to
+                            # seize on, so it would pick an option or a size on the
+                            # office's behalf.
+                            #
+                            # ⚠️ "GRAVELINER" IS NOT THE CASE THAT PROTECTS THIS,
+                            # though I claimed it here first. Its forms are
+                            # grave_liner and urn_vault with no burial_vault among
+                            # them, so it falls through on `mine is None` and asks
+                            # either way. A break test with the loose check left the
+                            # whole suite green until the three phrases above
+                            # replaced it.
+                            discs = tuple(d.value for d in vr.discriminators)
+                            if discs == ("form",):
+                                # ⚠️ "urn" ANYWHERE IN THE VAULT PHRASE WINS, by
+                                # ruling — and the phrase is the UNCLAIMED SLICE,
+                                # not the matched n-gram.
+                                #
+                                # I bounded this to `chosen` first, reasoning that
+                                # "urn" in another clause is not a statement about
+                                # this vault. Measured: that broke the ruling
+                                # outright. "monticello urn" resolves its 2-word
+                                # n-gram to nothing and falls back to the 1-word
+                                # "monticello", so `chosen` never contains "urn" and
+                                # BOTH "monticello urn" and "urn monticello" took the
+                                # burial vault.
+                                #
+                                # The slice is the right bound: it is already
+                                # delimited by every other pass's claims, so the
+                                # funeral home, the cemetery and the equipment are
+                                # not in it. What remains is the words the director
+                                # typed about the product.
+                                want = (
+                                    "urn_vault"
+                                    if "urn" in frag.casefold()
+                                    else "burial_vault"
+                                )
+                                mine = next(
+                                    (c for c in vr.candidates if c.form == want), None
+                                )
+                                other = next(
+                                    (c for c in vr.candidates if c.form != want), None
+                                )
+                                if mine is not None and _claim(spans, A, B):
+                                    values["vault"] = mine.display_name
+                                    if other is not None:
+                                        switches.append(Switch(
+                                            field_id="vault",
+                                            from_label=mine.display_name,
+                                            to_value=other.display_name,
+                                            to_label=f"Switch to {other.display_name}",
+                                        ))
+                                    hit = True
+                                    break
                             if _claim(spans, A, B):
                                 picks.append(Pick(
                                     "vault", chosen,
@@ -1154,6 +1248,7 @@ class DeterministicExtractor:
             values=values,
             picks=tuple(picks),
             unrecognized=_leftovers(line, spans) + tuple(restated),
+            switches=tuple(switches),
         )
 
 
@@ -1448,6 +1543,9 @@ class TextExtraction:
     values: dict[str, object]
     picks: tuple[Pick, ...] = ()
     unrecognized: tuple[str, ...] = ()
+    #: ⚠️ KEYED BY FIELD AND LAST-WINS LIKE EVERYTHING ELSE. A later segment naming
+    #: the same vault replaces the earlier switch rather than offering two.
+    switches: tuple[Switch, ...] = ()
     policy: MentionPolicy = MentionPolicy.LAST_WINS
 
 
@@ -1489,6 +1587,8 @@ def extract_text(
     assert isinstance(text, str), type(text)
     last: dict[str, tuple[str, object]] = {}
     unrecognized: list[str] = []
+    #: field_id -> the switch most recently offered for it. Last-wins, like values.
+    switch_by_field: dict[str, Switch] = {}
 
     segs = segments(text)
 
@@ -1499,6 +1599,8 @@ def extract_text(
             last[field_id] = ("value", value)
         for pick in ex.picks:
             last[pick.field_id] = ("pick", pick)
+        for sw in ex.switches:
+            switch_by_field[sw.field_id] = sw
 
     # ── pass 2: the same segments, re-read with what pass 1 learned as GATING ──
     #
@@ -1542,6 +1644,9 @@ def extract_text(
         for pick in ex.picks:
             if pick.field_id not in decided:
                 last[pick.field_id] = ("pick", pick)
+        for sw in ex.switches:
+            if sw.field_id not in decided:
+                switch_by_field[sw.field_id] = sw
         unrecognized.extend(ex.unrecognized)
 
     values: dict[str, object] = {}
@@ -1555,12 +1660,30 @@ def extract_text(
     for field_id, value in (resolutions or {}).items():
         values[field_id] = value
         picks = [p for p in picks if p.field_id != field_id]
+        # ⚠️ THE DIRECTOR HAS DECIDED, SO THERE IS NOTHING LEFT TO OFFER. A switch
+        # surviving its own resolution would invite them to undo the click they just
+        # made, and — because resolutions outrank extraction — the offer would come
+        # back on every keystroke.
+        switch_by_field.pop(field_id, None)
 
+    # ⚠️ A SWITCH IS DROPPED THE MOMENT ITS FIELD STOPS BEING A SWITCH. If a later
+    # segment resolves the vault outright, or a resolution settles it, the offer is
+    # no longer true — and an offer to "switch to the urn vault" on a field the
+    # director has since pinned would be the response contradicting itself again.
+    # ⚠️ THE VALUE MUST STILL BE THE ONE THE SWITCH WAS OFFERED AGAINST, not merely
+    # present. A later segment naming a different vault replaces the value and leaves
+    # a stale offer pointing at the wrong counterpart; comparing the label catches
+    # that where an `in values` check cannot.
+    switches = tuple(
+        sw for sw in switch_by_field.values()
+        if values.get(sw.field_id) == sw.from_label
+    )
     return TextExtraction(
         text=text,
         values=values,
         picks=tuple(picks),
         unrecognized=tuple(unrecognized),
+        switches=switches,
         policy=MentionPolicy.LAST_WINS,
     )
 

@@ -10,6 +10,7 @@ import {
 import { authService } from "@/services/auth-service";
 import type { RegisterRequest, User } from "@/types/auth";
 import type { Company } from "@/types/company";
+import { clearOpasClientState } from "@/contexts/opas-context";
 
 interface AuthContextType {
   user: User | null;
@@ -178,6 +179,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
+    // ⚠️ OPAS CLIENT STATE GOES TOO, BY RULING (2026-10-13), AND NOT FOR TIDINESS.
+    // On a shared office computer the next person to sign in must never inherit
+    // anything about the last person's half-typed order. Logout is the handover;
+    // closing Opas is the same person changing their mind, and both clear, but this
+    // is the one that crosses between people.
+    //
+    // ⚠️ IT CLEARS KEYS THIS BUILD NO LONGER WRITES. Restore-on-mount is removed, so
+    // nothing stores a capture session id any more — but a director's browser can be
+    // carrying one from an EARLIER DEPLOY, and James's own tab did for three walk
+    // rounds. Clearing only what the current build writes would leave exactly those
+    // behind.
+    clearOpasClientState();
     setUser(null);
     setCompany(null);
   }, [user?.track, user?.username]);

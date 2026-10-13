@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from app.models.capture_session import (
+    STATUS_ABANDONED,
     STATUS_CAPTURING,
     STATUS_REVIEW,
     CaptureSession,
@@ -177,6 +178,11 @@ def set_text(
     row.values = dict(ex.values)
     row.unrecognized = list(ex.unrecognized)
     row.pending_picks = [asdict(pk) for pk in ex.picks]
+    # ⚠️ STORED ON THE ROW RATHER THAN RE-DERIVED AT READ TIME, for the same reason
+    # `pending_picks` is: `read_state` must not run extraction. It evaluates, which
+    # needs only `values` — re-extracting there would double the cost of every read
+    # and give two places that decide what the text means.
+    row.switches = [asdict(sw) for sw in ex.switches]
     db.flush()
 
     # ⚠️ ABANDONED IS NOT RE-DERIVED. It is not a statement about the text.
@@ -185,6 +191,79 @@ def set_text(
             return _signal_done(db, row)
         row.status = STATUS_CAPTURING
         db.flush()
+    return row
+
+
+def abandon(
+    db: Session, session_id: str, *, company_id: str, user_id: str
+) -> CaptureSession:
+    """Closing Opas ends the capture. The row is MARKED, never deleted.
+
+    ⚠️ RULED 2026-10-13, AND THE REASON IS A SHARED OFFICE COMPUTER, not tidiness.
+    The next person at that machine must never see someone else's half-typed order.
+    So Esc, the veil and the close button end the capture rather than tucking it.
+
+    ⚠️ MARKED, NOT DELETED, WHICH IS THE WHOLE POINT OF THE DISTINCTION. James
+    accepted the consequence — an accidental click away loses the order FROM THE
+    SCREEN — on the basis that the server keeps a copy, so it can be recovered if
+    that ever turns out to matter. Deleting the row would make that promise false,
+    and nothing in the UI would reveal it.
+
+    ⚠️ IDEMPOTENT. The veil and Escape can both fire for one gesture, and a second
+    call must not be an error — the pane is already gone by then and an error would
+    surface as a failed request for an action that succeeded.
+    """
+    row = _load(db, session_id, company_id=company_id, user_id=user_id)
+    if row.status != STATUS_ABANDONED:
+        row.status = STATUS_ABANDONED
+        db.flush()
+    return row
+
+
+def take_switch(
+    db: Session, session_id: str, *, company_id: str, user_id: str,
+    field_id: str, to_value: str,
+) -> CaptureSession:
+    """Take the alternative a switch offered. One click, by ruling.
+
+    ⚠️ THE VALUE IS VALIDATED AGAINST THE OFFER, not accepted on trust. Without that
+    this endpoint would set any field to any string — a write path with no vocabulary,
+    reachable by anyone who can reach the session. The only acceptable value is the
+    `to_value` the server itself put in `switches`.
+
+    ⚠️ IT WRITES A RESOLUTION, NOT A VALUE, which is what makes the click survive the
+    next keystroke. `values` is rebuilt from the text on every pause, so a value
+    written here would be erased ~350 ms later and the burial vault would come back.
+    Resolutions outrank extraction; that is the whole mechanism.
+    """
+    row = _load(db, session_id, company_id=company_id, user_id=user_id)
+    offers = [
+        sw for sw in (row.switches or [])
+        if sw.get("field_id") == field_id and sw.get("to_value") == to_value
+    ]
+    if not offers:
+        raise ValueError(f"no switch offered for {field_id!r} to {to_value!r}")
+
+    resolutions = dict(row.resolutions or {})
+    resolutions[field_id] = to_value
+    row.resolutions = resolutions
+
+    if row.full_text is not None:
+        ex = extract_text(
+            db, tenant_id=company_id, text=row.full_text, resolutions=resolutions
+        )
+        row.values = dict(ex.values)
+        row.unrecognized = list(ex.unrecognized)
+        row.pending_picks = [asdict(pk) for pk in ex.picks]
+        row.switches = [asdict(sw) for sw in ex.switches]
+    else:
+        values = dict(row.values or {})
+        values[field_id] = to_value
+        row.values = values
+        row.switches = [
+            sw for sw in (row.switches or []) if sw.get("field_id") != field_id
+        ]
+    db.flush()
     return row
 
 
@@ -217,6 +296,11 @@ def choose(
     resolutions = dict(row.resolutions or {})
     resolutions[field_id] = chosen
     row.resolutions = resolutions
+    # ⚠️ SETTLING A FIELD RETIRES ITS SWITCH. An offer surviving its own resolution
+    # would invite the director to undo the click they just made.
+    row.switches = [
+        sw for sw in (row.switches or []) if sw.get("field_id") != field_id
+    ]
 
     if row.full_text is not None:
         # ⚠️ RE-EXTRACTED THROUGH THE SAME CALL THE NEXT PAUSE WILL MAKE, so the
@@ -373,6 +457,11 @@ def read_state(db: Session, session_id: str, *, company_id: str, user_id: str) -
             for c in conflicts
         ],
         "pending_picks": list(row.pending_picks or []),
+        # ⚠️ A SWITCH IS NOT A PICK. The field is CAPTURED; this is the one
+        # alternative, one click away. Ruled 2026-10-13: a vault ambiguous only by
+        # form takes the burial vault and offers the urn vault, because a pick there
+        # asks a question whose answer the office already knows.
+        "switches": list(row.switches or []),
         "vault_resolution": {
             "resolved": bool(resolution.variant_template_id),
             "candidates": [c.sku for c in resolution.candidates],

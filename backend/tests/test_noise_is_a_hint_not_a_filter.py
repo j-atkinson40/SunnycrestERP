@@ -180,10 +180,20 @@ def test_a_form_word_the_noise_filter_ate_is_recovered(db, tenant):
     assert got == "Veteran Triune Burial Vault", (got, opts, unrec)
     got, opts, unrec = _vault(db, tenant, "Veteran urn vault")
     assert got == "Veteran Triune Urn Vault", (got, opts, unrec)
-    # And the bare word still ASKS, because the director supplied no form.
+    # ⚠️ AND THE BARE WORD NOW DEFAULTS, RULED 2026-10-13. Until then this read
+    # "the bare word still ASKS, because the director supplied no form" and
+    # asserted `got is None` with both options offered. James replaced that: a
+    # form-only ambiguity takes the burial vault and offers a one-click switch.
+    #
+    # ⚠️ WHAT THIS TEST IS ACTUALLY ABOUT IS UNAFFECTED, which is why it keeps its
+    # name. The claim is that the RAW reading is consulted on ambiguity and not only
+    # on a miss — "Veteran burial vault" and "Veteran urn vault" above both resolve
+    # to the form the director named. That is the half the first fix missed, and it
+    # would still be missed if the raw reading were dropped: the default would make
+    # "Veteran urn vault" resolve to the BURIAL vault, which is the live bug James
+    # reported. The two assertions above are what catch that.
     got, opts, _ = _vault(db, tenant, "Veteran")
-    assert got is None
-    assert set(opts) == {"Veteran Triune Burial Vault", "Veteran Triune Urn Vault"}, opts
+    assert got == "Veteran Triune Burial Vault", (got, opts)
 
 
 def test_the_raw_reading_does_not_displace_a_good_stripped_hit(db, tenant):

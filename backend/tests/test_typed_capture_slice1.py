@@ -199,11 +199,33 @@ def test_an_equipment_only_drop_is_complete(db, tenant):
 # ── ambiguity asks, never picks ─────────────────────────────────────────
 
 def test_an_ambiguous_vault_phrase_produces_a_pick_not_a_guess(db, tenant):
-    ex = EXTRACTOR.extract_line(db, tenant_id=tenant, line="Bronze Triune", answers={})
+    """⚠️ THE PHRASE CHANGED ON 2026-10-13; THE CLAIM DID NOT.
+
+    This test used "Bronze Triune" and asserted `pick.discriminator == "form"` — i.e.
+    that a form-only ambiguity ASKS. James ruled the other way (a form-only
+    ambiguity takes the burial vault and offers a switch), so the phrase here moves
+    to "Continental", which is ambiguous by SIZE and still asks. The principle the
+    test is named for — the extractor never GUESSES an answer it was not given — is
+    unchanged for every discriminator except form, and the form case is now a stated
+    default with a visible way back rather than a guess.
+
+    The form-only behaviour has its own file:
+    `test_the_form_default_picks_burial.py`.
+    """
+    ex = EXTRACTOR.extract_line(db, tenant_id=tenant, line="Continental", answers={})
     assert "vault" not in ex.values, "the extractor picked a vault"
     pick = next(p for p in ex.picks if p.field_id == "vault")
     assert len(pick.options) >= 2
-    assert pick.discriminator == "form", pick.discriminator
+    assert pick.discriminator == "size", pick.discriminator
+
+
+def test_a_form_only_ambiguity_defaults_instead_of_asking(db, tenant):
+    # ⚠️ THE REPLACEMENT CLAIM, ON THE PHRASE THE OLD TEST USED, so the behaviour
+    # change is recorded here and not merely deleted from the file.
+    ex = EXTRACTOR.extract_line(db, tenant_id=tenant, line="Bronze Triune", answers={})
+    assert ex.values.get("vault") == "Bronze Triune Burial Vault", ex.values
+    assert not [p for p in ex.picks if p.field_id == "vault"]
+    assert [sw.to_value for sw in ex.switches] == ["Bronze Triune Urn Vault"]
 
 
 def test_an_ambiguous_print_name_produces_a_pick(db, tenant):
