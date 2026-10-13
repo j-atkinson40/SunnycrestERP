@@ -258,7 +258,7 @@ def user_id(db, tenant):
 #: never reaches review would make every test below it pass for the wrong reason.
 ORDER = (
     "order for hopkins continental 34 Mary Smith 1948 to 2026 "
-    "going to St. Mary's section 4 lot 12 burial friday 11am "
+    "going to St. Mary's section 4 lot 12 "
     "service at the church thursday 10am full equipment nameplate only written"
 )
 # ⚠️ "written" IS THE DATE FORMAT AND IT IS REQUIRED ONCE A NAMEPLATE IS CHOSEN.
@@ -430,12 +430,13 @@ def test_it_carries_the_captured_fields_onto_the_order(db, approved):
     _row, order = approved
     assert order["deceased_name"] == "Mary Smith"
     assert order["scheduled_date"] is not None
-    # ⚠️ ASSERTED AS A RELATIONSHIP, NOT A LITERAL. "burial friday" and "service
-    # thursday" resolve against today, so a hardcoded date here would pass this week
-    # and fail next — and the claim that matters is that the two are DIFFERENT DAYS
-    # landing in DIFFERENT COLUMNS, which is the whole reason `burial_date` exists.
+    # ⚠️ THE BURIAL DATE IS DERIVED FROM THE SERVICE DATE, BY RULING (2026-10-13),
+    # AND THIS ASSERTION USED TO SAY THE OPPOSITE. It read `burial_date !=
+    # scheduled_date` — the two were separate answers and the sentence said two
+    # different days. James ruled the burial is always the service day, so they are
+    # now necessarily EQUAL and the sentence no longer carries a burial clause at all.
     assert order["burial_date"] is not None
-    assert order["burial_date"] != order["scheduled_date"], (
+    assert order["burial_date"] == order["scheduled_date"], (
         order["burial_date"], order["scheduled_date"]
     )
     assert order["grave_location"] == "Section 4, Lot 12", order["grave_location"]
@@ -625,3 +626,43 @@ def test_the_approved_total_comes_from_THE_ORDER_not_a_re_assessment(db, tenant,
         db.execute(text("DELETE FROM sales_order_lines WHERE sales_order_id = :i"), {"i": oid})
         db.execute(text("DELETE FROM sales_orders WHERE id = :i"), {"i": oid})
         db.commit()
+
+
+def test_the_burial_date_is_DERIVED_even_though_nobody_typed_one(db, tenant, world, user_id):
+    """⚠️ THE ORDER SENTENCE CONTAINS NO BURIAL CLAUSE AT ALL, which is the point.
+
+    Opas no longer asks for a burial date, so `answers` normally has none — and
+    `sales_orders.burial_date` must still be filled, from the service date. Reading
+    the captured answer here would store NULL on nearly every order.
+    """
+    row = _session_at_review(db, tenant, user_id)
+    assert "burial_date" not in (row.values or {}), dict(row.values or {})
+
+    row = session_service.approve(db, row.id, company_id=tenant, user_id=user_id)
+    oid = row.sales_order_id
+    try:
+        order = db.execute(
+            text("SELECT burial_date, scheduled_date FROM sales_orders WHERE id = :i"),
+            {"i": oid},
+        ).mappings().first()
+        assert order["burial_date"] is not None, order
+        assert order["burial_date"] == order["scheduled_date"], order
+    finally:
+        db.execute(text("UPDATE capture_sessions SET sales_order_id = NULL WHERE id = :i"),
+                   {"i": row.id})
+        db.execute(text("DELETE FROM order_personalization_tasks WHERE order_id = :i"), {"i": oid})
+        db.execute(text("DELETE FROM sales_order_lines WHERE sales_order_id = :i"), {"i": oid})
+        db.execute(text("DELETE FROM sales_orders WHERE id = :i"), {"i": oid})
+        db.commit()
+
+
+def test_a_contradictory_burial_date_BLOCKS_approve(db, tenant, world, user_id):
+    # ⚠️ THE CONFLICT IS A BLOCKER, so the order cannot be created carrying two
+    # different days — one of which would have been silently discarded.
+    row = _session_at_review(
+        db, tenant, user_id,
+        ORDER.replace("full equipment", "full equipment burial saturday 11am"),
+    )
+    a = session_service.assess_approval(db, row)
+    assert not a.ready, a.blockers
+    assert any("always the service day" in b for b in a.blockers), a.blockers

@@ -54,13 +54,16 @@ def tenant(db) -> str:
     return tid
 
 
+#: ⚠️ NO BURIAL CLAUSE SINCE 2026-10-13. The burial is always the service day, so a
+#: "burial friday" against a thursday service is now a CONFLICT and blocks approval —
+#: which is what this sentence used to say.
 #: ⚠️ A VAULT THAT ACCEPTS THE NAMEPLATE, AND A DATE FORMAT. Since 2026-10-13 an
 #: unavailable personalization answer is a conflict and a conflict blocks approval,
 #: so a Monticello with a nameplate can no longer be approved — and choosing a
 #: nameplate makes `nameplate_date_format` required, which "written" answers.
 ORDER = (
     "order for hopkins continental 34 Mary Smith 1948 to 2026 "
-    "going to St. Mary's section 4 lot 12 burial friday 11am "
+    "going to St. Mary's section 4 lot 12 "
     "service at the church thursday 10am full equipment nameplate only written"
 )
 

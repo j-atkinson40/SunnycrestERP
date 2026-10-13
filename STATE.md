@@ -2,6 +2,75 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 2026-10-13 — The burial is the service day (ruling), and three swallowed words
+
+No migration. James: "The burial is always the same day as the service. When it
+isn't, it is a graveside service." Recorded in DECISIONS, together with the
+surname-guard ruling from the 13:48 note.
+
+- **2026-10-13** — `burial_date` is **no longer asked or required**
+  (`required_when=Never()`, `display="date"` kept) and is **derived at Approve** from
+  `service_date`. It is out of the missing set and therefore out of the done-signal
+  blockers, which are the missing set.
+  ⚠️ **The field stays and is still EXTRACTED**, which looks redundant and is not:
+  without extraction a contradictory burial date would be unsayable and therefore
+  invisible. **Not asking is different from not listening.**
+  ⚠️ **Approve ignores the captured value even when present** — by then the two dates
+  either agree or the order was refused, so reading the answer would make the stored
+  date depend on which of two agreeing sources was consulted.
+- **2026-10-13** — The **Burial row** shows the grave location as its value and the
+  **service date labelled "same day as the service"** as its secondary; it never reads
+  "needed". The summary's Burial row reads `service_date` too.
+- **2026-10-13** — **A typed burial date that differs from the service date is a
+  conflict** naming both dates and pointing at the graveside wording, and **a conflict
+  blocks Approve**.
+- **2026-10-13** — **"11 graveside", "graveside at 11" and "graveside friday 11am"**
+  all set `service_location = graveside` and `service_time`. ETA stays unasked for a
+  graveside service.
+- **2026-10-13** — ⚠️ **THREE SWALLOWED WORDS, ALL INVISIBLE WHILE THE BURIAL DATE WAS
+  STILL BEING ASKED FOR:**
+  - **"graveside" was inside the burial-date marker** (`burial|interment|graveside`),
+    so "graveside friday 11am" set a BURIAL DATE and lost the service location
+    entirely — the one phrasing named for a graveside service was the one phrasing
+    that could not express it.
+  - **The grave-location pattern's `(?:space|grave|sp)` matched the "grave" inside
+    "graveSIDE"**, so "section 4 graveside" produced
+    `grave_location='Section 4, Space side'` and the order still asked for a service
+    location. The same sentence with anything in between worked, which made it look
+    like a graveside problem. Every label in that pattern is now word-bounded.
+  - **The graveside time matched a section number.** "section 4 graveside at 11" read
+    "4 graveside" as 16:00, and because that bogus match CONSUMED the word "graveside"
+    the real "11" was never looked at. Now guarded by the same number-label rule
+    `pick-digit.ts` needs, with the before-form using a lookahead so it cannot consume
+    the word.
+- **2026-10-13** — ⚠️ **The burial clause's tail is now the SHORTEST run that parses.**
+  `parse_date` answers the same date for "saturday", "saturday 11am" and "saturday
+  11am nameplate", so longest-first reached into "nameplate" — owned by the
+  personalization pass — the claim failed and the date was dropped. Shortest is also
+  the right rule: a marker-led span must not swallow following words. A time directly
+  after the date is claimed with it, since there is deliberately no burial-time field.
+- **2026-10-13** — ⚠️ **`burial_date` IS NOW A DELIBERATE ORPHAN — the fourth cause
+  that report has ever had, and the first that is not a shortfall.** Three existing
+  tests correctly went red and were updated to NAME the exception rather than waive
+  it: `test_EVERY_template_field_has_a_capture_row`,
+  `test_the_orphan_set_names_three_different_causes`,
+  `test_the_two_new_fields_are_not_orphans`. The remedy for this cause is "nothing",
+  which is exactly why the report must name its members rather than count them.
+- **2026-10-13** — Verified in **real Chrome, 11/12** on sunnycrest, comma-free, no
+  Enter. The Burial row reads `Section 4 | Fri Oct 16, 2026 · same day as the
+  service`; the pill fell from "2 needed" to **"1 needed"**; "11 graveside Friday"
+  renders `Service: Graveside · Fri Oct 16, 2026 · 11:00 AM` with nothing unplaced,
+  and that order **reaches the summary** with `Monticello $1,250.00 / Full Equipment
+  $300.00 / Total $1,550.00` and Approve offered.
+- **2026-10-13** — ⚠️ **THE ONE REMAINING GAP, AND IT IS JAMES'S TO RULE.** His
+  sentence still does not reach the summary: with the burial date gone, the single
+  remaining requirement is **`service_location`**, and his words say "service Friday
+  11 am" without saying where. Adding "graveside" or "at the church" completes it —
+  both measured. Whether a service with no stated location should be approvable, or
+  default to something, is a decision and was not made here. **The 14:57 sentence
+  itself was not supplied**; this is his 13:48 words with "nameplate only" removed,
+  which is what "no burial date" describes.
+
 ## 2026-10-13 — The 13:48 walk: a surname, an unavailable nameplate, and a bar that wraps
 
 No migration. James's sentence: "order for hopkins monticello with full equipment

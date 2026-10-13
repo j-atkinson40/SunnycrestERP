@@ -2948,3 +2948,98 @@ order's own words and is also copied to `sales_orders.notes`.
 ⚠️ **NOT DECIDED HERE:** whether Approve is reversible (Q6). Nothing unapproves an
 order today; a `draft` order can be edited or cancelled through the ordinary sales
 routes, and the capture session stays linked to it either way.
+
+---
+
+## 2026-10-13 — A surname is a name; and never a record word
+
+**Decided by James** (walk note, 13:48). Directors often give only a surname, so
+`last name X`, `last name is X`, `the X family`, `X family`, `name is X` and
+`decedent X` all fill the decedent with the surname alone. Lowercase is accepted
+**behind one of those markers** and the name is displayed as given. The engine must
+**never take a funeral-home, cemetery or catalog word** as a surname.
+
+**Why the markers carry the lowercase permission.** A bare lowercase word anywhere in
+a sentence is still not a name — what makes "last name smith" safe is that the
+director said in words that a name follows. The previous parser (`_explicit_name`)
+required two or more capitalised words, which is why a surname alone had never worked.
+
+**The mechanism.** `_surname_clause` in `typed_extraction.py`; the claimed span covers
+the **marker as well as the name**, because claiming only the name left "last name" to
+be reported as text the engine could not place — half of what James saw. The
+exclusions are the same three record lookups the marker-less name pass uses
+(`resolve_from_rows` over cemeteries, `resolve_vault` over the catalog,
+`resolve_funeral_home`), not a word list: a hand-written list of words-that-are-not-
+names would be wrong for every tenant whose records nobody has seen.
+
+⚠️ **THE GUARD HAS A MEASURED COST AND IT IS TENANT-DEPENDENT.** `testco` holds
+**"Smith & Sons Funeral Home"**, so `resolve_funeral_home(testco, "smith")` resolves
+and the guard refuses the commonest surname on that tenant — correctly, by this
+ruling. On `sunnycrest` "smith" is free, so James's own sentence works where he typed
+it. Pinned in `test_a_surname_that_collides_with_a_record_is_refused`.
+
+⚠️ **NOT DECIDED HERE:** whether a one-word match against a multi-word record should
+still exclude. The funeral home is already captured earlier in the same sentence, so
+the evidence that "Smith" means "Smith & Sons Funeral Home" is weak — but widening it
+is a ruling, not a quiet change, and the narrow rule is what is in force.
+
+---
+
+## 2026-10-13 — The burial is always the service day
+
+**Decided by James.** "The burial is always the same day as the service. When it
+isn't, it is a graveside service." Four consequences:
+
+1. **`burial_date` is no longer asked or required.** It is derived at Approve:
+   `sales_orders.burial_date = service_date`. It is out of the missing set and out of
+   the done-signal blockers (which are the missing set).
+2. **The Burial row** shows the grave location (section/lot/space) as its value and
+   the **service date, labelled "same day as the service"**, as its secondary. It
+   never reads "needed" for the date.
+3. **A graveside service** is a service whose location is the graveside and whose time
+   is the burial time. "11 graveside", "graveside at 11" and "graveside friday 11am"
+   all set `service_location = graveside` and `service_time`. The cemetery ETA is not
+   asked when the service is already at the grave (existing rule).
+4. **A typed burial date that differs from the service date is a conflict**, not a
+   silently stored second date — and a conflict blocks Approve.
+
+**Why the field survives the ruling.** It is still extracted, which looks redundant
+and is not: without extraction a contradictory burial date would be unsayable and
+therefore invisible. **Not asking is different from not listening.**
+
+**Why Approve ignores the captured value even when present.** By the time the order is
+written, the two dates either agree or the order was refused — so reading the typed
+answer would make the stored date depend on which of two agreeing sources happened to
+be consulted. It reads `service_date`, always.
+
+⚠️ **THREE DEFECTS THIS RULING UNCOVERED, EACH A SWALLOWED WORD.** All three were
+invisible while the burial date was something the office was asked for:
+
+- **"graveside" was inside the burial-date marker** (`burial|interment|graveside`), so
+  "graveside friday 11am" set a BURIAL DATE and lost the service location entirely —
+  the one phrasing named for a graveside service was the one phrasing that could not
+  express it.
+- **The grave-location pattern's `(?:space|grave|sp)` matched the "grave" inside
+  "graveSIDE"**, so "section 4 graveside" produced
+  `grave_location='Section 4, Space side'`, swallowed the word, and left the order
+  still asking for a service location. The same sentence with anything in between
+  worked, which made it look like a graveside problem rather than a grave-location
+  one. Every label in that pattern is now word-bounded.
+- **The graveside time matched a section number.** "section 4 graveside at 11" read
+  "4 graveside" as four in the afternoon, and because that bogus match consumed the
+  word "graveside" the real "11" was never looked at. Guarded by the same
+  number-label rule `pick-digit.ts` needs, and the before-form now uses a lookahead
+  so it cannot consume the word.
+
+⚠️ **AND THE BURIAL CLAUSE'S TAIL IS THE SHORTEST RUN THAT PARSES, NOT THE LONGEST.**
+`parse_date` answers the same date for "saturday", "saturday 11am" and "saturday 11am
+nameplate", so a longest-first rule reached into "nameplate" — a word the
+personalization pass owns — the claim failed, and the date was dropped. Shortest is
+also the right rule: a marker-led span must not swallow following words. A time
+immediately after the date is claimed with it, because the director said it about the
+burial and there is deliberately no burial-time field.
+
+⚠️ **NOT DECIDED HERE:** whether a burial TIME that differs from the service time
+should say anything. There is no field for it; the words are claimed so they are not
+reported as unreadable, and the ruling's answer to a different time is "say it as a
+graveside service".

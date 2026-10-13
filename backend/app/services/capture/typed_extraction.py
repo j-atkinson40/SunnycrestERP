@@ -36,6 +36,7 @@ from typing import Protocol
 from sqlalchemy.orm import Session
 
 from app.services.capture.schema import (
+    SERVICE_LOCATION_GRAVESIDE,
     NAMEPLATE_DATE_FORMATS,
     EQUIPMENT_PACKAGES,
     SERVICE_LOCATIONS,
@@ -657,9 +658,19 @@ class DeterministicExtractor:
         # ── grave location ──────────────────────────────────────────────
         if once("grave_location"):
             m = re.search(
+                # ⚠️ EVERY LABEL IS WORD-BOUNDED, AND `grave` IS WHY. Without the
+                # `\b` it matched the "grave" inside "graveSIDE": measured 2026-10-13,
+                # "section 4 graveside Friday 11am" produced
+                # `grave_location='Section 4, Space side'` and swallowed the word, so
+                # the SERVICE LOCATION was lost and the order still asked for one.
+                # The same sentence with anything between — "section 4 11 graveside" —
+                # worked, which is what made it look like a graveside problem.
+                #
+                # ⚠️ `l` AND `sp` CARRY THE SAME RISK AND ARE BOUNDED TOO. A bare `l`
+                # would match the "l" starting any word after a comma.
                 r"\b(?:section|sec\.?)\s*([A-Za-z0-9]+)"
-                r"(?:[,\s]+(?:lot|l)\s*([A-Za-z0-9]+))?"
-                r"(?:[,\s]+(?:space|grave|sp)\s*([A-Za-z0-9]+))?", line, re.I)
+                r"(?:[,\s]+(?:lot|l)\b\s*([A-Za-z0-9]+))?"
+                r"(?:[,\s]+(?:space|grave|sp)\b\s*([A-Za-z0-9]+))?", line, re.I)
             if m:
                 parts = [f"Section {m.group(1)}"]
                 if m.group(2):
@@ -705,17 +716,66 @@ class DeterministicExtractor:
             # comma-free text.
             from app.services.nl_creation.structured_parsers import parse_date as _pd
 
+            # ⚠️ "graveside" WAS IN THIS MARKER AND IT IS A LOCATION WORD, NOT A
+            # DATE ONE. Measured 2026-10-13: "graveside friday 11am" matched HERE, so
+            # it set a BURIAL DATE and the service LOCATION was lost entirely — the one
+            # phrasing James named for a graveside service was the one phrasing that
+            # could not express it. Removed by the same ruling that stopped asking for
+            # a burial date at all.
+            #
+            # ⚠️ THE TAIL IS THE LONGEST RUN THAT PARSES, NOT A FIXED THREE WORDS.
+            # Measured: a fixed tail handed `parse_date` "saturday 11am nameplate",
+            # got None and dropped the date — while the same clause at the END of a
+            # sentence parsed fine. Whether the burial date was read depended on what
+            # came after it. Same shape as the funeral-home marker: try the longest
+            # candidate and shorten until something resolves.
             for m in re.finditer(
-                r"\b(?:burial|interment|graveside)\s+(?!vaults?\b)"
-                r"(?:is\s+|on\s+|:\s*)?"
-                r"((?:[A-Za-z0-9][A-Za-z0-9/.,'\-]*)"
-                r"(?:\s+[A-Za-z0-9][A-Za-z0-9/.,'\-]*){0,2})",
+                r"\b(?:burial|interment)\s+(?!vaults?\b)(?:is\s+|on\s+|:\s*)?",
                 line,
                 re.I,
             ):
-                pd = _pd(m.group(1).strip())
-                if pd and pd.get("value") and _mark(spans, m):
-                    values["burial_date"] = pd["value"]
+                words = list(
+                    re.finditer(r"[A-Za-z0-9][A-Za-z0-9/.,'\-]*", line[m.end():])
+                )[:3]
+                # ⚠️ THE SHORTEST TAIL THAT PARSES, AND THE CLAIM IS TRIED PER
+                # LENGTH. Longest-first was wrong twice over: `parse_date` answers
+                # the same date for "saturday", "saturday 11am" and "saturday 11am
+                # nameplate", so the longest run won and its span reached into
+                # "nameplate" — a word the personalization pass already owned, so the
+                # claim FAILED and the date was dropped entirely. Measured
+                # 2026-10-13: "burial saturday 11am nameplate only" stored no burial
+                # date and reported "saturday 11am" as unplaced.
+                #
+                # ⚠️ SHORTEST IS ALSO THE RIGHT RULE, not merely the working one. A
+                # marker-led span must not swallow following words — the same rule
+                # the cemetery town and the funeral home already follow — and a date
+                # clause is as short as it can be.
+                claimed = False
+                for n in range(1, len(words) + 1):
+                    a = m.end() + words[0].start()
+                    b = m.end() + words[n - 1].end()
+                    pd = _pd(line[a:b].strip())
+                    if not (pd and pd.get("value")):
+                        continue
+                    # ⚠️ A TIME IMMEDIATELY AFTER THE DATE IS CLAIMED WITH IT, even
+                    # though nothing stores it. "burial saturday 11am" is one clause
+                    # the director said about the burial; shortening the span to
+                    # "saturday" left "11am" to be reported as a word the engine
+                    # could not place, which is noise this very change introduced.
+                    #
+                    # ⚠️ THERE IS NO BURIAL-TIME FIELD AND THAT IS DELIBERATE — the
+                    # service time and the cemetery ETA are the two times an order
+                    # has. Claiming the token places the words without inventing a
+                    # third.
+                    tail = _TIME_TOKEN.match(line[b:].lstrip())
+                    if tail is not None:
+                        gap = len(line[b:]) - len(line[b:].lstrip())
+                        b += gap + tail.end()
+                    if _claim(spans, m.start(), b):
+                        values["burial_date"] = pd["value"]
+                        claimed = True
+                    break
+                if claimed:
                     break
 
         # ── cemetery (+ city) ───────────────────────────────────────────
@@ -1316,6 +1376,39 @@ class DeterministicExtractor:
                         if _claim(spans, a, b):
                             values["eta"] = pt["value"]
 
+        # ── a graveside service: the location IS the service location ───
+        # ⚠️ IT SETS BOTH FIELDS FROM ONE PHRASE, by ruling. "11 graveside" says where
+        # the service is and when it is, and before this the bare "11" was reported as
+        # text the engine could not place while the location arrived from the separate
+        # location vocabulary.
+        #
+        # ⚠️ AHEAD OF THE GENERIC TIME PASS, so the claim is made by the rule that
+        # understands the phrase rather than by a scan that happens to reach it.
+        # ⚠️ THE WORD IS CLAIMED FOR THE LOCATION FIRST, AND IT HAS TO BE. Measured
+        # 2026-10-13: in a full sentence "…section 4 graveside Friday 11am…" the
+        # generic service-DATE pass runs over leftovers and `parse_date("graveside
+        # Friday")` returns Friday — claiming the whole fragment, "graveside"
+        # included. So the location vanished in a long sentence while working in a
+        # short one, which is the same greedy-pass defect as the burial marker.
+        #
+        # ⚠️ CLAIMED RATHER THAN MERELY READ, because no span may feed two fields.
+        # Taking the word here is what leaves "Friday" for the date and makes the
+        # location's claim the one that owns it.
+        if once("service_location"):
+            gw = _GRAVESIDE_WORD.search(line)
+            if gw is not None and _claim(spans, gw.start(), gw.end()):
+                values["service_location"] = SERVICE_LOCATION_GRAVESIDE
+
+        if once("service_time"):
+            gt = _graveside_time(line)
+            if gt is not None:
+                when, (a, b) = gt
+                if _claim(spans, a, b):
+                    values["service_time"] = when
+                    # ⚠️ THE LOCATION IS NOT SET HERE. The pass above owns it and
+                    # has already claimed the word; setting it twice would be two
+                    # writers for one field and the second would be unreachable.
+
         # ── the service TIME, claimed before the date can swallow it ────
         # ⚠️ A TIME TOKEN IS NARROW AND A DATE IS NOT. `parse_date` on the fragment
         # "Thursday 10am" consumed the whole thing, so the time was lost. The time is
@@ -1653,6 +1746,91 @@ _TIME_TOKEN = re.compile(
     re.I,
 )
 
+#: A bare hour sitting against the word "graveside".
+#:
+#: ⚠️ RULED 2026-10-13: "a graveside service is just a service whose location is the
+#: graveside, with its time being the burial time", and the phrasings James named are
+#: "11 graveside", "graveside at 11" and "graveside friday 11am". The third already
+#: worked once "graveside" stopped being a burial-date marker; the first two did not,
+#: because a BARE hour is not a `_TIME_TOKEN` — deliberately, since a loose number is
+#: far more often a size, a lot or a section.
+#:
+#: ⚠️ ADJACENCY TO THE WORD IS WHAT LICENSES THE BARE NUMBER, and nothing wider. "11"
+#: anywhere else in a sentence is still not a time. That is the whole reason this is a
+#: separate pattern rather than a relaxation of `_TIME_TOKEN`.
+#: The word itself. ⚠️ UNAMBIGUOUS, WHICH IS WHY ITS PRESENCE IS ENOUGH. "graveside"
+#: names one service location and nothing else in this vocabulary; a director who says
+#: it has said where the service is.
+_GRAVESIDE_WORD = re.compile(r"\bgraveside\b", re.I)
+
+#: A bare hour sitting against the word "graveside", from either side.
+#:
+#: ⚠️ TWO PATTERNS, NOT ONE ALTERNATION, AND THE REASON IS CONSUMPTION. Written as
+#: `(\d+)\s+graveside|graveside\s+at\s+(\d+)`, the first branch matched the SECTION
+#: NUMBER in "section 4 graveside at 11" and ate the word "graveside" with it — so the
+#: second branch could never see the sentence and the real "11" was invisible. The
+#: before-form now uses a LOOKAHEAD, so it never owns the word and both forms get a
+#: look at every sentence.
+#:
+#: ⚠️ A BARE HOUR IS ONLY A TIME NEXT TO THIS WORD. Elsewhere it is a size, a lot or a
+#: section, which is why `_TIME_TOKEN` rightly refuses it and why this is a separate
+#: rule rather than a relaxation of that one.
+_GRAVESIDE_TIME_BEFORE = re.compile(
+    r"\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?\s+(?=graveside\b)", re.I
+)
+_GRAVESIDE_TIME_AFTER = re.compile(
+    r"\bgraveside\b(?:\s+at)?\s+(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?", re.I
+)
+
+#: Words that own the number after them, so the number is a PLACE and not a time.
+#:
+#: ⚠️ THE SAME RULE `pick-digit.ts` NEEDS, for the same reason. Measured: without it,
+#: "section 4 graveside at 11" read the section number as four in the afternoon.
+_GRAVE_NUMBER_LABELS = ("section", "sec", "lot", "space", "grave", "sp", "no", "number")
+
+
+def _graveside_time(line: str) -> tuple[str, tuple[int, int]] | None:
+    """The service time from a graveside phrase, and the span of the time itself.
+
+    ⚠️ THE AM/PM DEFAULT IS THE PROTOTYPE'S OWN RULE, verbatim from
+    `docs/prototypes/2026-10-01-opas-overlay.html`: `ap=(h>=7&&h<=11)?'AM':'PM'`. A
+    graveside service at "11" is eleven in the morning and at "2" is two in the
+    afternoon; inventing a second convention here would make the same words mean
+    different times in two places.
+
+    ⚠️ THE SPAN IS THE TIME ONLY, NOT THE PHRASE. The location pass runs earlier and
+    has already claimed the word "graveside", so a claim covering it would fail and
+    this rule would silently do nothing — measured, and it did.
+    """
+    for pattern in (_GRAVESIDE_TIME_BEFORE, _GRAVESIDE_TIME_AFTER):
+        for m in pattern.finditer(line):
+            before = line[: m.start(1)]
+            tail = re.search(r"([A-Za-z]+)[\s.]*$", before)
+            if tail is not None and tail.group(1).casefold() in _GRAVE_NUMBER_LABELS:
+                continue
+            h = int(m.group(1))
+            if h < 1 or h > 23:
+                continue
+            mins = int(m.group(2)) if m.group(2) else 0
+            if mins > 59:
+                continue
+            tag = (m.group(3) or "").replace(".", "").lower()
+            if tag.startswith("p"):
+                if h < 12:
+                    h += 12
+            elif tag.startswith("a"):
+                if h == 12:
+                    h = 0
+            elif h < 7:
+                # 7..11 reads as morning; 1..6 as afternoon. 12 stays noon.
+                h += 12
+            end = max(
+                m.end(g) for g in (1, 2, 3) if m.group(g) is not None
+            )
+            return f"{h:02d}:{mins:02d}", (m.start(1), end)
+    return None
+
+
 #: Markers that mean the CEMETERY ARRIVAL rather than the service.
 #:
 #: ⚠️ `eta` HAD NO PARSER AT ALL. The field is on the template, is applicable whenever
@@ -1988,6 +2166,30 @@ def evaluate_typed(db: Session, *, tenant_id: str | None, answers: dict[str, obj
         vault_label = resolution.candidates[0].display_name
     elif answers.get("vault"):
         vault_label = str(answers["vault"])
+
+    # ⚠️ A TYPED BURIAL DATE THAT DISAGREES WITH THE SERVICE DATE IS A CONTRADICTION,
+    # NOT A SECOND FACT. Ruled 2026-10-13: the burial is always the service day, and
+    # when it is not, what the director means is a GRAVESIDE SERVICE. So two different
+    # dates are two readings of one day, and storing the second quietly would put a
+    # date on the order that the office never agreed to.
+    #
+    # ⚠️ IT IS REPORTED RATHER THAN CORRECTED. Picking one of the two would be the
+    # engine deciding which day the funeral is on.
+    burial = answers.get("burial_date")
+    service = answers.get("service_date")
+    if burial and service and str(burial) != str(service):
+        conflicts.append(
+            Conflict(
+                field_id="burial_date",
+                value=burial,
+                permitted=(str(service),),
+                message=(
+                    "Burial is always the service day. This order says the service "
+                    f"is {service} and the burial is {burial}. For a burial on a "
+                    "different day, say it as a graveside service."
+                ),
+            )
+        )
 
     already = {c.field_id for c in conflicts}
     for field_id in state.not_applicable:

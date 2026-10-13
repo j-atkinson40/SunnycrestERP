@@ -398,11 +398,33 @@ class TestTheFourStates:
         assert len(template) == 20, len(template)
         assert 15 < len(sourced & set(template)) <= len(template), sorted(sourced)
 
+        # ⚠️ ONE DELIBERATE EXCEPTION SINCE 2026-10-13, AND IT IS A RULING RATHER THAN
+        # A GAP. James: "the burial is always the same day as the service", so
+        # `burial_date` is no longer asked, no longer required, and is DERIVED at
+        # Approve from `service_date`. The Burial row shows the grave location and the
+        # SERVICE date labelled "same day as the service" — so there is nothing for a
+        # `burial_date` row to display that is not already on screen.
+        #
+        # ⚠️ IT IS NAMED, NOT WAIVED. Listing the one exception keeps the ratchet for
+        # the other nineteen: a field added without a row still fails here.
+        DERIVED_AND_NOT_SHOWN = ["burial_date"]
+
         unsourced = sorted(f for f in template if f not in sourced)
-        assert unsourced == [], (
+        assert unsourced == DERIVED_AND_NOT_SHOWN, (
             f"these template fields are captured and have no capture row, so the "
             f"pane shows nothing for them: {unsourced}"
         )
+
+        # ⚠️ AND THE EXCEPTION IS NOT A HOLE. The inherited date really is on the
+        # Burial row's secondary, and a typed burial date that DISAGREES with the
+        # service date becomes a conflict (`test_the_burial_is_the_service_day.py`).
+        # Either way the director sees the day; what they never see is a second,
+        # silently stored one.
+        burial_row = next(r for r in CAPTURE_SALES_ORDER.rows if r.id == "burial")
+        secondary_ids = {
+            i for s in (burial_row.secondary or ()) for i in ids(s)
+        }
+        assert "service_date" in secondary_ids, secondary_ids
 
     def test_EXACTLY_ONE_template_field_is_availability_governed_today(self):
         """⚠️ A RATCHET ON THE DISCRIMINATOR ITSELF. If a second field becomes
@@ -528,7 +550,29 @@ class TestAmendmentTwoOrphansOverTheUnion:
         repopulate it, which is the whole point of the set being computable.
         """
         t = frozenset(f.field_id for f in template_for(SALES_ORDER))
-        assert orphan_field_ids(t, surfaces_for(SALES_ORDER)) == frozenset()
+        # ⚠️ ONE MEMBER AGAIN SINCE 2026-10-13, AND IT IS A FOURTH CAUSE — the first
+        # the set has had that is not a shortfall at all:
+        #
+        #     burial_date         DERIVED, AND DELIBERATELY NOT DISPLAYED. James
+        #                         ruled the burial is always the service day, so the
+        #                         field is no longer asked or required and is filled
+        #                         at Approve from `service_date`. The Burial row
+        #                         shows the grave location and the SERVICE date
+        #                         labelled "same day as the service", so a
+        #                         `burial_date` row would display a number already on
+        #                         screen under a second name.
+        #
+        # ⚠️ THE REMEDY FOR THIS CAUSE IS "NOTHING", which is exactly why the report
+        # has to name its members rather than count them. Four causes, four remedies:
+        # declare a surface, design a control, delete a field — and leave this one
+        # alone.
+        #
+        # ⚠️ IT IS STILL NOT SILENT. A burial date that contradicts the service date
+        # is a conflict and blocks Approve, so the value is never both captured and
+        # unmentioned.
+        assert orphan_field_ids(t, surfaces_for(SALES_ORDER)) == frozenset(
+            {"burial_date"}
+        )
 
     def test_per_surface_absence_is_not_orphanhood(self):
         """⚠️ THE DISCRIMINATING TEST, AND ITS EXAMPLE HAD TO CHANGE.

@@ -780,7 +780,18 @@ def approve(
         # compares against `today`, which is why `status` and `order_type` carry
         # the protection rather than this.
         scheduled_date=_as_date(answers.get("service_date")),
-        burial_date=_as_date(answers.get("burial_date")),
+        # ⚠️ DERIVED FROM THE SERVICE DATE, NOT FROM THE CAPTURED ANSWER. Ruled
+        # 2026-10-13: the burial is always the service day, so Opas stopped asking —
+        # `burial_date` is no longer required and is normally absent from `answers`.
+        # Reading the answer here would store NULL on every order that did not
+        # volunteer one, which is most of them.
+        #
+        # ⚠️ AND IT IS NOT READ EVEN WHEN PRESENT. A typed burial date that disagrees
+        # with the service date is a CONFLICT and blocks approval, so by the time this
+        # line runs the two either agree or the order was refused. Taking the typed
+        # value would make the stored date depend on which of two agreeing sources
+        # happened to be consulted.
+        burial_date=_as_date(answers.get("service_date")),
         date_of_birth=_as_date(answers.get("date_of_birth")),
         date_of_death=_as_date(answers.get("date_of_death")),
         grave_location=(answers.get("grave_location") or None),

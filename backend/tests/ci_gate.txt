@@ -372,6 +372,7 @@ tests/test_approve_triggers_nothing.py
 tests/test_r211_writes_the_cemetery_and_the_equipment.py
 tests/test_nothing_the_extractor_captures_is_dropped.py
 tests/test_a_surname_is_a_name.py
+tests/test_the_burial_is_the_service_day.py
 tests/test_a_burial_vault_is_not_a_burial_date.py
 tests/test_typed_capture_slice1.py
 tests/test_vault_resolution_wiring.py

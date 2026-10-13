@@ -493,7 +493,24 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
     # row on a fresh order — and the town is exactly the thing a director says in the
     # same breath as the name. Unconditional and optional.
     FieldDefinition("cemetery_city", "Cemetery town", required_when=Never()),
-    FieldDefinition("burial_date", "Burial date", display="date"),
+    # ⚠️ NOT REQUIRED, AND NOT ASKED, BY RULING (James, 2026-10-13): "the burial is
+    # always the same day as the service. When it isn't, it is a graveside service."
+    # So there is nothing to ask — the date is DERIVED from `service_date` at Approve
+    # (`sales_orders.burial_date = service_date`), and the Burial row shows the
+    # inherited date labelled as inherited.
+    #
+    # ⚠️ THE FIELD STAYS, AND IT IS STILL EXTRACTED, which is the part that looks
+    # redundant and is not. A director who types a burial date that DISAGREES with
+    # the service date has said something contradictory, and the ruling is that it
+    # becomes a visible conflict rather than a silently stored second date. Deleting
+    # the field would make that contradiction unsayable and therefore invisible.
+    # ⚠️ `display="date"` IS KEPT. I dropped it when rewriting this definition and
+    # `test_date_display` caught it: the field still HOLDS a date and still renders as
+    # one wherever it is shown. Not being asked for is not the same as not being a
+    # date.
+    FieldDefinition(
+        "burial_date", "Burial date", required_when=Never(), display="date"
+    ),
     # ⚠️ ADDED 2026-10-07 (R4), REQUIRED, AND THIS CLOSES A GAP THE ROW LAYER HAD
     # ALREADY DECLARED. `surfaces.py` carried a `GAP` marker on the summary Service
     # row reading that the prototype's secondary is "Thu, Sep 17 · 10:00 AM" — a

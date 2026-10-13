@@ -418,7 +418,17 @@ class TestIndeterminateIsNotRendered:
         # 2026-10-06; the ruling is newer and is James's, so it wins — but it is a
         # reversal and is flagged as one rather than overwritten, because the next
         # reader would otherwise find no trace that anyone had decided the opposite.
-        assert orphans == frozenset()
+        # ⚠️ ONE MEMBER SINCE 2026-10-13, AND IT IS THE FIRST THAT IS NOT A
+        # SHORTFALL. James ruled the burial is always the service day, so
+        # `burial_date` is no longer asked, no longer required, and is derived at
+        # Approve from `service_date` — the Burial row shows the grave location and
+        # the SERVICE date labelled as inherited. A row of its own would show a
+        # number already on screen under a second name.
+        #
+        # ⚠️ THE THREE FIELDS THIS TEST IS NAMED FOR ARE STILL ASSERTED ABSENT above,
+        # which is what it was written to guard. Only the total changed, and it
+        # changed by a decision rather than by drift.
+        assert orphans == frozenset({"burial_date"})
 
     # ⚠️ THIS FILE IS E6-PROTECTED AND THIS IS THE ONE ASSERTION IN IT THAT CHANGED.
     # E6 says the CALL PIPELINE's behaviour must not change. Measured 2026-10-12:

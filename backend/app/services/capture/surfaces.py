@@ -44,6 +44,7 @@ that way.
 from __future__ import annotations
 
 from app.services.capture.rows import (
+    LiteralSource,
     FirstOf,
     ComposedSource,
     FieldSource,
@@ -231,12 +232,26 @@ CAPTURE_SALES_ORDER = Surface(
         # the UNION. Absent from capture and present on summary is a real gap and
         # not orphanhood — which is the distinction `orphan_field_ids` exists to
         # keep, and the reason the gap needed finding a different way.
+        # ⚠️ THE GRAVE LOCATION IS THE PRIMARY AND THE DATE IS INHERITED, BY RULING
+        # (James, 2026-10-13). The burial is always the service day, so Opas stopped
+        # asking: `burial_date` is no longer required and this row must never show
+        # "needed" for a date nobody will be asked for. What it shows instead is the
+        # section/lot/space, and the SERVICE date, said to be the service's.
+        #
+        # ⚠️ IT READS `service_date`, NOT `burial_date`, AND THAT IS THE POINT. Reading
+        # `burial_date` would leave the row blank on every order — which is all of
+        # them now — while the date is sitting one field away.
+        #
+        # ⚠️ THE LITERAL SAYS WHERE THE DATE CAME FROM. "Fri Oct 16, 2026" alone reads
+        # as a date somebody entered; a director checking the burial day needs to know
+        # it follows the service and is not a second answer that could drift from it.
         Row(id="burial", label="Burial", order=10,
-            sources=(ComposedSource((
-                FieldSource("burial_date"),
-                FieldSource("grave_location"),
+            sources=(FieldSource("grave_location"),),
+            secondary=(ComposedSource((
+                FieldSource("service_date"),
+                LiteralSource("same day as the service"),
             ), join=_DOT),),
-            edit_target="burial_date"),
+            edit_target="grave_location"),
     ),
 )
 
@@ -288,8 +303,11 @@ SUMMARY_SALES_ORDER = Surface(
             sources=(FieldSource("cemetery"),),
             # ⚠️ `eta`, not `burial_time` — same ruling as the capture Cemetery row.
             # The prototype's secondary here is "Thu, Sep 17 · 11:30 AM", the arrival.
+            # ⚠️ `service_date`, NOT `burial_date`, SINCE 2026-10-13. Same ruling:
+            # the burial day IS the service day, so the summary shows the date the
+            # order actually carries rather than a field nobody is asked for.
             secondary=(ComposedSource(
-                (FieldSource("burial_date"), FieldSource("eta")), join=_DOT),),
+                (FieldSource("service_date"), FieldSource("eta")), join=_DOT),),
             edit_target="cemetery"),
 
         # ⚠️ REPOINTED 2026-10-07 FOR R1, same dead-source problem as the capture
