@@ -91,15 +91,44 @@ def world(db, tenant):
             {"t": tenant},
         )
     }
-    assert "St. Mary's Cemetery" in cems, (
-        "migration r211 has not run on this database — its cemetery row is absent"
-    )
-    for name in ("Full Equipment", "Tent Only", "Lowering Device & Grass",
-                 "Lowering Device Only"):
-        assert name in prod, f"migration r211 did not write product {name!r}"
-    assert prod["Full Equipment"] == Decimal("300.00"), prod["Full Equipment"]
-
+    # ⚠️ THE D2/D3 ROWS ARE ENSURED HERE, NOT ASSERTED — AND THE FIRST VERSION
+    # ASSERTED THEM AND TURNED CI RED. r211 is a DATA migration guarded on the
+    # `sunnycrest` tenant existing, and on a fresh CI database that tenant is created
+    # by the seed AFTER `alembic upgrade head` runs. So the migration correctly wrote
+    # nothing — exactly the no-op it was asked for — and 26 tests here then demanded
+    # its rows. A behavioural suite must not depend on a one-shot data migration
+    # having happened to run before it.
+    #
+    # ⚠️ THE MIGRATION ITSELF IS TESTED WHERE IT BELONGS:
+    # `test_r211_writes_the_cemetery_and_the_equipment.py` invokes its `upgrade()`
+    # directly and checks the rows, the idempotency and the no-op.
     made = []
+
+    if "St. Mary's Cemetery" not in cems:
+        cid0 = str(uuid.uuid4())
+        db.execute(
+            text("INSERT INTO cemeteries (id, company_id, name, city, state, is_active) "
+                 "VALUES (:i, :t, :n, 'Skaneateles', 'NY', true)"),
+            {"i": cid0, "t": tenant, "n": "St. Mary's Cemetery"},
+        )
+        made.append(("cemeteries", cid0))
+        cems.add("St. Mary's Cemetery")
+
+    for sku, name, price in (
+        ("TESTFIX-CE-FULL", "Full Equipment", Decimal("300.00")),
+        ("TESTFIX-CE-TENT", "Tent Only", Decimal("225.00")),
+    ):
+        if name in prod:
+            continue
+        eqid = str(uuid.uuid4())
+        db.execute(
+            text("INSERT INTO products (id, company_id, name, sku, price, is_active) "
+                 "VALUES (:i, :t, :n, :k, :p, true)"),
+            {"i": eqid, "t": tenant, "n": name, "k": sku, "p": price},
+        )
+        made.append(("products", eqid))
+        prod[name] = price
+
     if "Monticello Burial Vault" not in prod:
         pid = str(uuid.uuid4())
         db.execute(

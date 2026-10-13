@@ -91,6 +91,18 @@ def approved(db, tenant):
            {"t": tenant, "n": "Monticello Burial Vault"},
            "INSERT INTO products (id, company_id, name, sku, price, is_active) "
            "VALUES (:i, :t, :n, 'TRIGGERFIX-P1', 1250.00, true)")
+    # ⚠️ ENSURED, NOT ASSUMED, FOR THE SAME REASON AS THE REST. r211 writes these on
+    # a database where the sunnycrest tenant already exists; on a fresh CI database
+    # the tenant arrives with the seed, AFTER migrations, so the migration correctly
+    # no-ops and these rows are absent. Depending on it turned CI red.
+    ensure("cemeteries", "company_id = :t AND name = :n",
+           {"t": tenant, "n": "St. Mary's Cemetery"},
+           "INSERT INTO cemeteries (id, company_id, name, city, state, is_active) "
+           "VALUES (:i, :t, :n, 'Skaneateles', 'NY', true)")
+    ensure("products", "company_id = :t AND name = :n",
+           {"t": tenant, "n": "Full Equipment"},
+           "INSERT INTO products (id, company_id, name, sku, price, is_active) "
+           "VALUES (:i, :t, :n, 'TRIGGERFIX-CE1', 300.00, true)")
 
     role = db.query(Role).filter(Role.company_id == tenant).first()
     u = User(

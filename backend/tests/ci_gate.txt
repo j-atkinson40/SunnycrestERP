@@ -369,6 +369,7 @@ tests/test_the_form_default_picks_burial.py
 tests/test_a_cemetery_is_named_the_way_people_say_it.py
 tests/test_approve_creates_a_draft_order.py
 tests/test_approve_triggers_nothing.py
+tests/test_r211_writes_the_cemetery_and_the_equipment.py
 tests/test_a_burial_vault_is_not_a_burial_date.py
 tests/test_typed_capture_slice1.py
 tests/test_vault_resolution_wiring.py
