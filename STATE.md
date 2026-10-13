@@ -2,6 +2,68 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 2026-10-13 — A cemetery named the way people say it; and what Approve would write
+
+- **2026-10-13** — No migration. Two defects in the cemetery clause, from James's
+  11:24 walk note ("going to St. Mary's" left "St Mary's" under Not understood):
+  the period was missing from `_CEM_NAME`'s charset, so "St. Mary's" parsed as
+  `name='St'` and claimed only "going to St"; and "headed to"/"out to" were not
+  markers, so the bare `to` inside them matched later and left "headed"/"out"
+  unplaced. `_CEM_TOWN` had gained `.` on 2026-10-12 for "St. Albans"; the name step
+  one line over did not.
+  ⚠️ **The captured VALUE was right the whole time**, which is why both survived —
+  `name='St'` still resolved to "St. Mary's Cemetery", so every test asserting
+  `values["cemetery"]` passed over them. The new tests assert the unrecognized set
+  and the claimed span beside the value, with the span pinned on the clause itself.
+  A second silent casualty: with the name ending early the town step never ran, so
+  "St. Mary's Cemetery in Skaneateles" returned `town=None`.
+- **2026-10-13** — ⚠️ **AND THE FIX DOES NOT ADDRESS WHAT JAMES ACTUALLY HIT.**
+  Measured on production: `sunnycrest` has **0 rows in `cemeteries`**; its
+  `St. Mary's Cemetery` is a `company_entities` row, which is the table
+  `resolve_funeral_home` reads (`party_resolver.py:238`), not the one
+  `resolve_cemetery` reads (`:255`). His session row carries exactly his sentence at
+  15:23 UTC = 11:23 ET. There was nothing for any pattern to match. The resolution
+  is a decision (add a `cemeteries` row vs teach the resolver about flagged
+  entities) and is written up as Q1 in the investigation.
+  ⚠️ `company_entities.is_cemetery` looked like a no-data-write route and is not:
+  **all three sunnycrest entities have every flag False.**
+- **2026-10-13** — Not done and stated rather than quietly widened: "saint marys"
+  does not reach the record. There is no cemetery alias table, and expanding
+  "saint"→"st" inside `normalize` would reshape every index built on it, including
+  the catalog's own names.
+- **2026-10-13** — **INVESTIGATION (read-only, nothing built):**
+  `docs/investigations/2026-10-13-what-approve-would-write.md`. The load-bearing
+  findings for the Approve build:
+  - **`status="draft"` is the safe terminal state.** `draft` is outside the 18:00
+    batch's status filter (`draft_invoice_service.py:226-228`) and
+    `create_invoice_from_order` refuses a draft outright (`sales_service.py:739`).
+  - ⚠️ **The 18:00 end-of-day batch is LIVE on production and has rewritten real
+    orders.** `invoice_generation_mode='end_of_day'` on all four tenants with
+    `require_driver=False` (the auto-confirm branch). 12 invoices carry
+    `generation_reason='end_of_day_batch'` and **5 testco orders carry
+    `delivery_auto_confirmed=true`** — the batch sets `status='delivered'` on the
+    ORDER before invoicing it. An Approve writing `confirmed` with a
+    `scheduled_date` of today or earlier would be marked delivered and invoiced that
+    evening, with no human step.
+  - `post_invoice` has indeed **never run on production** — all 15
+    `journal_entries` rows are `entry_type='reconciliation'`; zero `'invoice'`.
+  - Email requires a human: only `approve_invoice` / `approve_all_no_exceptions`
+    call `_try_send_invoice_email`. The batch does not.
+  - **The "9 homeless fields" list was wrong both ways.** Six are homeless, and two
+    of them (`burial_date`, `grave_location`) were not on the list; `personalization`
+    and `service_date` already have homes — `order_personalization_tasks` (FK'd to
+    `sales_orders.id`, with `print_name`/`symbol`/`is_custom_legacy` already there)
+    and `sales_orders.scheduled_date`. `case_merchandise` is **not reachable from a
+    sales order** and `personalization_records` does not exist as a table.
+  - **Prices are reachable by name, not by variant.** `variant_template_id` is NULL
+    on every tenant product (0 of 4 sunnycrest, 0 of 25 testco), but sunnycrest's
+    `Monticello Burial Vault` ($1,250) and `Continental Burial Vault` ($1,850) are
+    string-identical to the capture's display names. Cemetery equipment has no
+    tenant product at all.
+  - sunnycrest has **5 `customers` rows** including `Hopkins Funeral Home`, so
+    `customer_id` is satisfiable by a name match today.
+  - sunnycrest has **0 sales orders** — James's first Approve would be its first.
+
 ## 2026-10-13 — Four rulings: the form default, plain-digit picks, closing ends it, no restore
 
 - **2026-10-13** — Migration head advances `r208_capture_session_text` →
