@@ -559,6 +559,19 @@ export function OpasHost() {
                   onStatus={(st) => reportStatus(pane.id, st)}
                   onRestoreText={(t) => opas.setEntryText(pane.id, t)}
                   pickRequest={pickRequest[pane.id]}
+                  onRestoreUnusable={(carryText) => {
+                    // ⚠️ THE WORDS COME WITH IT. The dead pane is closed and whatever
+                    // the director had typed into it becomes the BAR'S request text,
+                    // so the opening effect sees the phrase and opens a real order on
+                    // the next tick. Closing alone would discard what they typed and
+                    // leave them typing it twice.
+                    //
+                    // ⚠️ READ BEFORE CLOSING. `closePane` deletes that pane's
+                    // `entryText`, so the carry has to happen first — which is why the
+                    // pane passes its text rather than the host reading it after.
+                    if (carryText.trim() !== "") setText(carryText)
+                    opas.closePane(pane.id)
+                  }}
                 />
               ) : (
                 <ProductPane variantTemplateId={pane.variantTemplateId!} />

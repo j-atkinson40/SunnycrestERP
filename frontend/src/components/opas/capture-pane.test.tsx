@@ -578,13 +578,37 @@ describe("surviving a tuck and a reload", () => {
     expect(startCapture).not.toHaveBeenCalled()
   })
 
-  it("clears a stale stored id instead of resurrecting a ghost pane every reload", async () => {
+  it("a stale stored id leaves NO pane at all, not an error pane", async () => {
+    /**
+     * ⚠️ THIS TEST ASSERTED THE DEFECT UNTIL 2026-10-13. It read:
+     *
+     *     await waitFor(() => expect(screen.getByTestId("capture-error"))...)
+     *     expect(...).toHaveTextContent("no longer on the server")
+     *
+     * — i.e. it required the dead pane to STAY and show an error, which is exactly
+     * what made a tab permanently unable to start a new order. A capture pane is an
+     * ENTRY pane, so while it exists it is the front pane, which puts the bar in
+     * entry mode, which makes the opening effect return before it ever looks at the
+     * phrase. James hit this on production in the tab he had walked the day before;
+     * `sessionStorage` survives a reload and dies only with the tab, so his hard
+     * refreshes never cleared it.
+     *
+     * The claim the old test was protecting — a stale id does not resurrect a ghost
+     * on every reload — still holds and is asserted below. What changed is that the
+     * pane goes too, which is strictly more than clearing the id.
+     */
     window.sessionStorage.setItem(CAPTURE_SESSION_KEY, "gone")
     vi.mocked(readCapture).mockRejectedValue(new Error("404"))
     openOverlay()
 
-    await waitFor(() => expect(screen.getByTestId("capture-error")).toBeInTheDocument())
-    expect(screen.getByTestId("capture-error")).toHaveTextContent("no longer on the server")
-    expect(window.sessionStorage.getItem(CAPTURE_SESSION_KEY)).toBeNull()
+    await waitFor(() =>
+      expect(window.sessionStorage.getItem(CAPTURE_SESSION_KEY)).toBeNull(),
+    )
+    await waitFor(() =>
+      expect(
+        document.querySelectorAll('[data-testid^="opas-pane-opas-pane-"]'),
+      ).toHaveLength(0),
+    )
+    expect(screen.queryByTestId("capture-error")).not.toBeInTheDocument()
   })
 })

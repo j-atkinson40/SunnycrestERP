@@ -169,6 +169,7 @@ export function CapturePane({
   onStatus,
   onRestoreText,
   pickRequest,
+  onRestoreUnusable,
 }: {
   /** Fed through extraction on start, per the prototype (`:568` calls `feed` at once). */
   readonly openingLine?: string
@@ -190,6 +191,21 @@ export function CapturePane({
    *  option chosen twice still fires. A bare `{field_id, index}` object would be
    *  compared by identity and the second identical press would be a no-op. */
   readonly pickRequest?: { readonly fieldId: string; readonly index: number; readonly nonce: number }
+  /** ⚠️ THE RESTORED SESSION CANNOT BE USED — CLOSE THIS PANE.
+   *
+   *  Called when a pane restored from `sessionStorage` either fails to read or comes
+   *  back in a status that is not an order in progress. The pane must GO, not sit
+   *  there showing an error: it is an ENTRY pane, so while it exists it is the front
+   *  pane, which puts the bar in entry mode, which means a typed opening phrase is
+   *  routed into this dead session instead of opening a new order. The tab becomes
+   *  permanently unable to start one.
+   *
+   *  ⚠️ MEASURED IN A REAL BROWSER, 2026-10-13, against a stale stored id: the pane
+   *  rendered "That order is no longer on the server", the id cleared itself, and
+   *  typing "Order for hopkins" opened nothing — for as long as the tab lived.
+   *  `sessionStorage` survives a reload and dies only with the tab, which is why
+   *  James's hard refreshes never cleared it and why a NEW TAB would have worked. */
+  readonly onRestoreUnusable?: (carryText: string) => void
 }) {
   const [state, setState] = useState<CaptureState | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -248,8 +264,15 @@ export function CapturePane({
   // a pane id that no longer exists.
   const onSessionStartedRef = useRef(onSessionStarted)
   const onRestoreTextRef = useRef(onRestoreText)
+  const onRestoreUnusableRef = useRef(onRestoreUnusable)
+  const textRef = useRef(text)
   onSessionStartedRef.current = onSessionStarted
   onRestoreTextRef.current = onRestoreText
+  onRestoreUnusableRef.current = onRestoreUnusable
+  // ⚠️ THE LATEST TEXT, FOR THE CARRY-ACROSS. The start effect does not depend on
+  // `text`, so it would otherwise close over whatever was in the bar at mount —
+  // which is "" — and the director's words would be lost on recovery.
+  textRef.current = text
 
   useEffect(() => {
     if (started.current) return
@@ -260,6 +283,15 @@ export function CapturePane({
           ? await readCapture(existingSessionId)
           : await startCapture(openingLine)
         if (!mounted.current) return
+        // ⚠️ A RESTORED SESSION THAT IS NOT AN ORDER IN PROGRESS MUST NOT HOLD THE
+        // BAR. `abandoned` is finished with; keeping its pane in front would block
+        // every new order in this tab, exactly as a failed read does.
+        // `capturing` and `review` are both live things to look at and are kept.
+        if (existingSessionId && s.status === "abandoned") {
+          writeStoredCaptureSession(null)
+          onRestoreUnusableRef.current?.(textRef.current)
+          return
+        }
         setState(s)
         if (!existingSessionId) onSessionStartedRef.current?.(s.session_id)
         // ⚠️ ONCE, AND ONLY WHEN THERE IS A RECORD. `full_text === null` means this
@@ -277,8 +309,14 @@ export function CapturePane({
         // on every reload. The wording distinguishes the two causes, because "could not
         // start" on a restore would send someone looking for the wrong fault.
         if (existingSessionId) {
+          // ⚠️ CLEAR THE ID **AND** CLOSE THE PANE. Clearing alone was the defect:
+          // the next reload was clean, but THIS tab kept a dead entry pane in front
+          // for as long as it lived, so no new order could ever open in it. The
+          // error text is no longer rendered because there is no pane to render it
+          // in — the recovery is to carry the director's words into the bar and let
+          // them open a real order, which is more use than a red line.
           writeStoredCaptureSession(null)
-          setError("That order is no longer on the server")
+          onRestoreUnusableRef.current?.(textRef.current)
         } else {
           setError("Could not start the capture")
         }

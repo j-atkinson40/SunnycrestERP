@@ -280,6 +280,46 @@ Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end 
   characters of `Order for hopkins` with NO Enter; `capture-rows` present; bar in entry
   mode holding the phrase; funeral-home row `✓ | FUNERAL HOME | Hopkins Funeral Home`
   from the LOWERCASE name; nothing in "Not understood".
+- **2026-10-13** — ⚠️ **WALK NOTE 3 (James, production, 07:21 ET): "order for hopkins"
+  on `2f72facf` after a hard refresh, no pane — IN THE SAME TAB as the previous walks.**
+  His hypothesis was right. **A STORED CAPTURE SESSION ID IN `sessionStorage` BLOCKS
+  EVERY NEW ORDER FOR THE LIFE OF THE TAB.** The host restores a capture pane for the
+  stored id on mount; `openPane` RAISES it, so `entryMode` is true before any keystroke,
+  and the opening effect's first real guard is `if (entryMode) return`. Typing therefore
+  goes into the restored pane and `text` — the host's request state — stays empty, so the
+  phrase is never evaluated. When the restored session is gone the pane sat there reading
+  "That order is no longer on the server" forever.
+- **2026-10-13** — PRODUCTION EVIDENCE, read-only: exactly ONE `capture_sessions` row has
+  ever existed — `c533e043-8874-4572-9496-f5d8756c0ace`, status `capturing`, created
+  2026-10-12 12:44:15. **ZERO** created in the 11:15–11:25 UTC window, **ZERO** created
+  OR UPDATED on 2026-10-13. So no POST completed and the restored session was never
+  written to either. (A POST failing before its insert leaves no row, so 0 means "none
+  completed", not "none sent" — stated because the proxy is not the thing.)
+- **2026-10-13** — ⚠️ **WHY DEV AND THE REAL-BROWSER HARNESS BOTH PASSED: BOTH START
+  CLEAN.** The harness launches Chrome with a FRESH `--user-data-dir` every run, so
+  `sessionStorage` is always empty. The failure needs state a person accumulates across
+  days. Same blind-spot shape as "every test pressed Enter": the suite only ever
+  exercised the easy starting condition. Reproduced in the real browser only after
+  seeding the stale id deliberately.
+- **2026-10-13** — FIXED: a restored session that CANNOT BE USED closes its pane instead
+  of showing an error — a failed read, or a status of `abandoned`. `capturing` and
+  `review` still restore, so tuck survival is intact (asserted, and break-tested in the
+  destroying direction). The director's typed words are CARRIED from the dead pane into
+  the bar, so the phrase opens a real order instead of being discarded; without that the
+  recovery is "your order vanished, type it again".
+- **2026-10-13** — ⚠️ A PRE-EXISTING TEST ASSERTED THE DEFECT.
+  `capture-pane.test.tsx::clears a stale stored id instead of resurrecting a ghost pane`
+  REQUIRED the dead pane to stay and show "no longer on the server". Rewritten; the claim
+  it protected (a stale id does not resurrect a ghost on reload) still holds and is now
+  strictly stronger, since the pane goes too.
+- **2026-10-13** — ⚠️ The carry-across break produced NO red at first: the test rejected
+  the restore IMMEDIATELY, so the pane closed after a character or two and the remaining
+  keystrokes refilled the bar on their own — it was passing because of the typing, not
+  the fix. Rewritten to hold the rejection until the whole phrase is typed, which is the
+  slow-network case that actually needs the carry.
+- **2026-10-13** — REAL-BROWSER CONFIRMATION with the failing state seeded: before, a
+  dead pane and no order; after, `capture-error: None`, a NEW stored session id, rows
+  rendered, funeral-home row `✓ Hopkins Funeral Home`, placeholder `8 still needed`.
 - **2026-10-12** — Walk steps for James:
   `docs/investigations/2026-10-12-typed-capture-round-2-walk.md`. ⚠️ Its first
   instruction is to RESTART the dev backend — the process on :8000 was started before
