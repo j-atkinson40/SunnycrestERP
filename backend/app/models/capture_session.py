@@ -29,7 +29,16 @@ from app.database import Base
 STATUS_CAPTURING = "capturing"
 STATUS_REVIEW = "review"
 STATUS_ABANDONED = "abandoned"
-CAPTURE_STATUSES: tuple[str, ...] = (STATUS_CAPTURING, STATUS_REVIEW, STATUS_ABANDONED)
+#: ⚠️ TERMINAL, AND THE ONLY STATUS THAT MEANS A SALES ORDER EXISTS. Paired with
+#: `sales_order_id`: `approved` without the link, or the link without `approved`,
+#: is a half-written approval and `approve()` sets both inside one transaction.
+STATUS_APPROVED = "approved"
+CAPTURE_STATUSES: tuple[str, ...] = (
+    STATUS_CAPTURING,
+    STATUS_REVIEW,
+    STATUS_ABANDONED,
+    STATUS_APPROVED,
+)
 
 
 class CaptureSession(Base):
@@ -98,6 +107,14 @@ class CaptureSession(Base):
     #: ⚠️ NULLABLE, NO DEFAULT IN EITHER LAYER. A non-null value would assert
     #: something about every session row that predates r209, and nothing measured one.
     switches: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+
+    #: The sales order this session was approved into. ⚠️ NULLABLE AND WITHOUT A
+    #: MODEL DEFAULT — a session that has not been approved has not established an
+    #: order, which is different from having none. Reading it inside the approving
+    #: transaction is what makes a double click produce ONE order.
+    sales_order_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("sales_orders.id", ondelete="SET NULL"), nullable=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)

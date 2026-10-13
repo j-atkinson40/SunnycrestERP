@@ -29,10 +29,19 @@ import { CapturePane, type EntryPaneStatus } from "./CapturePane"
 import { CAPTURE_START, isCatalogRequest, routeResolution } from "./opas-routing"
 import { isEntryPane } from "./pane-mode"
 import { EXTRACT_DEBOUNCE_MS } from "./capture-sequence"
+
 import { consumePickDigit } from "./pick-digit"
 import { resolvePhrase } from "@/services/opas-catalog-service"
 import { ProductListPane } from "./ProductListPane"
 import { ProductPane } from "./ProductPane"
+
+/** How long an approved pane stays on screen before it closes itself.
+ *
+ * ⚠️ LONG ENOUGH TO READ AN ORDER NUMBER, SHORT ENOUGH NOT TO BLOCK THE NEXT ORDER.
+ * An entry pane holds the bar in entry mode while it is in front, so this is a
+ * bounded window rather than "until dismissed". Typing closes it sooner.
+ */
+const APPROVED_VISIBLE_MS = 6000
 
 /** The prototype's glass, as one object so panes and the command line cannot drift apart. */
 const GLASS: React.CSSProperties = {
@@ -85,6 +94,9 @@ export function OpasHost() {
     Record<string, { fieldId: string; index: number; nonce: number }>
   >({})
   const pickNonce = useRef(0)
+  // ⚠️ PANE IDS THAT HOLD A CREATED ORDER. The opening effect reads this so the next
+  // phrase closes the receipt instead of being typed into a finished order.
+  const approvedPanes = useRef<Set<string>>(new Set())
 
   /**
    * ⚠️ FIELD-BY-FIELD COMPARISON, AND IT IS LOAD-BEARING RATHER THAN AN OPTIMISATION.
@@ -394,6 +406,16 @@ export function OpasHost() {
     // DOING THE WORK. It stayed green for either single removal and only fell to
     // both. It is a true assertion about the behaviour and not evidence about the
     // mechanism; the table above is the evidence.
+    // ⚠️ AN APPROVED PANE IS CLOSED BEFORE THE PHRASE IS READ, AND THIS IS THE
+    // SAME TRAP AS THE RESTORED PANE. A pane holding a created order is still an
+    // ENTRY pane, so it holds the bar in entry mode and `entryMode` below would
+    // return before ever looking at the words — the tab would be unable to start a
+    // second order until the 6-second timer fired. Closing it here means the
+    // director's next sentence both dismisses the receipt and starts the order.
+    if (approvedPanes.current.size > 0) {
+      for (const id of approvedPanes.current) opas.closePane(id)
+      approvedPanes.current.clear()
+    }
     if (entryMode) return
     const phrase = text.trim()
     if (phrase === "") return
@@ -437,6 +459,37 @@ export function OpasHost() {
    * when a Focus opens over Opas, or on a hot reload, and would abandon an order the
    * director had not finished with.
    */
+  /**
+   * The order exists. Clear the bar, let the number be read, then close.
+   *
+   * ⚠️ THE BAR CLEARS IMMEDIATELY AND THE PANE CLOSES ON A TIMER, in that order and
+   * not the reverse. An ENTRY pane holds the bar in entry mode for as long as it is
+   * the front pane — which is the mechanism behind the "no pane appeared" bug that
+   * cost three walk rounds — so leaving the approved pane open indefinitely would
+   * make the tab unable to start a second order. The timer bounds that window.
+   *
+   * ⚠️ AND A KEYSTROKE CLOSES IT EARLY. The window is only there so the office can
+   * read the order number; the moment somebody starts typing the next order they
+   * have finished reading, and waiting out a timer would swallow their first words.
+   * That is handled by the opening effect, which clears the approved pane before it
+   * looks at the phrase.
+   *
+   * ⚠️ NO `abandonCapture` HERE. The session is `approved` and carries the order id;
+   * telling the server it was abandoned would contradict the row it just wrote.
+   */
+  const onApproved = useCallback(
+    (paneId: string) => {
+      setText("")
+      opas.setEntryText(paneId, "")
+      approvedPanes.current.add(paneId)
+      window.setTimeout(() => {
+        opas.closePane(paneId)
+        approvedPanes.current.delete(paneId)
+      }, APPROVED_VISIBLE_MS)
+    },
+    [opas, setText],
+  )
+
   const endEntryCaptures = useCallback(() => {
     for (const pane of opas.panes) {
       if (!isEntryPane(pane.kind)) continue
@@ -734,6 +787,7 @@ export function OpasHost() {
                   text={opas.entryText[pane.id] ?? ""}
                   onStatus={(st) => reportStatus(pane.id, st)}
                   pickRequest={pickRequest[pane.id]}
+                  onApproved={() => onApproved(pane.id)}
                 />
               ) : (
                 <ProductPane variantTemplateId={pane.variantTemplateId!} />

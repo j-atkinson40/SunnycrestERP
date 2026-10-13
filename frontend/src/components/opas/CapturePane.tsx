@@ -43,6 +43,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import {
+  approveCapture,
   choosePick,
   setCaptureText,
   startCapture,
@@ -215,12 +216,32 @@ export function splitIntoColumns<T extends { readonly row_id: string }>(
   return { left, right }
 }
 
+/** A decimal string as the office writes money.
+ *
+ * ⚠️ IT FORMATS A STRING AND NEVER DOES ARITHMETIC ON IT. The server sends decimal
+ * strings because money in a float loses cents; parsing to a number here to add
+ * things up would put the loss back. Every total on screen was summed by Postgres.
+ *
+ * ⚠️ A VALUE IT CANNOT PARSE IS SHOWN AS GIVEN, not as "$NaN". If the server ever
+ * sends something unexpected the office should see the oddity, not a broken number.
+ */
+export function money(value: string): string {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return value
+  return n.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+  })
+}
+
 export function CapturePane({
   openingLine,
   onSessionStarted,
   text = "",
   onStatus,
   pickRequest,
+  onApproved,
 }: {
   /** Fed through extraction on start, per the prototype (`:568` calls `feed` at once). */
   readonly openingLine?: string
@@ -234,6 +255,9 @@ export function CapturePane({
    *  option chosen twice still fires. A bare `{field_id, index}` object would be
    *  compared by identity and the second identical press would be a no-op. */
   readonly pickRequest?: { readonly fieldId: string; readonly index: number; readonly nonce: number }
+  /** ⚠️ CALLED ONCE THE ORDER EXISTS, so the HOST can clear the bar and end the
+   *  capture. The pane does not own the bar and must not reach for it. */
+  readonly onApproved?: (order: { readonly number: string; readonly total: string }) => void
 }) {
   const [state, setState] = useState<CaptureState | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -339,6 +363,11 @@ export function CapturePane({
    * than a throttle. Nine keystrokes in a second produce ONE request, not nine.
    */
   const sessionId = state?.session_id
+  // ⚠️ A REF FOR THE CALLBACK. An inline parent callback changes identity every
+  // render; held directly it would make any effect depending on it re-run forever —
+  // the same trap that left the pane stuck on "Starting…" earlier in this arc.
+  const onApprovedRef = useRef(onApproved)
+  onApprovedRef.current = onApproved
   useEffect(() => {
     if (sessionId === undefined) return
     // ⚠️ THE OPENING LINE WAS ALREADY EXTRACTED BY `start`, so the first effect run on
@@ -495,7 +524,49 @@ export function CapturePane({
   const switches = state.switches ?? []
   const conflicts = state.conflicts ?? []
   const needed = state.missing.length
+  async function doApprove() {
+    // ⚠️ GUARDED AGAINST THE DOUBLE CLICK ON THE CLIENT AS WELL AS THE SERVER. The
+    // server is idempotent (it reads `sales_order_id` first), so a second request
+    // cannot make a second order — but it would still fire a second round trip and
+    // briefly re-render, and `busy` is what stops the office seeing that.
+    if (busy || !sessionId) return
+    setBusy(true)
+    try {
+      const next = await approveCapture(sessionId)
+      setState(next)
+      if (next.sales_order_number) {
+        onApprovedRef.current?.({
+          number: next.sales_order_number,
+          total: next.total ?? "0.00",
+        })
+      }
+    } catch (e) {
+      // ⚠️ THE 409'S BLOCKERS ARE SHOWN, NOT "something went wrong". The server
+      // re-checks inside the transaction, so it can refuse for a reason the pane
+      // had not seen yet — a product deleted a second ago, a pick reopened.
+      const detail = (e as { response?: { data?: { detail?: unknown } } })
+        ?.response?.data?.detail
+      const list =
+        detail && typeof detail === "object" && "blockers" in detail
+          ? (detail as { blockers?: string[] }).blockers
+          : undefined
+      setError(
+        list?.length
+          ? list.join(" ")
+          : "The order could not be created. Nothing was written.",
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const reviewing = state.status === "review"
+  const approvedOrder =
+    state.status === "approved" && state.sales_order_number
+      ? { number: state.sales_order_number, total: state.total ?? "0.00" }
+      : null
+  const blockers = state.blockers ?? []
+  const lines = state.lines ?? []
 
   return (
     <div className="flex flex-col gap-3 p-3" data-testid="capture-pane">
@@ -796,9 +867,106 @@ export function CapturePane({
               </div>
             ))}
           </div>
-          <p className="text-micro text-content-subtle" data-testid="capture-no-approve">
-            Read-only. Creating the sales order is a separate build.
-          </p>
+          {/* ── line items and the total ──────────────────────────────────
+              Prototype `:179`, `:393-395`: the vault, then one row per extra, then
+              a Total. The prices here come from the TENANT'S products, matched by
+              exact name — the prototype used a hardcoded `VAULTS` map (`:270`). */}
+          {lines.length > 0 && (
+            <div
+              className="flex flex-col gap-1 rounded-base border border-border-subtle p-2"
+              data-testid="capture-lineitems"
+            >
+              {lines.map((l) => (
+                <div
+                  key={`${l.kind}-${l.description}`}
+                  className="flex items-baseline justify-between gap-3"
+                  data-testid={`capture-line-${l.kind}`}
+                >
+                  <span className="text-body-sm text-content-strong">
+                    {l.description}
+                  </span>
+                  {/* ⚠️ `tabular-nums` SO THE COLUMN LINES UP. Money read off a
+                      summary is compared down the column, not across. */}
+                  <span className="text-body-sm tabular-nums text-content-strong">
+                    {money(l.line_total)}
+                  </span>
+                </div>
+              ))}
+              <div
+                className="mt-1 flex items-baseline justify-between gap-3 border-t border-border-subtle pt-1"
+                data-testid="capture-total"
+              >
+                <span className="text-body-sm font-medium text-content-strong">
+                  Total
+                </span>
+                <span className="text-body-sm font-medium tabular-nums text-content-strong">
+                  {money(state.total ?? "0.00")}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* ── what is stopping approval ──────────────────────────────────
+              ⚠️ THE REASONS ARE SHOWN, NOT A DISABLED BUTTON ALONE. A greyed
+              control says "no" without saying why, and the office cannot fix a
+              missing product it has not been told about. */}
+          {blockers.length > 0 && (
+            <div className="flex flex-col gap-1" data-testid="capture-blockers">
+              <span className="text-micro uppercase tracking-wide text-content-subtle">
+                Before this can be approved
+              </span>
+              <ul className="list-disc pl-4">
+                {blockers.map((b) => (
+                  <li
+                    key={b}
+                    className="text-body-sm text-status-error"
+                    data-testid="capture-blocker"
+                  >
+                    {b}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* ── the approve control ────────────────────────────────────────
+              Prototype `:404`: a primary button labelled by the surface's own verb,
+              beside a way back. ⚠️ ABSENT WHEN BLOCKED RATHER THAN DISABLED, which
+              is the same ruling (E5) that kept a disabled Approve out of the
+              read-only summary: a control that cannot act should not be on screen
+              pretending it might. */}
+          <div className="flex items-center gap-3">
+            {blockers.length === 0 ? (
+              <button
+                type="button"
+                data-testid="capture-approve"
+                disabled={busy}
+                onClick={() => void doApprove()}
+                className="rounded-base bg-accent px-3 py-1.5 text-body-sm text-content-inverse disabled:opacity-60"
+              >
+                {busy ? "Creating…" : "Approve & Create Sales Order"}
+              </button>
+            ) : null}
+            <span className="text-micro text-content-subtle">
+              {blockers.length === 0
+                ? "Or type \u201capprove\u201d."
+                : "Fix the above, or keep typing to correct the order."}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* ── after approve ─────────────────────────────────────────────────
+          Prototype `:493` echoes one line and is done. ⚠️ THE NUMBER AND THE TOTAL,
+          because those are the two things the office writes down. */}
+      {approvedOrder && (
+        <div className="flex flex-col gap-1" data-testid="capture-approved">
+          <span className="text-body-sm text-content-strong">
+            Created {approvedOrder.number}
+          </span>
+          <span className="text-micro tabular-nums text-content-muted">
+            {money(approvedOrder.total)}
+          </span>
         </div>
       )}
     </div>

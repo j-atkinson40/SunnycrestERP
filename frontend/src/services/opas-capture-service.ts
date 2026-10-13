@@ -44,12 +44,34 @@ export interface CaptureState {
   /** field_id -> the value the director CHOSE. Returned so a reload restores settled
    *  picks instead of re-asking every question. */
   readonly resolutions: Readonly<Record<string, unknown>>
+  /** The prospective order lines. ⚠️ `null` UNTIL REVIEW, AND `null` IS NOT `[]`.
+   *  An empty array says "this order has nothing to bill", which is a blocker;
+   *  `null` says the question has not been asked yet. */
+  readonly lines?: readonly {
+    readonly kind: string
+    readonly description: string
+    readonly product_id: string | null
+    /** A decimal STRING, not a number — the server speaks money in strings and
+     *  `parseFloat` at the edge is where cents go missing. Rendered as given. */
+    readonly unit_price: string | null
+    readonly quantity: string
+    readonly line_total: string
+  }[] | null
+  /** The order total as a decimal string, or `null` outside review. */
+  readonly total?: string | null
+  /** Every reason Approve cannot run, in the office's words. `null` outside review. */
+  readonly blockers?: readonly string[] | null
+  readonly can_approve?: boolean
+  /** Set once approved. ⚠️ THESE TWO ARE HOW THE PANE KNOWS IT IS DONE — the status
+   *  says `approved` and these name what was created. */
+  readonly sales_order_id?: string | null
+  readonly sales_order_number?: string | null
   /** ⚠️ ECHOED BACK FROM THE REQUEST, UNINTERPRETED BY THE SERVER. Present only on a
    *  `setCaptureText` response. The CLIENT drops a response whose `seq` is not higher
    *  than the highest it has applied — see `capture-sequence.ts` for why the client
    *  and not the server. */
   readonly seq?: number
-  readonly status: "capturing" | "review" | "abandoned"
+  readonly status: "capturing" | "review" | "abandoned" | "approved"
   readonly object_type: string
   readonly typed_lines: readonly string[]
   readonly values: Readonly<Record<string, unknown>>
@@ -200,6 +222,21 @@ export async function abandonCapture(sessionId: string): Promise<void> {
   } catch {
     /* see above — nothing to tell and nothing to retry */
   }
+}
+
+/** Approve the capture into a sales order.
+ *
+ * ⚠️ IT RETURNS THE FULL STATE, NOT JUST AN ID, so the pane renders the approved
+ * order from the same shape it was already rendering. A bespoke response would be a
+ * second shape to keep in step with the first.
+ *
+ * ⚠️ IT DOES NOT SWALLOW ITS ERROR, unlike `abandonCapture`. A 409 carries the
+ * blockers and the office needs to see them; a failure here is the difference
+ * between an order existing and not.
+ */
+export async function approveCapture(sessionId: string): Promise<CaptureState> {
+  const r = await apiClient.post<CaptureState>(`${BASE}/${sessionId}/approve`, {})
+  return r.data
 }
 
 /** ⚠️ THE TUCK-SURVIVAL CALL. A tucked pane is re-read from the server rather than kept

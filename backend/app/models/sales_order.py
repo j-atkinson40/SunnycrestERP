@@ -129,6 +129,27 @@ class SalesOrder(Base):
     # Deceased name — shown on invoice/PDF when invoice settings enable it
     deceased_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
+    # ── typed order capture (r210) ────────────────────────────────────────
+    # ⚠️ ALL FOUR NULLABLE WITH NO `default=`, MATCHING THE MIGRATION. A default on
+    # the model is a second place a value can come from, and `information_schema`
+    # cannot see it — CLAUDE.md §5 on a default living in more than one layer.
+    #
+    # ⚠️ `burial_date` IS NOT `scheduled_date`. The burial and the service are
+    # different days and the capture asks for both; `scheduled_date` carries the
+    # SERVICE date because that is the one the scheduling board and the end-of-day
+    # batch compare against.
+    burial_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    # Section / lot / space, as the office says it. Shown to the delivery crew.
+    grave_location: Mapped[str | None] = mapped_column(String(120), nullable=True)
+
+    # ⚠️ USUALLY NULL, AND THAT IS NOT A BUG. The capture stores what a director
+    # says, which is normally a YEAR ("1948"); a year is not a date and guessing
+    # January 1st would invent a birthday. The verbatim text lives on the
+    # personalization task's `inscription_dates`, which is what the nameplate prints.
+    date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
+    date_of_death: Mapped[date | None] = mapped_column(Date, nullable=True)
+
     # Spring burial
     is_spring_burial: Mapped[bool] = mapped_column(Boolean, default=False)
     spring_burial_added_at: Mapped[datetime | None] = mapped_column(

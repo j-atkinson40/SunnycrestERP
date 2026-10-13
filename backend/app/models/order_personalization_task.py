@@ -31,6 +31,14 @@ class OrderPersonalizationTask(Base):
     print_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     print_image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     symbol: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    #: How the nameplate renders its dates — "written" | "numeric" | "years" (r210).
+    #: ⚠️ ON THE TASK, NOT THE ORDER. It describes the personalization work, and the
+    #: codebase's own precedent agrees: `case_merchandise.monument_dates_format` sits
+    #: with the monument rather than with the case.
+    nameplate_date_format: Mapped[str | None] = mapped_column(
+        String(10), nullable=True
+    )
     is_custom_legacy: Mapped[bool] = mapped_column(Boolean, server_default="false")
 
     status: Mapped[str] = mapped_column(String(20), server_default="pending")

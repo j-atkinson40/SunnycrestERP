@@ -38,6 +38,7 @@ vi.mock("@/services/opas-capture-service", () => ({
   // sees as a pane that does not appear.
   takeSwitch: vi.fn(),
   abandonCapture: vi.fn(),
+  approveCapture: vi.fn(),
 }))
 vi.mock("@/services/opas-catalog-service", () => ({
   resolvePhrase: vi.fn(async () => ({ candidates: [], discriminators: [] })),
@@ -58,6 +59,7 @@ vi.mock("@/contexts/focus-context", () => ({ useFocus: () => ({ isOpen: false })
 import {
   abandonCapture,
   addLine,
+  approveCapture,
   choosePick,
   readCapture,
   setCaptureText,
@@ -608,19 +610,148 @@ describe("the done signal and the summary", () => {
     expect(pressEnter()).toBe(false)
   })
 
-  it("has NO approve control in the summary, by ruling", async () => {
+  it("SHOWS the approve control when nothing blocks it", async () => {
+    /**
+     * ⚠️ THIS TEST ASSERTED THE OPPOSITE UNTIL 2026-10-13, under ruling E5: no
+     * Approve in the summary, "and no disabled placeholder either — a greyed button
+     * reads as a feature that exists and is temporarily unavailable." The first half
+     * is superseded (Approve is built), and the SECOND HALF STILL GOVERNS — which is
+     * why the control is ABSENT when blocked rather than disabled. See the blocked
+     * case below.
+     */
     const user = userEvent.setup()
-    vi.mocked(startCapture).mockResolvedValue(state({ status: "review" }) as never)
+    vi.mocked(setCaptureText).mockResolvedValue(
+      state({
+        status: "review",
+        lines: [
+          { kind: "vault", description: "Monticello Burial Vault", product_id: "p1",
+            unit_price: "1250.00", quantity: "1", line_total: "1250.00" },
+          { kind: "equipment", description: "Full Equipment", product_id: "p2",
+            unit_price: "300.00", quantity: "1", line_total: "300.00" },
+        ],
+        total: "1550.00",
+        blockers: [],
+        can_approve: true,
+      }) as never,
+    )
     openOverlay()
-    await type(user, "start an order")
+    await type(user, "start an order for Hopkins")
 
     await waitFor(() => expect(screen.getByTestId("capture-summary")).toBeInTheDocument())
-    // ⚠️ E5: no Approve, and no disabled placeholder either — a greyed button reads as a
-    // feature that exists and is temporarily unavailable.
-    expect(screen.queryByRole("button", { name: /approve/i })).not.toBeInTheDocument()
-    expect(screen.getByTestId("capture-no-approve")).toBeInTheDocument()
+    expect(screen.getByTestId("capture-approve")).toBeInTheDocument()
+    // the pane still has no field of its own — the bar is the only input
     expect(screen.queryByTestId("capture-input")).not.toBeInTheDocument()
   })
+
+  it("shows a priced line per billable thing, and the total", async () => {
+    const user = userEvent.setup()
+    vi.mocked(setCaptureText).mockResolvedValue(
+      state({
+        status: "review",
+        lines: [
+          { kind: "vault", description: "Monticello Burial Vault", product_id: "p1",
+            unit_price: "1250.00", quantity: "1", line_total: "1250.00" },
+          { kind: "equipment", description: "Full Equipment", product_id: "p2",
+            unit_price: "300.00", quantity: "1", line_total: "300.00" },
+        ],
+        total: "1550.00",
+        blockers: [],
+        can_approve: true,
+      }) as never,
+    )
+    openOverlay()
+    await type(user, "start an order for Hopkins")
+
+    const items = await screen.findByTestId("capture-lineitems")
+    expect(items).toHaveTextContent("Monticello Burial Vault")
+    expect(items).toHaveTextContent("$1,250.00")
+    expect(items).toHaveTextContent("Full Equipment")
+    expect(items).toHaveTextContent("$300.00")
+    // ⚠️ THE TOTAL IS THE SERVER'S, FORMATTED — never summed in the browser. Money
+    // added up in a float is where cents go missing.
+    expect(screen.getByTestId("capture-total")).toHaveTextContent("$1,550.00")
+  })
+
+  it("HIDES approve and names every blocker when something is wrong", async () => {
+    // ⚠️ ABSENT, NOT DISABLED — the surviving half of ruling E5. And the reasons are
+    // on screen, because the office cannot add a product it has not been told about.
+    const user = userEvent.setup()
+    vi.mocked(setCaptureText).mockResolvedValue(
+      state({
+        status: "review",
+        lines: [],
+        total: "0.00",
+        blockers: [
+          "Veteran Triune Burial Vault has no product on this tenant — the order line would have no price.",
+          "Still needed: burial date",
+        ],
+        can_approve: false,
+      }) as never,
+    )
+    openOverlay()
+    await type(user, "start an order for Hopkins")
+
+    await waitFor(() => expect(screen.getByTestId("capture-blockers")).toBeInTheDocument())
+    expect(screen.queryByTestId("capture-approve")).not.toBeInTheDocument()
+    const shown = screen.getAllByTestId("capture-blocker").map((n) => n.textContent)
+    expect(shown).toHaveLength(2)
+    expect(shown.join(" ")).toContain("Veteran Triune Burial Vault")
+    expect(shown.join(" ")).toContain("burial date")
+  })
+
+  it("shows the order number and total once approved", async () => {
+    const user = userEvent.setup()
+    vi.mocked(setCaptureText).mockResolvedValue(
+      state({
+        status: "review", lines: [
+          { kind: "vault", description: "Monticello Burial Vault", product_id: "p1",
+            unit_price: "1250.00", quantity: "1", line_total: "1250.00" },
+        ], total: "1250.00", blockers: [], can_approve: true,
+      }) as never,
+    )
+    vi.mocked(approveCapture).mockResolvedValue(
+      state({
+        status: "approved", lines: [], total: "1250.00", blockers: [],
+        can_approve: false, sales_order_id: "so-1",
+        sales_order_number: "SO-2026-0001",
+      }) as never,
+    )
+    openOverlay()
+    await type(user, "start an order for Hopkins")
+    await user.click(await screen.findByTestId("capture-approve"))
+
+    const done = await screen.findByTestId("capture-approved")
+    expect(done).toHaveTextContent("SO-2026-0001")
+    expect(done).toHaveTextContent("$1,250.00")
+  })
+
+  it("shows the server's blockers when approve is REFUSED", async () => {
+    // ⚠️ THE SERVER RE-CHECKS INSIDE THE TRANSACTION, so it can refuse for a reason
+    // the pane had not seen — a product deleted a second ago. The 409's list is what
+    // the office must read, not "something went wrong".
+    const user = userEvent.setup()
+    vi.mocked(setCaptureText).mockResolvedValue(
+      state({
+        status: "review", lines: [
+          { kind: "vault", description: "Monticello Burial Vault", product_id: "p1",
+            unit_price: "1250.00", quantity: "1", line_total: "1250.00" },
+        ], total: "1250.00", blockers: [], can_approve: true,
+      }) as never,
+    )
+    vi.mocked(approveCapture).mockRejectedValue({
+      response: { data: { detail: { blockers: ["No customer record for Hopkins Funeral Home — add it before approving."] } } },
+    })
+    openOverlay()
+    await type(user, "start an order for Hopkins")
+    await user.click(await screen.findByTestId("capture-approve"))
+
+    await waitFor(() =>
+      expect(screen.getByTestId("capture-error")).toHaveTextContent(
+        /No customer record for Hopkins/i,
+      ),
+    )
+  })
+
 })
 
 describe("surviving a tuck and a reload", () => {

@@ -2,6 +2,78 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 2026-10-13 — Summary + Approve: order capture reaches a draft sales order
+
+- **2026-10-13** — Migration head advances `r209_capture_session_switches` →
+  **`r210_order_capture_approve_columns`** → **`r211_sunnycrest_cemetery_and_equipment`**.
+  - **r210** (schema, expand-only, every column nullable, no server default and no
+    model-side `default=`): `sales_orders.burial_date`, `.grave_location`,
+    `.date_of_birth`, `.date_of_death`; `order_personalization_tasks.nameplate_date_format`;
+    `capture_sessions.sales_order_id` (FK → `sales_orders.id`, **ON DELETE SET NULL**,
+    stated rather than defaulted). It also **widens `ck_capture_sessions_status`** to
+    admit `approved` — the database refused the first write and was right to.
+    ⚠️ No `cemetery_city` column: once `cemetery_id` is set the record's city is
+    authoritative, and the typed town survives in `full_text`.
+  - **r211** (data, authorized by James as D2/D3): St. Mary's Cemetery (Skaneateles)
+    on sunnycrest, and four equipment products at price-list prices. Idempotent by
+    measuring (re-run writes 0), reversible, and **a no-op on any database without a
+    `sunnycrest` tenant**. Prices confirmed against the PDF itself, decoded from its
+    own CID fonts — not from the transcription in `docs/catalog/`.
+- **2026-10-13** — **Approve** (`session_service.approve`, `POST
+  /api/v1/capture/sessions/{id}/approve`) writes one `sales_orders` row in status
+  **`draft`** plus its lines and `order_personalization_tasks`, in one transaction,
+  idempotent via `capture_sessions.sales_order_id`. It deliberately does **not** go
+  through `sales_service.create_sales_order`, which would run placer auto-add and
+  price recalc over the approved lines.
+  ⚠️ **`order_type='funeral'` IS NOT A SECOND GUARD** — the batch admits
+  `'funeral' OR NULL`, so both are in its net. I claimed it was, in the code and in
+  the first draft of the DECISIONS entry; a break test nulling the column failed only
+  the assertion naming the column and no behavioural test, which is what exposed it.
+  **`status='draft'` is the whole protection.**
+- **2026-10-13** — The summary stage shows priced line items and a total; blockers are
+  listed in the office's words and the Approve control is **absent** when blocked
+  (the surviving half of ruling E5 — a greyed button reads as a feature that exists).
+  Typed "approve" works as well as the button, per the prototype (`:543`).
+- **2026-10-13** — ⚠️ **TWO REQUIRED FIELDS WERE UNCAPTURABLE, SO REVIEW AND THEREFORE
+  APPROVE WERE UNREACHABLE.** Both found while building, both fixed:
+  - **"monticello BURIAL VAULT" ate the burial date.** The marker was
+    `(?:burial|interment|graveside)\s+(.{3,30})` — a fixed 30-CHARACTER window after
+    the FIRST "burial" in the sentence, which is the one inside the product name. In
+    a short sentence the window happened to reach the real clause and it worked by
+    luck; with a decedent in between the tail was `'vault Mary Smith 1948 to 2026 '`,
+    `parse_date` returned None, and `once()` meant the real clause was never tried.
+    Now `(?!vaults?\b)` (the plural matters — `\b` fails between "vault" and "s")
+    and `finditer` so one failed parse cannot consume the field. Third instance of the
+    character-run defect in that file.
+  - **The done signal needed a comma, and James types none.** `segments()` splits on
+    commas and the signal was tested per segment, so "that's everything" appended to
+    a comma-free order was one segment and never matched. Signals are now recognised
+    as a TRAILING PHRASE (last four words down to one, longest first) and stripped
+    from the text before extraction, so "done"/"go" never become order text.
+- **2026-10-13** — ⚠️ **CLEARING THE BAR AFTER APPROVE WIPED THE APPROVED SESSION.**
+  Found in a real browser, by reading the receipt: it said **$0.00**. The pane clears
+  the bar, the bar's debounced extraction sent `setCaptureText(session, "")`, and
+  `set_text` re-extracted over a session that had already produced an order. The
+  order row was safe; the session was gutted. The old status guard sat at the BOTTOM
+  of `set_text` and protected only `row.status` while every write above it ran
+  unconditionally — **a guard placed after the damage is not a guard.** An approved
+  session is now returned untouched, and the receipt's total is read from
+  `sales_orders.total` rather than re-assessed, so deleting a product afterwards
+  cannot change what the office was told it approved.
+- **2026-10-13** — Verified in **real Chrome over CDP, 10/10**, on the sunnycrest
+  tenant, comma-free, character by character, no Enter: order → summary with
+  `Monticello Burial Vault $1,250.00 / Full Equipment $300.00 / Total $1,550.00` →
+  Approve → `Created SO-2026-0002 · $1,550.00`, bar cleared, and a new order starting
+  in the same tab. Token minted server-side; no password anywhere.
+- **2026-10-13** — **Where James sees it:** `/ar/orders` (Sales Orders), opening at
+  `/ar/orders/:id` (`frontend/src/App.tsx:1046-1052`). Drafts are listed; the status
+  filter offers "Draft" (`src/pages/sales-orders.tsx:191`).
+- **2026-10-13** — The must-not-trigger set is tested against an order Approve really
+  created, and the batch test **runs the job** rather than restating its filter, with
+  a positive control that flips the order to `confirmed` and shows it IS taken
+  (marked `delivered`, invoiced). Nine break tests this round, all red for their
+  stated reason.
+
 ## 2026-10-13 — A cemetery named the way people say it; and what Approve would write
 
 - **2026-10-13** — No migration. Two defects in the cemetery clause, from James's

@@ -2847,3 +2847,104 @@ office to be asked "burial or urn?" on every bare product name.
 ⚠️ **NOT DECIDED HERE:** whether the burial-vault default should also apply at the
 *approval* stage, or whether an order completed on the default should be flagged for a
 second look. The ruling covers capture, which is the only stage that exists.
+
+---
+
+## 2026-10-13 — Approve creates a DRAFT sales order, and three data additions
+
+**Decided by James** (dispatch "order capture, final"). Three decisions, recorded
+together because the second and third only make sense given the first.
+
+### D1. Approve creates a sales order in status `draft`. Never `confirmed`.
+
+**Why it is a safety mechanism and not a default.** Measured on production
+2026-10-13: the 18:00 end-of-day batch selects
+`status IN ('confirmed','processing','shipped','delivered','completed')`
+(`backend/app/services/draft_invoice_service.py:226-228`) and, in the auto-confirm
+branch that **every production tenant runs** (`require_driver_status_updates=False`),
+it sets the ORDER to `delivered`, stamps `delivered_at`, and creates a draft invoice
+against it (`:306-330`). That is live, not theoretical — 12 production invoices carry
+`generation_reason='end_of_day_batch'` and 5 production orders carry
+`delivery_auto_confirmed=true`. `draft` is outside that filter, and
+`create_invoice_from_order` refuses a draft outright (`sales_service.py:739-743`).
+
+⚠️ **`order_type='funeral'` IS NOT A SECOND GUARD, THOUGH THE FIRST VERSION OF THIS
+ENTRY AND THE CODE COMMENT BOTH SAID SO.** The batch's filter is
+`order_type == 'funeral' OR order_type IS NULL` (`:240`) — **both** are inside the
+net, so setting it to `'funeral'` protects nothing. It is set because it is true.
+A break test that nulled the column failed only the assertion naming the column and
+none of the behavioural tests, which is what exposed the claim. **The protection is
+`status='draft'` alone.** Anyone tempted to make Approve set `confirmed` should
+expect the order to be marked delivered and invoiced the same evening.
+
+**The mechanism.** `session_service.approve()` writes the order, its lines and its
+personalization tasks in one transaction and does **not** route through
+`sales_service.create_sales_order` — that path runs `apply_placer_to_order_lines`
+(which ADDS lines from funeral-home preferences) and `recalculate_order_line_prices`
+over them, both inside try/except that only logs (`sales_service.py:582-599`), so the
+order approved would not be the order stored. The numbering allocator IS reused.
+Idempotence comes from reading `capture_sessions.sales_order_id` first, so a double
+click, a retried request and a second typed "approve" all yield one order.
+
+### D2. St. Mary's Cemetery (Skaneateles) added as a `cemeteries` row on sunnycrest.
+
+**Why there was a choice at all.** James's walk note of 11:24 reported the cemetery
+unrecognised; the investigation found sunnycrest had **zero** `cemeteries` rows and
+that its "St. Mary's Cemetery" was a `company_entities` row — the table
+`resolve_funeral_home` reads (`party_resolver.py:238`), not the one
+`resolve_cemetery` reads (`:255`). `company_entities.is_cemetery` looked like a
+no-data-write alternative and is not: all three sunnycrest entities have every flag
+`False`. So the options were one data row or a resolver change plus a data change,
+and James took the row.
+
+### D3. Four equipment packages added as sunnycrest products, at price-list prices.
+
+`Full Equipment` $300.00, `Tent Only` $225.00, `Lowering Device & Grass` $185.00,
+`Lowering Device Only` $140.00.
+
+**Confirmed against the PDF itself**, as instructed —
+`docs/catalog/2026-02-01-sunnycrest-funeral-price-list.pdf`, GRAVESIDE SERVICE
+table, "With Our Product" column, decoded from the document's own CID fonts via its
+ToUnicode CMaps. Not taken from the transcription in
+`docs/catalog/2026-10-03-price-list-to-catalog-map.md`: §11 forbids inheriting a
+figure, and agreeing with a derived document would only prove two derived documents
+agree. Both of the PDF's price columns ($300/$185/$140/$225/$5 and
+$600/$487/$487/$557/$8) agree on the same row order, which is what makes the
+positional pairing of labels to prices safe.
+
+⚠️ **ONLY THE "WITH OUR PRODUCT" PRICE IS STORED, AND THE OTHER HAS NOWHERE TO GO.**
+The same package is two prices depending on whether Sunnycrest's vault is in the
+ground — a property of the ORDER, not of the item. A capture order always has our
+vault in it, so the with-product price is the right one; the other is not modelled
+and was not invented.
+
+⚠️ **THREE OF THE SEVEN PACKAGES THE CAPTURE OFFERS HAVE NO PRODUCT.**
+`vault_placer` has no price-list line at all, `extra_chairs` is a per-unit add-on
+rather than a package, and `none` means no line. Choosing one of the first two
+BLOCKS approval with the package named, rather than billing zero.
+
+### What Approve writes, and the one thing it refuses
+
+Vault and equipment lines priced from the tenant's own `products` row matched on an
+exact (case-insensitive, trimmed) **name** — the only available join, since
+`variant_template_id` is NULL on every tenant product on production. A name that
+matches nothing blocks approval and says which product is missing.
+
+⚠️ **IT REFUSES TO CREATE A MISSING CUSTOMER** (Q2 from the investigation). A funeral
+home with no `customers` row blocks with "No customer record for X — add it before
+approving". Creating a counterparty as a side effect of approving an order is a
+second write nobody asked for, and a misspelled name would mint a duplicate the
+office then has to merge.
+
+**Personalization goes to `order_personalization_tasks`** (Q3), which is FK'd to the
+order and is what the personalization flow reads —
+`sales_order_lines.personalization_data` is left alone. `case_merchandise` is not
+reachable from a sales order at all.
+
+**No `cemetery_city` column** (Q5). Once `cemetery_id` is set the record's city is
+authoritative; the typed town survives in `capture_sessions.full_text`, which is the
+order's own words and is also copied to `sales_orders.notes`.
+
+⚠️ **NOT DECIDED HERE:** whether Approve is reversible (Q6). Nothing unapproves an
+order today; a `draft` order can be edited or cancelled through the ordinary sales
+routes, and the capture session stays linked to it either way.

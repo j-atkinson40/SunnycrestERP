@@ -208,6 +208,31 @@ def abandon(
     return {"session_id": session_id, "status": "abandoned"}
 
 
+@router.post("/sessions/{session_id}/approve")
+def approve_session(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Create the sales order this capture describes. Status `draft`, by ruling D1.
+
+    ⚠️ IDEMPOTENT. A double click, a retried request and a second typed "approve"
+    all return the same order — `session_service.approve` reads the session's
+    `sales_order_id` first and returns unchanged when it is already set.
+
+    ⚠️ 409 WITH THE BLOCKERS, NOT 400 WITH A STRING. The pane shows the office what
+    is stopping the order, so the reasons have to survive the trip as a list.
+    """
+    try:
+        session_service.approve(
+            db, session_id,
+            company_id=current_user.company_id, user_id=current_user.id,
+        )
+    except session_service.SessionNotFound:
+        raise HTTPException(status_code=404, detail="capture session not found")
+    return _state(db, session_id, current_user)
+
+
 @router.get("/sessions/{session_id}")
 def read_session(
     session_id: str,

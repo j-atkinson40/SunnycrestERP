@@ -599,12 +599,47 @@ class DeterministicExtractor:
         # complete. Marker-based and ahead of the fallback, because "burial" and
         # "service" are different days (the same distinction r199 made for times).
         if once("burial_date"):
-            m = re.search(r"\b(?:burial|interment|graveside)\s+(?:is\s+|on\s+|:\s*)?(.{3,30})", line, re.I)
-            if m:
-                from app.services.nl_creation.structured_parsers import parse_date as _pd
+            # ⚠️ `(?!vaults?\b)` BECAUSE "BURIAL" IS IN THE PRODUCT NAME. Every
+            # director types "monticello burial vault", so the marker matched there
+            # first. ⚠️ AND THE PLURAL IS IN THE LOOKAHEAD DELIBERATELY: written
+            # `(?!vault\b)`, the `\b` fails between "vault" and "s" and "burial
+            # vaults" would still eat the date.
+            #
+            # ⚠️ `finditer`, NOT `search`, AND THAT IS THE OTHER HALF OF THE FIX. The
+            # old version took the FIRST match and a fixed 30-CHARACTER window after
+            # it, then gave up — so one failed parse consumed the field for the whole
+            # sentence, because `once()` never lets it try again. Measured
+            # 2026-10-13:
+            #
+            #   "monticello burial vault burial thursday 11am"
+            #       tail 'vault burial thursday 11am'      -> 2026-10-15   (worked)
+            #   "monticello burial vault Mary Smith 1948 to 2026 burial thursday 11am"
+            #       tail 'vault Mary Smith 1948 to 2026 '  -> None         (lost)
+            #
+            # The short sentence passed by luck: the 30 characters happened to reach
+            # the real clause. Put a decedent between them and `burial_date` — a
+            # REQUIRED field — became uncapturable, so no order could ever complete
+            # and Approve was unreachable. The symptom appeared on `service_date`,
+            # which picked the day up through the generic fallback.
+            #
+            # ⚠️ THE TAIL IS WORD-BOUNDED, NOT A CHARACTER RUN. Third instance of
+            # that defect in this file; `_CEM_TOWN` and its inline duplicate were the
+            # first two. A character count cannot find the end of a clause in
+            # comma-free text.
+            from app.services.nl_creation.structured_parsers import parse_date as _pd
+
+            for m in re.finditer(
+                r"\b(?:burial|interment|graveside)\s+(?!vaults?\b)"
+                r"(?:is\s+|on\s+|:\s*)?"
+                r"((?:[A-Za-z0-9][A-Za-z0-9/.,'\-]*)"
+                r"(?:\s+[A-Za-z0-9][A-Za-z0-9/.,'\-]*){0,2})",
+                line,
+                re.I,
+            ):
                 pd = _pd(m.group(1).strip())
                 if pd and pd.get("value") and _mark(spans, m):
                     values["burial_date"] = pd["value"]
+                    break
 
         # ── cemetery (+ city) ───────────────────────────────────────────
         # ⚠️ THE CITY IS PARSED FROM THE SAME CLAUSE AND PASSED AS A HINT, not stored
