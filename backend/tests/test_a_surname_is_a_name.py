@@ -15,6 +15,8 @@ every tenant whose records nobody has seen.
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 from sqlalchemy import text
 
@@ -178,11 +180,62 @@ def test_a_surname_marker_does_not_eat_the_words_after_it(db, tenant):
 
 @pytest.fixture(scope="module")
 def james_tenant(db) -> str:
+    """sunnycrest, with the two records his sentence names.
+
+    ⚠️ IT ENSURES THE RECORDS RATHER THAN ASSUMING THEM, AND CI TAUGHT ME THAT TWICE.
+    Run 38445487845 failed here with `unrecognized == ('hopkins', "St Mary's")`:
+    sunnycrest exists on a fresh CI database but its `company_entities` and
+    `cemeteries` are EMPTY, so neither word resolved and the sentence failed for a
+    reason that had nothing to do with surnames. A test must carry the world it needs.
+
+    ⚠️ IT DOES NOT CREATE ANYTHING CALLED SMITH, which is the whole point of running
+    this on sunnycrest: the claim is that "Smith" is free here, where it is a
+    funeral-home word on testco. Adding Hopkins and St. Mary's cannot affect that.
+
+    ⚠️ COMMITTED AND DELETED, NOT SAVEPOINTED, so the rows are visible to the
+    extractor's own sessions and nothing is left behind.
+    """
     tid = db.execute(
         text("SELECT id FROM companies WHERE slug = 'sunnycrest'")
     ).scalar()
     assert tid, "no sunnycrest tenant — this test must not skip"
-    return tid
+
+    made: list[tuple[str, str]] = []
+
+    def ensure(table: str, where: str, params: dict, insert: str) -> None:
+        found = db.execute(text(f"SELECT id FROM {table} WHERE {where}"), params).scalar()
+        if found:
+            return
+        rid = str(uuid.uuid4())
+        db.execute(text(insert), {**params, "i": rid})
+        made.append((table, rid))
+
+    ensure(
+        "company_entities", "company_id = :t AND name = :n",
+        {"t": tid, "n": "Hopkins Funeral Home"},
+        "INSERT INTO company_entities (id, company_id, name) VALUES (:i, :t, :n)",
+    )
+    ensure(
+        "cemeteries", "company_id = :t AND name = :n",
+        {"t": tid, "n": "St. Mary's Cemetery"},
+        "INSERT INTO cemeteries (id, company_id, name, city, state, is_active) "
+        "VALUES (:i, :t, :n, 'Skaneateles', 'NY', true)",
+    )
+    db.commit()
+
+    # ⚠️ ASSERTED AFTER ENSURING, because "Smith" being free is the premise and a
+    # tenant that had acquired a Smith record would make this test lie.
+    from app.services.party_resolver import resolve_funeral_home
+
+    assert not resolve_funeral_home(db, tid, "smith").candidates, (
+        "sunnycrest has acquired a record matching 'smith'; this test's premise is gone"
+    )
+
+    yield tid
+
+    for table, rid in made:
+        db.execute(text(f"DELETE FROM {table} WHERE id = :i"), {"i": rid})
+    db.commit()
 
 
 def test_JAMES_SENTENCE_from_the_walk(db, james_tenant):
