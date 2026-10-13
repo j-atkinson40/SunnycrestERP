@@ -54,10 +54,14 @@ def tenant(db) -> str:
     return tid
 
 
+#: ⚠️ A VAULT THAT ACCEPTS THE NAMEPLATE, AND A DATE FORMAT. Since 2026-10-13 an
+#: unavailable personalization answer is a conflict and a conflict blocks approval,
+#: so a Monticello with a nameplate can no longer be approved — and choosing a
+#: nameplate makes `nameplate_date_format` required, which "written" answers.
 ORDER = (
-    "order for hopkins monticello burial vault Mary Smith 1948 to 2026 "
+    "order for hopkins continental 34 Mary Smith 1948 to 2026 "
     "going to St. Mary's section 4 lot 12 burial friday 11am "
-    "service at the church thursday 10am full equipment nameplate only"
+    "service at the church thursday 10am full equipment nameplate only written"
 )
 
 
@@ -88,9 +92,9 @@ def approved(db, tenant):
            "INSERT INTO customers (id, company_id, name, account_number, is_active) "
            "VALUES (:i, :t, :n, 'TRIGGERFIX-C1', true)")
     ensure("products", "company_id = :t AND name = :n",
-           {"t": tenant, "n": "Monticello Burial Vault"},
+           {"t": tenant, "n": 'Continental 34"'},
            "INSERT INTO products (id, company_id, name, sku, price, is_active) "
-           "VALUES (:i, :t, :n, 'TRIGGERFIX-P1', 1250.00, true)")
+           "VALUES (:i, :t, :n, 'TRIGGERFIX-P1', 1850.00, true)")
     # ⚠️ ENSURED, NOT ASSUMED, FOR THE SAME REASON AS THE REST. r211 writes these on
     # a database where the sunnycrest tenant already exists; on a fresh CI database
     # the tenant arrives with the seed, AFTER migrations, so the migration correctly

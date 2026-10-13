@@ -2,6 +2,81 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 2026-10-13 — The 13:48 walk: a surname, an unavailable nameplate, and a bar that wraps
+
+No migration. James's sentence: "order for hopkins monticello with full equipment
+going to St. Mary's section 4 service Friday 11 am nameplate only last name Smith".
+
+- **2026-10-13** — **SURNAME ONLY.** "last name Smith" went to Not Understood:
+  `_explicit_name` required two or more capitalised words, and its markers did not
+  include "last name" or "family" at all. New `_surname_clause` accepts
+  `last name X`, `last name is X`, `the X family`, `X family`, `name is X`,
+  `decedent X`, lowercase allowed behind a marker, displayed as given. The span
+  covers the MARKER as well as the name — claiming only the name would leave "last
+  name" to be reported as unplaced, which is half of what he saw.
+  ⚠️ **The exclusions are record lookups and they bite harder on one word than two.**
+  "Hopkins", "Oakwood" and "Monticello" are all plausible surnames and all real
+  records. And the cost is tenant-dependent: **testco holds "Smith & Sons Funeral
+  Home", so `resolve_funeral_home(testco, "smith")` resolves and the guard refuses
+  the commonest surname there.** On sunnycrest "smith" is free, so his own sentence
+  works where he typed it. Pinned in
+  `test_a_surname_that_collides_with_a_record_is_refused`; **worth a ruling** —
+  the funeral home is already captured earlier in the sentence, so a one-word match
+  against a multi-word record is weak evidence.
+- **2026-10-13** — ⚠️ **A DEFECT THE SURNAME WORK EXPOSED.** `normalize` deletes
+  separator words, so `resolve_funeral_home("riverside the")` RESOLVES — and the
+  funeral-home pass's longest-prefix loop claimed the trailing "the". Latent and
+  harmless until something else wanted that word: with the surname clause claiming
+  "the Keegan family" first, the overlapping claim failed and **the FUNERAL HOME was
+  lost**. New `_SPAN_TAIL_STOPS`: a marker-led span may not end on a word the
+  normalizer would delete. The symptom appeared on the field that was not broken.
+- **2026-10-13** — **UNAVAILABLE PERSONALIZATION IS NOW SAID.** "nameplate only" on
+  a Monticello vanished entirely — no row (correct: the vault offers none) and no
+  Not Understood either. ⚠️ **It is a different silence from `UnpermittedAnswer`,
+  which already had a handler**: that fires when the vault offers a DIFFERENT set;
+  this is availability NOT_OFFERED, where the field is filtered into
+  `not_applicable` and the answer is simply ignored. `evaluate_typed` now sweeps
+  `not_applicable` for fields the director actually answered and emits a conflict:
+  *"Monticello Burial Vault doesn't offer Nameplate Only. It offers no
+  personalization."* — with the vault's options listed when it has any. **Conflicts
+  now block Approve** (they were being discarded as `_conflicts` at the assess
+  seam).
+  ⚠️ **The general rule is the test that matters:** for every key the extractor
+  captures, the field is ANSWERED (so a row shows it) or named in a CONFLICT. Held
+  as a property over whole sentences in
+  `test_nothing_the_extractor_captures_is_dropped.py`, with its own positive control
+  showing the invariant can fail.
+- **2026-10-13** — **DATES APPLICABILITY: no fix needed, and the breakdown is
+  reported.** Before the surname fix the three needed were **`deceased_name`,
+  `burial_date`, `service_location`** — Dates was not among them. `date_of_birth`
+  and `date_of_death` are `required_when=AnyAnswered(personalization…)`, so with no
+  personalization they sit in `unanswered_optional` and the Dates row renders
+  `not_mentioned`, not `needed`. James's rule was already in force. After the fix
+  the pill reads **"2 needed"** (burial date, service location).
+- **2026-10-13** — **THE BAR WRAPS.** It was an `<input>`, which can only scroll, so
+  a long order ran off the left edge. Now a `<textarea rows={1}>` whose height is set
+  from `scrollHeight` on every change — reset to `auto` first, or the height could
+  only ever grow — capped at `40vh`. The pane follows for free: it is anchored at
+  `bottom: 24 + barH` and `barH` comes from a ResizeObserver on the bar.
+  ⚠️ **Making the bar a textarea broke Escape, and a test caught it.** `onEscape`
+  branch 2 refocuses instead of tucking when a TEXTAREA is focused — written for a
+  PANE's textarea, and the bar had been an input. Escape stopped ending the capture
+  and the sphere stayed non-interactive. The caller now says which textarea it is,
+  by identity against the bar's own ref.
+  ⚠️ **Enter matters more now:** an input ignored it by nature, a textarea would
+  insert a newline, so the existing `preventDefault` does strictly more work. Tested.
+- **2026-10-13** — Verified in **real Chrome, 9/9**, on sunnycrest with his exact
+  sentence, comma-free, character by character, no Enter: bar grew **42px → 85px**
+  with `scrollLeft=0` and `scrollWidth == clientWidth`, pane still anchored (gap 0),
+  decedent row "Smith", nothing Not Understood, the conflict shown naming the vault,
+  Dates "Not mentioned yet", pill "2 needed". Seven break tests, all red for their
+  stated reason.
+- **2026-10-13** — ⚠️ **The approve suites moved off the Monticello**, because an
+  unavailable nameplate now correctly blocks approval. They use `Continental 34"`
+  (which accepts one) plus a date format, and the blocked Monticello case became its
+  own test. Measured: no sunnycrest vault both carries a tenant product and accepts
+  a nameplate, so the fixture creates that product.
+
 ## 2026-10-13 — Summary + Approve: order capture reaches a draft sales order
 
 - **2026-10-13** — Migration head advances `r209_capture_session_switches` →

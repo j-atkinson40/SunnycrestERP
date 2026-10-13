@@ -109,7 +109,10 @@ interface OpasValue {
   /** Escape / veil-pointerdown. Named for what the prototype calls it. */
   readonly tuck: () => void
   /** Escape's three-branch behaviour; returns which branch ran. */
-  readonly onEscape: (activeTagName?: string) => "cancelled-pick" | "refocused-input" | "tucked"
+  readonly onEscape: (
+    activeTagName?: string,
+    activeIsCommandBar?: boolean,
+  ) => "cancelled-pick" | "refocused-input" | "tucked"
   /** Placement per pane id. Absent means still anchored at its cascade slot. */
   readonly placements: Readonly<Record<string, PanePlacement>>
   readonly movePane: (id: string, x: number, y: number) => void
@@ -306,15 +309,28 @@ export function OpasProvider({ children }: { children: ReactNode }) {
    * numbered pick would throw the whole session away. Without 2, Escape while typing in a
    * pane's textarea would tuck the pane out from under the typist.
    *
+   * ⚠️ BRANCH 2 MEANS "A PANE'S TEXTAREA", AND THE COMMAND BAR BECAME ONE ON
+   * 2026-10-13. The bar was an `<input>` and so fell through to branch 3; making it a
+   * textarea so long orders could wrap turned Escape-in-the-bar into a refocus, which
+   * meant Escape no longer ended the capture and the sphere stayed non-interactive.
+   * Caught by `ESCAPE ENDS THE CAPTURE` going red. The caller says which textarea it
+   * is, because only the caller holds the bar's ref.
+   *
    * Returns what it did so a caller can decide whether to preventDefault.
    */
   const onEscape = useCallback(
-    (activeTagName?: string): "cancelled-pick" | "refocused-input" | "tucked" => {
+    (
+      activeTagName?: string,
+      activeIsCommandBar?: boolean,
+    ): "cancelled-pick" | "refocused-input" | "tucked" => {
       if (pendingPick !== null) {
         setPendingPick(null)
         return "cancelled-pick"
       }
-      if ((activeTagName ?? "").toUpperCase() === "TEXTAREA") {
+      if (
+        !activeIsCommandBar
+        && (activeTagName ?? "").toUpperCase() === "TEXTAREA"
+      ) {
         return "refocused-input"
       }
       tuck()

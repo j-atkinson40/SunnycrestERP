@@ -129,6 +129,22 @@ def world(db, tenant):
         made.append(("products", eqid))
         prod[name] = price
 
+    # ⚠️ A VAULT THAT ACCEPTS A NAMEPLATE, AND THE SUITE NEEDS ONE SINCE 2026-10-13.
+    # Personalization availability is platform-level: the Monticello offers NONE, so
+    # an order naming it with a nameplate is now correctly BLOCKED by a conflict.
+    # Measured on sunnycrest: no vault both carries a tenant product and accepts a
+    # nameplate, so the happy path needs this row to exist. `Continental 34"` accepts
+    # one.
+    if 'Continental 34"' not in prod:
+        c34 = str(uuid.uuid4())
+        db.execute(
+            text("INSERT INTO products (id, company_id, name, sku, price, is_active) "
+                 "VALUES (:i, :t, :n, 'TESTFIX-P002', 1850.00, true)"),
+            {"i": c34, "t": tenant, "n": 'Continental 34"'},
+        )
+        made.append(("products", c34))
+        prod['Continental 34"'] = Decimal("1850.00")
+
     if "Monticello Burial Vault" not in prod:
         pid = str(uuid.uuid4())
         db.execute(
@@ -241,10 +257,14 @@ def user_id(db, tenant):
 #: `burial_date` are both REQUIRED and both easy to leave out, and an order that
 #: never reaches review would make every test below it pass for the wrong reason.
 ORDER = (
-    "order for hopkins monticello burial vault Mary Smith 1948 to 2026 "
+    "order for hopkins continental 34 Mary Smith 1948 to 2026 "
     "going to St. Mary's section 4 lot 12 burial friday 11am "
-    "service at the church thursday 10am full equipment nameplate only"
+    "service at the church thursday 10am full equipment nameplate only written"
 )
+# ⚠️ "written" IS THE DATE FORMAT AND IT IS REQUIRED ONCE A NAMEPLATE IS CHOSEN.
+# Measured: with `nameplate_only` on a vault that accepts it, `nameplate_date_format`
+# joins the missing set — so the happy-path sentence must answer it or review is
+# never reached. "dates written" would work too but reports "dates" as unplaced.
 
 
 def _session_at_review(db, tenant, user_id, body: str = ORDER):
@@ -274,7 +294,7 @@ def test_the_summary_carries_a_priced_line_per_billable_thing(db, tenant, world,
     a = session_service.assess_approval(db, row)
     kinds = {l.kind: l for l in a.lines}
     assert set(kinds) == {"vault", "equipment"}, [l.description for l in a.lines]
-    assert kinds["vault"].unit_price == world["products"]["Monticello Burial Vault"]
+    assert kinds["vault"].unit_price == world["products"]['Continental 34"']
     assert kinds["equipment"].unit_price == Decimal("300.00")
     assert a.total == kinds["vault"].unit_price + Decimal("300.00")
 
@@ -335,6 +355,20 @@ def test_an_order_with_no_equipment_is_approvable_with_one_line(db, tenant, worl
     a = session_service.assess_approval(db, row)
     assert a.ready, a.blockers
     assert [l.kind for l in a.lines] == ["vault"]
+
+
+def test_an_unavailable_personalization_BLOCKS_approve(db, tenant, world, user_id):
+    """⚠️ RULED 2026-10-13. "nameplate only" on a vault that offers none used to
+    vanish — no row, no conflict, and the order was approvable with the director's
+    request silently gone. It is now a conflict, and a conflict blocks."""
+    row = _session_at_review(
+        db, tenant, user_id,
+        ORDER.replace("continental 34", "monticello burial vault"),
+    )
+    a = session_service.assess_approval(db, row)
+    assert not a.ready, a.blockers
+    assert any("doesn't offer" in b for b in a.blockers), a.blockers
+    assert any("Monticello Burial Vault" in b for b in a.blockers), a.blockers
 
 
 def test_approve_refuses_when_blocked(db, tenant, world, user_id):
@@ -409,7 +443,11 @@ def test_it_carries_the_captured_fields_onto_the_order(db, approved):
     assert order["service_location"] == "church"
     assert str(order["service_time"]).startswith("10:00")
     # the order's own words, kept
-    assert order["notes"] and "monticello" in order["notes"].lower()
+    # ⚠️ ASSERTED AGAINST THE ORDER CONSTANT, NOT A LITERAL VAULT NAME. The sentence
+    # moved from a Monticello to a Continental 34" when an unavailable nameplate
+    # began blocking approval, and a hardcoded product name here failed for a reason
+    # that had nothing to do with notes.
+    assert order["notes"] and order["notes"].startswith(ORDER[:40])
 
 
 def test_the_total_on_the_order_equals_the_sum_of_its_lines(db, approved):

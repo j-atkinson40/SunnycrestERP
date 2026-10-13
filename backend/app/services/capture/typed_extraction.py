@@ -423,6 +423,59 @@ def _explicit_name(line: str) -> tuple[str, tuple[int, int]] | None:
     return m.group(1).strip(), (m.start(), m.end())
 
 
+#: A surname given on its own, behind a marker that says it is one.
+#:
+#: ⚠️ ONE WORD, AND ONLY BEHIND A MARKER. Ruled 2026-10-13 after James's walk:
+#: directors often give just a surname, and "last name Smith" was landing in Not
+#: Understood because `_explicit_name` demands two or more capitalised words.
+#:
+#: ⚠️ LOWERCASE IS ALLOWED HERE AND NOWHERE ELSE. What makes that safe is the
+#: marker — "last name smith" says in words that a name follows. A bare lowercase
+#: word elsewhere in the sentence is still not a name, which is why this pattern
+#: cannot be relaxed into a general one.
+#:
+#: ⚠️ THE TRAILING `family` FORM IS LISTED TWICE ON PURPOSE. "the Smith family" and
+#: "Smith family" differ only by the article, and a single optional-`the` pattern
+#: would also match a bare "family".
+_SURNAME_CLAUSE = re.compile(
+    r"\b(?:"
+    r"last\s+name(?:\s+is)?\s+([A-Za-z][A-Za-z'\-]*)"
+    r"|name\s+is\s+([A-Za-z][A-Za-z'\-]*)"
+    r"|decedent\s+([A-Za-z][A-Za-z'\-]*)"
+    r"|the\s+([A-Za-z][A-Za-z'\-]*)\s+family\b"
+    r"|([A-Za-z][A-Za-z'\-]*)\s+family\b"
+    r")",
+    re.I,
+)
+
+
+#: Words a marker-led span must never END on.
+#:
+#: ⚠️ THE TEST IS "WOULD THE NORMALIZER DELETE IT", NOT "IS IT A COMMON WORD". These
+#: are the separator words `party_resolver.normalize` strips, which is why a span
+#: ending on one resolves to the same record as the span without it — and therefore
+#: claims a word it has no reason to own.
+_SPAN_TAIL_STOPS = frozenset(
+    {"the", "a", "an", "and", "of", "in", "on", "at", "to", "for", "with"}
+)
+
+
+def _surname_clause(line: str) -> tuple[str, tuple[int, int]] | None:
+    """The surname and the span of the whole clause, marker included.
+
+    ⚠️ THE SPAN COVERS THE MARKER TOO. Claiming only the name would leave "last
+    name" unclaimed, and those two words would then be reported as text the engine
+    could not place — which is half of what James saw.
+    """
+    m = _SURNAME_CLAUSE.search(line)
+    if m is None:
+        return None
+    name = next((g for g in m.groups() if g), None)
+    if name is None:
+        return None
+    return name, (m.start(), m.end())
+
+
 class DeterministicExtractor:
     """The E1 extractor. Rules only."""
 
@@ -576,6 +629,30 @@ class DeterministicExtractor:
             en = _explicit_name(line)
             if en and _claim(spans, en[1][0], en[1][1]):
                 values["deceased_name"] = en[0]
+
+        # ── a surname on its own ────────────────────────────────────────
+        # ⚠️ AFTER THE TWO-WORD FORM, SO "decedent Mary Smith" KEEPS BOTH NAMES. The
+        # surname pattern would match "decedent Mary" and stop; running it second
+        # means it only sees clauses the fuller parser declined.
+        #
+        # ⚠️ THE WORD IS CHECKED AGAINST THE RECORDS BEFORE IT IS CLAIMED, and for a
+        # single word that check carries far more weight than it did for two.
+        # "Hopkins", "Oakwood" and "Monticello" are all plausible surnames and all
+        # real records here; trusting the marker alone would name the decedent after
+        # the funeral home. Same three lookups the marker-less name pass uses.
+        if once("deceased_name"):
+            sn = _surname_clause(line)
+            if sn is not None:
+                word, (a, b) = sn
+                if not (
+                    resolve_from_rows(cemetery_rows(db, tenant_id), word).candidates
+                    or resolve_vault(build_index(db), word).candidates
+                    or resolve_funeral_home(db, tenant_id, word).candidates
+                ):
+                    if _claim(spans, a, b):
+                        # ⚠️ AS GIVEN. The office's own capitalisation is information;
+                        # `.title()` would turn "deSoto" into "Desoto".
+                        values["deceased_name"] = word
 
         # ── grave location ──────────────────────────────────────────────
         if once("grave_location"):
@@ -738,6 +815,20 @@ class DeterministicExtractor:
                 wordm = list(re.finditer(r"[A-Za-z][A-Za-z'&\-]*", m.group(1)))
                 base = m.start(1)
                 for n in range(len(wordm), 0, -1):
+                    # ⚠️ A SPAN MUST NOT END ON A WORD THE NORMALIZER DELETES, and
+                    # that is a real defect rather than tidiness. `normalize` strips
+                    # separator words, so `resolve_funeral_home("riverside the")`
+                    # RESOLVES — measured 2026-10-13 — and the loop then claimed the
+                    # trailing "the" along with the name. Harmless until something
+                    # else wanted that word: "order for riverside the Keegan family"
+                    # lost the FUNERAL HOME, because the surname clause had already
+                    # claimed "the Keegan family" and the overlapping claim failed.
+                    #
+                    # ⚠️ SKIPPED RATHER THAN TRIMMED, because the loop is already
+                    # longest-first: dropping this n means the next one down is the
+                    # same phrase without the dead word, which is the span we want.
+                    if wordm[n - 1].group(0).casefold() in _SPAN_TAIL_STOPS:
+                        continue
                     a = base + wordm[0].start()
                     b = base + wordm[n - 1].end()
                     phrase = line[a:b].strip()
@@ -1877,7 +1968,93 @@ def evaluate_typed(db: Session, *, tenant_id: str | None, answers: dict[str, obj
             f"evaluate_typed did not settle after {len(answers) + 1} passes"
         )
 
+    # ⚠️ AN ANSWER WHOSE FIELD IS NOT APPLICABLE IS A SILENT DROP, AND THIS IS WHERE
+    # IT USED TO HAPPEN. Walk note 2026-10-13: "nameplate only" on a Monticello
+    # produced NO row — correct, the vault offers no personalization — and NO
+    # conflict either, so the director was never told. `capture.evaluate` does not
+    # raise for this case: availability NOT_OFFERED filters the field into
+    # `not_applicable` and the answer is simply ignored.
+    #
+    # ⚠️ IT IS A DIFFERENT SILENCE FROM `UnpermittedAnswer`, WHICH ALREADY HAD A
+    # HANDLER. That one fires when the vault offers a DIFFERENT set; this one when it
+    # offers nothing at all. Both now arrive as conflicts, so the pane has one thing
+    # to render and Approve has one thing to block on.
+    #
+    # ⚠️ ONLY FIELDS THE DIRECTOR ACTUALLY ANSWERED. `not_applicable` is full of
+    # fields nobody mentioned (`legacy_print_name`, `nameplate_date_format`); naming
+    # those would be noise about questions never asked.
+    vault_label = ""
+    if resolution.candidates and resolution.variant_template_id:
+        vault_label = resolution.candidates[0].display_name
+    elif answers.get("vault"):
+        vault_label = str(answers["vault"])
+
+    already = {c.field_id for c in conflicts}
+    for field_id in state.not_applicable:
+        if field_id in already or field_id not in answers:
+            continue
+        permitted = _permitted_for(
+            template, field_id, resolution.variant_template_id, config
+        )
+        conflicts.append(
+            Conflict(
+                field_id=field_id,
+                value=answers[field_id],
+                permitted=permitted,
+                message=_not_offered_message(
+                    vault_label, field_id, answers[field_id], permitted
+                ),
+            )
+        )
+
     return resolution, state, tuple(conflicts)
+
+
+def _permitted_for(template, field_id, vault_product_id, config) -> tuple[str, ...]:
+    """What the vault DOES offer for this field, if the field is availability-gated."""
+    from app.services.capture.schema import _permitted_answers
+
+    definition = next(
+        (f for f in template if f.field_id == field_id), None
+    )
+    if definition is None:
+        return ()
+    return _permitted_answers(definition, vault_product_id, config)
+
+
+def _not_offered_message(
+    vault_label: str, field_id: str, value: object, permitted: tuple[str, ...]
+) -> str:
+    """The sentence the office reads, in James's words from the walk note.
+
+    ⚠️ IT NAMES THE VAULT AND THE THING THEY ASKED FOR. "personalization is not
+    applicable" is true and useless; "Monticello Burial Vault doesn't offer
+    Nameplate Only" is what a director needs on a call, and it is the wording the
+    dispatch specified.
+
+    ⚠️ AND IT SAYS WHAT THE VAULT DOES OFFER WHEN THERE IS ANYTHING TO SAY. A
+    refusal with no alternative leaves the office guessing; a refusal listing the
+    options is a decision they can make on the phone.
+    """
+    from app.services.capture.schema import (
+        PERSONALIZATION_ANSWER_LABELS,
+        PLATFORM_DEFAULT_FIELDS,
+    )
+
+    def label(v: object) -> str:
+        return PERSONALIZATION_ANSWER_LABELS.get(str(v), str(v).replace("_", " "))
+
+    field_label = next(
+        (f.label for f in PLATFORM_DEFAULT_FIELDS if f.field_id == field_id),
+        field_id.replace("_", " "),
+    )
+    subject = vault_label or "This vault"
+    asked = label(value) if field_id == "personalization" else f"{field_label}: {value}"
+    head = f"{subject} doesn't offer {asked}."
+    if permitted:
+        offers = ", ".join(label(p) for p in permitted)
+        return f"{head} It offers: {offers}."
+    return f"{head} It offers no personalization."
 
 
 #: The field id at the front of an `UnpermittedAnswer` message.

@@ -671,7 +671,7 @@ def assess_approval(db: Session, row: CaptureSession):
     from app.services.capture.approval import assess
 
     answers = dict(row.values or {})
-    _resolution, state, _conflicts = evaluate_typed(
+    _resolution, state, conflicts = evaluate_typed(
         db, tenant_id=row.company_id, answers=answers
     )
     labels = _missing_labels(state)
@@ -684,6 +684,9 @@ def assess_approval(db: Session, row: CaptureSession):
         answers=answers,
         missing_labels=labels,
         open_picks=picks,
+        # ⚠️ THE CONFLICTS WERE DISCARDED HERE UNTIL 2026-10-13 (`_conflicts`), so an
+        # answer the vault cannot take did not stop the order being approved.
+        conflicts=tuple(c.message for c in conflicts),
     )
 
 

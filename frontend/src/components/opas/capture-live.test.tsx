@@ -1058,3 +1058,59 @@ describe("a reload restores NOTHING", () => {
   })
 })
 
+describe("the bar shows the whole order", () => {
+  /**
+   * ⚠️ WALK NOTE, James 2026-10-13: a long order scrolled out of view to the left, so
+   * he could not see the start of what he had typed. An `<input>` can only scroll; a
+   * textarea wraps. That is the structural claim, and these tests assert the
+   * structure plus the two behaviours the change could have broken.
+   *
+   * ⚠️ THE GROWTH ITSELF IS NOT ASSERTED HERE, DELIBERATELY. jsdom reports
+   * `scrollHeight` as 0 for every element, so a height computed from it is 0 in this
+   * environment and an assertion about pixels would be measuring the harness. The
+   * real-browser harness checks the height and the pane's position; this file checks
+   * what jsdom can actually see.
+   */
+  it("is a TEXTAREA, which is what lets it wrap", async () => {
+    const bar = await openOrder()
+    expect(bar.tagName).toBe("TEXTAREA")
+  })
+
+  it("does not scroll — it has no resize handle and hides overflow", async () => {
+    const bar = await openOrder()
+    // ⚠️ `overflow: hidden` IS LOAD-BEARING, not cosmetic: the height is set from
+    // `scrollHeight`, and a visible scrollbar feeds its own width back into that
+    // measurement.
+    expect(bar.style.resize).toBe("none")
+    expect(bar.style.overflow).toBe("hidden")
+    expect(bar.style.maxHeight).toBe("40vh")
+  })
+
+  it("ENTER IS STILL A HARD NO-OP, and a textarea makes that matter more", async () => {
+    // ⚠️ AN INPUT IGNORED ENTER BY ITS NATURE; A TEXTAREA INSERTS A NEWLINE. So the
+    // same `preventDefault` now does strictly more work, and losing it would put a
+    // line break into the middle of an order instead of merely doing nothing.
+    const bar = await openOrder()
+    await user.type(bar, "tent only")
+    await user.keyboard("{Enter}")
+    await settle()
+
+    expect(bar).toHaveValue("tent only")
+    expect((bar as HTMLTextAreaElement).value).not.toContain("\n")
+  })
+
+  it("keeps the whole long order in its value", async () => {
+    const bar = await openOrder()
+    const long =
+      "monticello burial vault Mary Smith 1948 to 2026 going to St. Mary's " +
+      "section 4 lot 12 burial friday 11am service at the church thursday 10am"
+    await user.type(bar, long)
+    await settle()
+
+    // ⚠️ THE VALUE, NOT THE PIXELS. What James lost was sight of the beginning; the
+    // value always held it. This pins that the component never truncates, which is
+    // the half a browser cannot tell you about.
+    expect((bar as HTMLTextAreaElement).value.startsWith("monticello")).toBe(true)
+    expect((bar as HTMLTextAreaElement).value.endsWith("10am")).toBe(true)
+  })
+})

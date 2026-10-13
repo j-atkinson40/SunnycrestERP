@@ -108,6 +108,7 @@ def assess(
     answers: dict,
     missing_labels: tuple[str, ...],
     open_picks: tuple[str, ...],
+    conflicts: tuple[str, ...] = (),
 ) -> Approval:
     """Build the prospective lines and collect every reason Approve cannot run.
 
@@ -125,6 +126,16 @@ def assess(
         )
     for field_id in open_picks:
         blockers.append(f"A question is still open: {field_id.replace('_', ' ')}")
+
+    # ⚠️ A CONFLICT BLOCKS, BY RULING (2026-10-13). An answer the vault cannot take
+    # is not a detail to be dropped on the way to an order — "Monticello Burial Vault
+    # doesn't offer Nameplate Only" is resolved by removing the nameplate or changing
+    # the vault, and both are the office's decision.
+    #
+    # ⚠️ THE MESSAGES ARE PASSED THROUGH WHOLE, NOT RE-WORDED. They already name the
+    # vault and the answer; restating them here would be a second wording to keep in
+    # step with the first.
+    blockers.extend(conflicts)
 
     # ── the funeral home must be a customer we can bill ───────────────────
     customer_id = None

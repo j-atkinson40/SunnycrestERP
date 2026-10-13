@@ -69,7 +69,11 @@ export const INFO_WIDTH = "min(390px, calc(100vw - 32px))"
 export function OpasHost() {
   const { isAdmin } = useAuth()
   const opas = useOpas()
-  const inputRef = useRef<HTMLInputElement>(null)
+  // ⚠️ A TEXTAREA SINCE 2026-10-13, NOT AN INPUT. An `<input>` can only scroll, so a
+  // long order ran off the left-hand edge and the director could not see the start of
+  // what they had typed — James's walk note. A textarea wraps; the effect below grows
+  // it to fit so nothing is ever hidden.
+  const inputRef = useRef<HTMLTextAreaElement>(null)
   /** ⚠️ THE BAR'S MEASURED HEIGHT, so an entry pane can sit exactly ON it.
    *
    *  Ruled: the entry pane anchors directly on top of the Opas bar at the bar's
@@ -151,8 +155,14 @@ export function OpasHost() {
     if (!opas.isOpen) return
     function onKeyDown(e: KeyboardEvent) {
       if (e.key !== "Escape") return
-      const tag = (document.activeElement as HTMLElement | null)?.tagName
-      const outcome = opas.onEscape(tag)
+      const active = document.activeElement as HTMLElement | null
+      // ⚠️ THE BAR IS A TEXTAREA TOO SINCE IT LEARNED TO WRAP, so `onEscape` is told
+      // which one is focused. Identity against the ref, not a testid lookup: the ref
+      // is the bar by construction.
+      const outcome = opas.onEscape(
+        active?.tagName,
+        active !== null && active === inputRef.current,
+      )
       e.preventDefault()
       if (outcome === "refocused-input") inputRef.current?.focus()
       // ⚠️ ONLY WHEN IT ACTUALLY TUCKED. Escape has three branches and the other two
@@ -425,6 +435,24 @@ export function OpasHost() {
     setText("")
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text, entryMode, opas.isOpen])
+
+  /**
+   * The bar's height follows its content.
+   *
+   * ⚠️ SET FROM `scrollHeight` ON EVERY CHANGE, AND RESET TO `auto` FIRST. Without
+   * the reset the height only ever grows: `scrollHeight` of an element already tall
+   * enough is its current height, so deleting a line would leave the gap behind.
+   *
+   * ⚠️ THE PANE FOLLOWS FOR FREE. It is anchored at `bottom: 24 + barH`, and `barH`
+   * comes from a ResizeObserver on the bar — so growing the textarea moves the pane
+   * up without anything here knowing about panes.
+   */
+  useEffect(() => {
+    const el = inputRef.current
+    if (el === null) return
+    el.style.height = "auto"
+    el.style.height = `${el.scrollHeight}px`
+  }, [text, entryValue, entryMode, opas.isOpen])
 
   useEffect(() => {
     const el = barRef.current
@@ -821,8 +849,9 @@ export function OpasHost() {
                 FRONT — not by a mode the director has to set or notice. An entry pane
                 in front makes this that order's text field; otherwise it is the
                 request line. `pane-mode.ts` owns the classification. */}
-            <input
+            <textarea
               ref={inputRef}
+              rows={1}
               data-testid="opas-input"
               data-entry-mode={entryMode ? "true" : "false"}
               value={entryMode ? entryValue : text}
@@ -865,6 +894,17 @@ export function OpasHost() {
                 flex: 1, minWidth: 0, background: "transparent", border: 0, padding: "10px 0",
                 color: "#f2f2f2", fontFamily: "'IBM Plex Mono', ui-monospace, Menlo, monospace",
                 fontSize: 15, outline: "none",
+                // ⚠️ THE BAR GROWS INSTEAD OF SCROLLING. `resize: none` keeps the
+                // drag handle off a chrome element; `overflow: hidden` matters because
+                // the height is set from `scrollHeight` and a visible scrollbar would
+                // feed its own width back into the measurement.
+                resize: "none",
+                overflow: "hidden",
+                lineHeight: 1.45,
+                // ⚠️ A CEILING, SO ONE PASTED PAGE CANNOT PUSH THE PANE OFF SCREEN.
+                // Past this the bar scrolls, which is the lesser evil — but an order
+                // read aloud on a call does not reach it.
+                maxHeight: "40vh",
               }}
             />
           </div>
