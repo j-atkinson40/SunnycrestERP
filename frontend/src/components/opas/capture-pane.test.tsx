@@ -255,8 +255,22 @@ describe("the rows", () => {
     )
   })
 
-  it("counts captured and needed in the header", async () => {
+  it("counts captured from the rows and needed from the MISSING SET", async () => {
+    /**
+     * ⚠️ THE FIXTURE WAS INTERNALLY INCONSISTENT AND THAT IS WHY THE OLD CHIP LOOKED
+     * RIGHT. It had a row in the `needed` state and `missing: []` — a combination the
+     * server cannot produce, since a row only reaches `needed` because something
+     * required is unanswered. The chip counted `needed` ROWS, so it agreed with the
+     * impossible half of the fixture and disagreed with the real engine.
+     *
+     * On production the real state is the other way round: nine rows unanswered and
+     * none of them `needed` yet, because `needed` arrives only after a done signal.
+     * The chip read **"0 needed" with nine rows empty**, in the same screenshot where
+     * the bar read "Nothing needed". `missing` is the set `is_complete` uses, so the
+     * chip, the bar and the engine now answer from one place.
+     */
     const user = userEvent.setup()
+    vi.mocked(startCapture).mockResolvedValue(state({ missing: ["vault"] }) as never)
     openOverlay()
     await type(user, "start an order")
 

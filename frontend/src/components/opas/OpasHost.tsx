@@ -42,10 +42,35 @@ const GLASS: React.CSSProperties = {
     "inset 0 -1px 0 rgba(0,0,0,.45),0 34px 80px rgba(0,0,0,.55),0 10px 26px rgba(0,0,0,.38)",
 }
 
+/** The command line's width, and therefore an entry pane's.
+ *
+ * ⚠️ ONE CONSTANT, USED BY BOTH, SO "THE SAME WIDTH AS THE BAR" IS TRUE BY
+ * CONSTRUCTION rather than by two literals agreeing. They were two literals — 600
+ * for the bar, 390 for the pane — which is how the pane came to be visibly narrower
+ * than the thing it grows out of.
+ */
+export const BAR_WIDTH = "min(600px, calc(100vw - 48px))"
+
+/** An info pane is its own width; it does not grow from the bar. */
+export const INFO_WIDTH = "min(390px, calc(100vw - 32px))"
+
 export function OpasHost() {
   const { isAdmin } = useAuth()
   const opas = useOpas()
   const inputRef = useRef<HTMLInputElement>(null)
+  /** ⚠️ THE BAR'S MEASURED HEIGHT, so an entry pane can sit exactly ON it.
+   *
+   *  Ruled: the entry pane anchors directly on top of the Opas bar at the bar's
+   *  width. A hardcoded offset was what shipped (`bottom: 96` against a bar that is
+   *  nearer 46px tall) and it left the pane floating above and narrower than the
+   *  bar. The bar also GROWS when it has a `said` line, so the offset cannot be a
+   *  constant without going wrong whenever it does.
+   *
+   *  ⚠️ MEASURED WITH A ResizeObserver, not read once. The bar's height changes with
+   *  its content, and a single read at mount would be correct exactly until the
+   *  first time it mattered. */
+  const barRef = useRef<HTMLDivElement>(null)
+  const [barH, setBarH] = useState(0)
   const [text, setText] = useState("")
   const [busy, setBusy] = useState(false)
   /** ⚠️ WHAT EACH ENTRY PANE IS DOING, keyed by pane id. The bar renders the FRONT
@@ -375,6 +400,22 @@ export function OpasHost() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text, entryMode, opas.isOpen])
 
+  useEffect(() => {
+    const el = barRef.current
+    if (el === null) return
+    const read = () => setBarH(el.getBoundingClientRect().height)
+    read()
+    // ⚠️ GUARDED: jsdom has no ResizeObserver, and the component must not throw in
+    // the test environment just because the browser API is absent. The initial read
+    // above is what the tests see.
+    const RO = (window as unknown as { ResizeObserver?: typeof ResizeObserver })
+      .ResizeObserver
+    if (RO === undefined) return
+    const ro = new RO(read)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [opas.isOpen])
+
   const submit = useCallback(async () => {
     const phrase = text.trim()
     if (phrase === "" || busy) return
@@ -461,12 +502,22 @@ export function OpasHost() {
         {opas.panes.map((pane, i) => {
           const placed = opas.placements[pane.id]
           const isFront = opas.frontPaneId === pane.id
+          // ⚠️ COMPUTED ONCE AND USED BY BOTH THE STYLE AND THE ATTRIBUTE, which is
+          // the only arrangement a test can rely on. Two separate
+          // `isEntryPane(...) ? A : B` expressions — one for `width`, one for
+          // `data-pane-width` — are free to diverge, and a break test narrowing only
+          // the style produced NO RED twice: first when the attribute held the word
+          // "bar", then again when it held the constant but computed it itself. One
+          // binding makes the attribute a report of the width rather than a second
+          // opinion about it.
+          const paneWidth = isEntryPane(pane.kind) ? BAR_WIDTH : INFO_WIDTH
           return (
           <div
             key={pane.id}
             data-testid={`opas-pane-${pane.id}`}
             data-tucked={opas.isOpen ? "false" : "true"}
             data-focused={isFront ? "true" : "false"}
+            data-pane-width={paneWidth}
             onPointerDown={(e) => {
               // The prototype's order: raise FIRST, unconditionally, then try to drag.
               opas.raisePane(pane.id)
@@ -485,10 +536,15 @@ export function OpasHost() {
               // it — `bottom: 96` clears the 30px orb plus the pill's padding with a
               // gap. It comes out of the thing the director is typing into, which is
               // the whole point: the order appears where the words are going.
+              // ⚠️ AN ENTRY PANE SITS ON THE BAR: same right edge, and a bottom of
+              // 24 (the bar's own offset) plus the bar's MEASURED height, so the two
+              // touch. `bottom: 96` was a guess against a ~46px bar and left it
+              // floating — asked for last round and still wrong, which is why the
+              // height is now measured rather than assumed.
               ...(placed !== undefined && !placed.anchored
                 ? { left: placed.x, top: placed.y }
                 : isEntryPane(pane.kind)
-                  ? { right: 24, bottom: 96 }
+                  ? { right: 24, bottom: 24 + (barH || 46) }
                   : { right: 24 + i * 18, top: 72 + i * 22 }),
               zIndex: opas.zOf(pane.id),
               cursor: "grab",
@@ -500,9 +556,35 @@ export function OpasHost() {
                   "inset 0 -1px 0 rgba(0,0,0,.45),0 44px 100px rgba(0,0,0,.65),0 14px 32px rgba(0,0,0,.45)"
                 : GLASS.boxShadow,
               opacity: opas.isOpen ? (isFront ? 1 : 0.8) : 0,
-              width: "min(390px, calc(100vw - 32px))",
-              maxHeight: "calc(100vh - 160px)",
-              overflowY: "auto",
+              // ⚠️ THE BAR'S WIDTH FOR AN ENTRY PANE, by ruling — the bar is
+              // `min(600px, calc(100vw - 48px))` and the pane was 390px, so it was
+              // visibly narrower than the thing it grows out of.
+              //
+              // ⚠️ THE VALUE IS ALSO ON THE ELEMENT AS `data-pane-width`, BECAUSE
+              // JSDOM DROPS `min()`. Its CSS parser rejects the function outright, so
+              // `style.width` reads as the empty string and no test can assert this
+              // line.
+              //
+              // ⚠️ THE ATTRIBUTE CARRIES THE WIDTH ITSELF, NOT THE WORD "bar", AND
+              // THAT DISTINCTION IS WHY A BREAK TEST CAUGHT IT. It first held
+              // `isEntryPane(...) ? "bar" : "info"` — derived from the SAME condition
+              // as the width — so narrowing the pane back to 390px changed the width
+              // and left the attribute saying "bar", and the test passed. An
+              // attribute computed from the same input as the thing it describes is
+              // not evidence about it.
+              width: paneWidth,
+              // ⚠️ NO SCROLL CONTAINER ON AN ENTRY PANE, EVER, BY RULING. The
+              // `maxHeight` + `overflowY: auto` pair is what let the pane scroll and
+              // what let the browser AUTO-SCROLL a captured row out of view when
+              // focus moved — James watched Hopkins disappear upward. Ten rows in
+              // two columns fit above the bar at 800px tall, which is what makes
+              // removing the container safe rather than merely desirable.
+              //
+              // ⚠️ INFO PANES KEEP THEIRS. A catalog list is unbounded in principle
+              // and has to be scrollable; an order has exactly ten rows.
+              ...(isEntryPane(pane.kind)
+                ? { overflow: "visible" }
+                : { maxHeight: "calc(100vh - 160px)", overflowY: "auto" as const }),
               borderRadius: 22,
               pointerEvents: opas.isOpen ? "auto" : "none",
               // ⚠️ THE ORIGIN IS WHAT MAKES "GROWS FROM THE BAR" VISIBLE. With the
@@ -585,10 +667,11 @@ export function OpasHost() {
       {/* COMMAND LINE — glass pill at the sphere's corner. */}
       {opas.isOpen && (
         <div
+          ref={barRef}
           data-testid="opas-command-line"
           style={{
             ...GLASS, position: "fixed", zIndex: 44, right: 24, bottom: 24,
-            width: "min(600px, calc(100vw - 48px))", borderRadius: 28, padding: "6px 8px 6px 10px",
+            width: BAR_WIDTH, borderRadius: 28, padding: "6px 8px 6px 10px",
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>

@@ -161,6 +161,61 @@ function valueText(state: string, value: string | null): string {
   return "Not mentioned yet"
 }
 
+/** The two columns of the capture grid, by James's direction (2026-10-13).
+ *
+ * ⚠️ THE PROTOTYPE HAS NO TWO-COLUMN GROUPING TO QUOTE, and I checked before
+ * inventing one. Measured in `docs/prototypes/2026-10-01-opas-overlay.html` (md5
+ * `a52a1e95153bd5c686b88d0acffc31e6`): the capture rows are
+ * `.caps{display:flex;flex-direction:column;gap:7px}` — a SINGLE column — inside
+ * `.win.wide{width:min(440px,calc(100vw - 32px))}`. So the grid is a departure from
+ * the prototype rather than an implementation of it, and the order below is the
+ * ruled order, not a derived one.
+ *
+ * ⚠️ TEN ROWS IN TWO COLUMNS IS WHAT REMOVES THE SCROLLBAR, which is why the grid
+ * and the no-scrolling rule are one change and not two. One column of ten rows does
+ * not fit above the bar at 800px tall; two columns of five do.
+ *
+ * ⚠️ EVERY ROW ID BELONGS TO EXACTLY ONE COLUMN, ratcheted in
+ * `capture-columns.test.ts`. A row the server adds and this map does not name would
+ * be captured and silently not rendered — the same class as the three template
+ * fields that had no row at all.
+ */
+export const LEFT_COLUMN: readonly string[] = [
+  "funeral_home",
+  "deceased_name",
+  "dates",
+  "burial",
+  "service",
+]
+
+export const RIGHT_COLUMN: readonly string[] = [
+  "vault",
+  "personalization",
+  "cemetery",
+  "cemetery_equipment",
+  "contact",
+]
+
+/** Rows in column order, then anything the columns do not name.
+ *
+ * ⚠️ THE UNNAMED TAIL IS RENDERED, NOT DROPPED. A new row must be visible even
+ * before someone places it, because invisible-and-captured is the failure this
+ * whole arc keeps finding. The ratchet makes the tail empty; this makes a non-empty
+ * tail harmless rather than silent.
+ */
+export function splitIntoColumns<T extends { readonly row_id: string }>(
+  rows: readonly T[],
+): { left: T[]; right: T[] } {
+  const by = new Map(rows.map((r) => [r.row_id, r]))
+  const left = LEFT_COLUMN.map((id) => by.get(id)).filter((r): r is T => !!r)
+  const right = RIGHT_COLUMN.map((id) => by.get(id)).filter((r): r is T => !!r)
+  const named = new Set([...LEFT_COLUMN, ...RIGHT_COLUMN])
+  const tail = rows.filter((r) => !named.has(r.row_id))
+  // alternate the tail so an unplaced row cannot make one column run long
+  tail.forEach((r, i) => (i % 2 === 0 ? left : right).push(r))
+  return { left, right }
+}
+
 export function CapturePane({
   openingLine,
   sessionId: existingSessionId,
@@ -461,8 +516,19 @@ export function CapturePane({
   }
 
   const rows = state.surface.rows
+  const cols = splitIntoColumns(rows)
   const captured = rows.filter((r) => r.state === "done").length
-  const needed = rows.filter((r) => r.state === "needed").length
+  // ⚠️ THE SAME SET THE BAR USES, AND THIS CHIP USED TO COUNT ROWS IN THE `needed`
+  // STATE. A row only reaches that state AFTER a done signal, so before then it read
+  // **"0 needed" with nine rows empty** — which James saw on screen on 2026-10-13,
+  // in the same screenshot where the bar said "Nothing needed". Both were answering
+  // "has the director said they are finished", not "is anything outstanding".
+  //
+  // ⚠️ THE BAR WAS FIXED FOR THIS ON 2026-10-12 AND THE CHIP WAS NOT — two readouts
+  // of one fact, one of them corrected. That is why they are now computed from the
+  // same expression and tested together (`capture-live.test.tsx`): a second place
+  // that derives the same number is a second place to get it wrong.
+  const needed = state.missing.length
   const reviewing = state.status === "review"
 
   return (
@@ -500,43 +566,63 @@ export function CapturePane({
             <span data-testid="capture-assist-label">RULES</span>
           </div>
 
-          <div className="flex flex-col gap-1" data-testid="capture-rows">
-            {rows.map((r) => (
+          {/* ⚠️ TWO COLUMNS, BY RULING (2026-10-13), AND NO SCROLL CONTAINER.
+              Ten rows in one column do not fit above the bar at 800px tall, so the
+              pane grew a scrollbar and auto-scrolled the focused row out of view —
+              James watched a captured row disappear. Two columns of five fit, which
+              is why the grid and the no-scrolling rule are one change.
+
+              ⚠️ `items-start` SO A SHORT COLUMN DOES NOT STRETCH, and `min-w-0` on
+              each column so a long value wraps instead of widening the grid past
+              the bar. */}
+          <div
+            className="grid grid-cols-2 items-start gap-x-3 gap-y-1"
+            data-testid="capture-rows"
+          >
+            {[cols.left, cols.right].map((column, ci) => (
               <div
-                key={r.row_id}
-                data-testid={`capture-row-${r.row_id}`}
-                data-state={r.state}
-                className={`flex items-start gap-2 rounded-base border px-2 py-1.5 ${
-                  ROW_CLASS[r.state] ?? ROW_CLASS.not_mentioned
-                }`}
+                key={ci}
+                className="flex min-w-0 flex-col gap-1"
+                data-testid={`capture-column-${ci === 0 ? "left" : "right"}`}
               >
-                <span
-                  aria-hidden
-                  className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[10px] ${
-                    MARK_CLASS[r.state] ?? MARK_CLASS.not_mentioned
-                  }`}
-                >
-                  {r.state === "done" ? "✓" : ""}
-                </span>
-                <div className="min-w-0">
-                  <div className="text-micro uppercase tracking-wide text-content-subtle">
-                    {r.label}
-                  </div>
+                {column.map((r) => (
                   <div
-                    className={`text-body-sm ${
-                      r.state === "done"
-                        ? "text-content-strong"
-                        : "italic text-content-muted"
+                    key={r.row_id}
+                    data-testid={`capture-row-${r.row_id}`}
+                    data-state={r.state}
+                    className={`flex items-start gap-2 rounded-base border px-2 py-1.5 ${
+                      ROW_CLASS[r.state] ?? ROW_CLASS.not_mentioned
                     }`}
                   >
-                    {valueText(r.state, r.value)}
-                  </div>
-                  {r.secondary_value ? (
-                    <div className="text-micro text-content-muted">
-                      {r.secondary_value}
+                    <span
+                      aria-hidden
+                      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[10px] ${
+                        MARK_CLASS[r.state] ?? MARK_CLASS.not_mentioned
+                      }`}
+                    >
+                      {r.state === "done" ? "✓" : ""}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="text-micro uppercase tracking-wide text-content-subtle">
+                        {r.label}
+                      </div>
+                      <div
+                        className={`text-body-sm ${
+                          r.state === "done"
+                            ? "text-content-strong"
+                            : "italic text-content-muted"
+                        }`}
+                      >
+                        {valueText(r.state, r.value)}
+                      </div>
+                      {r.secondary_value ? (
+                        <div className="text-micro text-content-muted">
+                          {r.secondary_value}
+                        </div>
+                      ) : null}
                     </div>
-                  ) : null}
-                </div>
+                  </div>
+                ))}
               </div>
             ))}
           </div>

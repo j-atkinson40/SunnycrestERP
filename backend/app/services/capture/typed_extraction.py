@@ -649,22 +649,50 @@ class DeterministicExtractor:
             # "lowercase names work, SHOUTED markers do not" rather than to the
             # original defect. That is a stated reason for keeping redundant code,
             # which is the alternative to it reading as a second fix.
+            # ⚠️ THE LONGEST PREFIX THAT RESOLVES — NOT THE LONGEST RUN OF WORDS.
+            # This used to take up to four words after the marker and hand the whole
+            # thing to the resolver, which is correct only when a comma stops it.
+            # Measured 2026-10-13 on run-on text, which is how a director actually
+            # types: "order for hopkins continental" captured the span
+            # "hopkins continental", resolved NOTHING, claimed nothing, and the
+            # funeral home that had been captured one keystroke earlier was LOST —
+            # along with the vault, because "continental" was left glued behind
+            # "hopkins" in a single unplaced blob.
+            #
+            # Ruled: a marker-led span must not swallow following words. So the
+            # candidate words are taken once and tried LONGEST-FIRST, and the first
+            # prefix that resolves wins; everything after it is left for the other
+            # passes. "for hopkins continental" claims only "hopkins".
+            #
+            # ⚠️ LONGEST-FIRST AND NOT SHORTEST, which matters for the names that
+            # contain each other: "Hopkins Funeral Home" must beat "Hopkins" when
+            # both are typed, or the words "Funeral Home" fall through and the
+            # service-location pass reads them as a venue.
             m = re.search(
                 r"\b(?:for|from|with)\s+"
-                r"([A-Za-z][A-Za-z'&\-]*(?:\s+[A-Za-z][A-Za-z'&\-]*){0,3})",
+                r"((?:[A-Za-z][A-Za-z'&\-]*)(?:\s+[A-Za-z][A-Za-z'&\-]*){0,3})",
                 line, re.I)
             if m:
-                fr = resolve_funeral_home(db, tenant_id, m.group(1).strip())
-                if fr.party_id:
-                    if _mark(spans, m):
-                        values["funeral_home"] = fr.candidates[0].name
-                elif len(fr.candidates) > 1:
-                    picks.append(Pick(
-                        "funeral_home", m.group(1).strip(),
-                        tuple((c.name, c.label) for c in fr.candidates),
-                        fr.discriminators[0].value if fr.discriminators else None,
-                    ))
-                    _mark(spans, m)
+                wordm = list(re.finditer(r"[A-Za-z][A-Za-z'&\-]*", m.group(1)))
+                base = m.start(1)
+                for n in range(len(wordm), 0, -1):
+                    a = base + wordm[0].start()
+                    b = base + wordm[n - 1].end()
+                    phrase = line[a:b].strip()
+                    fr = resolve_funeral_home(db, tenant_id, phrase)
+                    if fr.party_id:
+                        if _claim(spans, a, b):
+                            values["funeral_home"] = fr.candidates[0].name
+                        break
+                    if len(fr.candidates) > 1:
+                        if _claim(spans, a, b):
+                            picks.append(Pick(
+                                "funeral_home", phrase,
+                                tuple((c.name, c.label) for c in fr.candidates),
+                                fr.discriminators[0].value
+                                if fr.discriminators else None,
+                            ))
+                        break
 
         # ── cemetery by RECORD LOOKUP, no marker needed ─────────────────
         # ⚠️ RULED 2026-10-12: "a cemetery that exists in your records should be
@@ -698,6 +726,12 @@ class DeterministicExtractor:
             # `resolve_from_rows` still does the resolving and still owns the
             # city-conflict rule; it just no longer decides what counts as a mention.
             exact = set()
+            # ⚠️ THE TOWNS WE HOLD RECORDS FOR, which is what bounds a town span —
+            # see `_narrow_town`. A record set rather than a word list, because a
+            # town can be named after anything and a stop-list rejected "New".
+            town_names = frozenset(
+                _party_norm(_city) for _i, _n, _city in rows if _city
+            )
             for _cid, _name, _city in rows:
                 n = _party_norm(_name)
                 exact.add(n)
@@ -740,9 +774,32 @@ class DeterministicExtractor:
                     a, b, _ = hit
                     # ⚠️ THE TOWN IS READ FROM WHAT FOLLOWS THE NAME, so the conflict
                     # rule applies here exactly as it does on the marker path.
-                    tail = re.match(r"\s+in\s+([A-Za-z][A-Za-z'\- ]{2,30})", frag[b:])
-                    city = tail.group(1).strip() if tail else None
-                    end = b + (tail.end() if tail else 0)
+                    #
+                    # ⚠️ THIS WAS A SECOND, INLINE COPY OF THE TOWN PATTERN AND IT IS
+                    # WHY A FIX LANDED YESTERDAY DID NOT TAKE. `_CEM_TOWN` gained the
+                    # period in its charset on 2026-10-12 — for "St. Albans" — and
+                    # this duplicate did not, so the record path still could not read
+                    # an abbreviated town. Worse, it kept the 30-CHARACTER run, and on
+                    # comma-free text that runs straight through word boundaries:
+                    # "st marys in auburn service at the church thursday 10am"
+                    # claimed 43 characters, through to "...th", and reported
+                    # **'ursday'** as text the engine could not place. Traced by
+                    # instrumenting `_claim` rather than by reading.
+                    #
+                    # One pattern, one place. A fix to the town now reaches both
+                    # callers, which is the whole reason the constant exists.
+                    tail = _CEM_TOWN.match(frag[b:])
+                    city = (
+                        _narrow_town(tail.group(1), town_names) if tail else None
+                    ) or None
+                    # ⚠️ THE CLAIM ENDS WHERE THE NARROWED TOWN ENDS, not where the
+                    # pattern matched. Claiming the pattern's full span is what ate
+                    # the following clause; the words the town did not use must stay
+                    # available to the passes that want them.
+                    end = b + (
+                        tail.start(1) - tail.start() + len(city) if tail and city
+                        else 0
+                    )
                     cr = resolve_from_rows(rows, frag[a:b], city)
                     if cr.party_id:
                         if _claim(spans, frag_start + a, frag_start + end):
@@ -907,40 +964,78 @@ class DeterministicExtractor:
         # ("an oversized", "34 inch Continental") with no marker in front of it. Running
         # it early would let it claim spans that belong to a cemetery or a party.
         if once("vault"):
+            # ⚠️ AN N-GRAM SCAN OVER EACH UNCLAIMED SLICE, LONGEST-FIRST — AND IT USED
+            # TO RESOLVE THE WHOLE SLICE AS ONE PHRASE. That is right only when a
+            # comma has already cut the slice down to the product words. Measured
+            # 2026-10-13 on run-on text: "order for hopkins continental 34 mary"
+            # left "continental 34 mary" as one unclaimed slice, `resolve_vault` on
+            # the whole thing matched nothing, and THE VAULT CAPTURED ONE KEYSTROKE
+            # EARLIER WAS LOST. A director types no commas, so the slice keeps
+            # growing and the product name keeps being diluted.
+            #
+            # ⚠️ THE PARTY PASSES ALREADY SCAN N-GRAMS; this makes the vault consistent
+            # with them rather than inventing a mechanism. Longest-first so
+            # "Continental 34" beats "Continental" and produces a resolution instead
+            # of a two-option pick.
+            #
+            # ⚠️ EACH N-GRAM IS TRIED STRIPPED **AND** RAW, which is the reading the
+            # old code did with `_leftover_pairs`. Catalog names contain words that
+            # are also noise words, so a stripped miss is not evidence the director
+            # named no vault. Keeping both readings is why no resolution that worked
+            # before stops working.
             index = build_index(db)
-            for kept, raw in _leftover_pairs(line, spans):
-                # ⚠️ TWO READINGS, STRIPPED FIRST, AND THE CATALOG DECIDES. The
-                # noise list contains words that are also inside catalog names, so a
-                # stripped fragment that reaches nothing is not evidence the director
-                # named no vault — see `_leftover_pairs`. The raw reading is tried
-                # only on a miss, so nothing that resolves today changes.
-                vr = resolve_vault(index, kept)
-                frag = kept
-                if raw.casefold() != kept.casefold():
-                    alt = resolve_vault(index, raw)
-                    if _narrower(alt, vr):
-                        vr, frag = alt, raw
-                if vr.variant_template_id:
-                    # ⚠️ `low.find` CAN LAND ON AN EARLIER, ALREADY-CLAIMED COPY of
-                    # the same words, which is why this claims rather than appends.
-                    # The fragment itself came from the unclaimed complement, so the
-                    # claim normally succeeds; a refusal means `find` pointed at the
-                    # wrong occurrence and the value must not be written from it.
-                    i = low.find(raw.casefold())
-                    if i >= 0 and _claim(spans, i, i + len(raw)):
-                        values["vault"] = vr.candidates[0].display_name
+            hit = False
+            for frag_start, frag in _unclaimed_slices(line, spans):
+                if hit:
                     break
-                if len(vr.candidates) > 1:
-                    picks.append(Pick(
-                        "vault", frag,
-                        tuple((c.display_name, f"{c.sku} — {c.display_name}")
-                              for c in vr.candidates),
-                        vr.discriminators[0].value if vr.discriminators else None,
-                    ))
-                    i = low.find(raw.casefold())
-                    if i >= 0:
-                        _claim(spans, i, i + len(raw))
-                    break
+                # ⚠️ DIGITS ARE PART OF A PRODUCT WORD. "34" is a word here, unlike
+                # in the party scans — the catalog's names carry sizes, and a pattern
+                # that skipped digits would make "Continental 34" unreachable as a
+                # two-word n-gram and leave only the ambiguous "Continental".
+                wordm = list(re.finditer(r"[A-Za-z0-9][A-Za-z0-9'&.\-]*", frag))
+                if not wordm:
+                    continue
+                # ⚠️ SIX WORDS IS THE CEILING AND IT IS MEASURED, NOT CHOSEN: the
+                # longest display name in the catalog is well inside it, and an
+                # unbounded scan over a run-on sentence is quadratic in its length.
+                for size in range(min(6, len(wordm)), 0, -1):
+                    if hit:
+                        break
+                    for i0 in range(0, len(wordm) - size + 1):
+                        run = wordm[i0:i0 + size]
+                        a, b = run[0].start(), run[-1].end()
+                        raw = frag[a:b]
+                        kept = " ".join(
+                            w for w in raw.split() if w.casefold() not in _NOISE_WORDS
+                        )
+                        vr = resolve_vault(index, kept) if kept else None
+                        chosen = kept
+                        if vr is None or not vr.candidates:
+                            vr, chosen = resolve_vault(index, raw), raw
+                        elif raw.casefold() != kept.casefold():
+                            alt = resolve_vault(index, raw)
+                            if _narrower(alt, vr):
+                                vr, chosen = alt, raw
+                        if not vr.candidates:
+                            continue
+                        A, B = frag_start + a, frag_start + b
+                        if vr.variant_template_id:
+                            if _claim(spans, A, B):
+                                values["vault"] = vr.candidates[0].display_name
+                                hit = True
+                            break
+                        if len(vr.candidates) > 1:
+                            if _claim(spans, A, B):
+                                picks.append(Pick(
+                                    "vault", chosen,
+                                    tuple((c.display_name,
+                                           f"{c.sku} — {c.display_name}")
+                                          for c in vr.candidates),
+                                    vr.discriminators[0].value
+                                    if vr.discriminators else None,
+                                ))
+                                hit = True
+                            break
 
         # ── deceased name, by elimination ───────────────────────────────
         # ⚠️ RULED 2026-10-12: "if exactly one person-like name is left over after
@@ -1182,7 +1277,76 @@ _CEM_SUFFIX = re.compile(r"\s+(?:cemetery|cemeteries)\b", re.I)
 #: allowed apostrophes and hyphens but not periods, so those towns were silently
 #: unreadable while the clause still matched and still produced a name. The same
 #: failure mode as the three above, in a part nobody had tested alone.
-_CEM_TOWN = re.compile(r"\s+in\s+([A-Za-z][A-Za-z'\-. ]{2,30})", re.I)
+#:
+#: ⚠️ WORD-BOUNDED SINCE 2026-10-13, AND IT USED TO BE A 30-CHARACTER RUN:
+#: `[A-Za-z'\-. ]{2,30}` — with a SPACE in the set, so it ran straight across word
+#: boundaries and stopped wherever character 30 happened to fall. On comma-free text
+#: that is mid-word. Measured: "st marys in auburn service at the church thursday
+#: 10am" claimed through to "...Th" and reported **'ursday'** as text the engine
+#: could not place. A director types no commas, so nothing stopped it.
+#:
+#: ⚠️ UP TO THREE WORDS, AND THE CALLER NARROWS — see `_narrow_town`. A stop-word
+#: lookahead was tried here first and REJECTED A REAL TOWN: `_NOISE_WORDS` contains
+#: "new", so "in New Hartford" matched nothing at all. The vocabulary that tells a
+#: label from a place cannot be a word list, because towns are named after anything.
+#: What CAN tell them apart is the records, which is the same rule the funeral-home
+#: marker follows: the longest prefix that matches something real.
+#: ⚠️ THE FIRST WORD NEEDS TWO CHARACTERS, DELIBERATELY. The old character
+#: quantifier rejected a one-letter town as a side effect; keeping that rejection
+#: explicit means "in A" is still not a town, which matters because a stray single
+#: letter after "in" is far more likely to be a typo than a place.
+_CEM_TOWN = re.compile(
+    r"\s+in\s+([A-Za-z][A-Za-z'\-.]+(?:\s+[A-Za-z][A-Za-z'\-.]*){0,2})", re.I
+)
+
+
+def _narrow_town(raw: str, known: frozenset[str]) -> str:
+    """The longest word-prefix of `raw` that is a town we have a record of.
+
+    ⚠️ THIS IS THE FUNERAL-HOME RULE APPLIED TO TOWNS, by the same ruling: a
+    marker-led span must not swallow following words, and what bounds it is a
+    record rather than a word count. "in Skaneateles tent only" gives
+    "Skaneateles" because that is a city we hold and "Skaneateles tent" is not.
+
+    ⚠️ AN UNKNOWN TOWN IS STILL READ, because a typed town that CONFLICTS with the
+    record is supposed to raise the pick (ruled 2026-10-12) — it is the signal, so
+    dropping it would lose the conflict. It is truncated at the first LABEL word
+    after the first, which is what actually separates a place from the clause behind
+    it: "Auburn service at" -> "Auburn".
+
+    ⚠️ THE FIRST WORD IS NEVER DROPPED, and that exemption is load-bearing. A
+    one-word fallback was tried and truncated two real towns — "New Hartford" became
+    "New" and "St. Albans" became "St." — because `_NOISE_WORDS` contains "new" (for
+    "new order") and the bare fallback took a single word. Towns are named after
+    anything, including words this module treats as noise elsewhere, so the first
+    word of a town span is exempt by construction rather than by a longer list.
+
+    ⚠️ RESIDUAL, STATED RATHER THAN HIDDEN: an UNKNOWN town followed by a label that
+    is not in `_NOISE_WORDS` still over-reaches by those words — "Xville tent only"
+    reads "Xville tent". Every town in the seeded data takes the record path above,
+    so this is reachable only for a town we hold no record of, and it is bounded at
+    three words rather than the 30 CHARACTERS that produced 'ursday'.
+    """
+    # ⚠️ IMPORTED HERE, NOT AT MODULE LEVEL, BECAUSE THAT IS WHERE IT LIVES. The
+    # name `_party_norm` is an alias created INSIDE `extract_line`
+    # (`normalize as _party_norm`), so a module-level reference to it compiles,
+    # imports, and raises `NameError` at call time. It did — caught by running the
+    # function, not by reading it (CLAUDE.md §11: the check that catches this is
+    # importing, or better, calling).
+    from app.services.party_resolver import normalize as _norm
+
+    words = raw.split()
+    for n in range(len(words), 0, -1):
+        if _norm(" ".join(words[:n])) in known:
+            return " ".join(words[:n])
+    if not words:
+        return ""
+    keep = [words[0]]
+    for w in words[1:]:
+        if w.casefold().strip(".,'") in _NOISE_WORDS:
+            break
+        keep.append(w)
+    return " ".join(keep)
 
 
 @dataclass(frozen=True)

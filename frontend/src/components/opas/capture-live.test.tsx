@@ -36,7 +36,7 @@ import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 
 import { CAPTURE_SESSION_KEY, OpasProvider } from "@/contexts/opas-context"
-import { OpasHost } from "./OpasHost"
+import { BAR_WIDTH, OpasHost } from "./OpasHost"
 import { EXTRACT_DEBOUNCE_MS } from "./capture-sequence"
 
 vi.mock("@/services/opas-capture-service", () => ({
@@ -387,6 +387,43 @@ describe("the placeholder says what is happening and is never stale", () => {
     )
     expect(screen.getByTestId("opas-input")).not.toHaveAttribute(
       "placeholder", expect.stringContaining("Nothing needed"),
+    )
+  })
+
+  it("THE HEADER CHIP AND THE BAR AGREE, both from the missing set", async () => {
+    // ⚠️ TESTED TOGETHER BY RULING, because they are two readouts of one fact and
+    // only one of them was fixed. On 2026-10-13 the bar said "8 still needed" while
+    // the chip said "0 needed" with nine rows empty — the chip was still counting
+    // rows in the `needed` state, which a row only reaches AFTER a done signal.
+    vi.mocked(startCapture).mockResolvedValue(
+      state({
+        missing: ["vault", "deceased_name", "cemetery"],
+        surface: {
+          id: "capture",
+          rows: [
+            { row_id: "funeral_home", label: "Funeral Home", state: "done",
+              value: "Hopkins Funeral Home", secondary_value: null },
+            { row_id: "vault", label: "Vault / Product", state: "not_mentioned",
+              value: null, secondary_value: null },
+          ],
+        },
+      }) as never,
+    )
+    render(
+      <OpasProvider>
+        <OpasHost />
+      </OpasProvider>,
+    )
+    await user.click(screen.getByTestId("opas-sphere"))
+    await user.type(screen.getByTestId("opas-input"), "order for hopkins")
+    await waitFor(() =>
+      expect(screen.getByTestId("capture-rows")).toBeInTheDocument(),
+    )
+
+    // ⚠️ NOT "0 needed", AND THE NUMBER IS THE SAME ONE THE BAR SHOWS.
+    expect(screen.getByTestId("capture-needed-pill")).toHaveTextContent("3")
+    expect(screen.getByTestId("opas-input")).toHaveAttribute(
+      "placeholder", expect.stringContaining("3 still needed"),
     )
   })
 
@@ -815,9 +852,27 @@ describe("an entry pane grows from the bar", () => {
     await openOrder()
     expect(panes()).toHaveLength(1)
     const pane = panes()[0]
-    expect(pane.style.bottom).toBe("96px")
+    // ⚠️ ON THE BAR, NOT AT A FIXED OFFSET. This asserted `bottom: 96px` — a guess
+    // against a bar that is nearer 46px tall, which is exactly why the pane floated
+    // above it. The bottom is now 24 (the bar's own offset) plus the bar's MEASURED
+    // height, so the two touch; jsdom reports no layout, so the measurement falls
+    // back to 46 and the assertion is 70px here. What is pinned is that the pane is
+    // positioned FROM THE BOTTOM against the bar, not that the number is 96.
+    expect(pane.style.bottom).toBe("70px")
     expect(pane.style.right).toBe("24px")
     expect(pane.style.top).toBe("")
+    // ⚠️ AND AT THE BAR'S WIDTH, which was 390px against a 600px bar. Asserted via
+    // `data-pane-width` because JSDOM'S CSS PARSER REJECTS `min()` — `style.width`
+    // reads as the empty string, so the CSS line itself is unassertable here.
+    //
+    // ⚠️ THE ATTRIBUTE CARRIES THE WIDTH VALUE, and it has to. It held the word
+    // "bar" first, derived from the same `isEntryPane` condition as the width — so a
+    // break that narrowed the pane to 390px produced NO RED. Asserting the value
+    // against the shared constant is what makes this about the width.
+    expect(pane).toHaveAttribute("data-pane-width", BAR_WIDTH)
+    // ⚠️ NO SCROLL CONTAINER, EVER, on an entry pane.
+    expect(pane.style.overflowY).toBe("")
+    expect(pane.style.maxHeight).toBe("")
     // the origin is what makes the growth read as unfolding from the bar rather than
     // fading in place
     expect(pane.style.transformOrigin).toBe("100% 100%")

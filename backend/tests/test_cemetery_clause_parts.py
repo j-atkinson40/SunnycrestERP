@@ -115,15 +115,28 @@ def test_the_town_is_read_after_in(text, town):
 
 
 def test_the_town_quantifier_is_a_real_quantifier():
-    """⚠️ FAILURE 2, AS A UNIT. Written as `{{2,30}}` inside an f-string the braces
-    stayed literal and this pattern matched only the TEXT "{2,30}". A one-letter town
-    must be rejected and a normal one accepted — which is only true if the quantifier
-    is quantifying."""
+    """⚠️ FAILURE 2, AS A UNIT — AND THE QUANTIFIER IT GUARDS HAS MOVED. Written as
+    `{{2,30}}` inside an f-string the braces stayed literal and the pattern matched
+    only the TEXT "{2,30}". The `{2,30}` was a CHARACTER count, and on 2026-10-13 it
+    became a WORD count (`{0,2}` extra words) because a 30-character run walked
+    straight through word boundaries on comma-free text — it claimed 43 characters of
+    "st marys in auburn service at the church thursday 10am" and reported 'ursday' as
+    unplaceable.
+
+    So this now pins the word quantifier, which is the one that exists, plus the
+    one-letter rejection that the old character count gave as a side effect and the
+    new pattern asserts deliberately (`[A-Za-z][A-Za-z'\-.]+` on the first word).
+    """
     assert _CEM_TOWN.match(" in A", 0) is None, "a 1-char town matched"
     assert _CEM_TOWN.match(" in Rome", 0) is not None
     assert _CEM_TOWN.match(" in {2,30}", 0) is None, (
         "the literal text '{2,30}' matched — the braces are not quantifying"
     )
+    # ⚠️ THREE WORDS IS THE CEILING AND A FOURTH MUST BE LEFT BEHIND. Without a real
+    # quantifier this would take everything or nothing.
+    m = _CEM_TOWN.match(" in Rome New York State Extra", 0)
+    assert m is not None
+    assert m.group(1) == "Rome New York", m.group(1)
 
 
 # ── the composition ─────────────────────────────────────────────────────

@@ -320,6 +320,62 @@ Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end 
 - **2026-10-13** — REAL-BROWSER CONFIRMATION with the failing state seeded: before, a
   dead pane and no order; after, `capture-error: None`, a NEW stored session id, rows
   rendered, funeral-home row `✓ Hopkins Funeral Home`, placeholder `8 still needed`.
+- **2026-10-13** — ⚠️ **WALK NOTE 4 (James, production, 08:03 ET, screenshot): typed
+  "order for hopkins continental", saw 0 captured and "hopkins continental" under NOT
+  UNDERSTOOD — Hopkins had been captured a keystroke earlier and was LOST.** Cause:
+  **every sentence in every extraction test had commas, and a director types none.**
+  Measured by re-running every comma-bearing input from the extraction suites comma-free:
+  **5 of 34 real sentences lose fields** (2 further hits were docstring prose my scraper
+  picked up — discounted).
+- **2026-10-13** — THREE DEFECTS, ALL ONE SHAPE: a span bounded by something other than
+  what it is matching, which a comma used to hide.
+  (1) the FUNERAL-HOME marker took up to 4 words after "for" and handed the whole run to
+  the resolver — "hopkins continental" resolved nothing, claimed nothing, and lost the
+  funeral home AND the vault, because "continental" stayed glued behind "hopkins".
+  FIXED: longest prefix that resolves, remainder left for the other passes.
+  (2) the VAULT pass resolved the WHOLE unclaimed slice as one phrase, so as the sentence
+  grew "continental 34 mary" stopped matching and the vault was lost. FIXED: an n-gram
+  scan, longest-first, which is what the party passes already did.
+  (3) the CEMETERY TOWN was a 30-CHARACTER run with a space in its character class, so it
+  crossed word boundaries and stopped wherever character 30 fell — **mid-word**. It
+  claimed 43 characters of "st marys in auburn service at the church thursday 10am" and
+  reported **'ursday'** as unplaceable. Traced by instrumenting `_claim`, not by reading.
+- **2026-10-13** — ⚠️ **AND THERE WERE TWO COPIES OF THE TOWN PATTERN.** The period fix
+  landed on the named `_CEM_TOWN` on 2026-10-12; an **inline duplicate** in the
+  record-lookup pass kept the old 30-character form, so that path could neither read
+  "St. Albans" nor stop at a word. One pattern now, with a ratchet that counts them and
+  fires if a second appears. The sweep-where-it-was-asked rule, missed.
+- **2026-10-13** — RESULT: every word-prefix of James's run-on sentence now loses NOTHING
+  (was: funeral home lost at word 4, vault at word 6). The sentence captures 7 fields.
+  `order for hopkins continental` gives the funeral home AND a vault pick.
+- **2026-10-13** — ⚠️ A ONE-WORD TOWN FALLBACK REJECTED TWO REAL TOWNS before being
+  measured: a `_NOISE_WORDS` lookahead killed "New Hartford" ("new" is in the list) and a
+  bare one-word fallback cut "St. Albans" to "St.". Towns are named after anything, so the
+  bound is the RECORDS (`_narrow_town`: longest prefix that is a town we hold), with the
+  first word never dropped. Residual stated: an unknown multi-word town followed by a
+  non-noise label still over-reaches, bounded at 3 words rather than 30 characters.
+- **2026-10-13** — LAYOUT (ruled): the entry pane now sits **on** the bar — `bottom: 24 +
+  the bar's MEASURED height` (was a hardcoded 96 against a ~46px bar) — at the bar's
+  width, from **one shared constant** so "same width as the bar" is true by construction.
+  Rows are a **two-column grid**, 5 and 5, in the ruled order. **No scroll container on an
+  entry pane, ever**; info panes keep theirs. ⚠️ THE PROTOTYPE HAS NO TWO-COLUMN GROUPING
+  TO QUOTE — measured: `.caps{display:flex;flex-direction:column}` at
+  `width:min(440px,…)`, single column — so the order is James's direction, not a
+  quotation. Verified in a real browser at 1280x800: pane 600 == bar 600, gap to bar 0,
+  10 rows in [5,5], `scrollHeight == clientHeight`, zero rows out of view.
+- **2026-10-13** — HEADER COUNT: the "needed" chip now reads `state.missing` — the same set
+  as the bar. It counted rows in the `needed` STATE, which a row reaches only AFTER a done
+  signal, so it read **"0 needed" with nine rows empty**. ⚠️ THE BAR WAS FIXED FOR THIS ON
+  2026-10-12 AND THE CHIP WAS NOT — two readouts of one fact, one corrected. Now computed
+  from one expression and tested together, by ruling. A pre-existing test's fixture had a
+  `needed` row with `missing: []` — a state the server cannot produce — which is what let
+  the old chip look right.
+- **2026-10-13** — ⚠️ A BREAK TEST ON THE PANE WIDTH PRODUCED NO RED **TWICE**. The
+  observable attribute was first the word `"bar"` and then the constant, each computed from
+  the same `isEntryPane` condition as the width itself — so narrowing the style alone left
+  the attribute unchanged. Fixed by binding the width ONCE and having both the style and
+  the attribute read that binding. An attribute derived from the same input as the thing it
+  describes is not evidence about it.
 - **2026-10-12** — Walk steps for James:
   `docs/investigations/2026-10-12-typed-capture-round-2-walk.md`. ⚠️ Its first
   instruction is to RESTART the dev backend — the process on :8000 was started before

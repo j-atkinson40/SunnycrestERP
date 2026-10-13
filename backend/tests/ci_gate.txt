@@ -356,6 +356,15 @@ tests/test_punctuation_is_not_identity.py
 # feature, that the decedent pass still requires capitals — a decedent has no
 # record to check against, so loosening it is a behaviour decision.
 tests/test_a_director_types_lowercase.py
+# Run-on text: a director types no commas. In the gate because EVERY sentence in
+# every other extraction test had commas, and 5 of 34 of them lose fields without
+# them. Three defects of one shape — a span bounded by something other than what
+# it matches: the funeral-home marker took 4 words and resolved none, the vault
+# pass resolved the whole slice as one phrase, and the cemetery town was a
+# 30-CHARACTER run that claimed mid-word ('ursday'). The monotonicity test is the
+# one that catches the class: a final-result assertion cannot see a field that
+# appears and then vanishes, which is what James watched happen.
+tests/test_a_director_types_no_commas.py
 tests/test_typed_capture_slice1.py
 tests/test_vault_resolution_wiring.py
 tests/test_void_payment_reverses_ar2.py
