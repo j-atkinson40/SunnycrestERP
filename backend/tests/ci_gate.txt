@@ -366,6 +366,7 @@ tests/test_a_director_types_lowercase.py
 # appears and then vanishes, which is what James watched happen.
 tests/test_a_director_types_no_commas.py
 tests/test_the_form_default_picks_burial.py
+tests/test_a_cemetery_is_named_the_way_people_say_it.py
 tests/test_typed_capture_slice1.py
 tests/test_vault_resolution_wiring.py
 tests/test_void_payment_reverses_ar2.py

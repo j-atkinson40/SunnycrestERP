@@ -1349,13 +1349,38 @@ class MentionPolicy(str, Enum):
 # rather than starving the part after it.
 
 #: Step 1: the words that introduce a cemetery.
-_CEM_MARKER = re.compile(r"\b(?:to|at|going to|burial at|buried at)\s+", re.I)
+#: ⚠️ THE MULTI-WORD MARKERS COME FIRST, AND THE REASON IS WHAT WAS BROKEN. A bare
+#: `to` inside "headed to" matches at the LATER position, so the clause used to start
+#: at the "to" and leave "headed" behind as text the engine could not place — the
+#: cemetery resolved and the sentence still showed a Not-understood word. Listing the
+#: longer forms first makes the intent explicit even though leftmost-match already
+#: decides it: at the "h" of "headed", only `headed to` can match.
+#:
+#: ⚠️ "headed to" AND "out to" ADDED 2026-10-13 by James's walk note. Widening the
+#: marker set cannot invent a cemetery — the span is claimed only when
+#: `resolve_cemetery` returns a record, so "going to the shop" claims nothing.
+_CEM_MARKER = re.compile(
+    r"\b(?:going to|headed to|out to|burial at|buried at|to|at)\s+", re.I
+)
 
 #: Step 2: the name. ⚠️ THE LOOKAHEAD IS WHAT STOPS IT EATING ITS OWN DELIMITERS;
 #: failure 1 was this group without it.
 _CEM_STOP = r"(?!\b(?:cemetery|cemeteries|in|on|at|for|with|and)\b)"
+#: ⚠️ THE PERIOD IS IN THE SET SINCE 2026-10-13, AND ITS ABSENCE WAS THE SAME BUG
+#: `_CEM_TOWN` HAD ONE STEP OVER. The town charset gained `.` on 2026-10-12 for
+#: "St. Albans"; this one did not, so an abbreviated TOWN read fine while an
+#: abbreviated CEMETERY stopped dead at the period: "going to St. Mary's" parsed
+#: `name='St'` and claimed only "going to St", leaving "Mary's" to be reported as
+#: text the engine could not place. That is James's 11:24 walk note.
+#:
+#: ⚠️ AND THE VALUE WAS RIGHT THE WHOLE TIME, WHICH IS WHY IT SURVIVED. `name='St'`
+#: still resolved to "St. Mary's Cemetery" on the seeded tenant, so every test that
+#: asserted `values["cemetery"]` passed over the defect. The town was the second
+#: casualty and silent: with the name ending early, the suffix and town steps ran
+#: against the wrong offset and "St. Mary's Cemetery in Skaneateles" returned
+#: `town=None` — not a wrong town, no town at all.
 _CEM_NAME = re.compile(
-    rf"{_CEM_STOP}[A-Za-z'][A-Za-z'\-]*(?:\s+{_CEM_STOP}[A-Za-z'][A-Za-z'\-]*){{0,2}}",
+    rf"{_CEM_STOP}[A-Za-z'][A-Za-z'\-.]*(?:\s+{_CEM_STOP}[A-Za-z'][A-Za-z'\-.]*){{0,2}}",
     re.I,
 )
 
