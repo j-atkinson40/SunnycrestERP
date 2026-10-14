@@ -29,6 +29,8 @@ export const PANE_MODE: Record<OpasPaneKind, PaneMode> = {
   capture: "entry",
   product: "info",
   "product-list": "info",
+  "order-list": "info",
+  "sales-order": "info",
 }
 
 /** ⚠️ NO FALLBACK, DELIBERATELY — see the module docstring. */

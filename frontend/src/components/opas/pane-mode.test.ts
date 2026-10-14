@@ -17,7 +17,13 @@ import { PANE_MODE, isEntryPane, paneMode } from "./pane-mode"
 /** ⚠️ WRITTEN OUT, NOT DERIVED FROM `PANE_MODE`. Deriving the expected set from the
  *  thing under test is the fixtures-modelled-on-the-implementation defect: the two
  *  would agree by construction and the test would assert nothing. */
-const EVERY_KIND: readonly OpasPaneKind[] = ["capture", "product", "product-list"]
+const EVERY_KIND: readonly OpasPaneKind[] = [
+  "capture",
+  "product",
+  "product-list",
+  "order-list",
+  "sales-order",
+]
 
 describe("every pane kind is classified", () => {
   it("has exactly these kinds and no others", () => {
@@ -40,7 +46,7 @@ describe("the classification itself", () => {
     expect(isEntryPane("capture")).toBe(true)
   })
 
-  it.each(["product", "product-list"] as const)(
+  it.each(["product", "product-list", "order-list", "sales-order"] as const)(
     "%s is an INFO pane — the director is reading",
     (kind) => {
       expect(isEntryPane(kind)).toBe(false)

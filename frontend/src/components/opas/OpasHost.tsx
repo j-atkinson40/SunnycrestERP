@@ -32,8 +32,12 @@ import { EXTRACT_DEBOUNCE_MS } from "./capture-sequence"
 
 import { consumePickDigit } from "./pick-digit"
 import { resolvePhrase } from "@/services/opas-catalog-service"
+import { askOrderList, type OrderListSnapshot, type OrderPick } from "@/services/order-list-service"
 import { ProductListPane } from "./ProductListPane"
 import { ProductPane } from "./ProductPane"
+import { OrderListPane } from "./order-list/OrderListPane"
+import { isOrderListPhrase, isOrderRefinement } from "./order-list/order-list-routing"
+import { SalesOrderPane } from "./order-list/SalesOrderPane"
 
 /** How long an approved pane stays on screen before it closes itself.
  *
@@ -65,6 +69,26 @@ export const BAR_WIDTH = "min(600px, calc(100vw - 48px))"
 
 /** An info pane is its own width; it does not grow from the bar. */
 export const INFO_WIDTH = "min(390px, calc(100vw - 32px))"
+
+/** The order list is a wide list. A product pane stays at INFO_WIDTH. */
+export const ORDER_LIST_WIDTH = "min(37rem, calc(100vw - 32px))"
+
+const ORDER_TRY = "Try: Hopkins orders this month · going out Friday"
+const ORDER_CHANGE = 'Say it: "only Hopkins", "last month", "not invoiced"'
+
+function useNarrowScreen(): boolean {
+  const [narrow, setNarrow] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia("(max-width: 640px)").matches,
+  )
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 640px)")
+    const apply = () => setNarrow(mq.matches)
+    apply()
+    mq.addEventListener("change", apply)
+    return () => mq.removeEventListener("change", apply)
+  }, [])
+  return narrow
+}
 
 export function OpasHost() {
   const { isAdmin } = useAuth()
@@ -101,6 +125,7 @@ export function OpasHost() {
   // ⚠️ PANE IDS THAT HOLD A CREATED ORDER. The opening effect reads this so the next
   // phrase closes the receipt instead of being typed into a finished order.
   const approvedPanes = useRef<Set<string>>(new Set())
+  const narrow = useNarrowScreen()
 
   /**
    * ⚠️ FIELD-BY-FIELD COMPARISON, AND IT IS LOAD-BEARING RATHER THAN AN OPTIMISATION.
@@ -570,6 +595,76 @@ export function OpasHost() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entryValue, entryPane, picks])
 
+  const openSalesOrder = useCallback((orderId: string) => {
+    const same = opas.panes.find((p) => p.kind === "sales-order" && p.salesOrderId === orderId)
+    if (same) {
+      opas.raisePane(same.id)
+      return
+    }
+    for (const pane of opas.panes) {
+      if (pane.kind === "sales-order") opas.closePane(pane.id)
+    }
+    opas.openPane({ kind: "sales-order", label: "Sales order", salesOrderId: orderId })
+  }, [opas])
+
+  const settleOrderAnswer = useCallback((result: OrderListSnapshot, spoken: string | undefined) => {
+    if (result.kind === "unrecognized" || result.kind === "total") {
+      setSaid(result.hint ?? ORDER_TRY)
+      return
+    }
+    if (result.kind === "open_order" && result.open_order_id) {
+      openSalesOrder(result.open_order_id)
+      return
+    }
+    const existing = opas.panes.find((p) => p.kind === "order-list")
+    const patch = {
+      orderSnapshot: result,
+      ...(result.question ? { orderQuestion: result.question } : {}),
+      ...(spoken ? { orderPhrase: spoken } : {}),
+    }
+    if (existing) {
+      opas.updatePane(existing.id, patch)
+      opas.raisePane(existing.id)
+    } else {
+      opas.openPane({ kind: "order-list", label: "Orders", ...patch })
+    }
+    if (result.kind === "question") {
+      for (const pane of opas.panes) {
+        if (pane.kind === "sales-order") opas.closePane(pane.id)
+      }
+    }
+    if (result.hint) setSaid(result.hint)
+  }, [opas, openSalesOrder])
+
+  const removeOrderPill = useCallback(async (paneId: string, pillId: string) => {
+    const pane = opas.panes.find((p) => p.id === paneId)
+    if (!pane?.orderQuestion) return
+    try {
+      const result = await askOrderList({
+        question: pane.orderQuestion,
+        remove_pill: pillId,
+        ...(pane.orderPhrase ? { teach_phrase: pane.orderPhrase } : {}),
+      })
+      settleOrderAnswer(result, undefined)
+    } catch {
+      setSaid(ORDER_TRY)
+    }
+  }, [opas, settleOrderAnswer])
+
+  const chooseOrderPick = useCallback(async (pick: OrderPick) => {
+    if (pick.order_id) {
+      openSalesOrder(pick.order_id)
+      return
+    }
+    if (!pick.question) return
+    try {
+      const result = await askOrderList({ question: pick.question })
+      settleOrderAnswer(result, undefined)
+    } catch {
+      setSaid(ORDER_TRY)
+    }
+  }, [openSalesOrder, settleOrderAnswer])
+
   const submit = useCallback(async () => {
     const phrase = text.trim()
     if (phrase === "" || busy) return
@@ -589,6 +684,25 @@ export function OpasHost() {
       // ⚠️ RULE-BASED FIRST. "the catalog" is a fixed phrase and never reaches the resolver.
       if (isCatalogRequest(phrase)) {
         opas.openPane({ kind: "product-list", label: "Catalog" })
+        setText("")
+        return
+      }
+      // ⚠️ AFTER CAPTURE AND THE CATALOG, BEFORE THE RESOLVER. An order question
+      // is a structured read, not a product name. A refinement ("only Hopkins")
+      // only counts while the order list — or the sales order it opened — is in front.
+      const front = opas.panes.find((p) => p.id === opas.frontPaneId)
+      const talking = front?.kind === "order-list" || front?.kind === "sales-order"
+      if ((talking && isOrderRefinement(phrase)) || isOrderListPhrase(phrase)) {
+        const list = opas.panes.find((p) => p.kind === "order-list")
+        try {
+          const result = await askOrderList({
+            phrase,
+            question: talking ? list?.orderQuestion : undefined,
+          })
+          settleOrderAnswer(result, phrase)
+        } catch {
+          setSaid(ORDER_TRY)
+        }
         setText("")
         return
       }
@@ -623,7 +737,7 @@ export function OpasHost() {
     } finally {
       setBusy(false)
     }
-  }, [text, busy, opas])
+  }, [text, busy, opas, settleOrderAnswer])
 
   // ⚠️ The sphere is admin-only for now. Not rendering is the whole gate: a hidden-but-
   // mounted sphere would still answer keyboard and pointer events.
@@ -658,7 +772,7 @@ export function OpasHost() {
       {/* PANES — above the veil. `tucked` hides without unmounting, so the session
           survives: opacity 0 / pointer-events none, exactly the prototype's `.win.tucked`. */}
       <div data-testid="opas-desk" style={{ position: "fixed", inset: 0, zIndex: 35, pointerEvents: "none" }}>
-        {opas.panes.map((pane, i) => {
+        {opas.panes.filter((pane) => !(narrow && (pane.kind === "order-list" || pane.kind === "sales-order"))).map((pane, i) => {
           const placed = opas.placements[pane.id]
           const isFront = opas.frontPaneId === pane.id
           // ⚠️ COMPUTED ONCE AND USED BY BOTH THE STYLE AND THE ATTRIBUTE, which is
@@ -669,7 +783,11 @@ export function OpasHost() {
           // "bar", then again when it held the constant but computed it itself. One
           // binding makes the attribute a report of the width rather than a second
           // opinion about it.
-          const paneWidth = isEntryPane(pane.kind) ? BAR_WIDTH : INFO_WIDTH
+          const paneWidth = isEntryPane(pane.kind)
+            ? BAR_WIDTH
+            : pane.kind === "order-list"
+              ? ORDER_LIST_WIDTH
+              : INFO_WIDTH
           return (
           <div
             key={pane.id}
@@ -817,14 +935,108 @@ export function OpasHost() {
                   pickRequest={pickRequest[pane.id]}
                   onApproved={() => onApproved(pane.id)}
                 />
-              ) : (
+              ) : pane.kind === "order-list" && pane.orderSnapshot ? (
+                <OrderListPane
+                  snapshot={pane.orderSnapshot}
+                  selectedId={opas.panes.find((p) => p.kind === "sales-order")?.salesOrderId}
+                  onOpenOrder={openSalesOrder}
+                  onRemovePill={(pillId) => void removeOrderPill(pane.id, pillId)}
+                  onAskHint={() => setSaid(ORDER_CHANGE)}
+                  onChoosePick={(pick) => void chooseOrderPick(pick)}
+                />
+              ) : pane.kind === "sales-order" && pane.salesOrderId ? (
+                <SalesOrderPane orderId={pane.salesOrderId} />
+              ) : pane.kind === "product" ? (
                 <ProductPane variantTemplateId={pane.variantTemplateId!} />
-              )}
+              ) : null}
             </div>
           </div>
           )
         })}
       </div>
+
+      {narrow && opas.panes.some((p) => p.kind === "order-list" || p.kind === "sales-order") && (
+        <div style={{ position: "fixed", left: 0, right: 0, bottom: 88, zIndex: 40, pointerEvents: opas.isOpen ? "auto" : "none" }}>
+          <div
+            data-testid="opas-order-track"
+            style={{
+              display: "flex",
+              gap: 8,
+              overflowX: "auto",
+              scrollSnapType: "x mandatory",
+              padding: "0 8px 8px",
+              opacity: opas.isOpen ? 1 : 0,
+            }}
+          >
+            {opas.panes.filter((p) => p.kind === "order-list" || p.kind === "sales-order").map((pane) => (
+              <div
+                key={pane.id}
+                data-testid={`opas-pane-${pane.id}`}
+                data-tucked={opas.isOpen ? "false" : "true"}
+                data-focused={opas.frontPaneId === pane.id ? "true" : "false"}
+                data-pane-width={pane.kind === "order-list" ? ORDER_LIST_WIDTH : INFO_WIDTH}
+                onPointerDown={() => opas.raisePane(pane.id)}
+                style={{
+                  ...GLASS,
+                  flex: "0 0 calc(100vw - 16px)",
+                  scrollSnapAlign: "center",
+                  maxHeight: "68vh",
+                  overflowY: "auto",
+                  borderRadius: 22,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 10px 6px 20px" }}>
+                  <span style={{ fontSize: 11, letterSpacing: ".14em", textTransform: "uppercase", color: "#5e5e5e" }}>
+                    {pane.label}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Close pane"
+                    data-testid={`opas-pane-close-${pane.id}`}
+                    onClick={() => opas.closePane(pane.id)}
+                    style={{
+                      marginLeft: "auto", width: 26, height: 26, borderRadius: "50%", border: 0,
+                      background: "rgba(255,255,255,.06)", color: "#9a9a9a", cursor: "pointer",
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+                <div style={{ padding: "0 20px 20px" }}>
+                  {pane.kind === "order-list" && pane.orderSnapshot ? (
+                    <OrderListPane
+                      layout="phone"
+                      snapshot={pane.orderSnapshot}
+                      selectedId={opas.panes.find((p) => p.kind === "sales-order")?.salesOrderId}
+                      onOpenOrder={openSalesOrder}
+                      onRemovePill={(pillId) => void removeOrderPill(pane.id, pillId)}
+                      onAskHint={() => setSaid(ORDER_CHANGE)}
+                      onChoosePick={(pick) => void chooseOrderPick(pick)}
+                    />
+                  ) : pane.kind === "sales-order" && pane.salesOrderId ? (
+                    <SalesOrderPane orderId={pane.salesOrderId} />
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+          {opas.panes.filter((p) => p.kind === "order-list" || p.kind === "sales-order").length > 1 && (
+            <div data-testid="opas-order-track-dots" style={{ display: "flex", justifyContent: "center", gap: 6, paddingBottom: 4 }}>
+              {opas.panes.filter((p) => p.kind === "order-list" || p.kind === "sales-order").map((pane) => (
+                <span
+                  key={pane.id}
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: "50%",
+                    background: opas.frontPaneId === pane.id ? "#f2f2f2" : "rgba(255,255,255,.28)",
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* COMMAND LINE — glass pill at the sphere's corner. */}
       {opas.isOpen && (
@@ -888,7 +1100,7 @@ export function OpasHost() {
                 }
                 void submit()
               }}
-              placeholder={entryMode ? (status?.placeholder ?? "Starting the order…") : "the catalog"}
+              placeholder={entryMode ? (status?.placeholder ?? "Starting the order…") : "orders · the catalog"}
               aria-label={entryMode ? "Say what the director said" : "Ask Opas"}
               style={{
                 flex: 1, minWidth: 0, background: "transparent", border: 0, padding: "10px 0",
