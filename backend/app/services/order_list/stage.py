@@ -12,12 +12,6 @@ from typing import Literal
 
 from app.services.order_list.question import OrderQuestion
 
-# ⚠️ OPEN QUESTION, DEFAULTED. "Just opened" hides delivered-and-not-invoiced
-# orders older than this. Asking "delivered, not invoiced" still finds them.
-# Needs-something is not capped: an unclosed delivery stays until it is closed
-# or invoiced.
-DELIVERED_UNINVOICED_LOOKBACK_DAYS = 90
-
 # A service with no driver is "needs something" only when it is soon. Further
 # out is hidden from the default view, which is what the footer says.
 DRIVER_HORIZON_DAYS = 14
@@ -60,8 +54,8 @@ OFFICE_GROUP_ORDER: tuple[GroupId, ...] = (
     "going_out_this_week",
     "delivered_not_invoiced",
 )
-# ⚠️ OPEN QUESTION, DEFAULTED. Accounting's default leads with the money that
-# has not been billed. Same rows, different order. Nothing is hidden.
+# Accounting's default leads with the money that has not been billed.
+# Same rows, different order. Nothing is hidden.
 ACCOUNTING_GROUP_ORDER: tuple[GroupId, ...] = (
     "delivered_not_invoiced",
     "needs_something",
@@ -266,11 +260,6 @@ def group_of(facts: OrderFacts, today: date) -> GroupId | None:
     if flag is not None:
         return "needs_something"
     if facts.delivered:
-        anchor = facts.service_date
-        if anchor is None and hasattr(facts.delivered_at, "date"):
-            anchor = facts.delivered_at.date()  # type: ignore[union-attr]
-        if anchor is not None and anchor < today - timedelta(days=DELIVERED_UNINVOICED_LOOKBACK_DAYS):
-            return None
         return "delivered_not_invoiced"
     start, end = week_bounds(today)
     if facts.service_date is not None and start <= facts.service_date <= end:

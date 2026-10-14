@@ -96,14 +96,31 @@ def remember(db: Session, company_id: str, phrase: str, question: OrderQuestion)
     db.commit()
 
 
+def _assignee_kwargs(role_slug: str | None, user_id: str | None) -> dict:
+    """A driver is limited to their own deliveries. Everyone else is not."""
+    if not is_driver(role_slug):
+        return {}
+    return {"scope_to_assignee": True, "assignee_id": user_id}
+
+
 def load_facts(
-    db: Session, company_id: str, *, order_id: str | None = None,
+    db: Session,
+    company_id: str,
+    *,
+    order_id: str | None = None,
+    assignee_id: str | None = None,
+    scope_to_assignee: bool = False,
 ) -> list[OrderFacts]:
     """Every non-cancelled order for this tenant, with the facts the list reads.
 
-    Cancelled orders are excluded in SQL. Invoice, delivery, and proof rows are
-    loaded for the ids this query returned, and only for this company.
+    Cancelled orders are excluded in SQL. When `scope_to_assignee` is set, the
+    same query keeps only orders with a non-cancelled delivery assigned to
+    `assignee_id`. A driver with no user id sees nothing. Invoice, delivery,
+    and proof rows are loaded for the ids this query returned, and only for
+    this company.
     """
+    if scope_to_assignee and not assignee_id:
+        return []
     sql = """
         SELECT so.id, so.number, so.deceased_name, so.scheduled_date, so.service_time,
                so.status, so.total, so.delivered_at, so.completed_at,
@@ -132,6 +149,17 @@ def load_facts(
     if order_id is not None:
         sql += " AND so.id = :order_id"
         params["order_id"] = order_id
+    if scope_to_assignee:
+        sql += """
+           AND EXISTS (
+             SELECT 1 FROM deliveries d
+              WHERE d.company_id = so.company_id
+                AND d.order_id = so.id
+                AND d.primary_assignee_id = :assignee_id
+                AND lower(COALESCE(d.status, '')) NOT IN ('cancelled', 'canceled')
+           )
+        """
+        params["assignee_id"] = assignee_id
     rows = db.execute(text(sql), params).mappings().all()
     if not rows:
         return []
@@ -410,9 +438,20 @@ def _open_decedent(facts: list[OrderFacts], query: str, today: date) -> dict:
 
 
 def sales_order_summary(
-    db: Session, company_id: str, order_id: str, today: date,
+    db: Session,
+    company_id: str,
+    order_id: str,
+    today: date,
+    *,
+    role_slug: str | None = None,
+    user_id: str | None = None,
 ) -> dict | None:
-    found = load_facts(db, company_id, order_id=order_id)
+    found = load_facts(
+        db,
+        company_id,
+        order_id=order_id,
+        **_assignee_kwargs(role_slug, user_id),
+    )
     if not found:
         return None
     facts = found[0]
@@ -477,7 +516,7 @@ def ask(
         return {"kind": "unrecognized", "hint": interpreted.hint or TRY_HINT}
 
     if interpreted.kind == "open_order":
-        facts = load_facts(db, company_id)
+        facts = load_facts(db, company_id, **_assignee_kwargs(role_slug, user_id))
         return _open_decedent(facts, interpreted.decedent_query or "", today)
 
     if interpreted.kind == "picks":
@@ -493,20 +532,17 @@ def ask(
             }
         current = bound.question or current
 
-    driver_day = False
     if current.is_default and is_driver(role_slug):
         # Drivers do not get the office groups. The default is their own day,
         # including stops already delivered — "going out" would hide those.
+        # Every other question is still limited to their deliveries, in SQL.
         current = _going(today, "today", surface=current.surface)
         current.going_out = False
         current.delivered = None
         current.title = "Going out today"
-        driver_day = True
         hint = "Your deliveries."
 
-    facts = load_facts(db, company_id)
-    if driver_day:
-        facts = [item for item in facts if user_id and user_id in item.assignee_ids]
+    facts = load_facts(db, company_id, **_assignee_kwargs(role_slug, user_id))
 
     if interpreted.kind == "total":
         # "How much is that?" sums what the open view is showing. The default
