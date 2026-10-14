@@ -146,6 +146,13 @@ export interface CaptureState {
   readonly surface: {
     readonly id: string
     readonly rows: readonly CaptureRow[]
+    /** The subject block above the grid — the decedent, over their dates.
+     *
+     *  ⚠️ IT WAS COMPUTED SERVER-SIDE AND NEVER SENT, which is why the Review showed
+     *  no deceased name. `deceased_name` is only ever in the summary surface's
+     *  `SubjectSlot`, so no amount of row rendering could have shown it. */
+    readonly subject_primary?: string | null
+    readonly subject_secondary?: string | null
   }
 }
 

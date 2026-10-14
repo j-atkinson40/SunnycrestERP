@@ -193,7 +193,12 @@ async function type(user: ReturnType<typeof userEvent.setup>, text: string) {
   // not reliably reach in jsdom.
   await user.click(screen.getByTestId("opas-sphere"))
   const input = await screen.findByTestId("opas-input")
-  await user.type(input, `${text}{Enter}`)
+  // ⚠️ NO TRAILING `{Enter}` SINCE 2026-10-14. It was incidental — Enter was a hard
+  // no-op in the bar, so appending it cost nothing and documented that. Enter now
+  // means Complete, so leaving it here made every test finish its own order and
+  // replace its custom fixture with whatever `completeCapture` resolved. Tests about
+  // Enter press it themselves.
+  await user.type(input, text)
 }
 
 beforeEach(() => {
@@ -207,6 +212,14 @@ beforeEach(() => {
   vi.mocked(setCaptureText).mockResolvedValue(state() as never)
   vi.mocked(choosePick).mockResolvedValue(state() as never)
   vi.mocked(readCapture).mockResolvedValue(state() as never)
+  // ⚠️ THESE TWO MUST RESOLVE A STATE, AND ENTER IS WHY. The `type()` helper below
+  // ends every phrase with `{Enter}` — harmless while Enter was a no-op in the bar,
+  // and as of 2026-10-14 Enter means Complete. A bare `vi.fn()` returns `undefined`,
+  // the component does `setState(await completeCapture(...))`, and the pane then
+  // threw `Cannot read properties of undefined (reading 'status')` on its next
+  // effect — sixteen tests red for a mock that did not keep the real contract.
+  vi.mocked(completeCapture).mockResolvedValue(state() as never)
+  vi.mocked(approveCapture).mockResolvedValue(state() as never)
 })
 
 describe("the entrance", () => {
@@ -1082,5 +1095,138 @@ describe("finishing an order", () => {
     await user.keyboard("{Meta>}{Enter}{/Meta}")
 
     await waitFor(() => expect(approveCapture).toHaveBeenCalledTimes(1))
+  })
+})
+
+describe("Enter finishes the order", () => {
+  /**
+   * ⚠️ RULED 2026-10-14, SUPERSEDING "Enter is a hard no-op while capturing". That
+   * ruling reserved Enter for "whatever ends an order later"; this is it.
+   *
+   * ⚠️ THE SAFETY PROPERTY IS THAT COMPLETE NEVER APPROVES FROM CAPTURE. An
+   * accidental Enter mid-sentence shows the director their own order; it cannot
+   * create one. That is asserted directly below rather than left as reasoning.
+   */
+  it("Enter in the bar COMPLETES while capturing", async () => {
+    const user = userEvent.setup()
+    openOverlay()
+    await type(user, "start an order for Hopkins")
+    vi.mocked(completeCapture).mockClear()
+
+    await user.keyboard("{Enter}")
+
+    await waitFor(() => expect(completeCapture).toHaveBeenCalledTimes(1))
+  })
+
+  it("and NEVER approves — a stray Enter cannot create an order", async () => {
+    const user = userEvent.setup()
+    openOverlay()
+    await type(user, "start an order for Hopkins")
+    vi.mocked(approveCapture).mockClear()
+
+    await user.keyboard("{Enter}")
+    await user.keyboard("{Enter}")
+    await user.keyboard("{Enter}")
+
+    expect(approveCapture).not.toHaveBeenCalled()
+  })
+
+  it("Enter APPROVES from the Review", async () => {
+    const user = userEvent.setup()
+    vi.mocked(setCaptureText).mockResolvedValue(
+      state({ status: "review", missing: [], lines: [], total: "0.00",
+              blockers: [], can_approve: true }) as never,
+    )
+    openOverlay()
+    await type(user, "start an order for Hopkins")
+    await waitFor(() =>
+      expect(screen.getByTestId("capture-summary")).toBeInTheDocument(),
+    )
+    vi.mocked(approveCapture).mockClear()
+
+    await user.keyboard("{Enter}")
+
+    await waitFor(() => expect(approveCapture).toHaveBeenCalledTimes(1))
+  })
+
+  it("and a SECOND Enter is not swallowed", async () => {
+    // ⚠️ THE REQUEST IS COUNTER-STAMPED FOR THIS REASON. A bare boolean would be
+    // compared by value and the repeat press would be a no-op — the same trap
+    // `pickRequest` documents.
+    const user = userEvent.setup()
+    openOverlay()
+    await type(user, "start an order for Hopkins")
+    vi.mocked(completeCapture).mockClear()
+
+    await user.keyboard("{Enter}")
+    await waitFor(() => expect(completeCapture).toHaveBeenCalledTimes(1))
+    await user.keyboard("{Enter}")
+    await waitFor(() => expect(completeCapture).toHaveBeenCalledTimes(2))
+  })
+})
+
+describe("the Review shows everything captured", () => {
+  it("renders the deceased name from the SUBJECT slot", async () => {
+    /**
+     * ⚠️ THE NAME LIVES ONLY IN THE SUBJECT, which is why the Review had none.
+     * `deceased_name` is not on any summary ROW — it is the subject, "Smith" over
+     * "1948 — 2026" from the prototype — and this render had never read it.
+     */
+    const user = userEvent.setup()
+    vi.mocked(setCaptureText).mockResolvedValue(
+      state({
+        status: "review", missing: [], blockers: [], can_approve: true,
+        total: "1250.00", lines: [],
+        surface: {
+          id: "summary",
+          subject_primary: "Smith",
+          subject_secondary: "1948 — 2026",
+          rows: [
+            { row_id: "funeral_home", label: "Funeral home", state: "done",
+              value: "Hopkins Funeral Home", secondary_value: null,
+              missing_field_ids: [] },
+          ],
+        },
+      }) as never,
+    )
+    openOverlay()
+    await type(user, "start an order for Hopkins")
+
+    const subject = await screen.findByTestId("capture-subject")
+    expect(subject).toHaveTextContent("Smith")
+    expect(subject).toHaveTextContent("1948 — 2026")
+  })
+})
+
+describe("the Approve button", () => {
+  it("has a READABLE label — dark text on the light pill", async () => {
+    /**
+     * ⚠️ IT RENDERED AS A BLANK WHITE BLOCK, and the cause was two tokens agreeing:
+     * `bg-accent` resolves near-white on this overlay and `text-content-inverse` is
+     * also near-white, so the label was white on white. James's screenshot showed an
+     * empty box where the primary action was.
+     *
+     * ⚠️ ASSERTED AS A CONTRAST RELATIONSHIP, not as an exact hex. The claim worth
+     * holding is "the text is not the same colour as the background"; pinning the
+     * literal would fail the next time the glass is retuned without saying anything
+     * about readability.
+     */
+    const user = userEvent.setup()
+    vi.mocked(setCaptureText).mockResolvedValue(
+      state({ status: "review", missing: [], blockers: [], can_approve: true,
+              total: "1250.00", lines: [] }) as never,
+    )
+    openOverlay()
+    await type(user, "start an order for Hopkins")
+
+    const approve = await screen.findByTestId("capture-approve")
+    expect(approve).toHaveTextContent(/approve/i)
+    const bg = approve.style.background
+    const fg = approve.style.color
+    expect(bg).toBeTruthy()
+    expect(fg).toBeTruthy()
+    expect(fg).not.toBe(bg)
+    // the prototype's primary: a near-white pill with near-black text
+    expect(fg).toMatch(/#0a0a0a|rgb\(10, 10, 10\)/)
   })
 })

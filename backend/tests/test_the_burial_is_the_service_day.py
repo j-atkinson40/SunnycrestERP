@@ -290,11 +290,14 @@ def test_the_burial_row_shows_ONLY_the_grave_location(db, tenant):
         db.commit()
 
 
-def test_an_EMPTY_burial_row_is_quiet_not_needed(db, tenant):
-    # ⚠️ THE OTHER HALF, AND THE ONE JAMES ASKED FOR: an optional unanswered row must
-    # not look like something outstanding.
-    import uuid
+def test_an_EMPTY_burial_row_is_NOT_RENDERED_AT_ALL(db, tenant):
+    """⚠️ THIS ASSERTED A QUIET EMPTY ROW UNTIL 2026-10-14, one day old. James then
+    ruled that optional unmentioned rows are not rendered at all — "only needed rows
+    and things you've actually said are shown" — so the quiet row became no row.
 
+    ⚠️ THE CLAIM IS THE SAME ONE, STRENGTHENED: an empty Burial row must never look
+    like something outstanding. It cannot, because it is absent.
+    """
     from app.services.capture import session_service
 
     uid = db.execute(
@@ -310,12 +313,8 @@ def test_an_EMPTY_burial_row_is_quiet_not_needed(db, tenant):
         state = session_service.read_state(
             db, row.id, company_id=tenant, user_id=uid
         )
-        burial = next(
-            r for r in state["surface"]["rows"] if r["row_id"] == "burial"
-        )
-        assert burial["value"] is None, burial
-        assert burial["missing_field_ids"] == [], burial
-        assert burial["state"] == "not_mentioned", burial
+        shown = {r["row_id"] for r in state["surface"]["rows"]}
+        assert "burial" not in shown, sorted(shown)
     finally:
         db.execute(
             text("DELETE FROM capture_sessions WHERE id = :i"), {"i": row.id}

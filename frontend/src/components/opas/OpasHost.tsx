@@ -125,6 +125,11 @@ export function OpasHost() {
   // ⚠️ PANE IDS THAT HOLD A CREATED ORDER. The opening effect reads this so the next
   // phrase closes the receipt instead of being typed into a finished order.
   const approvedPanes = useRef<Set<string>>(new Set())
+  // ⚠️ A COUNTER-STAMPED REQUEST, NOT A BOOLEAN, for the same reason `pickRequest`
+  // is: the pane must act on the SECOND Enter as well as the first, and a bare flag
+  // would be compared by value and the repeat would be a no-op.
+  const [completeRequest, setCompleteRequest] = useState<Record<string, number>>({})
+  const completeNonce = useRef(0)
   const narrow = useNarrowScreen()
 
   /**
@@ -543,6 +548,21 @@ export function OpasHost() {
     [opas, setText],
   )
 
+  /**
+   * Enter in the bar finishes the order — the pane decides which action that is.
+   *
+   * ⚠️ THE PANE OWNS THE STAGE, SO THE PANE OWNS THE CHOICE. The host does not know
+   * whether this session is capturing or in review; asking it to decide would mean a
+   * second copy of that state, and the two would disagree the moment one of them
+   * lagged a response.
+   */
+  const requestComplete = useCallback(() => {
+    if (entryPane === undefined) return
+    completeNonce.current += 1
+    const n = completeNonce.current
+    setCompleteRequest((prev) => ({ ...prev, [entryPane.id]: n }))
+  }, [entryPane])
+
   const endEntryCaptures = useCallback(() => {
     for (const pane of opas.panes) {
       if (!isEntryPane(pane.kind)) continue
@@ -934,6 +954,7 @@ export function OpasHost() {
                   onStatus={(st) => reportStatus(pane.id, st)}
                   pickRequest={pickRequest[pane.id]}
                   onApproved={() => onApproved(pane.id)}
+                  completeRequest={completeRequest[pane.id]}
                 />
               ) : pane.kind === "order-list" && pane.orderSnapshot ? (
                 <OrderListPane
@@ -1076,26 +1097,24 @@ export function OpasHost() {
               }}
               onKeyDown={(e) => {
                 if (e.key !== "Enter") return
-                // ⚠️ ENTER IS A HARD NO-OP IN ENTRY MODE, AND `preventDefault` IS THE
-                // WHOLE MECHANISM. Without it the keypress reaches the browser's
-                // default handling and — inside the form-like layouts this bar sits in
-                // — can submit something. "Does nothing" has to be enforced, not
-                // merely un-handled.
+                // ⚠️ ENTER FINISHES THE ORDER, BY RULING (James, 2026-10-14),
+                // SUPERSEDING "Enter is a hard no-op while capturing". It is the
+                // reservation that ruling kept open, now spent on the obvious thing:
+                // while capturing it does what Complete order does, and on the
+                // Review it approves.
                 //
-                // ⚠️ IT IS RESERVED, not repurposed. The ruling keeps Enter free for
-                // whatever ends an order later; binding it to "extract now" would make
-                // that reservation unavailable and would duplicate the debounce.
+                // ⚠️ AN ACCIDENTAL ENTER MID-SENTENCE CANNOT CREATE AN ORDER, and
+                // that is the property that makes this safe rather than the keypress
+                // being rare. Complete never approves from `capturing` — it shows
+                // the summary or lights up what is missing — so the worst a stray
+                // Enter can do is show the director their own order.
                 //
-                // ⚠️ ONE BRANCH, AND IT WAS TWO UNTIL A BREAK TEST SHOWED THE FIRST WAS
-                // DEAD. The condition read `entryMode && (status?.capturing ?? true)`
-                // followed by a bare `if (entryMode)` — the second subsumed the first
-                // completely, so deleting the capturing check changed NOTHING and the
-                // break produced no red. The ruling says "while capturing"; the wider
-                // rule is the one that is actually true, because an entry pane in
-                // review must not submit the order's text as a fresh request either.
-                // Stating it once makes it testable.
+                // ⚠️ `preventDefault` IS STILL THE MECHANISM and matters more now
+                // that the bar is a TEXTAREA: without it the keypress also inserts a
+                // newline into the middle of the order text.
                 if (entryMode) {
                   e.preventDefault()
+                  requestComplete()
                   return
                 }
                 void submit()

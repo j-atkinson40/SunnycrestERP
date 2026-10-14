@@ -2,6 +2,52 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 2026-10-14 — Enter finishes; empty rows hidden; the Review shows everything
+
+No migration. James's 09:24 walk note. Recorded in DECISIONS as D1–D4.
+
+- **2026-10-14** — **Enter = Complete in the bar; Enter = Approve on the Review.**
+  Supersedes "Enter is a hard no-op while capturing" (2026-10-12), which reserved it
+  for exactly this. ⌘Enter unchanged.
+  ⚠️ **A stray Enter cannot create an order** — Complete never approves from capture.
+  ⚠️ **Autofocusing Approve was not enough, and a real browser proved it**: focus
+  lands there, but that makes Enter depend on native button activation, so it would
+  work only while focus stayed. The Review now listens at the document level and
+  ignores Enter while a field is focused.
+- **2026-10-14** — **Optional, unmentioned rows are not rendered at all.** Three
+  carve-outs keep rows that must stay: required-and-unanswered (which is
+  `not_mentioned` too until a completion is attempted), `not_configured`, and
+  **conflicted** — `personalization` on a Monticello is NOT APPLICABLE, so the
+  applicability skip dropped the row and took the "doesn't offer Nameplate Only"
+  message with it. Caught by a test.
+- **2026-10-14** — **The Approve button rendered as a blank white block.** The cause
+  was two tokens agreeing: `bg-accent` is near-white on this overlay and
+  `text-content-inverse` is also near-white. Restyled to the prototype's own
+  `.btn.primary` — near-white pill, near-black text — with an explicit focus ring.
+  ⚠️ **This overlay is written in the prototype's literals, not platform tokens**;
+  reaching for a pair chosen for platform cards is what collided.
+- **2026-10-14** — **The Review showed no deceased name**, from two causes: the
+  summary puts the decedent in a `SubjectSlot` that `read_state` never serialized,
+  and three capturable fields (`cemetery_city`, `grave_location`,
+  `nameplate_date_format`) had no place on that surface at all. Both fixed; a
+  structural coverage test now fails the moment a field is added without a home.
+  ⚠️ **No field can be on one surface only any more**, so
+  `test_per_surface_absence_is_not_orphanhood` — repointed twice already as its
+  examples kept gaining homes — was rebuilt on a synthetic surface pair.
+- **2026-10-14** — ⚠️ **Six existing tests pinned row COUNTS and all six had to move.**
+  The literals had already walked 8 → 9 → 10 across three rulings, and two of the
+  comments beside them already said the integer was "incidental". They now assert the
+  claim — which rows are present or absent — rather than how many.
+  ⚠️ **And the shared test helper had been pressing Enter for weeks.** `type()`
+  appended `{Enter}`, harmless while Enter was a no-op; with D1 it finished every
+  order and replaced each test's fixture with whatever `completeCapture` resolved,
+  crashing the pane via `setState(undefined)` from a bare `vi.fn()`. The helper no
+  longer presses Enter and the mocks now keep the real contract.
+- **2026-10-14** — Verified in **real Chrome, 6/6** on sunnycrest with his sentence:
+  six rows on screen (no dates/contact/burial), **Enter → Review showing "Smith"**,
+  the Approve button reading `rgb(10,10,10)` on `rgb(242,242,242)`, and a **second
+  Enter → `Created SO-2026-0001 · $1,550.00`**. Screenshot in the report.
+
 ## 2026-10-14 — The surname guard, lifted behind an explicit marker
 
 No migration. Recorded in DECISIONS.

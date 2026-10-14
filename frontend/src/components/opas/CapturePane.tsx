@@ -256,6 +256,7 @@ export function CapturePane({
   onStatus,
   pickRequest,
   onApproved,
+  completeRequest,
 }: {
   /** Fed through extraction on start, per the prototype (`:568` calls `feed` at once). */
   readonly openingLine?: string
@@ -272,6 +273,12 @@ export function CapturePane({
   /** ⚠️ CALLED ONCE THE ORDER EXISTS, so the HOST can clear the bar and end the
    *  capture. The pane does not own the bar and must not reach for it. */
   readonly onApproved?: (order: { readonly number: string; readonly total: string }) => void
+  /** Enter pressed in the bar, as a counter so a second press is not swallowed.
+   *
+   *  ⚠️ THE PANE DECIDES WHICH ACTION THAT IS, because the pane holds the stage:
+   *  capturing → Complete, review → Approve. The host does not know the stage and
+   *  giving it a copy would be two sources for one fact. */
+  readonly completeRequest?: number
 }) {
   const [state, setState] = useState<CaptureState | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -529,6 +536,49 @@ export function CapturePane({
   // from capture it finishes, from the summary it approves. The prototype binds the
   // same chord to both (`:90049`), which is the behaviour a director already has in
   // their fingers.
+  // ⚠️ ENTER FROM THE BAR LANDS HERE, and it chooses by stage exactly as ⌘Enter
+  // does below. One decision, two entrances.
+  const lastComplete = useRef(0)
+  useEffect(() => {
+    if (completeRequest === undefined || completeRequest === lastComplete.current) {
+      return
+    }
+    lastComplete.current = completeRequest
+    if (state?.status === "review") void doApprove()
+    else void doComplete()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [completeRequest])
+
+  /**
+   * Enter approves from the Review wherever focus happens to be.
+   *
+   * ⚠️ AUTOFOCUSING THE BUTTON IS NOT ENOUGH, and a real browser said so. Focus does
+   * land on Approve — measured — but that makes Enter depend on the browser's native
+   * button activation, so it works only while focus stays there. One click anywhere
+   * else and the ruling's "press Enter" quietly stops being true.
+   *
+   * ⚠️ IT IGNORES ENTER WHILE A FIELD IS FOCUSED. The bar is a textarea and owns its
+   * own Enter (it means Complete there); taking it from under the bar would make the
+   * two handlers race for the same keypress.
+   *
+   * ⚠️ DOUBLE-FIRING IS HARMLESS AND GUARDED TWICE: `busy` stops the second call
+   * here, and `approve` is idempotent on the server — it reads the session's
+   * `sales_order_id` first.
+   */
+  useEffect(() => {
+    if (state?.status !== "review") return
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Enter" || e.metaKey || e.ctrlKey || e.altKey) return
+      const tag = (document.activeElement as HTMLElement | null)?.tagName
+      if (tag === "TEXTAREA" || tag === "INPUT") return
+      e.preventDefault()
+      void doApprove()
+    }
+    document.addEventListener("keydown", onKeyDown)
+    return () => document.removeEventListener("keydown", onKeyDown)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.status, sessionId, busy])
+
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (!(e.metaKey || e.ctrlKey) || e.key !== "Enter") return
@@ -968,7 +1018,21 @@ export function CapturePane({
               data-testid="capture-complete"
               disabled={busy}
               onClick={() => void doComplete()}
-              className="rounded-base border border-border-subtle px-3 py-1.5 text-body-sm text-content-strong disabled:opacity-60"
+              /* ⚠️ THE PROTOTYPE'S SECONDARY `.btn`: a translucent white pill on the
+                 glass. Same reasoning as the primary above — the overlay is written
+                 in the prototype's literals, and a token pair chosen for platform
+                 cards is what made the primary unreadable. */
+              style={{
+                background: "rgba(255,255,255,0.08)",
+                color: "#f2f2f2",
+                border: "1px solid rgba(255,255,255,0.22)",
+                borderRadius: 999,
+                padding: "7px 16px",
+                fontSize: 14,
+                cursor: busy ? "default" : "pointer",
+                opacity: busy ? 0.6 : 1,
+              }}
+              className="outline-none focus-visible:ring-2 focus-visible:ring-[rgba(255,255,255,0.6)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(14,14,14,0.9)]"
             >
               {busy ? "Checking…" : "Complete order"}
             </button>
@@ -992,6 +1056,24 @@ export function CapturePane({
           ruling (E5). A disabled button would read as a feature that exists. */}
       {reviewing && (
         <div data-testid="capture-summary" className="flex flex-col gap-2">
+          {/* ── the subject ───────────────────────────────────────────────
+              ⚠️ THE DECEASED NAME LIVES HERE AND NOWHERE ELSE, which is why the
+              Review had no name on it at all: the summary surface puts the decedent
+              in a `SubjectSlot` — "Smith" over "1948 — 2026" above the grid, from
+              the prototype — and neither the API nor this render had ever carried
+              it. James's 09:24 screenshot. */}
+          {state.surface.subject_primary ? (
+            <div data-testid="capture-subject">
+              <div className="text-body text-content-strong">
+                {state.surface.subject_primary}
+              </div>
+              {state.surface.subject_secondary ? (
+                <div className="text-micro text-content-muted">
+                  {state.surface.subject_secondary}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <div className="grid grid-cols-2 gap-2">
             {rows.map((r) => (
               <div
@@ -1093,7 +1175,36 @@ export function CapturePane({
                 autoFocus
                 disabled={busy}
                 onClick={() => void doApprove()}
-                className="rounded-base bg-accent px-3 py-1.5 text-body-sm text-content-inverse disabled:opacity-60"
+                /* ⚠️ IT RENDERED AS A BLANK WHITE BLOCK, and the cause was two tokens
+                   agreeing. `bg-accent` resolves to a near-white on this overlay and
+                   `text-content-inverse` is also near-white, so the label was white
+                   on white — James's screenshot showed an empty box where the
+                   primary action was.
+
+                   ⚠️ THE PROTOTYPE'S OWN VALUES, NOT TOKENS, AND DELIBERATELY SO.
+                   `.btn.primary` in `2026-10-01-opas-overlay.html` is
+                   `background:var(--fg); color:#0a0a0a; border-color:var(--fg)` — a
+                   near-WHITE pill with NEAR-BLACK text, which is what a light
+                   primary on dark glass has to be. This overlay is written in the
+                   prototype's literals throughout (GLASS, ROW_CLASS), because it is
+                   reproducing one specific surface rather than composing platform
+                   cards; reaching for the platform's accent pair is what produced
+                   the collision.
+
+                   ⚠️ AND THE FOCUS RING IS EXPLICIT, because Enter now approves from
+                   here — a keyboard affordance nobody can see is a keyboard
+                   affordance nobody uses. */
+                style={{
+                  background: busy ? "rgba(242,242,242,0.45)" : "#f2f2f2",
+                  color: "#0a0a0a",
+                  border: "1px solid #f2f2f2",
+                  borderRadius: 999,
+                  padding: "7px 16px",
+                  fontSize: 14,
+                  fontWeight: 500,
+                  cursor: busy ? "default" : "pointer",
+                }}
+                className="outline-none focus-visible:ring-2 focus-visible:ring-[rgba(255,255,255,0.85)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(14,14,14,0.9)]"
               >
                 {busy ? "Creating…" : "Approve & Create Sales Order"}
               </button>

@@ -169,12 +169,15 @@ def test_the_only_thing_missing_is_the_SERVICE_DATE(db, tenant, world, user_id):
 
 
 def test_grave_location_is_never_needed(db, tenant, world, user_id):
+    """⚠️ AND SINCE 2026-10-14 THE ROW IS NOT RENDERED AT ALL when nothing has been
+    said about it — optional unmentioned rows are omitted by ruling. This test used
+    to reach into the burial row and assert it carried no missing field; there is now
+    no row to reach into, which is a stronger form of the same claim."""
     row = _session(db, tenant, user_id, HIS)
     st = ss.read_state(db, row.id, company_id=tenant, user_id=user_id)
     assert "grave_location" not in st["missing"], st["missing"]
-    burial = next(r for r in st["surface"]["rows"] if r["row_id"] == "burial")
-    assert burial["missing_field_ids"] == [], burial
-    assert burial["state"] != "needed", burial
+    shown = {r["row_id"] for r in st["surface"]["rows"]}
+    assert "burial" not in shown, sorted(shown)
 
 
 # ── "approve" is understood, never unreadable ───────────────────────────────

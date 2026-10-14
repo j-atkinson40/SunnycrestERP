@@ -293,15 +293,24 @@ SUMMARY_SALES_ORDER = Surface(
 
         # ⚠️ RELABELLED. `Cemetery` on capture, `Burial` here. Prototype secondary:
         # "Thu, Sep 17 · 11:30 AM" — burial date AND time, both template fields.
+        # ⚠️ THE TOWN AND THE GRAVE LOCATION JOIN THIS ROW, 2026-10-14. James: every
+        # captured field must appear on the Review. Measured the same day, three did
+        # not — `cemetery_city`, `grave_location` and `nameplate_date_format` were
+        # capturable and had nowhere on this surface to show. The town composes with
+        # the cemetery exactly as it does on the capture surface; the grave location
+        # belongs with the burial and joins its secondary.
         Row(id="burial", label="Burial", order=4,
-            sources=(FieldSource("cemetery"),),
+            sources=(ComposedSource(
+                (FieldSource("cemetery"), FieldSource("cemetery_city")),
+                join=_DOT),),
             # ⚠️ `eta`, not `burial_time` — same ruling as the capture Cemetery row.
             # The prototype's secondary here is "Thu, Sep 17 · 11:30 AM", the arrival.
             # ⚠️ `service_date`, NOT `burial_date`, SINCE 2026-10-13. Same ruling:
             # the burial day IS the service day, so the summary shows the date the
             # order actually carries rather than a field nobody is asked for.
             secondary=(ComposedSource(
-                (FieldSource("service_date"), FieldSource("eta")), join=_DOT),),
+                (FieldSource("service_date"), FieldSource("eta"),
+                 FieldSource("grave_location")), join=_DOT),),
             edit_target="cemetery"),
 
         # ⚠️ REPOINTED 2026-10-07 FOR R1, same dead-source problem as the capture
@@ -311,10 +320,14 @@ SUMMARY_SALES_ORDER = Surface(
         # the other two — a split with no reading behind it.
         Row(id="personalization", label="Personalization", order=5,
             sources=(FieldSource("personalization"),),
+            # ⚠️ `nameplate_date_format` ADDED 2026-10-14 for the same reason — it
+            # was captured and shown nowhere on the Review. It is a property of the
+            # personalization work, which is this row.
             secondary=(ComposedSource((
                 FieldSource("legacy_series"),
                 FieldSource("legacy_print_name"),
                 FieldSource("lifes_reflections_symbol"),
+                FieldSource("nameplate_date_format"),
             ), join=_DOT),),
             edit_target="personalization"),
 

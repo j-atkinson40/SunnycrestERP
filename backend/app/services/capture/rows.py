@@ -476,6 +476,14 @@ def resolve_surface(
     *,
     records: dict[str, dict] | None = None,
     done_signal: bool = False,
+    #: Field ids the engine reported a conflict for.
+    #:
+    #: ⚠️ A CONFLICTED ROW IS NEVER HIDDEN, which is why this is a parameter rather
+    #: than something the row layer could infer. Hiding optional unmentioned rows
+    #: (ruled 2026-10-14) would otherwise hide the one row carrying "Monticello
+    #: Burial Vault doesn't offer Nameplate Only" — the message exists precisely
+    #: because the director DID mention it.
+    conflicted_field_ids: frozenset[str] = frozenset(),
 ) -> ResolvedSurface:
     """Render one surface's slots against the resolved schema and the answers.
 
@@ -504,9 +512,17 @@ def resolve_surface(
     for row in sorted(surface.rows, key=lambda r: r.order):
         ids = row_field_ids(row)
 
+        has_conflict = bool(set(ids) & conflicted_field_ids)
+
         # A row every one of whose fields is inapplicable is absent, not empty.
         # Rows with no fields at all (record/literal only) are always present.
-        if ids and not any(i in applicable for i in ids):
+        #
+        # ⚠️ UNLESS THE DIRECTOR MENTIONED IT, which is exactly the conflict case and
+        # cost a test to find. `personalization` on a Monticello is NOT APPLICABLE —
+        # the vault offers none — so this skip dropped the row, and the message
+        # "Monticello Burial Vault doesn't offer Nameplate Only" had nowhere to
+        # render. The whole point of that conflict is that the answer WAS given.
+        if ids and not any(i in applicable for i in ids) and not has_conflict:
             continue
 
         value = _first(row.sources, values, records, _defs)
@@ -578,6 +594,30 @@ def resolve_surface(
             state = RowState.NOT_MENTIONED
         else:
             state = RowState.DONE
+
+        # ⚠️ AN OPTIONAL ROW NOBODY HAS MENTIONED IS NOT RENDERED AT ALL, BY RULING
+        # (James, 2026-10-14): "only needed rows and things you've actually said are
+        # shown". Nine empty rows on a fresh order is a wall of grey that reads as
+        # work outstanding, and three of them — dates, grave location, contact — can
+        # never be outstanding.
+        #
+        # ⚠️ FOUR CONDITIONS, AND EVERY ONE OF THEM KEEPS A ROW THAT MUST STAY:
+        #   NOT_MENTIONED      a `not_configured` row is telling the licensee their
+        #                      setup is incomplete — that is not an empty row.
+        #   nothing required   a required-and-unanswered row is NOT_MENTIONED too
+        #                      until a completion is attempted. Those are exactly
+        #                      the rows James wants to see.
+        #   no value           including the secondary: a row showing anything at
+        #                      all has been mentioned.
+        #   no conflict        the conflict row is the one the director most needs.
+        if (
+            state is RowState.NOT_MENTIONED
+            and not unanswered_required
+            and value is None
+            and secondary is None
+            and not has_conflict
+        ):
+            continue
 
         out.append(ResolvedRow(
             row_id=row.id, label=row.label, group=row.group, state=state,

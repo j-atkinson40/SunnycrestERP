@@ -590,7 +590,8 @@ def read_state(
     conflicted = {c.field_id for c in conflicts}
     rendered_answers = {k: v for k, v in answers.items() if k not in conflicted}
     rendered = resolve_surface(
-        surface, resolved, rendered_answers, done_signal=said_done
+        surface, resolved, rendered_answers, done_signal=said_done,
+        conflicted_field_ids=frozenset(conflicted),
     )
 
     # ⚠️ THE SUMMARY'S LINES AND BLOCKERS ARE COMPUTED ONLY IN REVIEW. Assessing on
@@ -695,6 +696,14 @@ def read_state(
         },
         "surface": {
             "id": rendered.surface_id,
+            # ⚠️ THE SUBJECT WAS COMPUTED AND THROWN AWAY HERE, AND THAT IS WHY THE
+            # REVIEW HAD NO DECEASED NAME. The summary surface puts the decedent in a
+            # `SubjectSlot` — "Smith" over "1948 — 2026" above the grid, from the
+            # prototype — and this serializer only ever sent `rows`. So the pane could
+            # not render it however it tried: the value never crossed the wire.
+            # Measured 2026-10-14 from James's Review screenshot.
+            "subject_primary": rendered.subject_primary,
+            "subject_secondary": rendered.subject_secondary,
             "rows": [
                 {
                     "row_id": r.row_id,

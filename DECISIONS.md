@@ -3181,3 +3181,76 @@ holds even with both lookups removed, which is the honest measure of its strengt
 weight. They are unreachable for every record this tenant holds, but a tenant whose
 records a pass fails to claim would still need them, and deleting a backstop on the
 strength of one tenant's data is the shape of mistake this file exists to record.
+
+---
+
+## 2026-10-14 — Enter finishes; empty optional rows are not shown; the Review shows everything
+
+**Decided by James** (walk note 09:24, screenshot of the Review). Four rulings.
+
+### D1. Enter finishes the order
+
+In the bar, **Enter = Complete** while capturing (the summary if complete, amber and
+"Still need: …" if not). **In Review, Enter = Approve.** ⌘Enter is unchanged. This
+**supersedes "Enter is a hard no-op while capturing"** from 2026-10-12 — that ruling
+reserved Enter for "whatever ends an order later", and this is it.
+
+⚠️ **AN ACCIDENTAL ENTER MID-SENTENCE CANNOT CREATE AN ORDER, and that property is
+why the binding is safe** rather than the keypress being rare. Complete never
+approves from `capturing`; the worst a stray Enter does is show the director their
+own order.
+
+⚠️ **AUTOFOCUSING THE APPROVE BUTTON WAS NOT ENOUGH, and a real browser said so.**
+Focus does land on it — measured — but that makes Enter depend on the browser's
+native button activation, so it would work only while focus stayed there. One click
+elsewhere and "press Enter" quietly stops being true. The Review now listens for
+Enter at the document level, ignoring it while a field is focused so the bar keeps
+its own Enter.
+
+### D2. Optional, unmentioned rows are not rendered at all
+
+During capture and on the Review, a row is shown only if it is
+required-and-applicable, has a captured value, or carries a conflict. Dates without
+personalization, the grave location and the contact appear the moment something is
+captured for them.
+
+⚠️ **THREE CARVE-OUTS, AND EACH KEEPS A ROW THAT MUST STAY.** A required-and-
+unanswered row is `not_mentioned` too until a completion is attempted — those are
+exactly the rows James wants to see. A `not_configured` row is telling the licensee
+their own setup is incomplete, which is not an empty row. And a **conflicted** row is
+the one the director most needs: `personalization` on a Monticello is NOT APPLICABLE,
+so the applicability skip dropped it and took "Monticello Burial Vault doesn't offer
+Nameplate Only" with it. That one cost a test to find.
+
+### D3. The Approve button is restyled
+
+It rendered as a blank white block. **The cause was two tokens agreeing:** `bg-accent`
+resolves near-white on this overlay and `text-content-inverse` is also near-white, so
+the label was white on white. It now uses the prototype's own `.btn.primary` — a
+near-white pill with **near-black** text — with an explicit focus ring, since Enter
+now approves from there and a keyboard affordance nobody can see is one nobody uses.
+
+⚠️ **THE OVERLAY IS WRITTEN IN THE PROTOTYPE'S LITERALS, NOT PLATFORM TOKENS**, and
+that is the lesson rather than the hex. It reproduces one specific surface; reaching
+for a token pair chosen for platform cards is what produced the collision.
+
+### D4. The Review shows everything captured
+
+**Two causes, and only the first was visible.** The summary surface puts the decedent
+in a `SubjectSlot` — "Smith" over "1948 — 2026" above the grid, from the prototype —
+and `read_state` serialized only `rows`, so the value was computed and thrown away at
+the API. And **three capturable fields had nowhere on that surface at all**:
+`cemetery_city`, `grave_location` and `nameplate_date_format`.
+
+⚠️ **THE STRUCTURAL TEST IS THE ONE THAT WILL CATCH THE NEXT FIELD.** A rendering
+check over one sentence passes as long as that sentence mentions everything; the
+coverage assertion fails the moment a field is added without a home.
+
+⚠️ **AND NO FIELD CAN NOW BE ON ONE SURFACE ONLY.** The capture surface was already
+complete and the Review is now required to be, so `test_per_surface_absence_is_not_
+orphanhood` — which had already been repointed twice as its examples kept gaining
+homes — was rebuilt on a synthetic surface pair. The rule it tests is real; the
+product no longer contains an example of it.
+
+⚠️ **NOT DECIDED HERE:** `burial_date` remains the one field displayed nowhere, by
+the 10-14 ruling that the burial is always the service day.

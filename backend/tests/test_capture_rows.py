@@ -578,30 +578,49 @@ class TestAmendmentTwoOrphansOverTheUnion:
         )
 
     def test_per_surface_absence_is_not_orphanhood(self):
-        """⚠️ THE DISCRIMINATING TEST, AND ITS EXAMPLE HAD TO CHANGE.
+        """⚠️ THE DISCRIMINATING TEST, NOW ON A SYNTHETIC PAIR — AND THAT IS THE
+        POINT, NOT A COMPROMISE.
 
-        It used `burial_date`: absent from the capture surface, present on the
-        summary, so an orphan over one surface and not over the union. On
-        2026-10-12 `burial_date` GAINED A CAPTURE ROW by ruling, so it is now on
-        both and can no longer discriminate — the test would have gone silently
-        vacuous, asserting a property of a field that no longer has it.
+        Its example had to be repointed twice. It began with `burial_date` (absent
+        from capture, present on summary); that field gained a capture row on
+        2026-10-12 and stopped discriminating. It was repointed to `cemetery_city`
+        (present on capture, absent from summary); James then ruled on 2026-10-14
+        that **every captured field must appear on the Review**, so `cemetery_city`
+        gained a summary slot too.
 
-        Repointed to `cemetery_city`, measured as capture-only: it composes into
-        the Cemetery row to disambiguate the name ("St. Mary's · Auburn") and has
-        deliberately no place on the summary, where the resolved cemetery is
-        already unambiguous. The direction is reversed from the old example —
-        present on capture, absent from summary — which tests the same property
-        from the other side and is if anything the better case, since the union
-        walk must cover both surfaces rather than just the second one.
+        ⚠️ AND NO LIVE FIELD CAN EVER DISCRIMINATE AGAIN. The capture surface was
+        already complete and the Review is now required to be, so by construction no
+        template field is on one surface and not the other — the only absence left is
+        `burial_date`, which is absent from BOTH by ruling. A test that keeps hunting
+        for a live example will keep going vacuous as the surfaces converge.
+
+        So the property is tested on two surfaces built here: `a` sources the field
+        and `b` does not. Orphanhood over `b` alone must report it; orphanhood over
+        the union must not. That is the rule, and it cannot be invalidated by a
+        ruling about the product's own surfaces.
         """
-        t = frozenset(f.field_id for f in template_for(SALES_ORDER))
-        one = orphan_field_ids(t, (SUMMARY_SALES_ORDER,))
-        both = orphan_field_ids(t, surfaces_for(SALES_ORDER))
-        assert "cemetery_city" in one, (
-            "cemetery_city is no longer summary-absent, so this test has stopped "
-            "discriminating — repoint it at a field that is on one surface only"
+        field = FieldDefinition("only_on_a", "Only on A", required_when=Never())
+        a = Surface(
+            id="a", rows=(Row(id="r", label="R", order=1,
+                              sources=(FieldSource("only_on_a"),)),)
         )
-        assert "cemetery_city" not in both
+        b = Surface(
+            id="b", rows=(Row(id="r", label="R", order=1,
+                              sources=(FieldSource("something_else"),)),)
+        )
+        ids = frozenset({field.field_id})
+
+        assert orphan_field_ids(ids, (b,)) == ids, "absent from b, so an orphan there"
+        assert orphan_field_ids(ids, (a, b)) == frozenset(), (
+            "present on a, so not an orphan over the union"
+        )
+
+        # ⚠️ AND THE LIVE SURFACES ARE STILL CHECKED, as the statement this test used
+        # to make about them: the union leaves only the one deliberate omission.
+        t = frozenset(f.field_id for f in template_for(SALES_ORDER))
+        assert orphan_field_ids(t, surfaces_for(SALES_ORDER)) == frozenset(
+            {"burial_date"}
+        )
 
     def test_deceased_name_is_not_an_orphan(self):
         """⚠️ TRUE BUT NOT DISCRIMINATING, AND A BREAK TEST SAID SO.
@@ -652,10 +671,18 @@ class TestCountsBelongToTheCapture:
             CAPTURE_SALES_ORDER, _resolved(), {"funeral_home": "Wilbert"})
         done, unanswered = counts(out)
         assert done == 1
-        # ⚠️ 9 SINCE 2026-10-12, was 8 — the `burial` row joined the surface and,
-        # with nothing said about the burial, it renders unanswered. The claim is
-        # still that the counts are over ROWS: 1 done + 8 unanswered = 9 rendered.
-        assert done + unanswered == len(out.rows) == 9
+        # ⚠️ THE LITERAL HAS MOVED THREE TIMES (8 → 9 → 5) AND IS NOW GONE. It was 8,
+        # then 9 when the `burial` row joined on 2026-10-12, and on 2026-10-14 James
+        # ruled that optional unmentioned rows are not rendered at all — so with only
+        # a funeral home said, the dates, grave location and contact rows are absent.
+        #
+        # ⚠️ THE CLAIM WAS NEVER THE NUMBER. It is that the counts are over ROWS and
+        # that they account for every rendered row with nothing left over. Asserted as
+        # that identity, which no ruling about which rows render can invalidate.
+        assert done + unanswered == len(out.rows)
+        assert len(out.rows) >= 1
+        # and every rendered row is either done or unanswered — no third bucket
+        assert done >= 1 and unanswered >= 1
         assert not any(r.row_id == "personalization" for r in out.rows)
 
     def test_the_summary_is_rendered_with_the_captures_counts(self):
