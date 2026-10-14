@@ -8,6 +8,7 @@ No migration. James answered the two open questions that the order-list pane had
 
 - **2026-10-14** — **"Delivered, not invoiced yet" shows every such order.** The 90-day cutoff is gone. An order delivered and closed out in January is in that group when the list is just opened. A delivered order that is not closed out stays in "Needs something".
 - **2026-10-14** — **Every question a driver asks is limited to their own orders.** "Their own" is a non-cancelled delivery whose `primary_assignee_id` is that user. The limit is in the order query, so the list, the total, "open the Albright order", and the shortened sales order all refuse someone else's order. A driver with no user id sees nothing. Opening "orders" is still "Going out today", their stops, including ones already delivered.
+- **2026-10-14** — **CI was already red on main for the same two approve tests.** r212 inserts Vault Placer only when sunnycrest already exists, and CI seeds that tenant after `alembic upgrade head`, so the migration writes nothing. The approve suite now ensures the $0 row the way it already ensures the r211 equipment products. The migration itself stays tested in `test_r212_price_alignment.py`.
 
 ## 2026-10-14 — Enter finishes; empty rows hidden; the Review shows everything
 
