@@ -2,6 +2,17 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 2026-10-14 — Order list pane
+
+No migration. Opas can open an order list from a question ("orders", "Hopkins orders this month", "what's going out Friday", "delivered, not invoiced", "Monticellos since June"). The rules read the question; the service finds this tenant's sales orders and adds the total. A model reply is accepted only as a question, and only when the rules already declined the phrase. It goes through Intelligence (`opas.order_list.interpret`), which is not seeded; no key or no prompt means the rules stand.
+
+- The default view is three groups, empty ones omitted. Office leads with "Needs something". Accounting (a role slug containing "account") leads with "Delivered, not invoiced yet". Same rows.
+- "Just opened" hides delivered-and-not-invoiced orders older than 90 days. Asking for them still finds them. Needs-something is not capped.
+- A driver opening "orders" sees their own deliveries today. Other questions are not limited to that driver.
+- A corrected pill is stored on `companies.settings_json` under `opas_order_list_phrases` (cap 40). No new table.
+- A row opens a shortened sales order beside the list. Fix buttons leave the list: scheduling opens the funeral-scheduling Focus, proof links to `/legacy/proof/:id`, close-out links to the order page. The list does not edit.
+- On a phone, the order list and the sales order sit on one horizontal track above the sphere.
+
 ## 2026-10-13 — The burial is the service day (ruling), and three swallowed words
 
 No migration. James: "The burial is always the same day as the service. When it

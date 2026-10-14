@@ -33,6 +33,7 @@ import {
 
 import { useCommandBar } from "@/core/CommandBarProvider"
 import { useFocus } from "@/contexts/focus-context"
+import type { OrderListSnapshot, OrderQuestion } from "@/services/order-list-service"
 
 /** What a pane renders.
  *
@@ -43,7 +44,7 @@ import { useFocus } from "@/contexts/focus-context"
  * — a new entry pane opening in the wrong place with the bar not wired to it, and
  * nothing failing.
  */
-export type OpasPaneKind = "product-list" | "product" | "capture"
+export type OpasPaneKind = "product-list" | "product" | "capture" | "order-list" | "sales-order"
 
 /** One pane opened from the command line. */
 export interface OpasPane {
@@ -65,6 +66,13 @@ export interface OpasPane {
    *  pane RE-READS the session instead of starting a second one. This is what makes
    *  "survives tuck" true rather than asserted: the pane holds no order state itself. */
   readonly captureSessionId?: string
+  /** For `kind: "order-list"` — the question the server understood, and the rows it counted. */
+  readonly orderQuestion?: OrderQuestion
+  readonly orderSnapshot?: OrderListSnapshot
+  /** The phrase that produced `orderQuestion`, taught back when a pill is corrected. */
+  readonly orderPhrase?: string
+  /** For `kind: "sales-order"`. */
+  readonly salesOrderId?: string
 }
 
 /** Where a pane sits, and whether it has been moved.
@@ -106,6 +114,9 @@ interface OpasValue {
    *  from the server. Without it, tucking and reopening would start a SECOND session and
    *  orphan the half-typed order. */
   readonly setCaptureSession: (paneId: string, sessionId: string) => void
+  /** Patch a pane in place. Kind and id stay. Used so a new question updates the
+   *  open order list instead of stacking a second one. */
+  readonly updatePane: (id: string, patch: Partial<Omit<OpasPane, "id" | "kind">>) => void
   /** Escape / veil-pointerdown. Named for what the prototype calls it. */
   readonly tuck: () => void
   /** Escape's three-branch behaviour; returns which branch ran. */
@@ -250,6 +261,18 @@ export function OpasProvider({ children }: { children: ReactNode }) {
     // browser's storage with nothing reading it is pure exposure. The id lives on
     // the pane object for as long as the pane does, which is now its whole life.
   }, [])
+
+  const updatePane = useCallback((id: string, patch: Partial<Omit<OpasPane, "id" | "kind">>) => {
+    setPanes((prev) => {
+      const i = prev.findIndex((p) => p.id === id)
+      if (i < 0) return prev
+      const current = prev[i]
+      const next = prev.slice()
+      next[i] = { ...current, ...patch, id: current.id, kind: current.kind }
+      return next
+    })
+  }, [])
+
   const [placements, setPlacements] = useState<Record<string, PanePlacement>>({})
   const [frontPaneId, setFrontPaneId] = useState<string | null>(null)
   // ⚠️ A MONOTONIC COUNTER, exactly the prototype's `++z`. Ranking by array index instead
@@ -413,6 +436,7 @@ export function OpasProvider({ children }: { children: ReactNode }) {
       pendingPick,
       setPendingPick,
       setCaptureSession,
+      updatePane,
       tuck,
       onEscape,
       placements,
@@ -423,7 +447,7 @@ export function OpasProvider({ children }: { children: ReactNode }) {
       entryText,
       setEntryText,
     }),
-    [isOpen, focusIsOpen, panes, open, close, openPane, closePane, pendingPick, tuck, onEscape, placements, movePane, frontPaneId, raisePane, zs, entryText, setEntryText],
+    [isOpen, focusIsOpen, panes, open, close, openPane, closePane, pendingPick, setCaptureSession, updatePane, tuck, onEscape, placements, movePane, frontPaneId, raisePane, zs, entryText, setEntryText],
   )
 
   return <OpasContext.Provider value={value}>{children}</OpasContext.Provider>

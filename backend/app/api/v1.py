@@ -988,3 +988,11 @@ from app.api.routes import capture as capture_routes  # noqa: E402
 v1_router.include_router(
     capture_routes.router, prefix="/capture", tags=["Opas Typed Capture"]
 )
+
+# Opas Order List + shortened sales order. Same mount style as the catalog pane:
+# its own prefix, read off the caller's company, no shared router edited above.
+from app.api.routes import order_list_pane as order_list_pane_routes  # noqa: E402
+
+v1_router.include_router(
+    order_list_pane_routes.router, prefix="/order-list", tags=["Opas Order List"]
+)
