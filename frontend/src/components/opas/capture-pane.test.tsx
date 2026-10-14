@@ -16,6 +16,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest"
 import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { MemoryRouter } from "react-router-dom"
 
 import { CAPTURE_SESSION_KEY, OpasProvider } from "@/contexts/opas-context"
 import { OpasHost } from "./OpasHost"
@@ -178,10 +179,23 @@ function state(over: Record<string, unknown> = {}) {
 }
 
 function openOverlay() {
+  // ⚠️ THE ROUTER IS PART OF THE FIXTURE BECAUSE IT IS PART OF THE APP. `App.tsx`
+  // mounts `OpasHost` inside `<BrowserRouter>` (:500-541), and this helper did not —
+  // so the fixture was LESS faithful than production, which is the fixtures-modelled-
+  // on-the-implementation defect pointing the other way. It surfaced the moment the
+  // receipt's order number became a `<Link>` (James, 2026-10-14): every assertion
+  // still passed except that one, with `Cannot destructure property 'basename'`.
+  //
+  // ⚠️ ADDED AFTER CHECKING THE APP, NOT TO MAKE A TEST GREEN. A `<Link>` outside a
+  // router throws, so if `OpasHost` had been mounted outside `<BrowserRouter>` the
+  // right fix was to drop the link — wrapping the test would have shipped a pane
+  // that crashed on every approval.
   return render(
-    <OpasProvider>
-      <OpasHost />
-    </OpasProvider>,
+    <MemoryRouter>
+      <OpasProvider>
+        <OpasHost />
+      </OpasProvider>
+    </MemoryRouter>,
   )
 }
 
@@ -804,6 +818,46 @@ describe("the done signal and the summary", () => {
     const done = await screen.findByTestId("capture-approved")
     expect(done).toHaveTextContent("SO-2026-0001")
     expect(done).toHaveTextContent("$1,250.00")
+
+    // ⚠️ AND THE NUMBER LINKS TO THE ORDER, by ruling (James, 2026-10-14). He was
+    // reading the number off the pane and then navigating to /ar/orders by hand.
+    //
+    // ⚠️ THE `href` IS ASSERTED, NOT JUST THE ANCHOR'S PRESENCE. A `<Link>` whose
+    // target was built from the wrong field renders perfectly and lands on a broken
+    // detail page; `/ar/orders/undefined` is the shape that would ship.
+    const link = screen.getByTestId("capture-approved-link")
+    expect(link).toHaveAttribute("href", "/ar/orders/so-1")
+    expect(link).toHaveTextContent("SO-2026-0001")
+  })
+
+  it("prints the number as PLAIN TEXT when the server sent no order id", async () => {
+    // ⚠️ AN OLDER SERVER DOES NOT SEND `sales_order_id`, and this is the same shape
+    // as the blank-pane defect from 2026-10-12: the pane read a key an older server
+    // omitted. Here the cost of guessing would be an anchor to
+    // `/ar/orders/undefined` — a link that looks live and lands nowhere, which is
+    // worse than the text it replaced.
+    const user = userEvent.setup()
+    vi.mocked(setCaptureText).mockResolvedValue(
+      state({
+        status: "review", lines: [
+          { kind: "vault", description: "Monticello Burial Vault", product_id: "p1",
+            unit_price: "1250.00", quantity: "1", line_total: "1250.00" },
+        ], total: "1250.00", blockers: [], can_approve: true,
+      }) as never,
+    )
+    vi.mocked(approveCapture).mockResolvedValue(
+      state({
+        status: "approved", lines: [], total: "1250.00", blockers: [],
+        can_approve: false, sales_order_number: "SO-2026-0002",
+      }) as never,
+    )
+    openOverlay()
+    await type(user, "start an order for Hopkins")
+    await user.click(await screen.findByTestId("capture-approve"))
+
+    const done = await screen.findByTestId("capture-approved")
+    expect(done).toHaveTextContent("SO-2026-0002")
+    expect(screen.queryByTestId("capture-approved-link")).not.toBeInTheDocument()
   })
 
   it("shows the server's blockers when approve is REFUSED", async () => {

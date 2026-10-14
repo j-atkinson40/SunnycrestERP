@@ -114,11 +114,181 @@ def test_a_lowercase_surname_is_accepted_after_a_marker(db, tenant):
     assert ex.values.get("deceased_name") == "keegan", ex.values
 
 
-def test_it_is_displayed_AS_GIVEN_not_title_cased(db, tenant):
-    # ⚠️ AS GIVEN, BY RULING. The office's own capitalisation is information —
-    # "deSoto" and "MacLeod" are not what `.title()` would make of them.
+def test_it_is_STORED_as_given(db, tenant):
+    """⚠️ RENAMED 2026-10-14. It was `test_it_is_displayed_AS_GIVEN_not_title_cased`,
+    which became wrong about its own subject the moment James ruled that a lowercase
+    name is title-cased FOR DISPLAY. This test asserts what is STORED, which the
+    ruling did not change: `extract_text` records the director's own capitalisation,
+    and `write_for_a_human` renders it. "deSoto" and "MacLeod" carry capitalisation
+    that is information, which is why the display rule only fires on an
+    all-lowercase value — see `test_date_display.py`.
+
+    The name was the only thing wrong here; the assertion was right all along.
+    """
     ex = extract_text(db, tenant_id=tenant, text="order for riverside last name deSoto")
     assert ex.values.get("deceased_name") == "deSoto", ex.values
+
+
+# ── two words behind a marker (James, 2026-10-14) ───────────────────────
+
+#: His three phrasings, verbatim from the dispatch.
+TWO_WORD = [
+    "decedent mary smith",
+    "the mary smith family",
+    "last name is mary smith",
+]
+
+
+@pytest.mark.parametrize("phrase", TWO_WORD)
+def test_a_marker_takes_the_WHOLE_lowercase_name(db, tenant, phrase):
+    """⚠️ THE DEFECT THIS FIXES WAS WORSE THAN A MISS, which is why James raised it.
+
+    Measured on testco 2026-10-13, before the fix:
+
+        "decedent mary smith"      -> deceased_name='mary',  unrecognized=('smith',)
+        "last name is mary smith"  -> deceased_name='mary',  unrecognized=('smith',)
+        "the mary smith family"    -> deceased_name='smith', unrecognized=('mary',)
+
+    Each one shows A NAME on the pane, so it reads as understood, while half the name
+    sits in the unplaced list where nobody looks. A capture that takes nothing is
+    honest; a capture that takes half is not.
+    """
+    ex = extract_text(db, tenant_id=tenant, text=f"order for riverside {phrase}")
+    assert ex.values.get("deceased_name") == "mary smith", (phrase, ex.values)
+
+
+@pytest.mark.parametrize("phrase", TWO_WORD)
+def test_and_orphans_NOTHING(db, tenant, phrase):
+    """James: "Nothing orphaned into Not understood." Asserted separately from the
+    value because the two failed independently — "the mary smith family" captured a
+    name AND orphaned a word."""
+    ex = extract_text(db, tenant_id=tenant, text=f"order for riverside {phrase}")
+    assert ex.unrecognized == (), (phrase, ex.unrecognized)
+
+
+def test_it_renders_title_cased(db, tenant):
+    """⚠️ THE DISPATCH SAYS "-> Mary Smith", WHICH IS THE RENDERED FORM. Stored as
+    typed, shown title-cased — and asserted here against `write_for_a_human` rather
+    than against the stored value, so that the thing James will read on the pane is
+    what this test checks. Both words capitalise; `.title()`-style per-word handling
+    is what makes "mary smith" into "Mary Smith" rather than "Mary smith"."""
+    from app.services.capture.rows import write_for_a_human
+
+    ex = extract_text(
+        db, tenant_id=tenant, text="order for riverside decedent mary smith"
+    )
+    stored = ex.values.get("deceased_name")
+    assert stored == "mary smith", ex.values
+    assert write_for_a_human(str(stored), "name") == "Mary Smith"
+
+
+def test_bare_lowercase_without_a_marker_stays_unplaced(db, tenant):
+    """⚠️ THE OTHER HALF OF THE RULING, IN HIS WORDS: "Bare lowercase without a
+    marker stays unplaced." The marker is the entire warrant for reading a lowercase
+    word as a name, so widening the two-word form must not widen that."""
+    ex = extract_text(db, tenant_id=tenant, text="order for riverside mary smith")
+    assert ex.values.get("deceased_name") is None, ex.values
+    # ⚠️ AND IT IS REPORTED, NOT DISCARDED. Unplaced text the director can see is the
+    # correct outcome here; silence would be a drop.
+    assert "mary smith" in ex.unrecognized, ex.unrecognized
+
+
+@pytest.mark.parametrize(
+    "tail,expect_name,why",
+    [
+        ("friday 11am", "smith", "a weekday is a date, not a second name"),
+        ("section 4", "smith", "a grave-location label"),
+        ("monticello", "smith monticello", "⚠️ NOT GUARDED — see the test body"),
+    ],
+)
+def test_the_two_word_form_does_not_absorb_a_word_that_is_something_else(
+    db, tenant, tail, expect_name, why
+):
+    """⚠️ THE COST OF MAKING THE SECOND WORD OPTIONAL AND GREEDY. A one-word name
+    followed by anything — "decedent smith friday 11am" — would become
+    "smith friday". `_trim_absorbed_word` drops a second word that belongs to a
+    vocabulary this module already recognises.
+
+    ⚠️ THE THIRD CASE IS A KNOWN LIMIT, RECORDED RATHER THAN HIDDEN. `monticello` is
+    a vault word and is NOT in the stop list, so "decedent smith monticello" reads
+    the name as "smith monticello" and the vault is lost. It is not in the list
+    because the list is closed vocabulary — weekdays, months, separators, the
+    engine's own labels — and product names are per-tenant data that a module-level
+    frozenset cannot know. Fixing it properly means consulting the catalog, which is
+    a resolver call inside a name parser and a bigger change than this ruling asked
+    for. Flagged to James 2026-10-14. The realistic typing pattern puts a comma or
+    "actually" between clauses, and `segments()` splits on both, so this is reachable
+    only in one unpunctuated run.
+    """
+    ex = extract_text(
+        db, tenant_id=tenant, text=f"order for riverside decedent smith {tail}"
+    )
+    assert ex.values.get("deceased_name") == expect_name, (tail, why, ex.values)
+
+
+@pytest.mark.parametrize("surname", ["may", "march", "june"])
+def test_a_surname_that_is_ALSO_a_month_word_is_dropped_to_unplaced(db, tenant, surname):
+    """⚠️ THE PRICE OF A CLOSED STOP LIST, MEASURED AND RECORDED RATHER THAN DISCOVERED
+    LATER. "May", "March" and "June" are real surnames and are in
+    `_NOT_A_NAME_WORD` because they are also months, so behind an unbounded marker
+    the second word is trimmed and "decedent mary may" captures `mary` alone.
+
+    ⚠️ WHAT MAKES IT ACCEPTABLE IS THAT THE LOSS IS VISIBLE. The trimmed word is
+    released back to the sentence, so it lands in `unrecognized` where the director
+    can see it and correct it — it is not silently absorbed into the name clause.
+    **And it does not fabricate a date**: a bare month with no day is reported as
+    unplaced rather than parsed, which is asserted here because the alternative
+    would be a service date nobody typed.
+
+    ⚠️ THE BOUNDED FORM STILL KEEPS BOTH WORDS — "the mary may family" is delimited
+    on both sides, so no trim fires. That is the better path and it is the one a
+    director gets by saying "family", which is the phrasing James used.
+    """
+    ex = extract_text(
+        db, tenant_id=tenant, text=f"order for riverside monticello decedent mary {surname}"
+    )
+    assert ex.values.get("deceased_name") == "mary", ex.values
+    assert surname in ex.unrecognized, ex.unrecognized
+    assert ex.values.get("service_date") is None, (
+        "a bare month word must not become a service date"
+    )
+
+    bounded = extract_text(
+        db, tenant_id=tenant, text=f"order for riverside monticello the mary {surname} family"
+    )
+    assert bounded.values.get("deceased_name") == f"mary {surname}", bounded.values
+    assert bounded.unrecognized == (), bounded.unrecognized
+
+
+def test_a_trimmed_word_REACHES_the_next_parser(db, tenant):
+    """⚠️ THE HALF A NAME-ONLY ASSERTION WOULD MISS, AND I WROTE IT WRONG FIRST.
+
+    Trimming the NAME while leaving the SPAN covering the dropped word claims
+    "friday" for the decedent clause — so the date parser cannot see it and it is not
+    reported as unplaced either. That is a silent drop, which is worse than the
+    orphaning this whole change exists to fix. The span has to shrink with the name.
+
+    ⚠️ ASSERTED ON THE DATE, NOT ON THE SPAN. A span is an internal; a service date
+    on the pane is what the office loses.
+    """
+    ex = extract_text(
+        db,
+        tenant_id=tenant,
+        text="order for riverside decedent smith friday 11am",
+    )
+    assert ex.values.get("deceased_name") == "smith", ex.values
+    assert ex.values.get("service_date") is not None, ex.values
+    assert ex.values.get("service_time") == "11:00", ex.values
+    assert ex.unrecognized == (), ex.unrecognized
+
+
+def test_the_family_form_is_bounded_and_keeps_both_words(db, tenant):
+    """⚠️ "the mary smith family" IS DELIMITED ON BOTH SIDES, so nothing was
+    over-absorbed and the trim must not fire. `_surname_clause` only trims when the
+    name group ENDS the match — here the clause ends on `family`."""
+    ex = extract_text(db, tenant_id=tenant, text="order for riverside the mary smith family")
+    assert ex.values.get("deceased_name") == "mary smith", ex.values
+    assert ex.values.get("funeral_home") == "Riverside Funeral Home", ex.values
 
 
 def test_a_surname_INSIDE_a_funeral_home_name_is_accepted_behind_a_marker(

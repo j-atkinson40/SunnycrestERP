@@ -207,7 +207,13 @@ CAPTURE_SALES_ORDER = Surface(
             edit_target="personalization"),
 
         Row(id="cemetery_equipment", label="Cemetery Equipment", order=9,
-            sources=(FieldSource("cemetery_equipment"),)),
+            sources=(FieldSource("cemetery_equipment"),),
+            # ⚠️ THE COUNT RIDES THE EQUIPMENT ROW RATHER THAN OPENING ITS OWN, for
+            # the reason `nameplate_date_format` does: it is a property OF the
+            # chairs, not a fact beside them. "Extra Chairs (Over 8) · 4 chairs" is
+            # how the answer reads back; a separate "Extra chairs: 4" row would imply
+            # a count that exists independently of choosing chairs.
+            secondary=(FieldSource("extra_chairs_count"),)),
 
         # ⚠️ ADDED 2026-10-12 BY RULING: "captured values must be visible". Both
         # fields were CAPTURED BY THE EXTRACTOR AND SOURCED BY NO CAPTURE ROW, so a
@@ -331,12 +337,18 @@ SUMMARY_SALES_ORDER = Surface(
             ), join=_DOT),),
             edit_target="personalization"),
 
-        # ⚠️ GAP: the prototype's secondary is "Lowering device, tent, chairs" —
-        # the contents of the equipment package. `cemetery_equipment` resolves to
+        # ⚠️ GAP, STILL: the prototype's secondary is "Lowering device, tent, chairs"
+        # — the CONTENTS of the equipment package. `cemetery_equipment` resolves to
         # ONE catalog product; its contents belong to the graveside-services model,
-        # which is deliberately unbuilt. Primary renders, secondary does not.
+        # which is deliberately unbuilt.
+        #
+        # ⚠️ THE CHAIR COUNT IS NOT THAT GAP CLOSING. James 2026-10-14 asked for the
+        # quantity on the Review line, and this is where a Review line carries a
+        # second fact. It renders one number for one package; the other six packages
+        # still show a primary alone, and the contents of none of them are modelled.
         Row(id="cemetery_equipment", label="Cemetery equipment", order=6,
-            sources=(FieldSource("cemetery_equipment"),)),
+            sources=(FieldSource("cemetery_equipment"),),
+            secondary=(FieldSource("extra_chairs_count"),)),
     ),
     notes=NotesSlot(label="Notes"),
     # ⚠️ DECLARED AND UNFILLED. `hint` is fixed at None by the type — the

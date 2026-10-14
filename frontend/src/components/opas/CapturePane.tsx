@@ -41,6 +41,7 @@
  *   `capture-sequence.ts` for why the client decides and not the server.
  */
 import { useCallback, useEffect, useRef, useState } from "react"
+import { Link } from "react-router-dom"
 
 import {
   completeCapture,
@@ -696,7 +697,11 @@ export function CapturePane({
   const reviewing = state.status === "review"
   const approvedOrder =
     state.status === "approved" && state.sales_order_number
-      ? { number: state.sales_order_number, total: state.total ?? "0.00" }
+      ? {
+          number: state.sales_order_number,
+          total: state.total ?? "0.00",
+          id: state.sales_order_id ?? null,
+        }
       : null
   const blockers = state.blockers ?? []
   const missingLabels = state.missing_labels ?? []
@@ -1223,9 +1228,27 @@ export function CapturePane({
           because those are the two things the office writes down. */}
       {approvedOrder && (
         <div className="flex flex-col gap-1" data-testid="capture-approved">
-          <span className="text-body-sm text-content-strong">
-            Created {approvedOrder.number}
-          </span>
+          {/* ⚠️ THE NUMBER IS A LINK, BY RULING (James, 2026-10-14): "the order
+              number links to the order". He was reading SO-2026-0001 off the pane
+              and then navigating to /ar/orders by hand to find it.
+
+              ⚠️ IT DEGRADES TO TEXT WITHOUT AN ID RATHER THAN LINKING NOWHERE. An
+              older server does not send `sales_order_id`, and an anchor to
+              `/ar/orders/undefined` would land on a broken detail page — worse than
+              the plain text it replaced, because it looks like it should work. */}
+          {approvedOrder.id ? (
+            <Link
+              to={`/ar/orders/${approvedOrder.id}`}
+              className="text-body-sm text-content-strong underline decoration-border-strong underline-offset-2 hover:decoration-current focus-ring-accent"
+              data-testid="capture-approved-link"
+            >
+              Created {approvedOrder.number}
+            </Link>
+          ) : (
+            <span className="text-body-sm text-content-strong">
+              Created {approvedOrder.number}
+            </span>
+          )}
           <span className="text-micro tabular-nums text-content-muted">
             {money(approvedOrder.total)}
           </span>

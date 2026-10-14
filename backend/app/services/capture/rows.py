@@ -374,6 +374,21 @@ def write_for_a_human(value: str, kind: str | None) -> str:
             )
         return value
 
+    if kind == "count":
+        # ⚠️ IT NAMES THE UNIT, BECAUSE A BARE NUMBER IN AN EQUIPMENT ROW IS AMBIGUOUS.
+        # The row reads "Extra Chairs (Over 8) · 4 chairs"; the same row reading
+        # "Extra Chairs (Over 8) · 4" invites "four what — four packages?".
+        #
+        # ⚠️ SINGULAR AT ONE, because "1 chairs" is the kind of detail that makes a
+        # screen look machine-written to the office reading it.
+        #
+        # ⚠️ A NON-NUMERIC VALUE PASSES THROUGH, same contract as every other kind
+        # here: a stored row may predate a parser change, and a visible oddity an
+        # operator can report beats raising and taking the pane down over one row.
+        if value.isdigit():
+            return f"{value} chair" if value == "1" else f"{value} chairs"
+        return value
+
     if kind == "date":
         m = _ISO_DATE.match(value)
         if m:

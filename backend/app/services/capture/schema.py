@@ -392,7 +392,14 @@ EQUIPMENT_PACKAGES: tuple[tuple[str, str], ...] = (
     ("tent_only", "Tent Only"),
     ("lowering_device_only", "Lowering Device Only"),
     ("vault_placer", "Vault Placer"),
-    ("extra_chairs", "Extra Chairs (over 8)"),
+    # ⚠️ CAPITALISED `Over` SINCE 2026-10-14, AND THE CAPITAL IS LOAD-BEARING. This
+    # label is also the PRODUCT NAME `approval.assess` matches on, via
+    # `EQUIPMENT_PRODUCT_NAMES`, and the product `r212` creates is named as the price
+    # list names it: "Extra Chairs (Over 8)". The matcher lowercases both sides, so
+    # the old spelling would have worked — and would have left the one string the two
+    # layers share disagreeing with itself, so that tightening the match to exact
+    # later would break billing with nothing pointing at the cause.
+    ("extra_chairs", "Extra Chairs (Over 8)"),
     # ⚠️ THE SENTINEL IS AN OPTION, AND A RATCHET FOUND THIS MISSING. "no equipment"
     # stores `ANSWER_NONE`, and `is_answered` treats "none" as an ANSWER rather than
     # as silence — so without a label here a director who declined equipment would
@@ -760,6 +767,27 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
     # services. Without this note the field reads as finished.
     FieldDefinition("cemetery_equipment", "Cemetery equipment", required_when=Never(),
                     options=EQUIPMENT_PACKAGES),
+
+    # ⚠️ THE ONE EQUIPMENT PACKAGE THAT IS PRICED PER UNIT, SO IT IS THE ONE THAT
+    # NEEDS A COUNT. James 2026-10-14: "Extra chairs need a quantity." Every other
+    # package is a flat charge and its line quantity is 1; chairs are $5.00 EACH, so
+    # without this the line would bill one chair and the office would never see why.
+    #
+    # ⚠️ REQUIRED WHEN CHAIRS ARE CHOSEN, WHICH IS WHAT MAKES THE GAP VISIBLE. "extra
+    # chairs" with no number is a real thing a director types, and the honest answer
+    # is to ask how many rather than to assume. `required_when` therefore mirrors
+    # `applies_when`: the question exists only for chairs, and once it exists an
+    # unanswered count is a gap that blocks Approve with "Still needed: extra chairs".
+    # A default of 1 would have produced a $5.00 order line nobody chose.
+    #
+    # ⚠️ `display="count"` RATHER THAN A BARE NUMBER. `rows.py` renders it "4 chairs",
+    # because "4" alone in an equipment row reads as a quantity of packages.
+    FieldDefinition(
+        "extra_chairs_count", "Extra chairs",
+        applies_when=EqualsValue("cemetery_equipment", "extra_chairs"),
+        required_when=EqualsValue("cemetery_equipment", "extra_chairs"),
+        display="count",
+    ),
 ) + _personalization_fields()
 
 

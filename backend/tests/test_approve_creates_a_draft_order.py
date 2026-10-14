@@ -337,15 +337,88 @@ def test_a_vault_with_no_tenant_product_blocks_with_the_name_in_it(db, tenant, w
 
 
 def test_an_equipment_package_with_no_product_blocks(db, tenant, world, user_id):
-    # ⚠️ `vault_placer` IS ONE OF THE THREE PACKAGES D3 DID NOT CREATE. It must say
-    # so rather than silently drop the line or bill zero.
+    """⚠️ REWRITTEN 2026-10-14 BECAUSE r212 REMOVED ITS PREMISE, AND THE GUARD IS
+    WORTH KEEPING.
+
+    It used to read: "`vault_placer` IS ONE OF THE THREE PACKAGES D3 DID NOT CREATE.
+    It must say so rather than silently drop the line or bill zero." True until James
+    ruled Vault Placer in at $0.00 — after r212 all six billable packages have a
+    product on sunnycrest, so there is no package left that is naturally unbillable
+    and the old test asserted a world that no longer exists.
+
+    ⚠️ DELETING IT WOULD HAVE BEEN THE WRONG FIX. The rule it guards — an equipment
+    choice with no product BLOCKS, rather than silently dropping the line or billing
+    zero — is unchanged and is the reason `approval.assess` names the product. So the
+    test now MAKES a package unbillable for its own duration instead of relying on
+    one happening to be, which also stops it depending on which packages a future
+    migration creates.
+
+    ⚠️ DEACTIVATED RATHER THAN DELETED, and restored in `finally`. `_product_by_exact_name`
+    filters on `is_active = true`, so flipping the flag exercises the real lookup
+    without destroying a production-shaped row this test does not own.
+    """
+    pid = db.execute(
+        text(
+            "SELECT id FROM products WHERE company_id = :t "
+            "AND lower(btrim(name)) = lower('Vault Placer')"
+        ),
+        {"t": tenant},
+    ).scalar()
+    assert pid, (
+        "r212 should have created Vault Placer on sunnycrest — without it this test "
+        "would pass for the wrong reason"
+    )
+    db.execute(
+        text("UPDATE products SET is_active = false WHERE id = :i"), {"i": pid}
+    )
+    db.commit()
+    try:
+        row = _session_at_review(
+            db, tenant, user_id,
+            ORDER.replace("full equipment", "vault placer"),
+        )
+        a = session_service.assess_approval(db, row)
+        assert not a.ready
+        assert any("Vault Placer" in b for b in a.blockers), a.blockers
+    finally:
+        db.rollback()
+        db.execute(
+            text("UPDATE products SET is_active = true WHERE id = :i"), {"i": pid}
+        )
+        db.commit()
+
+
+def test_vault_placer_bills_a_ZERO_line_rather_than_blocking(db, tenant, world, user_id):
+    """James 2026-10-14: "Vault Placer at $0.00 (no additional charge)."
+
+    ⚠️ $0.00 IS A PRICE, NOT A MISSING ONE, AND THE DISTINCTION IS LOAD-BEARING.
+    `approval.assess` blocks on `prod.price is None` and not on a zero, so the
+    package produces a REAL LINE at $0.00 — which is what "it was on the order and we
+    did not charge for it" should look like on a statement. A NULL price would have
+    blocked Approve instead, and a dropped line would lose the fact that the placer
+    was used at all.
+
+    ⚠️ THE TOTAL IS ASSERTED TOO, because a $0.00 line is exactly the kind that can be
+    appended twice or silently omitted without moving any number a looser test reads.
+    """
     row = _session_at_review(
         db, tenant, user_id,
         ORDER.replace("full equipment", "vault placer"),
     )
     a = session_service.assess_approval(db, row)
-    assert not a.ready
-    assert any("Vault Placer" in b for b in a.blockers), a.blockers
+    assert a.ready, a.blockers
+
+    equip = [l for l in a.lines if l.kind == "equipment"]
+    assert len(equip) == 1, a.lines
+    assert equip[0].description == "Vault Placer"
+    assert equip[0].unit_price == Decimal("0.00")
+    assert equip[0].quantity == Decimal("1")
+    assert equip[0].line_total == Decimal("0.00")
+
+    # $1,850.00 vault + $0.00 placer = $1,850.00, by hand
+    vault = [l for l in a.lines if l.kind == "vault"]
+    assert len(vault) == 1, a.lines
+    assert a.total == vault[0].line_total, (a.total, a.lines)
 
 
 def test_an_order_with_no_equipment_is_approvable_with_one_line(db, tenant, world, user_id):

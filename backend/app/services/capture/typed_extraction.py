@@ -155,9 +155,42 @@ _EQUIPMENT: tuple[tuple[str, str], ...] = (
     (r"(?:lowering\s+)?device\s+only", _EQ_ID["Lowering Device Only"]),
     (r"just\s+(?:the\s+)?(?:lowering\s+)?device", _EQ_ID["Lowering Device Only"]),
     (r"vault\s+placer", _EQ_ID["Vault Placer"]),
-    (r"extra\s+chairs", _EQ_ID["Extra Chairs (over 8)"]),
+    # ⚠️ CHAIRS ARE NOT IN THIS TABLE, AND THEY USED TO BE. They are recognised by
+    # `_chairs` instead, because a chair phrase yields TWO values — the package and
+    # the count — from ONE span, and this table maps one pattern to one value.
+    # `_year_pair` is the same shape and the same precedent. Leaving the old
+    # `extra\s+chairs` entry here as well would mean two recognisers for one phrase,
+    # the second reporting the first as a re-statement ("extra chairs —
+    # cemetery_equipment is already 'extra_chairs'").
     (r"no\s+equipment|don'?t\s+need\s+equipment", ANSWER_NONE),
 )
+
+#: Chairs included in every graveside package, per the price list: the per-unit
+#: charge is "Extra Chairs (Over 8)", so eight are already in the setup.
+#:
+#: ⚠️ IT IS THE PIVOT BETWEEN THE TWO PHRASINGS James RULED (2026-10-14) AND NOT A
+#: TUNABLE. "12 chairs" is a TOTAL and bills 4; "extra chairs 4" is already the
+#: EXTRA and bills 4. Both readings need this number and they need the same one.
+CHAIRS_INCLUDED = 8
+
+#: Chair phrasings, longest-intent first. Each yields `(count_or_None, span)`.
+#:
+#: ⚠️ THE TWO GROUPS ANSWER DIFFERENT QUESTIONS AND MUST NOT BE MERGED. An "extra"
+#: pattern's number is the extra count as given; a bare "N chairs" is the total and
+#: has `CHAIRS_INCLUDED` subtracted. A single pattern with an optional "extra" would
+#: have to decide which arithmetic to apply after matching, from the presence of a
+#: word it had already discarded.
+_CHAIRS_EXTRA: tuple[str, ...] = (
+    r"extra\s+chairs?\s*:?\s*(\d+)",
+    r"(\d+)\s+extra\s+chairs?",
+    r"chairs?\s+over\s+%d\s*:?\s*(\d+)" % CHAIRS_INCLUDED,
+)
+_CHAIRS_TOTAL: tuple[str, ...] = (
+    r"(\d+)\s+chairs?\b",
+    r"chairs?\s*:?\s*(\d+)\b",
+)
+#: The package with no number at all — "extra chairs", "we'll need extra chairs".
+_CHAIRS_BARE = r"extra\s+chairs?"
 
 #: Personalization answers by phrasing. ⚠️ COMBINATIONS BEFORE SINGLES, same reason.
 _PERSONALIZATION: tuple[tuple[str, str], ...] = (
@@ -438,18 +471,6 @@ def _explicit_name(line: str) -> tuple[str, tuple[int, int]] | None:
 #: ⚠️ THE TRAILING `family` FORM IS LISTED TWICE ON PURPOSE. "the Smith family" and
 #: "Smith family" differ only by the article, and a single optional-`the` pattern
 #: would also match a bare "family".
-_SURNAME_CLAUSE = re.compile(
-    r"\b(?:"
-    r"last\s+name(?:\s+is)?\s+([A-Za-z][A-Za-z'\-]*)"
-    r"|name\s+is\s+([A-Za-z][A-Za-z'\-]*)"
-    r"|decedent\s+([A-Za-z][A-Za-z'\-]*)"
-    r"|the\s+([A-Za-z][A-Za-z'\-]*)\s+family\b"
-    r"|([A-Za-z][A-Za-z'\-]*)\s+family\b"
-    r")",
-    re.I,
-)
-
-
 #: Words a marker-led span must never END on.
 #:
 #: ⚠️ THE TEST IS "WOULD THE NORMALIZER DELETE IT", NOT "IS IT A COMMON WORD". These
@@ -459,6 +480,101 @@ _SURNAME_CLAUSE = re.compile(
 _SPAN_TAIL_STOPS = frozenset(
     {"the", "a", "an", "and", "of", "in", "on", "at", "to", "for", "with"}
 )
+
+
+#: ⚠️ ONE OR TWO WORDS SINCE 2026-10-14, BY RULING, AND THE SECOND WORD IS WHY THIS
+#: PATTERN CHANGED AT ALL. Measured on testco the day before: "decedent mary smith"
+#: captured `mary` and left `smith` in Not understood; "the mary smith family"
+#: captured `smith` and left `mary`. That is worse than capturing nothing — the pane
+#: shows a name, so it looks like it understood, and half the name is sitting in the
+#: unplaced list where nobody reads it. James: "after a marker take the whole name
+#: span... nothing orphaned into Not understood."
+#:
+#: ⚠️ STILL ONLY BEHIND A MARKER, AND BARE LOWERCASE IS STILL UNPLACED. The ruling
+#: says so in terms, and the marker is the entire warrant for reading a lowercase
+#: word as a name — see `_explicit_name` for why capitalisation alone cannot be one.
+#:
+#: ⚠️ THE SECOND WORD IS OPTIONAL AND GREEDY, WHICH NEEDS `_trim_absorbed_word`. A
+#: one-word name followed by anything else — "decedent smith friday 11am" — would
+#: otherwise become "smith friday".
+_SURNAME_WORD = r"[A-Za-z][A-Za-z'\-]*"
+_SURNAME_NAME = rf"({_SURNAME_WORD}(?:\s+{_SURNAME_WORD})?)"
+_SURNAME_CLAUSE = re.compile(
+    r"\b(?:"
+    rf"last\s+name(?:\s+is)?\s+{_SURNAME_NAME}"
+    rf"|name\s+is\s+{_SURNAME_NAME}"
+    rf"|decedent\s+{_SURNAME_NAME}"
+    rf"|the\s+{_SURNAME_NAME}\s+family\b"
+    # ⚠️ THE BARE `X family` FORM TAKES ONE WORD ONLY, AND MAKING IT TWO BROKE A TEST
+    # IMMEDIATELY. Every other alternative here is bounded on the LEFT by its marker;
+    # this one has no marker in front of it, so a two-word group extends BACKWARDS
+    # into the sentence. Measured 2026-10-14: "order for riverside Keegan family"
+    # captured the decedent as "riverside Keegan" — it ate the funeral home, which is
+    # the exact failure `_trim_absorbed_word` cannot help with because the absorbed
+    # word is at the START of the span and the trim only looks at the end.
+    #
+    # ⚠️ AND THE RULING DOES NOT ASK FOR IT. James's family example is "the mary smith
+    # family", which is bounded on both sides and is the alternative above.
+    rf"|({_SURNAME_WORD})\s+family\b"
+    r")",
+    re.I,
+)
+
+#: Words a two-word name span must not absorb as its second word.
+#:
+#: ⚠️ IT IS THE VOCABULARY THIS MODULE ALREADY RECOGNISES, not a theory about names.
+#: A weekday, a month or a separator has a job in some other recogniser; a surname
+#: is an open set and no rule about its shape is safe. See `_trim_absorbed_word`.
+_NOT_A_NAME_WORD = frozenset(
+    {
+        "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+        "mon", "tue", "tues", "wed", "thu", "thur", "thurs", "fri", "sat", "sun",
+        "january", "february", "march", "april", "may", "june", "july", "august",
+        "september", "october", "november", "december",
+        "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct",
+        "nov", "dec",
+        "today", "tomorrow", "yesterday", "morning", "afternoon", "evening",
+        "am", "pm", "noon", "midnight",
+        "vault", "cemetery", "service", "burial", "graveside", "chapel", "church",
+        "funeral", "home", "section", "lot", "space", "grave", "plot",
+        "nameplate", "emblem", "print", "vinyl", "equipment", "tent", "chairs",
+        "next", "this", "last",
+    }
+    | _SPAN_TAIL_STOPS
+)
+
+
+def _chairs(line: str) -> tuple[int | None, tuple[int, int]] | None:
+    """The extra-chair count and the span that said it, or None if no chair phrase.
+
+    Returns `(count, span)`; `count` is None when chairs were asked for without a
+    number, which is a GAP rather than a zero — see `extra_chairs_count` in
+    `schema.py`.
+
+    ⚠️ ONE SPAN, TWO VALUES, WHICH IS WHY THIS IS A FUNCTION AND NOT A ROW IN
+    `_EQUIPMENT`. "12 chairs" settles both the package and the quantity, and the span
+    rule is per-span rather than per-field — `_year_pair` does the same thing for a
+    birth and a death year and is the precedent this follows.
+
+    ⚠️ "EXTRA" PATTERNS BEFORE TOTALS, BECAUSE "extra chairs 4" CONTAINS "chairs 4".
+    Tried the other way round, the extra count is read as a total and 4 chairs bills
+    as zero — the arithmetic silently inverts and the order is $20 light.
+    """
+    for pat in _CHAIRS_EXTRA:
+        m = re.search(pat, line, re.I)
+        if m:
+            return int(m.group(1)), (m.start(), m.end())
+    for pat in _CHAIRS_TOTAL:
+        m = re.search(pat, line, re.I)
+        if m:
+            # ⚠️ CLAMPED AT ZERO RATHER THAN ALLOWED NEGATIVE. "6 chairs" is fewer
+            # than the package includes; the extra count is 0 and `evaluate_typed`
+            # raises that as a conflict rather than billing -2 chairs.
+            return max(0, int(m.group(1)) - CHAIRS_INCLUDED), (m.start(), m.end())
+    m = re.search(_CHAIRS_BARE, line, re.I)
+    if m:
+        return None, (m.start(), m.end())
+    return None
 
 
 def _surname_clause(line: str) -> tuple[str, tuple[int, int]] | None:
@@ -471,10 +587,56 @@ def _surname_clause(line: str) -> tuple[str, tuple[int, int]] | None:
     m = _SURNAME_CLAUSE.search(line)
     if m is None:
         return None
-    name = next((g for g in m.groups() if g), None)
-    if name is None:
+    gi = next((i for i, g in enumerate(m.groups(), start=1) if g), None)
+    if gi is None:
         return None
-    return name, (m.start(), m.end())
+    name = m.group(gi)
+    start, end = m.start(), m.end()
+
+    trimmed = _trim_absorbed_word(name)
+    if trimmed != name and m.end(gi) == end:
+        # ⚠️ THE SPAN SHRINKS WITH THE NAME, AND FORGETTING THAT IS WORSE THAN THE BUG
+        # IT FIXES. A trimmed name over an untrimmed span claims "friday" as part of
+        # the decedent's name clause — so the date recogniser cannot see it AND it is
+        # not reported as unplaced text either. That is a silent drop, which is the
+        # one outcome the walk notes rule out.
+        #
+        # ⚠️ ONLY WHEN THE NAME ENDS THE MATCH. In "the mary smith family" the clause
+        # ends on `family`, which bounds the name on both sides — nothing was
+        # over-absorbed there and the two words are both the name.
+        end -= len(name) - len(trimmed)
+        name = trimmed
+
+    return name, (start, end)
+
+
+def _trim_absorbed_word(name: str) -> str:
+    """Drop a second word the two-word form should not have taken.
+
+    ⚠️ THE TWO-WORD FORM IS GREEDY AND THE SEGMENT IS NOT ALWAYS A CLAUSE. "decedent
+    mary smith" is the case James ruled for, and "decedent smith friday 11am" is the
+    same pattern against a sentence with no comma in it — there the second word is a
+    weekday and taking it would name the decedent "smith friday". `segments()` splits
+    on commas and a few correction words, so most sentences arrive pre-bounded; the
+    ones that do not are exactly the ones a greedy parser gets wrong.
+
+    ⚠️ THE TEST IS A CLOSED LIST OF WORDS THAT ARE SOMETHING ELSE, NOT A GUESS AT
+    WHAT A NAME LOOKS LIKE. Surnames are an open set — any rule of the form "a name
+    does not look like this" is wrong about somebody's family. What IS closed is the
+    vocabulary the rest of this module recognises: weekdays, months, and the
+    separators `party_resolver.normalize` strips. A word in that set has a job
+    already.
+
+    ⚠️ ANYTHING WITH A DIGIT IN IT GOES TOO. "11am", "2pm" and "4" are not names and
+    do not need enumerating one by one.
+    """
+    parts = name.split()
+    if len(parts) < 2:
+        return name
+    tail = parts[-1].lower()
+    if tail in _NOT_A_NAME_WORD or any(ch.isdigit() for ch in tail):
+        return " ".join(parts[:-1])
+    return name
 
 
 class DeterministicExtractor:
@@ -555,7 +717,12 @@ class DeterministicExtractor:
             cur = answers.get(field_id, values.get(field_id))
             restated.append(f"{m.group(0).strip()} — {field_id} is already {cur!r}")
 
-        # ── equipment package ────────────────────────────────────────────
+        # ── equipment package, every kind except chairs ──────────────────
+        #
+        # ⚠️ CHAIRS ARE NOT IN THIS TABLE AND ARE RECOGNISED FURTHER DOWN, after the
+        # grave location. A chair phrase carries a NUMBER, and so does a grave
+        # location; the ordering decides which of them owns a bare digit. See the
+        # chairs block for the measurement that forced it.
         for pat, val in _EQUIPMENT:
             m = re.search(pat, low)
             if m:
@@ -688,6 +855,44 @@ class DeterministicExtractor:
                     parts.append(f"Space {m.group(3)}")
                 if _mark(spans, m):
                     values["grave_location"] = ", ".join(parts)
+
+        # ── chairs: the package AND its count, from one span ─────────────
+        #
+        # ⚠️ AFTER THE GRAVE LOCATION, AND THAT ORDERING IS A MEASUREMENT RATHER THAN
+        # A PREFERENCE. Both recognisers want a bare digit, and run the other way
+        # round the chair pattern wins one it has no claim to: measured 2026-10-14,
+        # "going to oakwood section 12 chairs" read "12 chairs" as a TOTAL and
+        # produced `extra_chairs_count='4'` with `grave_location=None`. The section
+        # was silently lost — the one outcome the span rule exists to prevent.
+        #
+        # ⚠️ THE GRAVE LABELS ARE EXPLICIT AND "chairs" IS NOT, which is the reason
+        # the tie breaks this way. "section 12" says in words which field the 12
+        # belongs to. With the grave location claimed first, the same sentence keeps
+        # `Section 12` and reports "chairs" as unplaced text — visible and
+        # correctable, instead of a quietly missing grave.
+        #
+        # ⚠️ ONE SPAN, TWO VALUES, so this is a function rather than a row in
+        # `_EQUIPMENT` — the same shape as `_year_pair`.
+        chairs = _chairs(line)
+        if chairs is not None:
+            count, (ca, cb) = chairs
+            if once("cemetery_equipment"):
+                if _claim(spans, ca, cb):
+                    values["cemetery_equipment"] = _EQ_ID["Extra Chairs (Over 8)"]
+                    # ⚠️ ONLY WHEN A NUMBER WAS GIVEN. `None` means "chairs, count
+                    # unsaid", and writing a count there would invent one — the
+                    # field stays unanswered and `required_when` reports the gap.
+                    if count is not None and once("extra_chairs_count"):
+                        values["extra_chairs_count"] = str(count)
+            else:
+                # ⚠️ CLAIMED AND THE RETURN IGNORED, exactly as `note_restated` does
+                # with `_mark`. The span is spoken for either way; what matters is
+                # that these words do not also land in the unplaced list.
+                _claim(spans, ca, cb)
+                cur = answers.get("cemetery_equipment", values.get("cemetery_equipment"))
+                restated.append(
+                    f"{line[ca:cb].strip()} — cemetery_equipment is already {cur!r}"
+                )
 
         # ── burial date ─────────────────────────────────────────────────
         # ⚠️ ADDED AFTER A TEST FAILED FOR THE RIGHT REASON. `burial_date` is REQUIRED on
@@ -1507,6 +1712,14 @@ WRITABLE_FIELDS: frozenset[str] = frozenset({
     "date_of_death",
     "deceased_name",
     "eta",
+    # ⚠️ ADDED 2026-10-14, AND THE RATCHET NAMED IT BEFORE I DID. `_chairs` writes
+    # this alongside `cemetery_equipment` from one span, and I shipped the writer
+    # without declaring it — `test_every_field_is_typeable.py` failed twice over, once
+    # because the field looked unreachable from typed text and once because the
+    # declaration disagreed with a scan of this module's own assignments. Exactly the
+    # gap it was built for after `lifes_reflections_symbol`, `RowState.NEEDED` and
+    # `eta`.
+    "extra_chairs_count",
     "funeral_home",
     "grave_location",
     "legacy_print_name",
@@ -2196,6 +2409,35 @@ def evaluate_typed(db: Session, *, tenant_id: str | None, answers: dict[str, obj
                     "Burial is always the service day. This order says the service "
                     f"is {service} and the burial is {burial}. For a burial on a "
                     "different day, say it as a graveside service."
+                ),
+            )
+        )
+
+    # ⚠️ ZERO EXTRA CHAIRS IS A CONTRADICTION, NOT A QUANTITY. "8 chairs" names the
+    # eight the graveside package already includes, so the extra count is 0 — and an
+    # order line for 0 chairs at $5.00 is a $0.00 line nobody asked for. Reported
+    # rather than billed, and reported rather than dropped: the director said
+    # something about chairs and the pane has to answer it, which is walk note 2
+    # ("unavailable personalization must be said, never dropped") applied to the one
+    # field where the engine can arrive at zero by arithmetic.
+    #
+    # ⚠️ IT IS NOT CORRECTED TO "no equipment" EITHER. A director who says "8 chairs"
+    # may want the full setup, or may be confirming what is included; choosing for
+    # them would put an equipment package on a statement they never named.
+    chair_count = answers.get("extra_chairs_count")
+    if (
+        answers.get("cemetery_equipment") == "extra_chairs"
+        and str(chair_count) == "0"
+    ):
+        conflicts.append(
+            Conflict(
+                field_id="extra_chairs_count",
+                value=chair_count,
+                permitted=(),
+                message=(
+                    f"A graveside setup already includes {CHAIRS_INCLUDED} chairs, so "
+                    f"that is no extra chairs to bill. Say how many chairs beyond "
+                    f"the {CHAIRS_INCLUDED}, or take the chairs off the order."
                 ),
             )
         )

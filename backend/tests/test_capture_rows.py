@@ -106,7 +106,13 @@ class TestRowsAreNotFields:
         # ruling for two fields that were captured and displayed nowhere. The
         # assertion this test exists for is unchanged and is the `!=`: rows are not
         # fields, 10 != 20.
-        assert n_fields == 20
+        #
+        # ⚠️ 21 FIELDS SINCE 2026-10-14, AND NO NEW ROW, WHICH IS THE POINT THIS TEST
+        # MAKES. `extra_chairs_count` was added by ruling (chairs are $5.00 each and
+        # the line needs a quantity) and it displays on the EQUIPMENT row's secondary
+        # rather than on a row of its own. So the field count moved and neither row
+        # count did — 10 != 21 and 6 != 21.
+        assert n_fields == 21
         assert len(CAPTURE_SALES_ORDER.rows) == 10 != n_fields
         assert len(SUMMARY_SALES_ORDER.rows) == 6 != n_fields
 
@@ -389,13 +395,22 @@ class TestTheFourStates:
                     return [i for p in v for i in ids(p)]
             return []
 
+        # ⚠️ `secondary` COUNTS, SINCE 2026-10-14, AND LEAVING IT OUT WAS A HOLE IN
+        # THIS TEST RATHER THAN A RULE. The question is "does the pane show anything
+        # for this field", and a secondary is on screen — `extra_chairs_count` renders
+        # as "Extra Chairs (Over 8) · 4 chairs" on the equipment row. Walking only
+        # `sources` reported it as having no row while it was visibly displayed, which
+        # would have pushed a real field onto the named-exception list for no reason.
         sourced = {
-            i for r in CAPTURE_SALES_ORDER.rows for s in r.sources for i in ids(s)
+            i
+            for r in CAPTURE_SALES_ORDER.rows
+            for s in tuple(r.sources) + tuple(r.secondary or ())
+            for i in ids(s)
         }
         template = [f.field_id for f in _tf(_SO)]
         # ⚠️ THE CONTROL, READ FIRST. If the walker returned nothing, or returned
         # everything, the assertion below would pass for a reason unrelated to rows.
-        assert len(template) == 20, len(template)
+        assert len(template) == 21, len(template)
         assert 15 < len(sourced & set(template)) <= len(template), sorted(sourced)
 
         # ⚠️ ONE DELIBERATE EXCEPTION SINCE 2026-10-13, AND IT IS A RULING RATHER THAN

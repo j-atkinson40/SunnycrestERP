@@ -42,6 +42,11 @@ TIME_FIELDS = ("service_time", "eta")
 #: name FOR DISPLAY ONLY — "smith" shows as "Smith" and is stored as typed. Ruled by
 #: James, superseding "display as given" from the day before.
 NAME_FIELDS = ("deceased_name",)
+#: ⚠️ A FOURTH KIND SINCE 2026-10-14. `display="count"` names the unit — "4" renders
+#: as "4 chairs", singular at one — because a bare number on an equipment row reads
+#: as a quantity of PACKAGES. `extra_chairs_count` is the only per-unit field on the
+#: order; every other equipment package is a flat charge at quantity 1.
+COUNT_FIELDS = ("extra_chairs_count",)
 
 
 def _refuse_a_non_local_database() -> None:
@@ -68,7 +73,9 @@ def db():
 
 def test_exactly_these_fields_declare_a_display_format():
     declared = {d.field_id for d in PLATFORM_DEFAULT_FIELDS if d.display}
-    expected = set(DATE_FIELDS) | set(TIME_FIELDS) | set(NAME_FIELDS)
+    expected = (
+        set(DATE_FIELDS) | set(TIME_FIELDS) | set(NAME_FIELDS) | set(COUNT_FIELDS)
+    )
     assert declared == expected, (
         f"the display partition moved. extra={sorted(declared - expected)} "
         f"missing={sorted(expected - declared)}"
@@ -79,6 +86,8 @@ def test_exactly_these_fields_declare_a_display_format():
         assert BY_ID[f].display == "time", f
     for f in NAME_FIELDS:
         assert BY_ID[f].display == "name", f
+    for f in COUNT_FIELDS:
+        assert BY_ID[f].display == "count", f
 
 
 def test_no_field_declares_both_options_and_a_display_format():

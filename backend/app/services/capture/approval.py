@@ -90,6 +90,38 @@ def _product_by_exact_name(db: Session, tenant_id: str, name: str):
     ).first()
 
 
+#: The one equipment package priced per unit, and the field holding its count.
+EQUIPMENT_EXTRA_CHAIRS = "extra_chairs"
+EXTRA_CHAIRS_COUNT_FIELD = "extra_chairs_count"
+
+
+def _equipment_quantity(equip: str, answers: dict) -> Decimal:
+    """How many of this equipment package the line bills.
+
+    ⚠️ ONE FOR EVERY PACKAGE EXCEPT CHAIRS, WHICH ARE $5.00 EACH. Every other
+    package in the price list is a flat charge for the setup, so its quantity is 1
+    and the line total is the price. "Extra Chairs (Over 8)" is the one per-unit row
+    on the list, and a quantity of 1 there would bill one chair for an order that
+    said twelve.
+
+    ⚠️ IT FALLS BACK TO 1 RATHER THAN 0 WHEN THE COUNT IS MISSING OR UNREADABLE, and
+    that fallback is unreachable on the Approve path — `extra_chairs_count` is
+    REQUIRED whenever chairs are chosen, so a missing count is already a blocker and
+    `assess` cannot reach a line. The fallback exists because this function is also
+    called while the capture is still being typed, where a half-finished answer must
+    render something rather than raise. 0 would make the summary read $0.00 and look
+    like a priced answer; 1 reads as the understated guess it is, and the blocker
+    beside it says the count is still needed.
+    """
+    if equip != EQUIPMENT_EXTRA_CHAIRS:
+        return Decimal("1")
+    raw = answers.get(EXTRA_CHAIRS_COUNT_FIELD)
+    try:
+        return Decimal(str(raw))
+    except (TypeError, ValueError, ArithmeticError):
+        return Decimal("1")
+
+
 def _customer_by_exact_name(db: Session, tenant_id: str, name: str):
     return db.execute(
         text(
@@ -198,6 +230,7 @@ def assess(
                         description=prod.name,
                         product_id=prod.id,
                         unit_price=Decimal(prod.price),
+                        quantity=_equipment_quantity(equip, answers),
                     )
                 )
 

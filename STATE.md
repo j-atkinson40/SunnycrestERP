@@ -4315,3 +4315,25 @@ the other.
   The commit body of `de520542` carries the false claim and stays as the record; this is the correction, per the standing rule that measurement errors and false claims go in commit bodies rather than quiet edits.
 
   **Still true from that paragraph, and unaffected:** `"the print is Clouds"` resolves to `'Clouds'` at both commits. An unambiguous print name sets a value; an ambiguous one asks. Both correct, and both were correct all along.
+
+- **2026-10-14 — r212: sunnycrest price-list alignment, and the capture gains a chair count.** James's combined dispatch (items 1–4 of 5). Migration head `r211` → **`r212_sunnycrest_price_list_alignment`**.
+
+  **r212 is a production data write, authorized.** Two vault prices moved to the price list and two equipment products added: `Monticello Burial Vault` 1250.00 → 1405.00, **`Continental Burial Vault` 1850.00 → 1607.00 — a DECREASE of $243**, confirmed by James before shipping. `Vault Placer` created at 0.00, `Extra Chairs (Over 8)` at 5.00. `Urn Vault - Standard` and `Graveside Setup Service` match no price-list line and are untouched. Guarded on the old price (a re-run writes 0 rows and a price a human changed since is refused), reversible, and a no-op without the `sunnycrest` tenant.
+
+  ⚠️ **IT DOES NOT TOUCH `sales_order_lines`, AND A LIVE ORDER DEPENDS ON THAT.** `SO-2026-0001` on production carries a `Monticello Burial Vault` line at $1,250.00; after r212 the PRODUCT reads $1,405 and that LINE still reads $1,250. Pinned by `test_the_existing_order_line_is_UNCHANGED`, break-tested by adding a line-repricing UPDATE to the migration.
+
+  **All seven equipment packages now have a billable product.** r211 created four and said in terms that three were missing; r212 adds the last two, so Approve stops refusing orders the office can actually place.
+
+  **`extra_chairs_count`** is the 21st template field — applicable and required only when chairs are chosen, displayed on the equipment row's secondary on both surfaces, and the only source of an order-line quantity other than 1. `display="count"` is a fourth display kind ("4 chairs", singular at one).
+
+  **Two-word lowercase names behind a marker** now capture whole. The span shrinks with the name when a trailing word is dropped, so the dropped word still reaches the date parser.
+
+  **The receipt's order number links to `/ar/orders/:id`**, degrading to plain text when the server sends no id.
+
+  ⚠️ **r212 INVALIDATED A TEST'S PREMISE, AND THE GATE CAUGHT IT RATHER THAN A READER.** `test_an_equipment_package_with_no_product_blocks` chose `vault_placer` precisely because r211 had not created it — its own comment said so. With all six billable packages now having a product, the test asserted a world that no longer exists. **Rewritten, not deleted:** the rule it guards (an equipment choice with no product BLOCKS, rather than dropping the line or billing zero) is unchanged, so the test now deactivates the product for its own duration instead of relying on one happening to be absent. A second test asserts the new truth — Vault Placer bills a REAL $0.00 line rather than blocking, because `assess` blocks on a NULL price and not on a zero.
+
+  **Measured, not ruled, and flagged to James:**
+  - `app/services/sunnycrest_product_seeder.py` carries `Continental 1607.00`, `Monticello 1405.00`, `Vault Placer 0.00` and `Extra Chairs (over 8) 5.00` — written before this arc by someone reading the same price list, and **it has never run on sunnycrest**. Its names (`Monticello`) do not match what the capture resolves and bills (`Monticello Burial Vault`), so running it would add a second Monticello at a different price. It is reachable from `POST /products/seed-sunnycrest`. Live debt, untouched.
+  - A zero extra-chair count raises a conflict. James's dispatch gave two examples and neither reaches zero; the behaviour is mine.
+  - "decedent smith monticello" in one unpunctuated run reads the name as "smith monticello" and loses the vault. Product names are per-tenant data a module-level stop list cannot know.
+  - **The ORDER DETAIL page shows the deceased name as stored, so lowercase stays lowercase.** Measured in a real browser 2026-10-14: the capture pane renders "Mary Smith" (the 10-14 display ruling) and `/ar/orders/:id` renders `mary smith`, because title-casing is `rows.write_for_a_human` and that page does not go through it. Both are consistent with "stored as typed, title-cased for display"; what is not obvious is that the ruling only reached ONE of the two surfaces the office reads. Not changed — the ruling named the capture pane, and a display rule on the order page is a decision about a page this dispatch did not touch.

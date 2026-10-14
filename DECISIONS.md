@@ -3254,3 +3254,85 @@ product no longer contains an example of it.
 
 ⚠️ **NOT DECIDED HERE:** `burial_date` remains the one field displayed nowhere, by
 the 10-14 ruling that the burial is always the service day.
+
+## 2026-10-14 — Chairs are priced per unit, so the capture carries a count
+
+**Ruled by James**, dispatch "DATA + RULING" item 2: *"Vault Placer at $0.00 (James:
+no additional charge). Extra Chairs (Over 8) at $5.00 per chair (James confirmed: the
+with-our-vault column). Extra chairs need a quantity: '12 chairs' -> 4 extra;
+'extra chairs 4' -> 4. Show the quantity on the Review line."*
+
+Six of the seven equipment packages are a flat charge for the graveside setup, so
+their order line is quantity 1 and its total is the price. `Extra Chairs (Over 8)` is
+the one per-unit row on the price list, which makes it the one package whose line
+cannot be built from the package alone.
+
+**So `extra_chairs_count` is a field**, applicable and required exactly when
+`cemetery_equipment == extra_chairs`, and `approval._equipment_quantity` is the only
+place a quantity other than 1 is produced.
+
+**Two phrasings, two different arithmetics, and the distinction is the decision.**
+"12 chairs" is a TOTAL at the graveside and bills `12 - 8 = 4`; "extra chairs 4" has
+already done that subtraction and bills 4. `CHAIRS_INCLUDED = 8` is the price list's
+own number — the row is named "(Over 8)" — not a tunable.
+
+⚠️ **ZERO EXTRA CHAIRS IS A CONFLICT, NOT A QUANTITY, AND THAT PART IS MINE RATHER
+THAN JAMES'S.** The dispatch gave two examples and neither reaches zero. "8 chairs"
+names the eight already included, so the extra count is 0, and the three available
+behaviours are: bill a $0.00 line nobody chose, drop what the director said, or say
+so. The third is the only one consistent with walk note 2 ("unavailable
+personalization must be said, never dropped"), so a zero count raises a conflict
+naming both ways out. **Flagged to James as a decision he did not make.**
+
+⚠️ **AND IT IS NOT CORRECTED TO "no equipment".** A director who types "8 chairs" may
+want the full setup or may be confirming what is included; choosing between those
+would put a package on a statement they never named.
+
+**Not decided here:** where an equipment selection lands on the order beyond the
+line. The package's CONTENTS — "lowering device, tent, chairs" in the prototype's
+secondary — still wait on the graveside-services model, which is unbuilt. The chair
+count is one number on one row and does not close that gap.
+
+## 2026-10-14 — Behind a marker, take the whole name; the bare `X family` form stays one word
+
+**Ruled by James**, same dispatch item 3: *"after a marker take the whole name span
+('decedent mary smith' -> Mary Smith; 'the mary smith family' -> Mary Smith). Nothing
+orphaned into Not understood. Bare lowercase without a marker stays unplaced."*
+
+The defect was worse than a miss, which is why it was worth a ruling. Measured on
+testco the day before: `decedent mary smith` captured `mary` and left `smith` in Not
+understood; `the mary smith family` captured `smith` and left `mary`. Each shows A
+NAME on the pane, so it reads as understood while half the name sits in the unplaced
+list where nobody looks. **A capture that takes nothing is honest; a capture that
+takes half is not.**
+
+**Two consequences the ruling did not name, both forced by measurement.**
+
+⚠️ **THE SECOND WORD IS DROPPED WHEN IT BELONGS TO ANOTHER VOCABULARY.** A two-word
+form is greedy, and `segments()` splits on commas but not on nothing — so
+"decedent smith friday 11am" in one unpunctuated run would become "smith friday".
+`_trim_absorbed_word` drops a trailing word that is a weekday, a month, a separator,
+one of the engine's own labels, or contains a digit. **It is a closed list of words
+that are something else, never a theory about what a name looks like** — surnames are
+an open set and any shape rule is wrong about somebody's family.
+
+⚠️ **AND THE SPAN SHRINKS WITH THE NAME.** Trimming the name while leaving the span
+covering the dropped word claims "friday" for the decedent clause — so the date
+parser cannot see it AND it is not reported as unplaced either. That is a silent
+drop, which is the outcome this whole change exists to remove. I wrote it the wrong
+way first.
+
+⚠️ **THE BARE `X family` FORM TAKES ONE WORD, AND MAKING IT TWO BROKE A TEST
+IMMEDIATELY.** Every other alternative is bounded on the LEFT by its marker; that one
+has nothing in front of it, so a two-word group extends BACKWARDS into the sentence.
+Measured: "order for riverside Keegan family" named the decedent "riverside Keegan" —
+it ate the funeral home, which `_trim_absorbed_word` cannot help with because the
+absorbed word is at the START of the span. James's family example is "the mary smith
+family", which is bounded on both sides, so the ruling does not ask for the other.
+
+**A known limit, recorded rather than hidden:** a vault word is not in the stop list,
+so "decedent smith monticello" reads the name as "smith monticello" and loses the
+vault. The list is closed vocabulary and product names are per-tenant data a
+module-level frozenset cannot know; fixing it means a catalog lookup inside a name
+parser. Flagged to James; pinned as an expected value in
+`test_the_two_word_form_does_not_absorb_a_word_that_is_something_else`.
