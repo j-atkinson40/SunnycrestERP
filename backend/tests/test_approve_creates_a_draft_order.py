@@ -114,9 +114,14 @@ def world(db, tenant):
         made.append(("cemeteries", cid0))
         cems.add("St. Mary's Cemetery")
 
+    # Vault Placer is r212's $0 product. Same trap as the r211 rows above: on a
+    # fresh CI database sunnycrest does not exist until the seed, so the
+    # migration writes nothing. `test_r212_price_alignment.py` invokes the
+    # migration. This suite only needs the row, at the price James ruled.
     for sku, name, price in (
         ("TESTFIX-CE-FULL", "Full Equipment", Decimal("300.00")),
         ("TESTFIX-CE-TENT", "Tent Only", Decimal("225.00")),
+        ("TESTFIX-CE-VP", "Vault Placer", Decimal("0.00")),
     ):
         if name in prod:
             continue
@@ -343,8 +348,10 @@ def test_an_equipment_package_with_no_product_blocks(db, tenant, world, user_id)
     It used to read: "`vault_placer` IS ONE OF THE THREE PACKAGES D3 DID NOT CREATE.
     It must say so rather than silently drop the line or bill zero." True until James
     ruled Vault Placer in at $0.00 — after r212 all six billable packages have a
-    product on sunnycrest, so there is no package left that is naturally unbillable
-    and the old test asserted a world that no longer exists.
+    product on a sunnycrest that already existed, so there is no package left that
+    is naturally unbillable and the old test asserted a world that no longer exists.
+    On a fresh CI database r212 is a no-op (the tenant is seeded after migrate),
+    and the world fixture ensures the $0 row the way it ensures the r211 products.
 
     ⚠️ DELETING IT WOULD HAVE BEEN THE WRONG FIX. The rule it guards — an equipment
     choice with no product BLOCKS, rather than silently dropping the line or billing
@@ -365,8 +372,8 @@ def test_an_equipment_package_with_no_product_blocks(db, tenant, world, user_id)
         {"t": tenant},
     ).scalar()
     assert pid, (
-        "r212 should have created Vault Placer on sunnycrest — without it this test "
-        "would pass for the wrong reason"
+        "Vault Placer should exist on sunnycrest — the world fixture ensures the "
+        "$0 row when r212 was a no-op"
     )
     db.execute(
         text("UPDATE products SET is_active = false WHERE id = :i"), {"i": pid}

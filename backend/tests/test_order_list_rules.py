@@ -293,16 +293,24 @@ def test_flags_and_which_group_they_land_in():
     assert group_of(later, TODAY) is None
 
 
-def test_delivered_not_invoiced_lookback_hides_old_rows_from_the_default_only():
+def test_every_delivered_not_invoiced_order_is_in_the_default_group():
     old = _facts(
         delivered_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
         completed_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
         service_date=date(2026, 1, 1),
     )
-    assert group_of(old, TODAY) is None
+    assert group_of(old, TODAY) == "delivered_not_invoiced"
+    grouped = select_default([old], TODAY)
+    assert [item.id for item in grouped["delivered_not_invoiced"]] == [old.id]
     question = interpret("delivered, not invoiced", today=TODAY).question
     assert question is not None
     assert select_flat([old], question) == [old]
+    waiting = _facts(
+        id="waiting",
+        delivered_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        service_date=date(2026, 1, 1),
+    )
+    assert group_of(waiting, TODAY) == "needs_something"
 
 
 def test_default_groups_hide_empty_ones_and_accounting_leads_with_money():

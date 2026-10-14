@@ -2,6 +2,14 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 2026-10-14 — Order list: no age cutoff, and a driver only sees their orders
+
+No migration. James answered the two open questions that the order-list pane had defaulted.
+
+- **2026-10-14** — **"Delivered, not invoiced yet" shows every such order.** The 90-day cutoff is gone. An order delivered and closed out in January is in that group when the list is just opened. A delivered order that is not closed out stays in "Needs something".
+- **2026-10-14** — **Every question a driver asks is limited to their own orders.** "Their own" is a non-cancelled delivery whose `primary_assignee_id` is that user. The limit is in the order query, so the list, the total, "open the Albright order", and the shortened sales order all refuse someone else's order. A driver with no user id sees nothing. Opening "orders" is still "Going out today", their stops, including ones already delivered.
+- **2026-10-14** — **CI was already red on main for the same two approve tests.** r212 inserts Vault Placer only when sunnycrest already exists, and CI seeds that tenant after `alembic upgrade head`, so the migration writes nothing. The approve suite now ensures the $0 row the way it already ensures the r211 equipment products. The migration itself stays tested in `test_r212_price_alignment.py`.
+
 ## 2026-10-14 — Enter finishes; empty rows hidden; the Review shows everything
 
 No migration. James's 09:24 walk note. Recorded in DECISIONS as D1–D4.
@@ -149,8 +157,8 @@ No migration. James's 07:27 walk note. Recorded in DECISIONS as D1–D4.
 No migration. Opas can open an order list from a question ("orders", "Hopkins orders this month", "what's going out Friday", "delivered, not invoiced", "Monticellos since June"). The rules read the question; the service finds this tenant's sales orders and adds the total. A model reply is accepted only as a question, and only when the rules already declined the phrase. It goes through Intelligence (`opas.order_list.interpret`), which is not seeded; no key or no prompt means the rules stand.
 
 - The default view is three groups, empty ones omitted. Office leads with "Needs something". Accounting (a role slug containing "account") leads with "Delivered, not invoiced yet". Same rows.
-- "Just opened" hides delivered-and-not-invoiced orders older than 90 days. Asking for them still finds them. Needs-something is not capped.
-- A driver opening "orders" sees their own deliveries today. Other questions are not limited to that driver.
+- "Delivered, not invoiced yet" includes every delivered order that is not invoiced, however old. Needs-something is not capped. Supersedes the 90-day cutoff.
+- Every question a driver asks is limited to their own deliveries, in the query. Opening "orders" is still their own day. Supersedes "only the default question is limited".
 - A corrected pill is stored on `companies.settings_json` under `opas_order_list_phrases` (cap 40). No new table.
 - A row opens a shortened sales order beside the list. Fix buttons leave the list: scheduling opens the funeral-scheduling Focus, proof links to `/legacy/proof/:id`, close-out links to the order page. The list does not edit.
 - On a phone, the order list and the sales order sit on one horizontal track above the sphere.

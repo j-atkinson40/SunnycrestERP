@@ -67,9 +67,16 @@ def get_order(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """The shortened sales order. 404 when it is not this tenant's order."""
+    """The shortened sales order. 404 when it is not this caller's order."""
     company = db.get(Company, current_user.company_id)
-    summary = sales_order_summary(db, current_user.company_id, order_id, today_for(company))
+    summary = sales_order_summary(
+        db,
+        current_user.company_id,
+        order_id,
+        today_for(company),
+        role_slug=_role_slug(db, current_user),
+        user_id=current_user.id,
+    )
     if summary is None:
         raise HTTPException(status_code=404, detail="Unknown order")
     return summary
