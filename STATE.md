@@ -4,7 +4,7 @@ Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end 
 
 ## 2026-10-14 — Order list pane
 
-No migration. Opas can open an order list from a question ("orders", "Hopkins orders this month", "what's going out Friday", "delivered, not invoiced", "Monticellos since June"). The rules read the question; the service finds this tenant's sales orders and adds the total. A model reply is accepted only as a question, and only when the rules already declined the phrase. No API key means the rules stand.
+No migration. Opas can open an order list from a question ("orders", "Hopkins orders this month", "what's going out Friday", "delivered, not invoiced", "Monticellos since June"). The rules read the question; the service finds this tenant's sales orders and adds the total. A model reply is accepted only as a question, and only when the rules already declined the phrase. It goes through Intelligence (`opas.order_list.interpret`), which is not seeded; no key or no prompt means the rules stand.
 
 - The default view is three groups, empty ones omitted. Office leads with "Needs something". Accounting (a role slug containing "account") leads with "Delivered, not invoiced yet". Same rows.
 - "Just opened" hides delivered-and-not-invoiced orders older than 90 days. Asking for them still finds them. Needs-something is not capped.
