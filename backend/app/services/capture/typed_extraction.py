@@ -636,20 +636,29 @@ class DeterministicExtractor:
         # surname pattern would match "decedent Mary" and stop; running it second
         # means it only sees clauses the fuller parser declined.
         #
-        # ⚠️ THE WORD IS CHECKED AGAINST THE RECORDS BEFORE IT IS CLAIMED, and for a
-        # single word that check carries far more weight than it did for two.
-        # "Hopkins", "Oakwood" and "Monticello" are all plausible surnames and all
-        # real records here; trusting the marker alone would name the decedent after
-        # the funeral home. Same three lookups the marker-less name pass uses.
+        # ⚠️ THE FH AND CEMETERY GUARDS ARE LIFTED BEHIND A MARKER, BY RULING
+        # (James, 2026-10-14). They were applied here until then, and the cost was
+        # measured: testco holds "Smith & Sons Funeral Home", so `last name Smith`
+        # — the commonest surname there — was refused, while the same sentence worked
+        # on sunnycrest. **The marker is the evidence.** A director who says "last
+        # name" has said in words that a surname follows, and a one-word fragment of
+        # a four-word funeral-home name is weak evidence against that — especially
+        # when the funeral home itself is already captured from earlier in the same
+        # sentence.
+        #
+        # ⚠️ THE CATALOG GUARD STAYS, AND THE RULING SCOPES IT THAT WAY ("FH/cemetery").
+        # Measured the same day: testco holds a product named exactly `Monticello`, so
+        # "last name monticello" is a word that IS a product rather than a fragment of
+        # one — and lifting this check too would name a decedent "monticello" and lose
+        # the vault.
+        #
+        # ⚠️ WITHOUT A MARKER THE GUARD STAYS IN FULL — that is the marker-less pass
+        # further down, which keeps all three lookups.
         if once("deceased_name"):
             sn = _surname_clause(line)
             if sn is not None:
                 word, (a, b) = sn
-                if not (
-                    resolve_from_rows(cemetery_rows(db, tenant_id), word).candidates
-                    or resolve_vault(build_index(db), word).candidates
-                    or resolve_funeral_home(db, tenant_id, word).candidates
-                ):
+                if not resolve_vault(build_index(db), word).candidates:
                     if _claim(spans, a, b):
                         # ⚠️ AS GIVEN. The office's own capitalisation is information;
                         # `.title()` would turn "deSoto" into "Desoto".

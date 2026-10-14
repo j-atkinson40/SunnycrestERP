@@ -3133,3 +3133,51 @@ nowhere, which makes it a deliberate orphan.
 ⚠️ **ONLY AN ALL-LOWERCASE VALUE IS TOUCHED.** `.title()` applied unconditionally
 turns "deSoto" into "Desoto" and "MacLeod" into "Macleod"; names carry capitalisation
 that is information. A value the director already capitalised is left alone.
+
+---
+
+## 2026-10-14 — The surname guard, lifted behind an explicit marker
+
+**Decided by James**, superseding the guard as recorded on 2026-10-13.
+
+Behind an explicit marker — `last name`, `family`, `decedent`, `name is` — the
+surname is **accepted even if it appears inside a multi-word funeral-home or cemetery
+record**. Without a marker the guard stays.
+
+**Why the lift is safe: the marker is the evidence.** A director who says "last name"
+has said in words that a surname follows. A one-word fragment of a four-word
+funeral-home name is weak evidence against that — and the funeral home itself is
+already captured from earlier in the same sentence, so nothing is competing for the
+word.
+
+**The cost the old rule carried, measured.** testco holds "Smith & Sons Funeral
+Home", so `resolve_funeral_home(testco, "smith")` resolved and `last name Smith` —
+the commonest surname there — was refused, while the same sentence worked on
+sunnycrest. Four separate words on that tenant collide with plausible surnames and
+all four were refused: `smith`, `hopkins`, `oakwood`, `riverside`.
+
+⚠️ **THE CATALOG GUARD IS NOT LIFTED, AND THE RULING SCOPES IT THAT WAY
+("FH/cemetery") — WHICH IS ALSO THE BETTER BEHAVIOUR.** Measured the same day: testco
+holds a product named exactly `Monticello`, so in "last name monticello" the word IS
+a product rather than a fragment of one, and it still resolves as the **vault**.
+Lifting this check too would name a decedent "monticello" and lose the vault.
+
+### ⚠️ And "without a marker the guard stays" is true but is not what does the work
+
+Two break tests on the marker-less lookups produced **no red**. Removing the cemetery
+check, then the funeral-home check, from the marker-less name pass changed nothing:
+**a record's own pass claims its span first**, so by the time the name scan runs over
+the unclaimed slices there is nothing left of "Oakwood Cemetery" to take. The lookups
+are a backstop for a record name no earlier pass claimed, not the mechanism.
+
+⚠️ **The cemetery lookup cannot be isolated on testco at all.** All three of its
+cemeteries are also `company_entities` rows (Lakeview Memorial Gardens, Oakwood
+Cemetery, St. Mary's Cemetery; none is cemetery-only), so the funeral-home check
+shadows it for every one of them. The test therefore asserts the OUTCOME a director
+sees — an unmarked record name is read as the record — and records that the claim
+holds even with both lookups removed, which is the honest measure of its strength.
+
+⚠️ **NOT DECIDED HERE:** whether the marker-less lookups should be removed as dead
+weight. They are unreachable for every record this tenant holds, but a tenant whose
+records a pass fails to claim would still need them, and deleting a backstop on the
+strength of one tenant's data is the shape of mistake this file exists to record.

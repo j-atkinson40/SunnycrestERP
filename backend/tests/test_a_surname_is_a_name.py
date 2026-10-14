@@ -121,40 +121,101 @@ def test_it_is_displayed_AS_GIVEN_not_title_cased(db, tenant):
     assert ex.values.get("deceased_name") == "deSoto", ex.values
 
 
+def test_a_surname_INSIDE_a_funeral_home_name_is_accepted_behind_a_marker(
+    db, tenant, the_records_exist
+):
+    """⚠️ THIS TEST ASSERTED THE OPPOSITE UNTIL 2026-10-14, and it recorded the cost
+    of the rule it was pinning.
+
+    It read: testco holds "Smith & Sons Funeral Home", so the guard refuses the
+    commonest surname there — correct by the 10-13 ruling, and the reason James's
+    sentence worked on sunnycrest and not on testco. He has now ruled the other way:
+    **behind an explicit marker the surname is accepted even if it appears inside a
+    multi-word FH or cemetery record.**
+
+    ⚠️ THE MARKER IS THE EVIDENCE, WHICH IS WHY THE LIFT IS SAFE. A director who says
+    "last name" has said in words that a surname follows; a one-word fragment of a
+    four-word funeral-home name is weak evidence against that, and the funeral home
+    itself is already captured from earlier in the same sentence.
+    """
+    ex = extract_text(db, tenant_id=tenant, text="order for riverside last name Smith")
+    assert ex.values.get("deceased_name") == "Smith", ex.values
+    assert ex.unrecognized == (), ex.unrecognized
+    # ⚠️ AND THE FUNERAL HOME IS STILL THE FUNERAL HOME. The lift must not let the
+    # surname steal a record the order already named.
+    assert ex.values.get("funeral_home") == "Riverside Funeral Home", ex.values
+
+
+@pytest.mark.parametrize("word", ["Smith", "hopkins", "oakwood", "riverside"])
+def test_every_FH_and_cemetery_word_is_accepted_behind_a_marker(
+    db, tenant, the_records_exist, word
+):
+    """⚠️ ALL FOUR COLLIDE ON THIS TENANT, measured 2026-10-14:
+    `smith`→"Smith & Sons Funeral Home", `hopkins`→"Hopkins Funeral Home",
+    `oakwood`→"Oakwood Cemetery"/"Oakwood Memorial", `riverside`→"Riverside Funeral
+    Home". Every one is a plausible surname and every one used to be refused."""
+    ex = extract_text(
+        db, tenant_id=tenant, text=f"order for monticello last name {word}"
+    )
+    assert ex.values.get("deceased_name") == word, (word, ex.values)
+
+
+def test_WITHOUT_A_MARKER_A_RECORD_NAME_IS_NOT_A_DECEDENT(db, tenant, the_records_exist):
+    """The other half of the ruling, asserted as an OUTCOME — and the mechanism is
+    not the one the ruling's wording implies.
+
+    ⚠️ TWO BREAK TESTS ON THE MARKER-LESS LOOKUPS PRODUCED NO RED, and the reason is
+    worth more than the guard. Removing the cemetery check, and then the
+    funeral-home check, from the marker-less name pass changed nothing: a record's
+    OWN pass claims its span first, so by the time the name scan runs over
+    `_unclaimed_slices` there is nothing left of "Oakwood Cemetery" to take. The
+    lookups are a backstop for a record name that no earlier pass claimed, not the
+    thing doing the work.
+
+    ⚠️ SO THIS TEST ASSERTS WHAT THE OFFICE SEES, not an internal check I cannot make
+    fail. The claim is "a record name with no marker does not become a decedent",
+    and it holds with those lookups removed — which is the honest statement of how
+    strong it is.
+
+    ⚠️ AND THE CEMETERY LOOKUP CANNOT BE ISOLATED ON THIS TENANT AT ALL. Measured
+    2026-10-14: all three testco cemeteries are also `company_entities` rows
+    (Lakeview Memorial Gardens, Oakwood Cemetery, St. Mary's Cemetery; none is
+    cemetery-only), so the funeral-home check shadows it for every one of them.
+    """
+    # a bare single word is not a name candidate in the first place — the
+    # marker-less passes require two or more capitalised words
+    bare = extract_text(db, tenant_id=tenant, text="order for monticello Smith")
+    assert bare.values.get("deceased_name") is None, bare.values
+
+    # and a full record name, unmarked, is read as the record
+    ex = extract_text(db, tenant_id=tenant, text="order for monticello Oakwood Cemetery")
+    assert ex.values.get("deceased_name") is None, ex.values
+    assert ex.values.get("cemetery") == "Oakwood Cemetery", ex.values
+
+
 @pytest.mark.parametrize(
     "word,what",
     [
-        ("hopkins", "a funeral home on this tenant"),
-        ("Hopkins", "a funeral home, capitalised"),
-        ("oakwood", "a cemetery on this tenant"),
-        ("monticello", "a catalog product"),
+        ("monticello", "a catalog product named exactly this"),
         ("continental", "a catalog product"),
     ],
 )
-def test_it_NEVER_takes_a_record_word_as_a_surname(db, tenant, the_records_exist, word, what):
-    """⚠️ THE GUARD, AND EVERY ONE OF THESE IS A PLAUSIBLE SURNAME. The marker is not
-    enough on its own; what decides is whether the word names something we hold."""
+def test_it_never_takes_a_CATALOG_word_as_a_surname(db, tenant, the_records_exist, word, what):
+    """⚠️ THIS TEST ALSO COVERED `hopkins`, `Hopkins` AND `oakwood` UNTIL 2026-10-14.
+
+    Those three are FH and cemetery words, and James ruled that behind an explicit
+    marker a surname is accepted even when it appears inside a multi-word FH or
+    cemetery record — so asserting they are refused would now be asserting the
+    superseded rule. They are covered by
+    `test_every_FH_and_cemetery_word_is_accepted_behind_a_marker`.
+
+    ⚠️ THE CATALOG CASES SURVIVE UNCHANGED, because the ruling scopes the lift to
+    "FH/cemetery" — and measured, that scope is also the better behaviour: testco
+    holds a product named exactly `Monticello`, so the word there IS a product rather
+    than a fragment of one.
+    """
     ex = extract_text(db, tenant_id=tenant, text=f"order for riverside last name {word}")
     assert ex.values.get("deceased_name") is None, (word, what, ex.values)
-
-
-def test_a_surname_that_collides_with_a_record_is_refused(db, tenant, the_records_exist):
-    """⚠️ A REAL COST OF THE RULING, MEASURED AND RECORDED RATHER THAN HIDDEN.
-
-    testco holds "Smith & Sons Funeral Home", so the commonest surname there is a
-    funeral-home word and the guard refuses it. By the ruling that is correct; the
-    consequence is that on such a tenant "last name Smith" still reads as text the
-    engine could not place.
-
-    ⚠️ IT IS TENANT-DEPENDENT, AND ON JAMES'S TENANT IT DOES NOT BITE. Measured
-    2026-10-13: `resolve_funeral_home(sunnycrest, "smith")` returns nothing, because
-    sunnycrest holds only Hopkins, Riverside Memorial Chapel and St. Mary's Cemetery.
-    His walk sentence therefore works where he typed it.
-    """
-    ex = extract_text(db, tenant_id=tenant, text="order for riverside last name Smith")
-    assert ex.values.get("deceased_name") is None, ex.values
-    # and it is REPORTED rather than dropped — the office sees it was not taken
-    assert any("Smith" in u for u in ex.unrecognized), ex.unrecognized
 
 
 def test_the_two_word_name_still_works(db, tenant):

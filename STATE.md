@@ -2,6 +2,37 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 2026-10-14 — The surname guard, lifted behind an explicit marker
+
+No migration. Recorded in DECISIONS.
+
+- **2026-10-14** — Behind `last name` / `family` / `decedent` / `name is`, a surname
+  is accepted **even when it appears inside a multi-word FH or cemetery record**.
+  Without a marker the guard stays. On testco `last name Smith` is now accepted and
+  bare `Smith` refused — his two cases, measured.
+  ⚠️ **The marker is the evidence**: a one-word fragment of a four-word funeral-home
+  name is weak evidence against a director who said "last name", and the funeral home
+  is already captured from earlier in the sentence. Four testco words collided and
+  all four were refused before this: `smith`, `hopkins`, `oakwood`, `riverside`.
+- **2026-10-14** — ⚠️ **The catalog guard is NOT lifted**, matching the ruling's
+  "FH/cemetery" scope — and measured, that scope is the better behaviour: testco holds
+  a product named exactly `Monticello`, so "last name monticello" still resolves the
+  **vault** rather than naming a decedent.
+- **2026-10-14** — ⚠️ **"Without a marker the guard stays" is true but is not what
+  does the work.** Two break tests on the marker-less lookups produced NO RED:
+  removing the cemetery check, then the funeral-home check, changed nothing, because
+  **a record's own pass claims its span first** and the name scan only sees unclaimed
+  slices. The lookups are a backstop, not the mechanism. The cemetery lookup cannot
+  be isolated on testco at all — all three of its cemeteries are also
+  `company_entities` rows. The test asserts the outcome and records that it holds
+  with both lookups removed.
+- **2026-10-14** — ⚠️ **One of my own edits silently deleted three new tests.** A
+  slice-based rewrite of the superseded guard test swallowed the three I had just
+  added, and the file still passed 20/20 — so BREAK MM showed no red and looked like
+  a working guard. Caught by measuring `extract_text` directly against the break and
+  finding it DID change behaviour, then listing the collected tests. **A break test
+  that goes green is a claim about the tests, not only about the code.**
+
 ## 2026-10-14 — Completing an order: one action, amber rows, a named gap
 
 No migration. James's 07:27 walk note. Recorded in DECISIONS as D1–D4.
