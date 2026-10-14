@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import date, datetime, time, timezone
 from decimal import Decimal
 
+from app.services.order_list.proposal import propose
 from app.services.order_list.question import (
     TRY_HINT,
     accept_model_text,
@@ -215,6 +216,10 @@ def test_model_json_cannot_set_about_money_on_a_schedule_question():
     )
     assert parsed is not None and parsed.question is not None
     assert parsed.question.about_money is False
+
+
+def test_the_model_door_stays_shut_without_a_session():
+    assert propose("something the rules do not know", TODAY) is None
 
 
 def test_model_unsure_is_numbered_picks_and_not_a_guess():

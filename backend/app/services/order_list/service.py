@@ -464,7 +464,7 @@ def ask(
     elif phrase:
         interpreted = interpret(phrase, today=today, current=question, taught=taught)
         if interpreted.kind == "unrecognized" and propose is not None:
-            proposed = propose(phrase, today)
+            proposed = propose(phrase, today, db, company_id)
             if proposed is not None:
                 interpreted = proposed
     else:
