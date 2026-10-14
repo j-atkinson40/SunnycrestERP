@@ -239,34 +239,17 @@ def test_a_section_number_is_not_the_graveside_time(db, tenant):
     assert ex.values.get("grave_location") == "Section 4", ex.values
 
 
-def test_graveside_is_not_eaten_by_the_grave_location_label(db, tenant):
-    """⚠️ A MISSING WORD BOUNDARY, AND THE SYMPTOM POINTED AT THE WRONG FIELD.
+def test_the_burial_row_shows_ONLY_the_grave_location(db, tenant):
+    """⚠️ THIS TEST ASSERTED AN INHERITED DATE UNTIL 2026-10-14, one day old.
 
-    The grave-location pattern's `(?:space|grave|sp)` matched the "grave" inside
-    "graveSIDE", so "section 4 graveside" produced
-    `grave_location='Section 4, Space side'` — swallowing the word, losing the service
-    location, and leaving the order asking for one. The same sentence with anything
-    between ("section 4 11 graveside") worked, which made it look like a graveside
-    problem rather than a grave-location one.
-    """
-    ex, _st, _c = _state(
-        db, tenant,
-        "order for riverside monticello burial vault section 4 graveside Friday 11am",
-    )
-    assert ex.values.get("grave_location") == "Section 4", ex.values
-    assert ex.values.get("service_location") == "graveside", ex.values
+    The 10-13 ruling put the service date on this row labelled "same day as the
+    service"; the 10-14 ruling took it off entirely — the Service row already says
+    the day, and repeating it under a second heading makes a reader wonder which is
+    authoritative. `burial_date` is still DERIVED at Approve; it is simply displayed
+    nowhere.
 
-
-# ── the Burial row ──────────────────────────────────────────────────────────
-
-def test_the_burial_row_shows_the_grave_and_the_inherited_date(db, tenant):
-    """⚠️ IT READS `service_date`, NOT `burial_date`. Reading the field nobody is
-    asked for would leave the row blank on every order, with the date one field away.
-
-    ⚠️ ASSERTED THROUGH `read_state`, THE PATH THE PANE ACTUALLY USES. My first
-    version called `resolve_surface` directly and passed it a `Resolution` where it
-    wanted resolved FIELDS — a test failing on its own harness tells you nothing
-    about the row.
+    ⚠️ AND THE ROW CAN NEVER BE AMBER NOW, because `grave_location` is optional by
+    the same ruling. An empty Burial row is a quiet empty row.
     """
     import uuid
 
@@ -290,36 +273,49 @@ def test_the_burial_row_shows_the_grave_and_the_inherited_date(db, tenant):
         state = session_service.read_state(
             db, row.id, company_id=tenant, user_id=uid
         )
-        rows = {r["row_id"]: r for r in state["surface"]["rows"]}
-        burial, service = rows["burial"], rows["service"]
+        burial = next(
+            r for r in state["surface"]["rows"] if r["row_id"] == "burial"
+        )
         assert burial["value"] == "Section 4, Lot 12", burial
-        assert burial["secondary_value"], burial
-        assert "same day as the service" in burial["secondary_value"], burial
-
-        # ⚠️ THE DATE ITSELF IS ASSERTED, AND A BREAK TEST IS WHY. This test checked
-        # only the LABEL — so pointing the row back at `burial_date` (absent on this
-        # order, as on every order now) left the secondary reading "same day as the
-        # service" with no date at all, and the test passed. A check that survives
-        # the defect it exists for is worse than no check.
-        #
-        # ⚠️ DERIVED FROM THE ANSWER, NOT FROM A LITERAL AND NOT FROM THE SERVICE
-        # ROW'S LAYOUT. My first attempt compared against `service["value"]`, which is
-        # the LOCATION ("Church") — the date lives in that row's secondary and is
-        # `None` once the location fills the primary. Reading the ISO answer and
-        # checking the rendered month, day and year appear is independent of how any
-        # row chooses to arrange itself.
-        from datetime import date as _date
-
-        iso = state["values"]["service_date"]
-        d = _date.fromisoformat(iso)
-        head = burial["secondary_value"].split(" · ")[0]
-        assert d.strftime("%b") in head, (head, iso)
-        assert str(d.day) in head, (head, iso)
-        assert str(d.year) in head, (head, iso)
-        assert service["row_id"] == "service"
-
-        # ⚠️ AND IT NEVER READS "needed" FOR THE DATE, the ruling's own words.
+        # ⚠️ NO DATE AND NO LABEL. Asserted as absence, which is the whole ruling.
+        assert burial["secondary_value"] is None, burial
+        assert "same day" not in str(burial), burial
+        # ⚠️ AND NEVER NEEDED, so it carries no missing field and cannot go amber.
+        assert burial["missing_field_ids"] == [], burial
         assert burial["state"] != "needed", burial
+    finally:
+        db.execute(
+            text("DELETE FROM capture_sessions WHERE id = :i"), {"i": row.id}
+        )
+        db.commit()
+
+
+def test_an_EMPTY_burial_row_is_quiet_not_needed(db, tenant):
+    # ⚠️ THE OTHER HALF, AND THE ONE JAMES ASKED FOR: an optional unanswered row must
+    # not look like something outstanding.
+    import uuid
+
+    from app.services.capture import session_service
+
+    uid = db.execute(
+        text("SELECT id FROM users WHERE company_id = :t AND is_active LIMIT 1"),
+        {"t": tenant},
+    ).scalar()
+    row = session_service.start(db, company_id=tenant, user_id=uid)
+    try:
+        session_service.set_text(
+            db, row.id, company_id=tenant, user_id=uid,
+            text="order for riverside monticello burial vault",
+        )
+        state = session_service.read_state(
+            db, row.id, company_id=tenant, user_id=uid
+        )
+        burial = next(
+            r for r in state["surface"]["rows"] if r["row_id"] == "burial"
+        )
+        assert burial["value"] is None, burial
+        assert burial["missing_field_ids"] == [], burial
+        assert burial["state"] == "not_mentioned", burial
     finally:
         db.execute(
             text("DELETE FROM capture_sessions WHERE id = :i"), {"i": row.id}

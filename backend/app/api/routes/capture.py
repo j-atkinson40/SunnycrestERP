@@ -75,10 +75,13 @@ class ChooseRequest(BaseModel):
     index: int = Field(ge=1, le=9)
 
 
-def _state(db: Session, session_id: str, user: User) -> dict:
+def _state(
+    db: Session, session_id: str, user: User, *, completion_attempt: bool = False
+) -> dict:
     try:
         return session_service.read_state(
-            db, session_id, company_id=user.company_id, user_id=user.id
+            db, session_id, company_id=user.company_id, user_id=user.id,
+            completion_attempt=completion_attempt,
         )
     except session_service.SessionNotFound:
         raise HTTPException(status_code=404, detail="capture session not found")
@@ -130,15 +133,19 @@ def set_text(
 ):
     """Re-read the whole typed text. The hot path — one call per pause."""
     try:
-        session_service.set_text(
+        row = session_service.set_text(
             db, session_id,
             company_id=current_user.company_id, user_id=current_user.id,
             text=body.text,
         )
     except session_service.SessionNotFound:
         raise HTTPException(status_code=404, detail="capture session not found")
+    # ⚠️ READ OFF THE ROW BEFORE THE COMMIT CLEARS THE INSTANCE. A trailing
+    # completion phrase is detected on the SERVER, so this flag is the only way the
+    # client learns that an attempt happened and the rows should turn amber.
+    attempted = bool(getattr(row, "_completion_attempt", False))
     db.commit()
-    state = _state(db, session_id, current_user)
+    state = _state(db, session_id, current_user, completion_attempt=attempted)
     # ⚠️ ECHOED, NOT ACTED ON. See `TextRequest.seq` — the client drops stale
     # responses because the client is the only party that knows what is in the bar.
     state["seq"] = body.seq
@@ -206,6 +213,33 @@ def abandon(
         raise HTTPException(status_code=404, detail="capture session not found")
     db.commit()
     return {"session_id": session_id, "status": "abandoned"}
+
+
+@router.post("/sessions/{session_id}/complete")
+def complete_session(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Finish the order: the summary, or what is still missing.
+
+    ⚠️ THE SAME SERVICE CALL THE TYPED PHRASES REACH, so the Complete order button,
+    ⌘Enter and "done"/"approve"/"complete" cannot drift apart.
+
+    ⚠️ IT RETURNS 200 WITH THE MISSING SET, NOT AN ERROR. "You have not finished yet"
+    is the pane's normal business — the rows go amber and the bar names them — and a
+    4xx would make the client decide between an error path and a state path for one
+    outcome.
+    """
+    try:
+        session_service.complete(
+            db, session_id,
+            company_id=current_user.company_id, user_id=current_user.id,
+        )
+    except session_service.SessionNotFound:
+        raise HTTPException(status_code=404, detail="capture session not found")
+    db.commit()
+    return _state(db, session_id, current_user, completion_attempt=True)
 
 
 @router.post("/sessions/{session_id}/approve")

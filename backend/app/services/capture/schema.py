@@ -459,7 +459,11 @@ ANY_PERSONALIZATION_CHOSEN = AnyAnswered(
 PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
     FieldDefinition(VAULT_FIELD_ID, "Vault", switchable=False),
     FieldDefinition("funeral_home", "Funeral home"),
-    FieldDefinition("deceased_name", "Deceased name"),
+    # ⚠️ `display="name"` TITLE-CASES FOR DISPLAY ONLY, BY RULING (2026-10-14),
+    # SUPERSEDING "display as given" from 2026-10-13. A director typing fast gives
+    # "smith"; the pane shows "Smith". The STORED value stays exactly as typed, so
+    # nothing downstream inherits a guess about capitalisation.
+    FieldDefinition("deceased_name", "Deceased name", display="name"),
     # ⚠️ `vault_size` REMOVED 2026-10-05 BY RULING. It was here, required, with a
     # warrant explaining why it stayed. Both halves of that warrant have now
     # resolved:
@@ -539,7 +543,15 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
     # two facts; a `burial_time` left in place would be a third for someone to
     # conflate again.
     FieldDefinition("service_time", "Service time", display="time"),
-    FieldDefinition("grave_location", "Grave section / lot / space"),
+    # ⚠️ NOT REQUIRED, BY RULING (James, 2026-10-14): "grave location never is".
+    # ⚠️ AND ITS REQUIREDNESS WAS NEVER A DECISION — it was the constructor's default.
+    # The long note below this line is about `service_location`, which WAS ruled
+    # required and argued for; nothing ever argued for this one. Measured 2026-10-14:
+    # it was one of the two fields in James's "2 needed" pill, which is what made him
+    # look for it.
+    FieldDefinition(
+        "grave_location", "Grave section / lot / space", required_when=Never()
+    ),
     # ⚠️ ADDED 2026-10-05, `required=True` BY RULING, AND THE NEXT READER WILL
     # CHECK THE COLUMN AND CONCLUDE THE OPPOSITE — so this note is here rather
     # than in an investigation doc.

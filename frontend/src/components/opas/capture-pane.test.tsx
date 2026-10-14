@@ -39,6 +39,7 @@ vi.mock("@/services/opas-capture-service", () => ({
   takeSwitch: vi.fn(),
   abandonCapture: vi.fn(),
   approveCapture: vi.fn(),
+  completeCapture: vi.fn(),
 }))
 vi.mock("@/services/opas-catalog-service", () => ({
   resolvePhrase: vi.fn(async () => ({ candidates: [], discriminators: [] })),
@@ -60,6 +61,7 @@ import {
   abandonCapture,
   addLine,
   approveCapture,
+  completeCapture,
   choosePick,
   readCapture,
   setCaptureText,
@@ -332,30 +334,96 @@ describe("the rows", () => {
     )
   })
 
-  it("counts captured from the rows and needed from the MISSING SET", async () => {
+  it("counts ROWS, not fields — two missing fields on one row is ONE needed", async () => {
     /**
-     * ⚠️ THE FIXTURE WAS INTERNALLY INCONSISTENT AND THAT IS WHY THE OLD CHIP LOOKED
-     * RIGHT. It had a row in the `needed` state and `missing: []` — a combination the
-     * server cannot produce, since a row only reaches `needed` because something
-     * required is unanswered. The chip counted `needed` ROWS, so it agreed with the
-     * impossible half of the fixture and disagreed with the real engine.
+     * ⚠️ THE PILL COUNTED FIELDS AND THE AMBER BELONGS TO ROWS, AND THAT IS WHAT
+     * JAMES READ OFF THE SCREEN. "2 needed" with nothing highlighted, because his two
+     * missing fields were `service_date` (on the Service row) and `grave_location`
+     * (on the Burial row) — and before that, a row only turned `needed` after a done
+     * signal, so the pane showed **"0 needed" with nine rows empty**.
      *
-     * On production the real state is the other way round: nine rows unanswered and
-     * none of them `needed` yet, because `needed` arrives only after a done signal.
-     * The chip read **"0 needed" with nine rows empty**, in the same screenshot where
-     * the bar read "Nothing needed". `missing` is the set `is_complete` uses, so the
-     * chip, the bar and the engine now answer from one place.
+     * Ruled 2026-10-14: the pill count always equals the number of amber-able rows.
+     * Both now read each row's own `missing_field_ids`, so they cannot disagree.
+     *
+     * ⚠️ THE CASE THAT DISTINGUISHES THE TWO RULES IS TWO FIELDS ON ONE ROW. A fixture
+     * with one missing field per row passes under either, which is why this one puts
+     * `service_date` and `service_time` on the same Service row and expects ONE.
      */
     const user = userEvent.setup()
-    vi.mocked(startCapture).mockResolvedValue(state({ missing: ["vault"] }) as never)
+    vi.mocked(startCapture).mockResolvedValue(
+      state({
+        missing: ["service_date", "service_time"],
+        surface: {
+          id: "capture",
+          rows: [
+            { row_id: "funeral_home", label: "Funeral Home", state: "done",
+              value: "Hopkins Funeral Home", secondary_value: null,
+              missing_field_ids: [] },
+            { row_id: "service", label: "Service", state: "partial",
+              value: "Church", secondary_value: null,
+              missing_field_ids: ["service_date", "service_time"] },
+            { row_id: "burial", label: "Burial", state: "not_mentioned",
+              value: null, secondary_value: null, missing_field_ids: [] },
+          ],
+        },
+      }) as never,
+    )
     openOverlay()
     await type(user, "start an order")
 
     await waitFor(() =>
       expect(screen.getByTestId("capture-captured-pill")).toHaveTextContent("1"),
     )
+    // two missing FIELDS, one amber-able ROW
     expect(screen.getByTestId("capture-needed-pill")).toHaveTextContent("1")
   })
+
+  it("THE PILL COUNT EQUALS THE NUMBER OF AMBER ROWS, in every state", async () => {
+    /**
+     * ⚠️ THE RULING'S OWN TEST: "test the pill count equals the highlighted rows on
+     * every state". Asserted as a property over several shapes rather than one case,
+     * because the two numbers come from one list and the thing worth pinning is that
+     * they keep coming from one list.
+     *
+     * ⚠️ THE PILL IS CLICKED TO LIGHT THE ROWS, which is also the ruling: the count
+     * has to answer "which ones". Before the click nothing is amber — a half-typed
+     * order must not look alarming — so the click is what makes the rows countable.
+     */
+    const shapes = [
+      { rows: [["a", []], ["b", []]], expected: 0 },
+      { rows: [["a", ["x"]], ["b", []]], expected: 1 },
+      { rows: [["a", ["x", "y"]], ["b", []]], expected: 1 },
+      { rows: [["a", ["x"]], ["b", ["y"]]], expected: 2 },
+    ] as const
+
+    for (const shape of shapes) {
+      const user = userEvent.setup()
+      vi.mocked(startCapture).mockResolvedValue(
+        state({
+          surface: {
+            id: "capture",
+            rows: shape.rows.map(([id, miss]) => ({
+              row_id: id, label: id.toUpperCase(), state: "not_mentioned",
+              value: null, secondary_value: null, missing_field_ids: miss,
+            })),
+          },
+        }) as never,
+      )
+      const view = openOverlay()
+      await type(user, "start an order")
+      const pill = await screen.findByTestId("capture-needed-pill")
+      expect(pill).toHaveTextContent(String(shape.expected))
+
+      // ⚠️ NOTHING IS AMBER UNTIL ASKED. The pill lights its own rows on click.
+      expect(document.querySelectorAll('[data-amber="true"]')).toHaveLength(0)
+      await user.click(pill)
+      expect(document.querySelectorAll('[data-amber="true"]')).toHaveLength(
+        shape.expected,
+      )
+      view.unmount()
+    }
+  })
+
 
   it("shows a follow-up row appearing once the server reports it", async () => {
     // ⚠️ THE "FOLLOW-UPS APPEAR" BEHAVIOUR, and it is the SERVER's doing: before a vault
@@ -858,5 +926,161 @@ describe("surviving a tuck and a reload", () => {
       document.querySelectorAll('[data-testid^="opas-pane-opas-pane-"]'),
     ).toHaveLength(0)
     expect(screen.queryByTestId("capture-error")).not.toBeInTheDocument()
+  })
+})
+
+describe("finishing an order", () => {
+  /**
+   * ⚠️ ONE ACTION, THREE ENTRANCES, BY RULING (2026-10-14). The button, ⌘Enter and a
+   * trailing typed phrase all call the same thing. James's note is the reason: the
+   * only way to finish was to type the right phrase, and "approve" — the phrase most
+   * people would reach for — was the one that did nothing until a separate "that's
+   * everything" had been typed first.
+   */
+  function completable(over: Record<string, unknown> = {}) {
+    return state({
+      missing: ["service_date"],
+      missing_labels: ["Service date"],
+      surface: {
+        id: "capture",
+        rows: [
+          { row_id: "funeral_home", label: "Funeral Home", state: "done",
+            value: "Hopkins Funeral Home", secondary_value: null,
+            missing_field_ids: [] },
+          { row_id: "service", label: "Service", state: "partial",
+            value: "Church", secondary_value: null,
+            missing_field_ids: ["service_date"] },
+        ],
+      },
+      ...over,
+    })
+  }
+
+  it("the Complete order button is ALWAYS visible while capturing", async () => {
+    const user = userEvent.setup()
+    vi.mocked(setCaptureText).mockResolvedValue(completable() as never)
+    openOverlay()
+    await type(user, "start an order for Hopkins")
+    expect(await screen.findByTestId("capture-complete")).toBeInTheDocument()
+  })
+
+  it("pressing it turns the missing rows amber and NAMES them", async () => {
+    const user = userEvent.setup()
+    vi.mocked(setCaptureText).mockResolvedValue(completable() as never)
+    vi.mocked(completeCapture).mockResolvedValue(
+      completable({ completion_attempt: true }) as never,
+    )
+    openOverlay()
+    await type(user, "start an order for Hopkins")
+
+    // ⚠️ NOTHING IS AMBER BEFORE THE PRESS. Colouring a half-typed order's gaps
+    // while the director is still speaking would make every order start alarming.
+    expect(document.querySelectorAll('[data-amber="true"]')).toHaveLength(0)
+
+    await user.click(screen.getByTestId("capture-complete"))
+
+    await waitFor(() =>
+      expect(document.querySelectorAll('[data-amber="true"]')).toHaveLength(1),
+    )
+    expect(screen.getByTestId("capture-row-service")).toHaveAttribute(
+      "data-amber", "true",
+    )
+    expect(screen.getByTestId("capture-still-need")).toHaveTextContent(
+      /still need: service date/i,
+    )
+  })
+
+  it("an OPTIONAL empty row stays quiet, not amber", async () => {
+    // ⚠️ THE DISTINCTION JAMES ASKED FOR. Dates without personalization, the grave
+    // location and the contact are all optional; an empty one of those must not look
+    // like something outstanding.
+    const user = userEvent.setup()
+    const withOptional = completable({
+      surface: {
+        id: "capture",
+        rows: [
+          { row_id: "service", label: "Service", state: "partial", value: "Church",
+            secondary_value: null, missing_field_ids: ["service_date"] },
+          { row_id: "burial", label: "Burial", state: "not_mentioned", value: null,
+            secondary_value: null, missing_field_ids: [] },
+          { row_id: "dates", label: "Dates", state: "not_mentioned", value: null,
+            secondary_value: null, missing_field_ids: [] },
+        ],
+      },
+    })
+    vi.mocked(setCaptureText).mockResolvedValue(withOptional as never)
+    vi.mocked(completeCapture).mockResolvedValue(withOptional as never)
+    openOverlay()
+    await type(user, "start an order for Hopkins")
+    await user.click(screen.getByTestId("capture-complete"))
+
+    await waitFor(() =>
+      expect(screen.getByTestId("capture-row-service")).toHaveAttribute(
+        "data-amber", "true",
+      ),
+    )
+    expect(screen.getByTestId("capture-row-burial")).not.toHaveAttribute("data-amber")
+    expect(screen.getByTestId("capture-row-dates")).not.toHaveAttribute("data-amber")
+  })
+
+  it("a complete order goes to the summary with Approve FOCUSED", async () => {
+    const user = userEvent.setup()
+    vi.mocked(setCaptureText).mockResolvedValue(completable() as never)
+    vi.mocked(completeCapture).mockResolvedValue(
+      state({
+        status: "review",
+        missing: [],
+        missing_labels: [],
+        lines: [
+          { kind: "vault", description: "Monticello Burial Vault", product_id: "p1",
+            unit_price: "1250.00", quantity: "1", line_total: "1250.00" },
+        ],
+        total: "1250.00",
+        blockers: [],
+        can_approve: true,
+      }) as never,
+    )
+    openOverlay()
+    await type(user, "start an order for Hopkins")
+    await user.click(screen.getByTestId("capture-complete"))
+
+    const approve = await screen.findByTestId("capture-approve")
+    // ⚠️ FOCUSED SO ENTER APPROVES, which is the ruling's own wording: "you see the
+    // summary and press Enter or Approve".
+    expect(approve).toHaveFocus()
+  })
+
+  it("Cmd+Enter completes while capturing", async () => {
+    const user = userEvent.setup()
+    vi.mocked(setCaptureText).mockResolvedValue(completable() as never)
+    vi.mocked(completeCapture).mockResolvedValue(completable() as never)
+    openOverlay()
+    await type(user, "start an order for Hopkins")
+    vi.mocked(completeCapture).mockClear()
+
+    await user.keyboard("{Meta>}{Enter}{/Meta}")
+
+    await waitFor(() => expect(completeCapture).toHaveBeenCalledTimes(1))
+  })
+
+  it("Cmd+Enter APPROVES from the summary", async () => {
+    // ⚠️ THE SAME CHORD, AND WHICH ACTION DEPENDS ON THE STAGE — the prototype binds
+    // it that way, which is what a director already has in their fingers.
+    const user = userEvent.setup()
+    vi.mocked(setCaptureText).mockResolvedValue(
+      state({ status: "review", missing: [], lines: [], total: "0.00",
+              blockers: [], can_approve: true }) as never,
+    )
+    vi.mocked(approveCapture).mockResolvedValue(
+      state({ status: "approved", sales_order_number: "SO-2026-0007",
+              total: "1250.00" }) as never,
+    )
+    openOverlay()
+    await type(user, "start an order for Hopkins")
+    await waitFor(() => expect(screen.getByTestId("capture-summary")).toBeInTheDocument())
+
+    await user.keyboard("{Meta>}{Enter}{/Meta}")
+
+    await waitFor(() => expect(approveCapture).toHaveBeenCalledTimes(1))
   })
 })

@@ -396,21 +396,35 @@ describe("the placeholder says what is happening and is never stale", () => {
     )
   })
 
-  it("THE HEADER CHIP AND THE BAR AGREE, both from the missing set", async () => {
-    // ⚠️ TESTED TOGETHER BY RULING, because they are two readouts of one fact and
-    // only one of them was fixed. On 2026-10-13 the bar said "8 still needed" while
-    // the chip said "0 needed" with nine rows empty — the chip was still counting
-    // rows in the `needed` state, which a row only reaches AFTER a done signal.
+  it("THE PILL AND THE BAR AGREE — one counts rows, the other NAMES them", async () => {
+    /**
+     * ⚠️ TESTED TOGETHER BY RULING, because they are two readouts of one fact and
+     * only one of them was ever fixed. On 2026-10-13 the bar said "8 still needed"
+     * while the chip said "0 needed" with nine rows empty.
+     *
+     * ⚠️ AND THE AGREEMENT IS NOW STRUCTURAL RATHER THAN NUMERIC. Ruled 2026-10-14:
+     * the pill counts amber-able ROWS (two missing fields can share one) and the bar
+     * NAMES the missing fields. Two numbers for one fact is what let them drift; one
+     * number and one sentence cannot contradict each other, and both read the same
+     * server-side missing set.
+     */
     vi.mocked(startCapture).mockResolvedValue(
       state({
-        missing: ["vault", "deceased_name", "cemetery"],
+        missing: ["service_date", "service_time", "vault"],
+        missing_labels: ["Service date", "Service time", "Vault"],
         surface: {
           id: "capture",
           rows: [
             { row_id: "funeral_home", label: "Funeral Home", state: "done",
-              value: "Hopkins Funeral Home", secondary_value: null },
+              value: "Hopkins Funeral Home", secondary_value: null,
+              missing_field_ids: [] },
+            // ⚠️ TWO MISSING FIELDS ON ONE ROW, which is the case that separates
+            // counting rows from counting fields.
+            { row_id: "service", label: "Service", state: "partial",
+              value: "Church", secondary_value: null,
+              missing_field_ids: ["service_date", "service_time"] },
             { row_id: "vault", label: "Vault / Product", state: "not_mentioned",
-              value: null, secondary_value: null },
+              value: null, secondary_value: null, missing_field_ids: ["vault"] },
           ],
         },
       }) as never,
@@ -426,12 +440,17 @@ describe("the placeholder says what is happening and is never stale", () => {
       expect(screen.getByTestId("capture-rows")).toBeInTheDocument(),
     )
 
-    // ⚠️ NOT "0 needed", AND THE NUMBER IS THE SAME ONE THE BAR SHOWS.
-    expect(screen.getByTestId("capture-needed-pill")).toHaveTextContent("3")
+    // three missing FIELDS across two amber-able ROWS
+    expect(screen.getByTestId("capture-needed-pill")).toHaveTextContent("2")
+    // and the bar names them rather than printing a third number
     expect(screen.getByTestId("opas-input")).toHaveAttribute(
-      "placeholder", expect.stringContaining("3 still needed"),
+      "placeholder", expect.stringContaining("Still need:"),
+    )
+    expect(screen.getByTestId("opas-input")).toHaveAttribute(
+      "placeholder", expect.stringContaining("service date"),
     )
   })
+
 
   it("says nothing is needed only when the missing set is EMPTY", async () => {
     // ⚠️ THE POSITIVE CONTROL. Without it the test above passes against a bar that

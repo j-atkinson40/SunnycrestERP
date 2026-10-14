@@ -326,12 +326,21 @@ def test_a_switched_off_field_is_never_asked_and_never_missing():
 
 def test_the_same_field_IS_missing_when_not_switched_off():
     """Positive control for the test above — without it, a schema that dropped
-    every field would satisfy it."""
+    every field would satisfy it.
+
+    ⚠️ IT USES `service_date`, NOT `grave_location`, SINCE 2026-10-14. James ruled the
+    grave location optional ("grave location never is" needed), so it can no longer
+    be missing and could not be a positive control for anything. The claim being
+    controlled is "a field that is NOT switched off still shows up as missing", which
+    needs a field that is genuinely required — and the test above keeps using
+    `grave_location` because the thing IT tests is the switch, which works the same
+    on an optional field.
+    """
     answers = complete_non_personalization_answers()
-    del answers["grave_location"]
+    del answers["service_date"]
 
     state = _evaluate(VAULT_OFFERS_NONE, answers)
-    assert "grave_location" in state.missing
+    assert "service_date" in state.missing
 
 
 def test_the_vault_field_cannot_be_switched_off():

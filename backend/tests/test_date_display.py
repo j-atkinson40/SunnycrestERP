@@ -38,6 +38,10 @@ BY_ID = {d.field_id: d for d in PLATFORM_DEFAULT_FIELDS}
 #: ⚠️ LISTED, SO ADDING A SEVENTH IS A VISIBLE EDIT HERE.
 DATE_FIELDS = ("service_date", "burial_date", "date_of_birth", "date_of_death")
 TIME_FIELDS = ("service_time", "eta")
+#: ⚠️ A THIRD KIND SINCE 2026-10-14. `display="name"` title-cases an all-lowercase
+#: name FOR DISPLAY ONLY — "smith" shows as "Smith" and is stored as typed. Ruled by
+#: James, superseding "display as given" from the day before.
+NAME_FIELDS = ("deceased_name",)
 
 
 def _refuse_a_non_local_database() -> None:
@@ -64,14 +68,17 @@ def db():
 
 def test_exactly_these_fields_declare_a_display_format():
     declared = {d.field_id for d in PLATFORM_DEFAULT_FIELDS if d.display}
-    assert declared == set(DATE_FIELDS) | set(TIME_FIELDS), (
-        f"the display partition moved. extra={sorted(declared - set(DATE_FIELDS) - set(TIME_FIELDS))} "
-        f"missing={sorted((set(DATE_FIELDS) | set(TIME_FIELDS)) - declared)}"
+    expected = set(DATE_FIELDS) | set(TIME_FIELDS) | set(NAME_FIELDS)
+    assert declared == expected, (
+        f"the display partition moved. extra={sorted(declared - expected)} "
+        f"missing={sorted(expected - declared)}"
     )
     for f in DATE_FIELDS:
         assert BY_ID[f].display == "date", f
     for f in TIME_FIELDS:
         assert BY_ID[f].display == "time", f
+    for f in NAME_FIELDS:
+        assert BY_ID[f].display == "name", f
 
 
 def test_no_field_declares_both_options_and_a_display_format():

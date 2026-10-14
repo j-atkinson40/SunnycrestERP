@@ -2,6 +2,71 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 2026-10-14 — Completing an order: one action, amber rows, a named gap
+
+No migration. James's 07:27 walk note. Recorded in DECISIONS as D1–D4.
+
+- **2026-10-14** — **THE TWO "NEEDED" WERE `service_date` AND `grave_location`.**
+  ⚠️ **`grave_location` was required by the constructor's DEFAULT, not by any
+  ruling** — the long argued note beneath it in `schema.py` is about
+  `service_location`. It is now `required_when=Never()`, so the only outstanding
+  field in his sentence is the service date.
+- **2026-10-14** — **One action, three entrances**: a **Complete order** button always
+  visible in the entry pane, **⌘Enter**, and a trailing
+  `done`/`that's it`/`that's everything`/`approve`/`complete`. All reach
+  `session_service.complete()` and `POST /sessions/{id}/complete`.
+  - complete → the summary with **Approve focused** (Enter approves)
+  - incomplete → stays put, missing rows turn **amber**, bar says
+    *"Still need: service date"*
+  ⚠️ **Complete does not approve from `capturing`** — the summary must be seen first;
+  from `review` the same phrase approves.
+  ⚠️ **A completion phrase is now stripped REGARDLESS OF STATUS**, which is the fix
+  for "approve" landing under Not Understood: it used to be removed only when the
+  session was already in review, and getting there needed a separate "that's
+  everything" first. A word the engine acts on must never also be a word it fails to
+  read.
+  ⚠️ **Trailing only, and that bound is kept** — "go"/"yes"/"ready" are ordinary
+  words. Measured: "approve" left mid-sentence is not a command and is not reported.
+- **2026-10-14** — **The pill counts ROWS, not fields**, and hovering or clicking it
+  lights them. ⚠️ **That is why "2 needed" answered nothing**: two missing fields can
+  share one row (`service_date` + `service_time` are both on Service), so the count
+  and the highlight could differ for one order. Both now read each row's own
+  `missing_field_ids` — new on `ResolvedRow` and in the API — so they agree by
+  construction. **The bar NAMES the fields instead of counting them**, removing the
+  second number entirely.
+  ⚠️ **Amber only after an attempt.** A typed phrase is detected on the server, so
+  the response carries a transient `completion_attempt`; a later plain read is not
+  amber.
+  ⚠️ **One bug of my own here:** the pill's hover and click shared a flag, so a real
+  click (pointer-enter sets true, click toggles) turned the highlight OFF. Hover and
+  pin are separate states now; a test found it.
+- **2026-10-14** — **The Burial row shows only the grave location.** No date, no "same
+  day as the service" line, never needed — **superseding the 2026-10-13 ruling after
+  one day.** `burial_date` stays derived at Approve and is displayed nowhere, so it
+  remains a deliberate orphan.
+- **2026-10-14** — **A lowercase name displays capitalised** (`display="name"`):
+  "smith" → "Smith", stored as typed, superseding "display as given".
+  ⚠️ **Only an all-lowercase value is touched** — `.title()` would turn "deSoto" into
+  "Desoto". Pinned in `test_a_name_the_director_capitalised_is_LEFT_ALONE`.
+- **2026-10-14** — ⚠️ **FOUR EXISTING TESTS CORRECTLY WENT RED** and were updated to
+  name the change rather than waive it: the display partition gained a third kind
+  (`NAME_FIELDS`); `test_the_same_field_IS_missing_when_not_switched_off` moved its
+  positive control from `grave_location` (now optional, so it can no longer be
+  missing) to `service_date`; and two of **my own** assertions from the day before —
+  the Burial row's inherited date — were superseded by D3.
+  ⚠️ **I also dropped `display="date"` from `burial_date`** while rewriting it
+  yesterday; `test_date_display` caught that too.
+- **2026-10-14** — Verified in **real Chrome, 11/11** on sunnycrest with his exact
+  sentence, comma-free, no Enter: "approve" understood, name shows **Smith**, Burial
+  row has no date line, pill reads **1 needed** with **exactly one amber row (Service)**
+  and the bar reading *"Still need: service date"*; adding "friday" and pressing
+  **Complete order** reaches the summary, and Approve returns
+  **`Created SO-2026-0001 · $1,550.00`**.
+  ⚠️ **One expectation of mine was wrong, not the code:** appending " friday" AFTER
+  "approve" leaves the completion word mid-sentence, where it is deliberately not a
+  command — so the order becomes complete and correctly stays put. The button is the
+  affordance this ruling added and is what a director now presses.
+
 ## 2026-10-14 — Order list pane
 
 No migration. Opas can open an order list from a question ("orders", "Hopkins orders this month", "what's going out Friday", "delivered, not invoiced", "Monticellos since June"). The rules read the question; the service finds this tenant's sales orders and adds the total. A model reply is accepted only as a question, and only when the rules already declined the phrase. It goes through Intelligence (`opas.order_list.interpret`), which is not seeded; no key or no prompt means the rules stand.

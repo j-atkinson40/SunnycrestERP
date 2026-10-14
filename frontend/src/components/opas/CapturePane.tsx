@@ -43,6 +43,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import {
+  completeCapture,
   approveCapture,
   choosePick,
   setCaptureText,
@@ -95,6 +96,17 @@ export function placeholderFor(args: {
    *  ⚠️ `missing` IS ALSO THE SET `is_complete` IS COMPUTED FROM, so the bar and the
    *  engine now answer "is this order finishable" from the same place. */
   readonly missing: number
+  /** The missing fields in the office's words.
+   *
+   *  ⚠️ IT NAMES THEM RATHER THAN COUNTING THEM, BY RULING (2026-10-14): the bar
+   *  says what is missing. "2 needed" is what sent James looking for which two.
+   *
+   *  ⚠️ AND IT REMOVES A SECOND NUMBER THAT COULD DISAGREE WITH THE PILL. The pill
+   *  counts ROWS (two missing fields can share one), so a bar counting FIELDS would
+   *  print a different number for the same order — which is the defect
+   *  `THE HEADER CHIP AND THE BAR AGREE` was written to catch. One names, one
+   *  counts, and there is nothing left to contradict. */
+  readonly missingLabels?: readonly string[]
   readonly reviewing: boolean
 }): string {
   if (!args.ready) return "Starting the order…"
@@ -106,6 +118,8 @@ export function placeholderFor(args: {
   if (args.inFlight) return "Reading what you typed…"
   if (args.text.trim() === "") return "Say what the director said"
   if (args.missing > 0) {
+    const named = (args.missingLabels ?? []).join(", ").toLowerCase()
+    if (named) return `Still need: ${named}`
     return `${args.missing} still needed — keep typing`
   }
   return "Nothing needed — say “that’s it”"
@@ -262,6 +276,22 @@ export function CapturePane({
   const [state, setState] = useState<CaptureState | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // ⚠️ CLIENT-SIDE AND NOT PERSISTED. "Somebody just tried to finish this" is a fact
+  // about this moment, not about the order; a tuck and a re-read must not come back
+  // amber. The server reports the same thing for a TYPED phrase, which the client
+  // cannot see — hence two sources for one flag.
+  const [attempted, setAttempted] = useState(false)
+  // ⚠️ THE PILL IS A CONTROL, NOT A LABEL. Hovering or clicking it highlights the
+  // rows it counts, which is what makes the count answer "which ones".
+  //
+  // ⚠️ TWO STATES, NOT ONE, AND A TEST FOUND OUT WHY. With a single flag that hover
+  // set and click TOGGLED, a real click turned it off: the pointer enters first
+  // (flag true), then the click toggles (flag false), so clicking the pill
+  // un-highlighted the rows. Hover is transient, a click is sticky, and the rows are
+  // lit by either.
+  const [pillHover, setPillHover] = useState(false)
+  const [pillPinned, setPillPinned] = useState(false)
+  const pillLit = pillHover || pillPinned
   const [inFlight, setInFlight] = useState(false)
   // ⚠️ A REF, NOT STATE. Two StrictMode mounts would otherwise start two sessions, and
   // the second would orphan the first — a half-typed order nobody can reach.
@@ -477,6 +507,7 @@ export function CapturePane({
     text,
     picks: livePicks,
     missing: liveMissing,
+    missingLabels: state?.missing_labels ?? [],
     reviewing: liveReviewing,
   })
   useEffect(() => {
@@ -488,6 +519,27 @@ export function CapturePane({
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [placeholder, livePicks, state?.status, state !== null])
+
+  // ⚠️ DECLARED WITH THE OTHER HOOKS, ABOVE THE EARLY RETURNS. Placed after them it
+  // ran conditionally and React reported "a change in the order of Hooks called by
+  // CapturePane" — the pane threw and sixteen tests went red. The handlers it calls
+  // are function DECLARATIONS further down and are hoisted, so referring to them
+  // here is sound.
+  // ⚠️ ⌘ENTER IS THE SAME ACTION, BY RULING, AND WHICH ONE DEPENDS ON THE STAGE:
+  // from capture it finishes, from the summary it approves. The prototype binds the
+  // same chord to both (`:90049`), which is the behaviour a director already has in
+  // their fingers.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (!(e.metaKey || e.ctrlKey) || e.key !== "Enter") return
+      e.preventDefault()
+      if (state?.status === "review") void doApprove()
+      else void doComplete()
+    }
+    document.addEventListener("keydown", onKeyDown)
+    return () => document.removeEventListener("keydown", onKeyDown)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.status, sessionId, busy])
 
   if (error) {
     return (
@@ -523,7 +575,38 @@ export function CapturePane({
   // is what keeps a missing wire field from looking like a missing feature.
   const switches = state.switches ?? []
   const conflicts = state.conflicts ?? []
-  const needed = state.missing.length
+  // ⚠️ THE PILL COUNTS ROWS, NOT FIELDS, BY RULING (2026-10-14). It counted
+  // `state.missing.length` — fields — while the amber belongs to rows, and two
+  // missing fields can share one row. So "2 needed" could mean one amber row and
+  // James had to guess which fields the pane meant. Both now read the same list.
+  const amberRowIds = rows
+    .filter((r) => (r.missing_field_ids ?? []).length > 0)
+    .map((r) => r.row_id)
+  const needed = amberRowIds.length
+  async function doComplete() {
+    /**
+     * Finish the order. One action behind three entrances, by ruling (2026-10-14).
+     *
+     * ⚠️ `attempted` IS SET BEFORE THE REQUEST, not after it. The rows must turn
+     * amber on the press — waiting for the round trip would leave the office looking
+     * at an unchanged pane for the length of a network call and pressing again.
+     *
+     * ⚠️ IT DOES NOT APPROVE. From a capturing session this moves to the summary;
+     * approving is the second press. The office looks at the lines and the total
+     * before an order exists.
+     */
+    if (busy || !sessionId) return
+    setAttempted(true)
+    setBusy(true)
+    try {
+      setState(await completeCapture(sessionId))
+    } catch {
+      setError("Could not finish the order. Nothing was written.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function doApprove() {
     // ⚠️ GUARDED AGAINST THE DOUBLE CLICK ON THE CLIENT AS WELL AS THE SERVER. The
     // server is idempotent (it reads `sales_order_id` first), so a second request
@@ -566,6 +649,11 @@ export function CapturePane({
       ? { number: state.sales_order_number, total: state.total ?? "0.00" }
       : null
   const blockers = state.blockers ?? []
+  const missingLabels = state.missing_labels ?? []
+  // ⚠️ AMBER ONLY AFTER AN ATTEMPT, by ruling: "as soon as Complete is attempted".
+  // Colouring a half-typed order's gaps while the director is still speaking would
+  // make every order start alarming.
+  const amber = attempted || (state.completion_attempt ?? false)
   const lines = state.lines ?? []
 
   return (
@@ -581,16 +669,31 @@ export function CapturePane({
         >
           <b className="text-content-strong">{captured}</b> captured
         </span>
-        <span
+        {/* ⚠️ A BUTTON, BECAUSE THE COUNT HAS TO ANSWER "WHICH ONES". Ruled
+            2026-10-14: hovering or clicking the pill highlights the rows it counts.
+            James read "2 needed" with nothing highlighted and had to guess. */}
+        <button
+          type="button"
           className={`rounded-full border px-2 py-0.5 text-micro ${
             needed
               ? "border-[rgba(224,168,74,0.55)] text-[rgb(224,168,74)]"
               : "border-border-subtle text-content-muted"
           }`}
           data-testid="capture-needed-pill"
+          data-lit={pillLit ? "true" : "false"}
+          aria-label={
+            needed
+              ? `${needed} row${needed === 1 ? "" : "s"} still needed`
+              : "nothing needed"
+          }
+          onMouseEnter={() => setPillHover(true)}
+          onMouseLeave={() => setPillHover(false)}
+          onFocus={() => setPillHover(true)}
+          onBlur={() => setPillHover(false)}
+          onClick={() => setPillPinned((v) => !v)}
         >
           <b>{needed}</b> needed
-        </span>
+        </button>
       </div>
 
       {!reviewing && (
@@ -627,8 +730,23 @@ export function CapturePane({
                     key={r.row_id}
                     data-testid={`capture-row-${r.row_id}`}
                     data-state={r.state}
+                    {...((r.missing_field_ids ?? []).length > 0
+                      ? { "data-missing": "true" }
+                      : {})}
+                    {...((amber || pillLit) &&
+                    (r.missing_field_ids ?? []).length > 0
+                      ? { "data-amber": "true" }
+                      : {})}
+                    /* ⚠️ THE AMBER COMES FROM THE ROW'S OWN MISSING LIST, NOT FROM
+                       ITS STATE. The server only promotes a row to `needed` after a
+                       done signal, and a PARTIAL row (something captured, something
+                       missing — James's Service row) never reaches that state at
+                       all. Reading the list colours exactly the rows the pill
+                       counts, which is the ruling. */
                     className={`flex items-start gap-2 rounded-base border px-2 py-1.5 ${
-                      ROW_CLASS[r.state] ?? ROW_CLASS.not_mentioned
+                      (amber || pillLit) && (r.missing_field_ids ?? []).length > 0
+                        ? ROW_CLASS.needed
+                        : (ROW_CLASS[r.state] ?? ROW_CLASS.not_mentioned)
                     }`}
                   >
                     <span
@@ -839,6 +957,34 @@ export function CapturePane({
               </ul>
             )
           )}
+          {/* ── finishing ──────────────────────────────────────────────────
+              ⚠️ ALWAYS VISIBLE, BY RULING (2026-10-14). The only way to finish was
+              to type the right phrase, and the phrase that most people would type —
+              "approve" — was the one that did not work. A control that is always
+              there cannot be the thing nobody found. */}
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              data-testid="capture-complete"
+              disabled={busy}
+              onClick={() => void doComplete()}
+              className="rounded-base border border-border-subtle px-3 py-1.5 text-body-sm text-content-strong disabled:opacity-60"
+            >
+              {busy ? "Checking…" : "Complete order"}
+            </button>
+            {/* ⚠️ THE MISSING FIELDS ARE NAMED, not counted. "2 needed" is what sent
+                James looking for which two. The labels come from the server's own
+                missing set, so this sentence cannot name something the rows are not
+                highlighting. */}
+            <span
+              className="text-micro text-content-subtle"
+              data-testid="capture-still-need"
+            >
+              {amber && missingLabels.length > 0
+                ? `Still need: ${missingLabels.join(", ").toLowerCase()}`
+                : "Or type \u201cdone\u201d. \u2318\u21a9 also works."}
+            </span>
+          </div>
         </>
       )}
 
@@ -940,6 +1086,11 @@ export function CapturePane({
               <button
                 type="button"
                 data-testid="capture-approve"
+                // ⚠️ FOCUSED SO ENTER APPROVES, by ruling: "you see the summary and
+                // press Enter or Approve". Enter on a focused button is the
+                // browser's own behaviour — binding a second Enter handler would
+                // fight it and would also fire while the bar had focus.
+                autoFocus
                 disabled={busy}
                 onClick={() => void doApprove()}
                 className="rounded-base bg-accent px-3 py-1.5 text-body-sm text-content-inverse disabled:opacity-60"

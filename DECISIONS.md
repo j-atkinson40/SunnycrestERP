@@ -3043,3 +3043,93 @@ burial and there is deliberately no burial-time field.
 should say anything. There is no field for it; the words are claimed so they are not
 reported as unreadable, and the ruling's answer to a different time is "say it as a
 graveside service".
+
+---
+
+## 2026-10-14 — Completing an order: one action, amber rows, a named gap
+
+**Decided by James** (walk note, 07:27). He typed
+`"order for hopkins monticello St. marys full equipment 11 am church last name smith
+approve"` and got a **"2 needed"** pill with **no row highlighted** and **approve**
+under Not Understood.
+
+### What the two "needed" were
+
+Measured before the ruling: **`service_date` and `grave_location`**.
+
+⚠️ **`grave_location` WAS REQUIRED, AND NOT BY ANY RULING.** It was the
+`FieldDefinition` constructor's default — the long argued note in `schema.py` sitting
+beneath it is about `service_location`, which WAS ruled required. Nothing ever argued
+for the grave location, and James's note says it is never needed; it is now
+`required_when=Never()`. The only outstanding field in his sentence is the service
+date.
+
+### D1. One action behind three entrances
+
+A **Complete order** button is always visible in the entry pane; **⌘Enter** does the
+same; and a trailing `done` / `that's it` / `that's everything` / `approve` /
+`complete` does the same. All reach `session_service.complete()`.
+
+- Nothing missing and nothing blocking → the summary, with **Approve focused** so
+  Enter approves.
+- Something missing → the order **stays where it is**, every missing row turns amber,
+  and the bar names them: *"Still need: service date"*.
+
+⚠️ **COMPLETE DOES NOT APPROVE FROM `capturing`, DELIBERATELY.** A completion phrase
+from a capturing session moves to review so the summary is seen; approving is the
+second press. The office must look at the lines and the total before an order exists,
+and one typed word must not skip that. From `review` the same phrase approves, which
+is what makes "press Enter or Approve" true of the typed path too.
+
+⚠️ **A COMPLETION PHRASE IS NOW STRIPPED REGARDLESS OF STATUS, AND THAT IS THE FIX
+FOR WHAT HE SAW.** Until this ruling the approve phrase was only removed from the text
+when the session was ALREADY in review — and reaching review required a separate
+"that's everything" first. So "approve" stayed in the order text, the extractor could
+place it nowhere, and it was reported as unreadable. **A word the engine acts on must
+never also be a word it fails to read.**
+
+⚠️ **TRAILING ONLY, AND THAT BOUND IS KEPT.** "go", "yes" and "ready" are ordinary
+words; stripping them from the middle of a sentence would quietly delete what a
+director said. Measured: with "approve" left mid-sentence the order is unaffected and
+the word is not reported — it is simply not a command there.
+
+### D2. Amber, and a pill that counts the same thing
+
+Rows carrying a missing field render amber once a completion is attempted. **The pill
+counts ROWS, not fields**, and hovering or clicking it lights the rows it counts.
+
+⚠️ **THE PILL COUNTED FIELDS WHILE THE COLOUR BELONGED TO ROWS, WHICH IS WHY "2
+NEEDED" ANSWERED NOTHING.** Two missing fields can share one row — `service_date` and
+`service_time` are both on the Service row — so the count and the highlight could
+differ for the same order. Both now read each row's own `missing_field_ids`, so they
+agree by construction rather than by two call sites happening to match.
+
+⚠️ **AND THE BAR NOW NAMES RATHER THAN COUNTS**, which removes the second number
+entirely. One count and one sentence cannot contradict each other.
+
+⚠️ **AMBER ONLY AFTER AN ATTEMPT.** Colouring a half-typed order's gaps while the
+director is still speaking would make every order start alarming. A typed phrase is
+detected on the server, so the response carries a transient `completion_attempt` —
+the client cannot see a server-side detection, and a later plain read must not come
+back amber.
+
+Optional unanswered rows (dates without personalization, the grave location, the
+contact) stay quiet and are visually distinct from needed.
+
+### D3. The Burial row shows only the grave location
+
+No date, no "same day as the service" line, never needed. **This supersedes the
+2026-10-13 ruling after one day** — that one put the inherited service date on the
+row; this one takes it off, because the Service row already says the day and
+repeating it under a second heading makes a reader ask which is authoritative.
+`burial_date` is still derived at Approve from `service_date`; it is simply displayed
+nowhere, which makes it a deliberate orphan.
+
+### D4. A lowercase name displays capitalised
+
+`"smith"` shows as **"Smith"**. **Stored exactly as typed** — this supersedes
+"display as given" from 2026-10-13.
+
+⚠️ **ONLY AN ALL-LOWERCASE VALUE IS TOUCHED.** `.title()` applied unconditionally
+turns "deSoto" into "Desoto" and "MacLeod" into "Macleod"; names carry capitalisation
+that is information. A value the director already capitalised is left alone.

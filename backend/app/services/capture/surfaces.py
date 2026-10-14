@@ -232,25 +232,19 @@ CAPTURE_SALES_ORDER = Surface(
         # the UNION. Absent from capture and present on summary is a real gap and
         # not orphanhood — which is the distinction `orphan_field_ids` exists to
         # keep, and the reason the gap needed finding a different way.
-        # ⚠️ THE GRAVE LOCATION IS THE PRIMARY AND THE DATE IS INHERITED, BY RULING
-        # (James, 2026-10-13). The burial is always the service day, so Opas stopped
-        # asking: `burial_date` is no longer required and this row must never show
-        # "needed" for a date nobody will be asked for. What it shows instead is the
-        # section/lot/space, and the SERVICE date, said to be the service's.
+        # ⚠️ THE GRAVE LOCATION AND NOTHING ELSE, BY RULING (James, 2026-10-14),
+        # SUPERSEDING THE INHERITED-DATE LINE OF 2026-10-13. For one day this row
+        # read "Section 4 · Fri Oct 16, 2026 · same day as the service"; James ruled
+        # the date off it entirely — the service row already says the day, and
+        # repeating it under a second heading is the kind of duplication that makes a
+        # reader wonder which one is authoritative.
         #
-        # ⚠️ IT READS `service_date`, NOT `burial_date`, AND THAT IS THE POINT. Reading
-        # `burial_date` would leave the row blank on every order — which is all of
-        # them now — while the date is sitting one field away.
-        #
-        # ⚠️ THE LITERAL SAYS WHERE THE DATE CAME FROM. "Fri Oct 16, 2026" alone reads
-        # as a date somebody entered; a director checking the burial day needs to know
-        # it follows the service and is not a second answer that could drift from it.
+        # ⚠️ AND SO THIS ROW CAN NEVER BE "needed". `grave_location` is optional by
+        # the same ruling, so an empty Burial row is a quiet empty row, not an amber
+        # one. `burial_date` is still DERIVED at Approve from `service_date`; it is
+        # simply not displayed anywhere.
         Row(id="burial", label="Burial", order=10,
             sources=(FieldSource("grave_location"),),
-            secondary=(ComposedSource((
-                FieldSource("service_date"),
-                LiteralSource("same day as the service"),
-            ), join=_DOT),),
             edit_target="grave_location"),
     ),
 )

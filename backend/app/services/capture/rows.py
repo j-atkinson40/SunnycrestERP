@@ -286,6 +286,16 @@ class ResolvedRow:
     value: str | None
     secondary_value: str | None
     edit_target: str | None
+    #: Template fields this row sources that are in the MISSING set.
+    #:
+    #: ⚠️ THE PILL AND THE AMBER BOTH DERIVE FROM THIS, WHICH IS WHY IT EXISTS.
+    #: Ruled 2026-10-14: "the pill count always equals the number of amber-able
+    #: rows". The pill used to count missing FIELDS while the colour belonged to
+    #: ROWS, and two missing fields can share one row — so "2 needed" could mean one
+    #: amber row, and James had to guess which fields the pane meant. Counting the
+    #: rows that carry a non-empty list makes the two agree by construction rather
+    #: than by two call sites happening to match.
+    missing_field_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -347,6 +357,23 @@ def write_for_a_human(value: str, kind: str | None) -> str:
     the server runs. The names are listed above and the arithmetic is Zeller's
     congruence, so the output is the same everywhere.
     """
+    if kind == "name":
+        # ⚠️ TITLE-CASED FOR DISPLAY ONLY, BY RULING (2026-10-14), SUPERSEDING
+        # "display as given" from the day before. A director typing fast gives
+        # "smith"; the pane shows "Smith". The stored value is untouched — this
+        # function renders, it does not write.
+        #
+        # ⚠️ IT ONLY ACTS ON AN ALL-LOWERCASE WORD, and that is the whole care in it.
+        # `.title()` applied unconditionally turns "deSoto" into "Desoto", "MacLeod"
+        # into "Macleod" and "O'Brien" into "O'Brien" only by luck — names carry
+        # capitalisation that is information. A value the director already
+        # capitalised is left exactly alone.
+        if value and value == value.lower():
+            return " ".join(
+                w[:1].upper() + w[1:] if w else w for w in value.split(" ")
+            )
+        return value
+
     if kind == "date":
         m = _ISO_DATE.match(value)
         if m:
@@ -555,6 +582,9 @@ def resolve_surface(
         out.append(ResolvedRow(
             row_id=row.id, label=row.label, group=row.group, state=state,
             value=value, secondary_value=secondary, edit_target=row.edit_target,
+            # ⚠️ THE SAME `unanswered_required` THE STATE ABOVE IS DECIDED FROM, not a
+            # second derivation. A row is amber-able exactly when it has one of these.
+            missing_field_ids=tuple(unanswered_required),
         ))
 
     subj_p = subj_s = None

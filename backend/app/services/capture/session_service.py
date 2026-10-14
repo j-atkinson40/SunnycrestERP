@@ -53,6 +53,24 @@ from app.services.capture.typed_extraction import (
 #: ⚠️ IT ONLY MEANS ANYTHING IN REVIEW. "yes" and "go" are ordinary words; in the
 #: capturing stage they are order text and must stay that way. The gate is the
 #: status check at the call site, not the pattern.
+#: Everything a director types to mean "finish this order".
+#:
+#: ⚠️ ONE SET, ONE ACTION, BY RULING (James, 2026-10-14). "done", "that's it",
+#: "that's everything", "approve" and "complete" all do what the Complete order
+#: button does, and NONE of them may ever appear under Not Understood. Measured
+#: 2026-10-14: "…last name smith approve" put **approve** in the unrecognized list,
+#: because the approve phrase was only stripped when the session was already in
+#: review — and getting to review needed a separate "that's everything" first.
+#:
+#: ⚠️ IT IS THE UNION OF THE TWO OLDER PATTERNS PLUS "complete", kept as one object
+#: so a phrase cannot be understood by one half of the code and not the other.
+COMPLETE_SIGNAL = re.compile(
+    r"^(that'?s (it|everything|all)|that should be everything|done|review( it)?"
+    r"|looks good|ready|approve|create it|send it|yes|go|complete"
+    r"|complete order|finish)$",
+    re.I,
+)
+
 APPROVE_SIGNAL = re.compile(
     r"^(approve|create it|send it|yes|go)$", re.I
 )
@@ -204,22 +222,24 @@ def set_text(
 
     resolutions = dict(row.resolutions or {})
 
-    # ⚠️ THE SIGNALS COME OFF THE TEXT BEFORE EXTRACTION, AND THE ORDER OF THESE TWO
-    # CHECKS MATTERS. A director in review types "approve" onto the end of a bar that
-    # still holds the whole order, and that order still ends with "that's everything"
-    # from a moment ago — so both signals are present and the approve one is the new
-    # one. Checking done first would re-signal done and never approve.
-    approving = False
+    # ⚠️ A TRAILING COMPLETION PHRASE IS STRIPPED REGARDLESS OF STATUS, AND THAT IS
+    # THE FIX FOR WHAT JAMES SAW. Until 2026-10-14 the approve phrase was only taken
+    # off the text when the session was already in `review`, so "…last name smith
+    # approve" on a capturing session left "approve" in the ORDER TEXT — where the
+    # extractor could place it nowhere and reported it as not understood. A word the
+    # engine acts on must never also be a word it fails to read.
+    #
+    # ⚠️ STRIPPED REPEATEDLY, because a director types one onto the end of another.
+    # "…that's everything approve" carries two; leaving the inner one behind would
+    # put "that's everything" into the order text.
+    completing = False
     body = text
-    if row.status == STATUS_REVIEW:
-        without_approve = trailing_signal(body, APPROVE_SIGNAL)
-        if without_approve is not None:
-            approving = True
-            body = without_approve
-    without_done = trailing_signal(body, DONE_SIGNAL)
-    said_done_trailing = without_done is not None
-    if said_done_trailing:
-        body = without_done
+    while True:
+        shorter = trailing_signal(body, COMPLETE_SIGNAL)
+        if shorter is None:
+            break
+        completing = True
+        body = shorter
 
     ex = extract_text(db, tenant_id=company_id, text=body, resolutions=resolutions)
 
@@ -235,25 +255,71 @@ def set_text(
     # needs only `values` — re-extracting there would double the cost of every read
     # and give two places that decide what the text means.
     row.switches = [asdict(sw) for sw in ex.switches]
+    # ⚠️ REMEMBERED ON THE INSTANCE, NOT IN THE DATABASE. "somebody just tried to
+    # finish this" is a fact about this request, not about the order — a later plain
+    # read must not find the rows amber. The route reads it off the returned row.
+    row._completion_attempt = completing  # type: ignore[attr-defined]
     db.flush()
 
     # ⚠️ ABANDONED IS NOT RE-DERIVED. It is not a statement about the text.
     # ⚠️ NOR IS APPROVED. An approved session has a sales order; re-reading its text
     # must never walk it back to `capturing`, which the branch below would do.
     if row.status in (STATUS_CAPTURING, STATUS_REVIEW):
-        # ⚠️ APPROVE ONLY FROM REVIEW. "yes" and "go" are ordinary words; before
-        # review they are order text, and a build that approved on them would create
-        # an order mid-sentence.
-        if row.status == STATUS_REVIEW and (
-            approving or any(is_approve_signal(seg) for seg in segments(text))
+        if completing or any(
+            COMPLETE_SIGNAL.match(seg.strip()) for seg in segments(text)
         ):
-            return approve(
+            return complete(
                 db, row.id, company_id=row.company_id, user_id=row.user_id
             )
-        if said_done_trailing or any(is_done_signal(seg) for seg in segments(text)):
-            return _signal_done(db, row)
         row.status = STATUS_CAPTURING
         db.flush()
+    return row
+
+
+def complete(
+    db: Session, session_id: str, *, company_id: str, user_id: str
+) -> CaptureSession:
+    """Finish the order: show the summary, or say what is still missing.
+
+    ⚠️ ONE ACTION BEHIND THREE ENTRANCES, BY RULING (2026-10-14): the Complete order
+    button, ⌘Enter, and a trailing "done"/"that's it"/"approve"/"complete" all arrive
+    here. Three code paths for one intention is how "approve" came to work only after
+    a separate "that's everything".
+
+    ⚠️ IT DOES NOT APPROVE FROM `capturing`, AND THAT IS DELIBERATE. From a capturing
+    session a completion phrase moves to REVIEW so the summary is seen; approving is
+    the second press. The office must look at the lines and the total before an order
+    exists, and typing one word must not skip that.
+
+    ⚠️ FROM `review` THE SAME PHRASE APPROVES, which is what makes "press Enter or
+    Approve" true of the typed path as well as the button.
+
+    ⚠️ A BLOCKED ORDER STAYS WHERE IT IS. It does not advance and does not raise: the
+    caller reads `missing_labels` and the rows' own `missing_field_ids` and turns them
+    amber. Advancing to a summary that could not be approved would be a screen whose
+    only content is a refusal.
+    """
+    row = _load(db, session_id, company_id=company_id, user_id=user_id)
+    if row.status == STATUS_APPROVED:
+        return row
+
+    if row.status == STATUS_REVIEW:
+        assessment = assess_approval(db, row)
+        if assessment.ready:
+            return approve(db, row.id, company_id=company_id, user_id=user_id)
+        # ⚠️ FALLS BACK TO CAPTURING WHEN REVIEW IS NO LONGER SAFE. A pick reopened
+        # or a product deleted between the summary and the press, and the order is
+        # not approvable any more; the rows are where the office fixes that.
+        row.status = STATUS_CAPTURING
+        db.flush()
+        return row
+
+    _resolution, state, conflicts = evaluate_typed(
+        db, tenant_id=row.company_id, answers=dict(row.values or {})
+    )
+    blocked = bool(state.missing) or bool(conflicts) or bool(row.pending_picks)
+    row.status = STATUS_CAPTURING if blocked else STATUS_REVIEW
+    db.flush()
     return row
 
 
@@ -458,7 +524,14 @@ def _signal_done(db: Session, row: CaptureSession) -> CaptureSession:
     return row
 
 
-def read_state(db: Session, session_id: str, *, company_id: str, user_id: str) -> dict:
+def read_state(
+    db: Session,
+    session_id: str,
+    *,
+    company_id: str,
+    user_id: str,
+    completion_attempt: bool = False,
+) -> dict:
     """The session plus its evaluated capture state and rendered rows.
 
     ⚠️ THE ROWS COME FROM THE EXISTING `capture` SURFACE, NOT FROM A NEW LIST. The
@@ -629,10 +702,26 @@ def read_state(db: Session, session_id: str, *, company_id: str, user_id: str) -
                     "state": r.state.value,
                     "value": r.value,
                     "secondary_value": r.secondary_value,
+                    # ⚠️ THE PILL AND THE AMBER BOTH READ THIS, which is what makes
+                    # "the pill count equals the number of amber-able rows" true by
+                    # construction. The pill used to count missing FIELDS while the
+                    # colour belonged to ROWS, and two missing fields can share one
+                    # row — so "2 needed" could mean one amber row and the director
+                    # had to guess which fields were meant.
+                    "missing_field_ids": list(r.missing_field_ids),
                 }
                 for r in rendered.rows
             ],
         },
+        # ⚠️ THE LABELS FOR THE BAR'S OWN SENTENCE. "Still need: service date" is
+        # built from the same missing set the rows colour from, so the bar cannot
+        # name something the pane is not highlighting.
+        "missing_labels": list(_missing_labels(state)),
+        # ⚠️ TRANSIENT AND FALSE ON A PLAIN READ. It is the answer to "did somebody
+        # just try to finish this order", which is what turns the rows amber — not a
+        # property of the order. A typed completion phrase is detected on the SERVER,
+        # so the client cannot know about that attempt unless the response says so.
+        "completion_attempt": bool(completion_attempt),
     }
 
 

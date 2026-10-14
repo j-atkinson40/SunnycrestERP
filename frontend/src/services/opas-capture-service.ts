@@ -22,6 +22,18 @@ export interface CaptureRow {
   readonly state: string
   readonly value: string | null
   readonly secondary_value: string | null
+  /** Template fields this row sources that are in the MISSING set.
+   *
+   *  ⚠️ THE PILL AND THE AMBER BOTH DERIVE FROM THIS, so "the pill count equals the
+   *  number of amber-able rows" holds by construction rather than by two call sites
+   *  happening to agree. The pill used to count missing FIELDS while the colour
+   *  belonged to ROWS, and two missing fields can share one row — so "2 needed"
+   *  could mean one amber row, which is what James read off the screen.
+   *
+   *  ⚠️ OPTIONAL, because a server older than this deploy does not send it. An
+   *  absent list reads as "nothing missing on this row", which is the safe way to be
+   *  wrong: no amber rather than a crash. */
+  readonly missing_field_ids?: readonly string[]
 }
 
 /** An ambiguous resolution awaiting a numbered pick. */
@@ -62,6 +74,13 @@ export interface CaptureState {
   /** Every reason Approve cannot run, in the office's words. `null` outside review. */
   readonly blockers?: readonly string[] | null
   readonly can_approve?: boolean
+  /** The missing fields in the office's words, for the bar's own sentence. */
+  readonly missing_labels?: readonly string[]
+  /** ⚠️ TRANSIENT: somebody just tried to finish this order, so the rows go amber.
+   *  Not a property of the order — a plain read returns `false`. A typed completion
+   *  phrase is detected on the SERVER, which is why this has to come back in the
+   *  response rather than being tracked only by the client. */
+  readonly completion_attempt?: boolean
   /** Set once approved. ⚠️ THESE TWO ARE HOW THE PANE KNOWS IT IS DONE — the status
    *  says `approved` and these name what was created. */
   readonly sales_order_id?: string | null
@@ -222,6 +241,20 @@ export async function abandonCapture(sessionId: string): Promise<void> {
   } catch {
     /* see above — nothing to tell and nothing to retry */
   }
+}
+
+/** Finish the order: the summary, or what is still missing.
+ *
+ * ⚠️ THE SAME CALL THE BUTTON, ⌘ENTER AND THE TYPED PHRASES ALL MAKE. One action
+ * behind three entrances, by ruling — three code paths for one intention is how
+ * "approve" came to work only after a separate "that's everything".
+ *
+ * ⚠️ IT DOES NOT THROW ON AN INCOMPLETE ORDER. "Not finished yet" comes back as a
+ * 200 with `missing_labels`; the pane turns those rows amber and the bar names them.
+ */
+export async function completeCapture(sessionId: string): Promise<CaptureState> {
+  const r = await apiClient.post<CaptureState>(`${BASE}/${sessionId}/complete`, {})
+  return r.data
 }
 
 /** Approve the capture into a sales order.

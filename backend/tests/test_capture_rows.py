@@ -415,16 +415,19 @@ class TestTheFourStates:
             f"pane shows nothing for them: {unsourced}"
         )
 
-        # ⚠️ AND THE EXCEPTION IS NOT A HOLE. The inherited date really is on the
-        # Burial row's secondary, and a typed burial date that DISAGREES with the
-        # service date becomes a conflict (`test_the_burial_is_the_service_day.py`).
-        # Either way the director sees the day; what they never see is a second,
-        # silently stored one.
+        # ⚠️ AND THE EXCEPTION IS NOT A HOLE. A typed burial date that DISAGREES with
+        # the service date becomes a conflict
+        # (`test_the_burial_is_the_service_day.py`), so the value is never both
+        # captured and unmentioned. What the director never sees is a second,
+        # silently stored day.
+        #
+        # ⚠️ THIS USED TO ASSERT THE DATE WAS ON THE BURIAL ROW'S SECONDARY, for one
+        # day. The 10-13 ruling put it there labelled "same day as the service"; the
+        # 10-14 ruling took it off entirely, because the Service row already says the
+        # day. The row now shows the grave location and nothing else.
         burial_row = next(r for r in CAPTURE_SALES_ORDER.rows if r.id == "burial")
-        secondary_ids = {
-            i for s in (burial_row.secondary or ()) for i in ids(s)
-        }
-        assert "service_date" in secondary_ids, secondary_ids
+        assert burial_row.secondary == (), burial_row.secondary
+        assert {i for s in burial_row.sources for i in ids(s)} == {"grave_location"}
 
     def test_EXACTLY_ONE_template_field_is_availability_governed_today(self):
         """⚠️ A RATCHET ON THE DISCRIMINATOR ITSELF. If a second field becomes
