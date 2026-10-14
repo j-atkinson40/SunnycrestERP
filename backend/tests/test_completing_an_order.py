@@ -84,6 +84,27 @@ def world(db, tenant):
            {"t": tenant, "n": "St. Mary's Cemetery"},
            "INSERT INTO cemeteries (id, company_id, name, city, state, is_active) "
            "VALUES (:i, :t, :n, 'Skaneateles', 'NY', true)")
+    # ⚠️ THE BILLABLE HALF TOO, AND CI TAUGHT ME THIS FOR THE THIRD TIME. Reaching
+    # the summary needs nothing missing; being APPROVABLE also needs a customer to
+    # bill and a priced product to bill for. CI's sunnycrest has neither, so
+    # `can_approve` came back False with three blockers and the test failed for a
+    # reason that had nothing to do with completing an order.
+    #
+    # ⚠️ ENSURING THEM ALSO REMOVES A SKIP. `test_complete_from_review_APPROVES` had
+    # a `pytest.skip` for exactly this gap, and a test that skips in CI is a test
+    # that is not run where it matters.
+    ensure("customers", "company_id = :t AND name = :n",
+           {"t": tenant, "n": "Hopkins Funeral Home"},
+           "INSERT INTO customers (id, company_id, name, account_number, is_active) "
+           "VALUES (:i, :t, :n, 'COMPLFIX-C1', true)")
+    ensure("products", "company_id = :t AND name = :n",
+           {"t": tenant, "n": "Monticello Burial Vault"},
+           "INSERT INTO products (id, company_id, name, sku, price, is_active) "
+           "VALUES (:i, :t, :n, 'COMPLFIX-P1', 1250.00, true)")
+    ensure("products", "company_id = :t AND name = :n",
+           {"t": tenant, "n": "Full Equipment"},
+           "INSERT INTO products (id, company_id, name, sku, price, is_active) "
+           "VALUES (:i, :t, :n, 'COMPLFIX-P2', 300.00, true)")
     db.commit()
     yield True
     for table, rid in made:
@@ -250,9 +271,11 @@ def test_complete_from_review_APPROVES(db, tenant, world, user_id):
 
     row = _session(db, tenant, user_id, HIS.replace(" approve", " friday approve"))
     assert row.status == STATUS_REVIEW
+    # ⚠️ ASSERTED, NOT SKIPPED. The `world` fixture now carries the customer and the
+    # priced products, so "this tenant cannot bill it" is a failure rather than a
+    # reason to stand down.
     a = ss.assess_approval(db, row)
-    if not a.ready:
-        pytest.skip(f"sunnycrest cannot bill this order here: {a.blockers}")
+    assert a.ready, a.blockers
     row = ss.complete(db, row.id, company_id=tenant, user_id=user_id)
     oid = row.sales_order_id
     try:
