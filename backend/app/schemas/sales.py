@@ -3,7 +3,9 @@
 from datetime import datetime, time
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+from app.services.display_name import title_case_for_display
 
 
 # ---------------------------------------------------------------------------
@@ -187,6 +189,20 @@ class SalesOrderResponse(BaseModel):
         from_attributes = True
 
 
+    # ⚠️ DISPLAY ONLY, AND ONLY ON THE RESPONSE. James 2026-10-15: "Deceased name
+    # title-cased wherever displayed (order page too)." Rendering it here rather than
+    # at each of the 25+ frontend sites that show a name means a surface nobody has
+    # built yet is already correct — the enumeration that would otherwise have to be
+    # exhaustive, and would silently stop being so.
+    #
+    # ⚠️ IT IS NOT ON `SalesOrderCreate` OR `SalesOrderUpdate`. Those decide what is
+    # STORED, and the stored value is the director's own capitalisation by ruling.
+    @field_validator("deceased_name")
+    @classmethod
+    def _show_the_name_title_cased(cls, v: str | None) -> str | None:
+        return title_case_for_display(v)
+
+
 class PaginatedSalesOrders(BaseModel):
     items: list[SalesOrderResponse]
     total: int
@@ -276,6 +292,20 @@ class InvoiceResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+    # ⚠️ DISPLAY ONLY, AND ONLY ON THE RESPONSE. James 2026-10-15: "Deceased name
+    # title-cased wherever displayed (order page too)." Rendering it here rather than
+    # at each of the 25+ frontend sites that show a name means a surface nobody has
+    # built yet is already correct — the enumeration that would otherwise have to be
+    # exhaustive, and would silently stop being so.
+    #
+    # ⚠️ IT IS NOT ON `SalesOrderCreate` OR `SalesOrderUpdate`. Those decide what is
+    # STORED, and the stored value is the director's own capitalisation by ruling.
+    @field_validator("deceased_name")
+    @classmethod
+    def _show_the_name_title_cased(cls, v: str | None) -> str | None:
+        return title_case_for_display(v)
 
 
 class PaginatedInvoices(BaseModel):

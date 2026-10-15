@@ -209,7 +209,13 @@ def assess(
 
     # ── the equipment line ─────────────────────────────────────────────────
     equip = (answers.get("cemetery_equipment") or "").strip()
-    if equip and equip != EQUIPMENT_NONE:
+    # ⚠️ A ZERO QUANTITY BUILDS NO LINE AND BLOCKS NOTHING, BY RULING (James,
+    # 2026-10-15): "8 or fewer chairs: no extra-chairs line, no conflict." Only
+    # chairs can reach zero — every other package is a flat charge at quantity 1 —
+    # so this is one package's arithmetic, not a general rule about zero-priced
+    # lines. `Vault Placer` at $0.00 still bills a REAL line, because its PRICE is
+    # zero and its QUANTITY is one; that distinction is the whole of it.
+    if equip and equip != EQUIPMENT_NONE and _equipment_quantity(equip, answers) > 0:
         name = EQUIPMENT_PRODUCT_NAMES.get(equip)
         if name is None:
             # An answer the schema does not list. Reported rather than dropped.

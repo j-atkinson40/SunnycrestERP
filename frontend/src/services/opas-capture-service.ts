@@ -45,6 +45,13 @@ export interface CapturePick {
   readonly discriminator: string | null
 }
 
+export interface CaptureSpan {
+  readonly start: number
+  readonly end: number
+  readonly state: "captured" | "conflict" | "unrecognized"
+  readonly field_ids: readonly string[]
+}
+
 export interface CaptureState {
   readonly session_id: string
   /** ⚠️ THE WHOLE TYPED TEXT, AND IN THE TYPED PANE IT IS THE SOURCE. `null` means the
@@ -85,6 +92,16 @@ export interface CaptureState {
    *  says `approved` and these name what was created. */
   readonly sales_order_id?: string | null
   readonly sales_order_number?: string | null
+  /** ⚠️ OPTIONAL BECAUSE AN OLDER SERVER DOES NOT SEND IT. The 2026-10-12 blank-pane
+   *  defect was a required key an older server omitted; every field added since is
+   *  optional at the type level for that reason. */
+  readonly next_question?: string | null
+  /** Claimed spans over `spans_for_text`, in whole-text coordinates. */
+  readonly spans?: readonly CaptureSpan[]
+  /** ⚠️ THE TEXT THE SPANS WERE COMPUTED FOR. James: "Spans apply only to the exact
+   *  text they were computed for... While typing, stale spans are hidden, never
+   *  misplaced." Comparing text beats a shared counter, which can get out of step. */
+  readonly spans_for_text?: string | null
   /** ⚠️ ECHOED BACK FROM THE REQUEST, UNINTERPRETED BY THE SERVER. Present only on a
    *  `setCaptureText` response. The CLIENT drops a response whose `seq` is not higher
    *  than the highest it has applied — see `capture-sequence.ts` for why the client

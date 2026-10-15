@@ -198,7 +198,11 @@ def test_bare_lowercase_without_a_marker_stays_unplaced(db, tenant):
     [
         ("friday 11am", "smith", "a weekday is a date, not a second name"),
         ("section 4", "smith", "a grave-location label"),
-        ("monticello", "smith monticello", "⚠️ NOT GUARDED — see the test body"),
+        # ⚠️ WAS "smith monticello" AND A DECLARED LIMIT UNTIL 2026-10-15. James ruled
+        # it: "Name spans never absorb a product, alias, funeral home or cemetery
+        # word." The trailing word is now checked against the tenant's catalog, so the
+        # vault survives — see `test_a_name_never_absorbs_a_catalog_word`.
+        ("monticello", "smith", "a catalog word belongs to the vault"),
     ],
 )
 def test_the_two_word_form_does_not_absorb_a_word_that_is_something_else(
@@ -209,16 +213,12 @@ def test_the_two_word_form_does_not_absorb_a_word_that_is_something_else(
     "smith friday". `_trim_absorbed_word` drops a second word that belongs to a
     vocabulary this module already recognises.
 
-    ⚠️ THE THIRD CASE IS A KNOWN LIMIT, RECORDED RATHER THAN HIDDEN. `monticello` is
-    a vault word and is NOT in the stop list, so "decedent smith monticello" reads
-    the name as "smith monticello" and the vault is lost. It is not in the list
-    because the list is closed vocabulary — weekdays, months, separators, the
-    engine's own labels — and product names are per-tenant data that a module-level
-    frozenset cannot know. Fixing it properly means consulting the catalog, which is
-    a resolver call inside a name parser and a bigger change than this ruling asked
-    for. Flagged to James 2026-10-14. The realistic typing pattern puts a comma or
-    "actually" between clauses, and `segments()` splits on both, so this is reachable
-    only in one unpunctuated run.
+    ⚠️ THE THIRD CASE WAS A DECLARED LIMIT FOR ONE DAY AND IS NOW GUARDED. It read:
+    "`monticello` is a vault word and is NOT in the stop list, so 'decedent smith
+    monticello' reads the name as 'smith monticello' and the vault is lost... fixing
+    it properly means consulting the catalog, which is a resolver call inside a name
+    parser and a bigger change than this ruling asked for." James ruled it on
+    2026-10-15 and that is what the trailing-word predicate now does.
     """
     ex = extract_text(
         db, tenant_id=tenant, text=f"order for riverside decedent smith {tail}"
@@ -513,3 +513,79 @@ def test_the_funeral_home_span_does_not_swallow_a_trailing_the(db, tenant, the_r
     assert ex.values.get("funeral_home") == "Riverside Funeral Home", ex.values
     assert ex.values.get("deceased_name") == "Keegan", ex.values
     assert ex.unrecognized == (), ex.unrecognized
+
+
+# ── a name never absorbs another field's word (James, 2026-10-15) ────────
+
+def test_a_name_never_absorbs_a_catalog_word(db, tenant, the_records_exist):
+    """His example, verbatim: "decedent smith monticello" -> Smith + Monticello.
+
+    ⚠️ ASSERTED ON BOTH FIELDS, because the symptom appears on the one that is NOT
+    the subject. Before the fix the name read "smith monticello" and the VAULT was
+    the thing that vanished — a test checking only the decedent would have passed
+    while the order lost its product.
+
+    ⚠️ THE CATALOG HALF IS DECISIVE ON EVERY TENANT, which is why it is tested here
+    rather than only on sunnycrest. Measured 2026-10-15: `monticello` resolves to 2
+    catalog candidates on testco AND sunnycrest, so the guard does not depend on
+    which tenant happens to stock it.
+    """
+    ex = extract_text(
+        db, tenant_id=tenant, text="order for riverside decedent smith monticello"
+    )
+    assert ex.values.get("deceased_name") == "smith", ex.values
+    assert ex.values.get("vault") == "Monticello Burial Vault", ex.values
+    assert ex.unrecognized == (), ex.unrecognized
+
+
+def test_an_AMBIGUOUS_catalog_word_is_released_as_a_PICK_not_a_value(db, tenant):
+    """⚠️ RELEASED, NOT MERELY REMOVED FROM THE NAME. Trimming the word while leaving
+    its span claimed would be a silent drop — the vault resolver would never see it
+    and nothing would be reported. "continental" is ambiguous on both tenants
+    (Continental Burial Vault vs Continental 34"), so the honest outcome is the same
+    PICK the word raises when no name is present at all, which is what this asserts.
+    """
+    with_name = extract_text(
+        db, tenant_id=tenant, text="order for riverside decedent smith continental"
+    )
+    assert with_name.values.get("deceased_name") == "smith", with_name.values
+    assert [p.field_id for p in with_name.picks] == ["vault"], with_name.picks
+
+    # ⚠️ THE CONTROL: the same word with no name clause raises the same pick. If this
+    # ever stopped raising one, the test above would pass for the wrong reason.
+    alone = extract_text(db, tenant_id=tenant, text="order for riverside continental")
+    assert [p.field_id for p in alone.picks] == ["vault"], alone.picks
+    assert {o[0] for o in with_name.picks[0].options} == {
+        o[0] for o in alone.picks[0].options
+    }
+
+
+def test_a_surname_that_is_a_FRAGMENT_of_a_funeral_home_still_survives(
+    db, tenant, the_records_exist
+):
+    """⚠️ THE COLLISION BETWEEN TWO RULINGS, PINNED SO NEITHER CAN QUIETLY WIN.
+
+    James 2026-10-15 says a name span never absorbs a funeral-home word. James
+    2026-10-14 says a surname behind a marker is accepted even when it appears inside
+    a multi-word FH record — a ruling made BECAUSE testco's commonest surname is a
+    fragment of "Smith & Sons Funeral Home".
+
+    Applied flatly, the newer ruling re-breaks the sentence the older one fixed. The
+    party half therefore fires only on a WHOLE-NAME match, so "smith" survives and a
+    record actually NAMED "smith" would not. **That scoping is mine, not his** —
+    flagged in DECISIONS 2026-10-15.
+
+    ⚠️ THE PREMISE IS ASSERTED, not assumed: if testco ever loses that funeral home
+    this test would pass for the wrong reason.
+    """
+    from app.services.party_resolver import resolve_funeral_home
+
+    cands = resolve_funeral_home(db, tenant, "smith").candidates
+    assert cands, "testco has lost its Smith funeral home; this test's premise is gone"
+    assert all(c.name.lower() != "smith" for c in cands), [c.name for c in cands]
+
+    ex = extract_text(
+        db, tenant_id=tenant, text="order for riverside monticello decedent mary smith"
+    )
+    assert ex.values.get("deceased_name") == "mary smith", ex.values
+    assert ex.values.get("funeral_home") == "Riverside Funeral Home", ex.values

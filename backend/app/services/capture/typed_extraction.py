@@ -85,10 +85,35 @@ class LineExtraction:
     unrecognized: tuple[str, ...] = ()
     #: Values chosen on the director's behalf, each with its one alternative.
     switches: tuple[Switch, ...] = ()
+    #: ⚠️ RELATIVE TO THIS LINE. `extract_text` shifts them by the segment's offset.
+    spans: tuple[TextSpan, ...] = ()
 
     @property
     def understood_nothing(self) -> bool:
         return not self.values and not self.picks
+
+
+@dataclass(frozen=True)
+class TextSpan:
+    """One stretch of the director's text, and what the engine did with it.
+
+    ⚠️ ADDED 2026-10-15 SO THE BAR CAN SHOW WHAT WAS UNDERSTOOD IN THE TEXT ITSELF.
+    James: "The extraction response returns the claimed spans: field, start, end,
+    state." `start`/`end` are offsets into the WHOLE typed text, not into a segment —
+    the pane renders over what the director can see.
+
+    ⚠️ `field_ids` IS A TUPLE BECAUSE ONE SPAN MAY FEED TWO FIELDS. "1948 to 2026" is
+    one claim and two years. It is empty for `unrecognized`, which by definition fed
+    nothing.
+    """
+
+    start: int
+    end: int
+    #: "captured" | "unrecognized". A third, "conflict", is applied one layer up by
+    #: `session_service`, which is where conflicts are known — `extract_text` reads
+    #: text and does not evaluate applicability.
+    state: str
+    field_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -293,7 +318,33 @@ def _free(spans: list[tuple[int, int]], a: int, b: int) -> bool:
     return not any(a < end and start < b for start, end in spans)
 
 
-def _claim(spans: list[tuple[int, int]], a: int, b: int) -> bool:
+class _Spans(list):
+    """The claim list, which now also remembers WHICH FIELD each interval fed.
+
+    ⚠️ A `list` SUBCLASS SO NOTHING ELSE HAS TO CHANGE. `_free`, `_unclaimed_slices`,
+    `_leftover_pairs` and four inline loops all walk `spans` as `(a, b)` pairs;
+    turning it into a list of triples would have rewritten every one of them, and the
+    span algebra is the part of this module least worth disturbing.
+
+    ⚠️ ATTRIBUTION IS OPTIONAL BY CONSTRUCTION, AND THAT IS DELIBERATE SEQUENCING
+    rather than laziness. CLAUDE.md §11 is explicit that a required parameter added
+    to a function with non-compliant callers raises nothing at import and `TypeError`
+    at whatever hour the path is next taken. There are 37 claim sites here. So the
+    parameter lands optional, the callers get filled, and
+    `test_every_captured_value_has_a_span.py` is the ratchet that keeps the
+    unattributed count at zero — with a positive control, because "no unattributed
+    claims" is also what an instrument that recorded nothing would report.
+    """
+
+    def __init__(self, *args):
+        super().__init__(*args)
+        #: (start, end) -> field_id, for the claims that named one.
+        self.fields: dict[tuple[int, int], str] = {}
+
+
+def _claim(
+    spans: list[tuple[int, int]], a: int, b: int, field: str | None = None
+) -> bool:
     """Claim `[a, b)` for one field, or REFUSE because another field has it.
 
     ⚠️ THE RULE THIS ENFORCES: NO SPAN FEEDS TWO FIELDS. Ruled 2026-10-12 after
@@ -308,13 +359,23 @@ def _claim(spans: list[tuple[int, int]], a: int, b: int) -> bool:
     """
     if not _free(spans, a, b):
         return False
+    if field is not None and isinstance(spans, _Spans):
+        # ⚠️ ALWAYS A TUPLE, BECAUSE A SPAN MAY LEGITIMATELY FEED TWO FIELDS. "1948 to
+        # 2026" is one claim and two years; "12 chairs" is one claim, a package and a
+        # count. Storing a bare string would force those two sites to pick a winner,
+        # and the pane would tint the span while tying it to only one of the rows it
+        # actually filled. This is the one place the no-span-feeds-two-fields rule is
+        # deliberately relaxed, and it is relaxed by a single recogniser each time.
+        spans.fields[(a, b)] = field if isinstance(field, tuple) else (field,)
     spans.append((a, b))
     return True
 
 
-def _mark(spans: list[tuple[int, int]], m: re.Match) -> bool:
+def _mark(
+    spans: list[tuple[int, int]], m: re.Match, field: str | None = None
+) -> bool:
     """`_claim` for a regex match. Returns False when the span is already taken."""
-    return _claim(spans, m.start(), m.end())
+    return _claim(spans, m.start(), m.end(), field)
 
 
 def _leftovers(line: str, spans: list[tuple[int, int]]) -> tuple[str, ...]:
@@ -407,6 +468,43 @@ def _unclaimed_slices(
     if cur < len(line):
         out.append((cur, line[cur:]))
     return tuple(out)
+
+
+def _describe_spans(line: str, spans) -> tuple["TextSpan", ...]:
+    """Every claim as a captured span, plus every real leftover as an unrecognized one.
+
+    ⚠️ THE UNRECOGNIZED SPANS ARE BUILT THE SAME WAY `unrecognized` IS, and that is
+    deliberate rather than convenient. `_leftover_pairs` drops a slice with no
+    non-noise word in it, which is why "order for hopkins" reports nothing unplaced —
+    "order" and "for" are noise. A span renderer that underlined every unclaimed
+    slice would put a dotted line under the first two words of almost every order.
+    Same predicate, same answer, one rule.
+
+    ⚠️ IT MARKS THE RAW SLICE, NOT THE NOISE-STRIPPED REJOIN, as `_leftover_pairs`'s
+    own docstring requires: the stripped fragment is a rejoin of non-adjacent words
+    and `line.find(kept)` returns -1 whenever a noise word sat in the middle.
+
+    ⚠️ A CLAIM WITH NO FIELD IS NOT REPORTED AS CAPTURED. Re-statements claim their
+    span so the words do not land in the unplaced list, but they filled nothing — so
+    they are neither captured nor unrecognized, and the bar leaves them plain.
+    """
+    out: list[TextSpan] = []
+    attributed = getattr(spans, "fields", {})
+    for (a, b), field_ids in attributed.items():
+        out.append(TextSpan(start=a, end=b, state="captured", field_ids=tuple(field_ids)))
+
+    for start, slice_ in _unclaimed_slices(line, spans):
+        words = [w for w in re.split(r"[^A-Za-z0-9'&\-]+", slice_) if w]
+        if not any(w.casefold() not in _NOISE_WORDS for w in words):
+            continue
+        lead = len(slice_) - len(slice_.lstrip())
+        text = slice_.strip()
+        if text:
+            out.append(
+                TextSpan(start=start + lead, end=start + lead + len(text),
+                         state="unrecognized")
+            )
+    return tuple(sorted(out, key=lambda s: (s.start, s.end)))
 
 
 def out_fragments(line: str, spans: list[tuple[int, int]]) -> tuple[str, ...]:
@@ -577,7 +675,9 @@ def _chairs(line: str) -> tuple[int | None, tuple[int, int]] | None:
     return None
 
 
-def _surname_clause(line: str) -> tuple[str, tuple[int, int]] | None:
+def _surname_clause(
+    line: str, belongs_elsewhere=None
+) -> tuple[str, tuple[int, int]] | None:
     """The surname and the span of the whole clause, marker included.
 
     ⚠️ THE SPAN COVERS THE MARKER TOO. Claiming only the name would leave "last
@@ -593,7 +693,7 @@ def _surname_clause(line: str) -> tuple[str, tuple[int, int]] | None:
     name = m.group(gi)
     start, end = m.start(), m.end()
 
-    trimmed = _trim_absorbed_word(name)
+    trimmed = _trim_absorbed_word(name, belongs_elsewhere)
     if trimmed != name and m.end(gi) == end:
         # ⚠️ THE SPAN SHRINKS WITH THE NAME, AND FORGETTING THAT IS WORSE THAN THE BUG
         # IT FIXES. A trimmed name over an untrimmed span claims "friday" as part of
@@ -610,7 +710,7 @@ def _surname_clause(line: str) -> tuple[str, tuple[int, int]] | None:
     return name, (start, end)
 
 
-def _trim_absorbed_word(name: str) -> str:
+def _trim_absorbed_word(name: str, belongs_elsewhere=None) -> str:
     """Drop a second word the two-word form should not have taken.
 
     ⚠️ THE TWO-WORD FORM IS GREEDY AND THE SEGMENT IS NOT ALWAYS A CLAUSE. "decedent
@@ -629,6 +729,12 @@ def _trim_absorbed_word(name: str) -> str:
 
     ⚠️ ANYTHING WITH A DIGIT IN IT GOES TOO. "11am", "2pm" and "4" are not names and
     do not need enumerating one by one.
+
+    ⚠️ `belongs_elsewhere` IS THE PER-TENANT HALF, ADDED BY RULING (James,
+    2026-10-15): "Name spans never absorb a product, alias, funeral home or cemetery
+    word." The frozenset above is closed vocabulary and cannot know that THIS tenant
+    sells a Monticello; the predicate asks the resolvers. It is optional so the
+    pure-text behaviour stays testable without a database.
     """
     parts = name.split()
     if len(parts) < 2:
@@ -636,7 +742,63 @@ def _trim_absorbed_word(name: str) -> str:
     tail = parts[-1].lower()
     if tail in _NOT_A_NAME_WORD or any(ch.isdigit() for ch in tail):
         return " ".join(parts[:-1])
+    if belongs_elsewhere is not None and belongs_elsewhere(parts[-1]):
+        return " ".join(parts[:-1])
     return name
+
+
+def _word_belongs_to_another_field(db, tenant_id: str, index) -> "callable":
+    """Is this word the property of the catalog, a funeral home, or a cemetery?
+
+    ⚠️ THE CATALOG AND THE PARTY RECORDS ARE TESTED DIFFERENTLY, AND THE ASYMMETRY IS
+    THE WHOLE CARE IN THIS FUNCTION. Measured 2026-10-15 on both tenants:
+
+        monticello   vault=2 on testco AND sunnycrest, fh=0
+        smith        vault=0 everywhere, fh=1 on testco ("Smith & Sons Funeral Home")
+
+    So a CATALOG hit is decisive — "monticello" is a vault word on every tenant that
+    sells one, which is exactly James's example ("decedent smith monticello" ->
+    Smith + Monticello) and it works on his tenant and on testco.
+
+    ⚠️ A FUNERAL-HOME OR CEMETERY HIT IS NOT DECISIVE, AND TREATING IT AS ONE WOULD
+    UNDO THE RULING OF 2026-10-14. That ruling says a surname is accepted behind a
+    marker EVEN IF it appears inside a multi-word FH or cemetery record, and it was
+    made because testco's commonest surname is a fragment of "Smith & Sons Funeral
+    Home". A naive `resolve_funeral_home(word).candidates` test re-breaks "decedent
+    mary smith" — the exact sentence he ruled on — on that tenant.
+
+    So the party half fires only on a WHOLE-NAME match: the word must BE the record,
+    not appear inside it. "Smith & Sons Funeral Home" is not "smith", so the surname
+    survives; a cemetery actually named "Oakwood" would be caught.
+
+    ⚠️ THIS SCOPING IS MINE, NOT JAMES'S. He listed four categories flatly. Applying
+    the party half flatly contradicts his previous ruling on a tenant he tests on, so
+    I implemented the reading that satisfies both and flagged the collision rather
+    than silently picking one. See DECISIONS 2026-10-15.
+    """
+    from app.services.party_resolver import (
+        normalize,
+        resolve_cemetery,
+        resolve_funeral_home,
+    )
+    from app.services.product_name_resolver import resolve as resolve_vault
+
+    def belongs(word: str) -> bool:
+        if resolve_vault(index, word).candidates:
+            return True
+        key = normalize(word)
+        if not key:
+            return False
+        for res in (
+            resolve_funeral_home(db, tenant_id, word),
+            resolve_cemetery(db, tenant_id, word),
+        ):
+            for cand in res.candidates:
+                if normalize(getattr(cand, "name", "")) == key:
+                    return True
+        return False
+
+    return belongs
 
 
 class DeterministicExtractor:
@@ -686,7 +848,7 @@ class DeterministicExtractor:
         )
         from app.services.product_name_resolver import build_index, resolve as resolve_vault
 
-        spans: list[tuple[int, int]] = []
+        spans = _Spans()
         values: dict[str, object] = {}
         picks: list[Pick] = []
         switches: list[Switch] = []
@@ -713,7 +875,7 @@ class DeterministicExtractor:
 
         def note_restated(field_id: str, m: re.Match) -> None:
             """Claim the span and record that the field is already settled."""
-            _mark(spans, m)
+            _mark(spans, m, field_id)
             cur = answers.get(field_id, values.get(field_id))
             restated.append(f"{m.group(0).strip()} — {field_id} is already {cur!r}")
 
@@ -727,7 +889,7 @@ class DeterministicExtractor:
             m = re.search(pat, low)
             if m:
                 if once("cemetery_equipment"):
-                    if _mark(spans, m):
+                    if _mark(spans, m, "cemetery_equipment"):
                         values["cemetery_equipment"] = val
                 else:
                     note_restated("cemetery_equipment", m)
@@ -738,7 +900,7 @@ class DeterministicExtractor:
             m = re.search(pat, low)
             if m:
                 if once(QUESTION_PERSONALIZATION):
-                    if _mark(spans, m):
+                    if _mark(spans, m, QUESTION_PERSONALIZATION):
                         values[QUESTION_PERSONALIZATION] = val
                 else:
                     note_restated(QUESTION_PERSONALIZATION, m)
@@ -749,7 +911,7 @@ class DeterministicExtractor:
             for pat, val in _LEGACY_SERIES:
                 m = re.search(pat, low)
                 if m:
-                    if _mark(spans, m):
+                    if _mark(spans, m, "legacy_series"):
                         values["legacy_series"] = val
                     break
 
@@ -759,7 +921,7 @@ class DeterministicExtractor:
                 m = re.search(pat, low)
                 if m:
                     assert val in NAMEPLATE_DATE_FORMATS, val
-                    if _mark(spans, m):
+                    if _mark(spans, m, "nameplate_date_format"):
                         values["nameplate_date_format"] = val
                     break
 
@@ -772,7 +934,7 @@ class DeterministicExtractor:
             if m:
                 pr = resolve_print(m.group(1).strip())
                 if pr.print_name:
-                    if _mark(spans, m):
+                    if _mark(spans, m, "legacy_print_name"):
                         values["legacy_print_name"] = pr.print_name
                 elif len(pr.candidates) > 1:
                     picks.append(Pick(
@@ -780,7 +942,7 @@ class DeterministicExtractor:
                         tuple((c.name, f"{c.name} — {c.category}") for c in pr.candidates),
                         pr.discriminators[0].value if pr.discriminators else None,
                     ))
-                    _mark(spans, m)
+                    _mark(spans, m, "legacy_print_name")
                 # ⚠️ NO MATCH -> SPAN LEFT UNCLAIMED, so the typed name appears in
                 # `unrecognized`. The ruling: kept verbatim and flagged, never coerced.
 
@@ -788,14 +950,14 @@ class DeterministicExtractor:
         yp = _year_pair(line)
         if yp and once("date_of_birth") and once("date_of_death"):
             (b, d), span = yp
-            if _claim(spans, span[0], span[1]):
+            if _claim(spans, span[0], span[1], ("date_of_birth", "date_of_death")):
                 values["date_of_birth"] = b
                 values["date_of_death"] = d
 
         # ── explicit decedent name ──────────────────────────────────────
         if once("deceased_name"):
             en = _explicit_name(line)
-            if en and _claim(spans, en[1][0], en[1][1]):
+            if en and _claim(spans, en[1][0], en[1][1], "deceased_name"):
                 values["deceased_name"] = en[0]
 
         # ── a surname on its own ────────────────────────────────────────
@@ -822,11 +984,20 @@ class DeterministicExtractor:
         # ⚠️ WITHOUT A MARKER THE GUARD STAYS IN FULL — that is the marker-less pass
         # further down, which keeps all three lookups.
         if once("deceased_name"):
-            sn = _surname_clause(line)
+            # ⚠️ THE INDEX IS BUILT ONCE AND USED TWICE — by the first-word guard
+            # below and by the trailing-word predicate. Two `build_index(db)` calls
+            # in one pass would be two scans of the same catalog.
+            _name_index = build_index(db)
+            sn = _surname_clause(
+                line,
+                belongs_elsewhere=_word_belongs_to_another_field(
+                    db, tenant_id, _name_index
+                ),
+            )
             if sn is not None:
                 word, (a, b) = sn
-                if not resolve_vault(build_index(db), word).candidates:
-                    if _claim(spans, a, b):
+                if not resolve_vault(_name_index, word).candidates:
+                    if _claim(spans, a, b, "deceased_name"):
                         # ⚠️ AS GIVEN. The office's own capitalisation is information;
                         # `.title()` would turn "deSoto" into "Desoto".
                         values["deceased_name"] = word
@@ -853,7 +1024,7 @@ class DeterministicExtractor:
                     parts.append(f"Lot {m.group(2)}")
                 if m.group(3):
                     parts.append(f"Space {m.group(3)}")
-                if _mark(spans, m):
+                if _mark(spans, m, "grave_location"):
                     values["grave_location"] = ", ".join(parts)
 
         # ── chairs: the package AND its count, from one span ─────────────
@@ -877,7 +1048,7 @@ class DeterministicExtractor:
         if chairs is not None:
             count, (ca, cb) = chairs
             if once("cemetery_equipment"):
-                if _claim(spans, ca, cb):
+                if _claim(spans, ca, cb, ("cemetery_equipment", "extra_chairs_count")):
                     values["cemetery_equipment"] = _EQ_ID["Extra Chairs (Over 8)"]
                     # ⚠️ ONLY WHEN A NUMBER WAS GIVEN. `None` means "chairs, count
                     # unsaid", and writing a count there would invent one — the
@@ -888,7 +1059,7 @@ class DeterministicExtractor:
                 # ⚠️ CLAIMED AND THE RETURN IGNORED, exactly as `note_restated` does
                 # with `_mark`. The span is spoken for either way; what matters is
                 # that these words do not also land in the unplaced list.
-                _claim(spans, ca, cb)
+                _claim(spans, ca, cb, "cemetery_equipment")
                 cur = answers.get("cemetery_equipment", values.get("cemetery_equipment"))
                 restated.append(
                     f"{line[ca:cb].strip()} — cemetery_equipment is already {cur!r}"
@@ -985,7 +1156,7 @@ class DeterministicExtractor:
                     if tail is not None:
                         gap = len(line[b:]) - len(line[b:].lstrip())
                         b += gap + tail.end()
-                    if _claim(spans, m.start(), b):
+                    if _claim(spans, m.start(), b, "burial_date"):
                         values["burial_date"] = pd["value"]
                         claimed = True
                     break
@@ -1005,7 +1176,7 @@ class DeterministicExtractor:
                     db, tenant_id, clause.name, city_hint=clause.town
                 )
                 if cr.party_id:
-                    if _claim(spans, clause.start, clause.end):
+                    if _claim(spans, clause.start, clause.end, "cemetery"):
                         values["cemetery"] = cr.candidates[0].name
                         if cr.candidates[0].city:
                             values["cemetery_city"] = cr.candidates[0].city
@@ -1016,7 +1187,7 @@ class DeterministicExtractor:
                     # realise they meant somewhere else. Leaving it as unrecognized
                     # text would be honest but useless — they said a cemetery and the
                     # pane would show them nothing to act on.
-                    if _claim(spans, clause.start, clause.end):
+                    if _claim(spans, clause.start, clause.end, "cemetery"):
                         picks.append(Pick(
                             "cemetery", clause.name,
                             tuple((c.name, c.label) for c in cr.candidates),
@@ -1108,11 +1279,11 @@ class DeterministicExtractor:
                     phrase = line[a:b].strip()
                     fr = resolve_funeral_home(db, tenant_id, phrase)
                     if fr.party_id:
-                        if _claim(spans, a, b):
+                        if _claim(spans, a, b, "funeral_home"):
                             values["funeral_home"] = fr.candidates[0].name
                         break
                     if len(fr.candidates) > 1:
-                        if _claim(spans, a, b):
+                        if _claim(spans, a, b, "funeral_home"):
                             picks.append(Pick(
                                 "funeral_home", phrase,
                                 tuple((c.name, c.label) for c in fr.candidates),
@@ -1229,12 +1400,12 @@ class DeterministicExtractor:
                     )
                     cr = resolve_from_rows(rows, frag[a:b], city)
                     if cr.party_id:
-                        if _claim(spans, frag_start + a, frag_start + end):
+                        if _claim(spans, frag_start + a, frag_start + end, "cemetery"):
                             values["cemetery"] = cr.candidates[0].name
                             if cr.candidates[0].city:
                                 values["cemetery_city"] = cr.candidates[0].city
                     elif len(cr.candidates) > 1 or cr.city_conflict:
-                        if _claim(spans, frag_start + a, frag_start + end):
+                        if _claim(spans, frag_start + a, frag_start + end, "cemetery"):
                             picks.append(Pick(
                                 "cemetery", frag[a:b],
                                 tuple((c.name, c.label) for c in cr.candidates),
@@ -1288,10 +1459,10 @@ class DeterministicExtractor:
                     a, b = hit
                     fr = resolve_funeral_home(db, tenant_id, frag[a:b])
                     if fr.party_id:
-                        if _claim(spans, frag_start + a, frag_start + b):
+                        if _claim(spans, frag_start + a, frag_start + b, "funeral_home"):
                             values["funeral_home"] = fr.candidates[0].name
                     elif len(fr.candidates) > 1:
-                        if _claim(spans, frag_start + a, frag_start + b):
+                        if _claim(spans, frag_start + a, frag_start + b, "funeral_home"):
                             picks.append(Pick(
                                 "funeral_home", frag[a:b],
                                 tuple((c.name, c.label) for c in fr.candidates),
@@ -1342,7 +1513,7 @@ class DeterministicExtractor:
                     end, neg_start, words, val = hit
                     assert val in SERVICE_LOCATIONS, val
                     a = frag_start + (-neg_start)
-                    if _claim(spans, a, a + len(words)):
+                    if _claim(spans, a, a + len(words), "service_location"):
                         values["service_location"] = val
                     break
 
@@ -1382,7 +1553,7 @@ class DeterministicExtractor:
                 if hit:
                     _, _, m, ident = hit
                     a = frag_start + m.start()
-                    if _claim(spans, a, frag_start + m.end()):
+                    if _claim(spans, a, frag_start + m.end(), "lifes_reflections_symbol"):
                         values["lifes_reflections_symbol"] = ident
                     break
 
@@ -1447,7 +1618,7 @@ class DeterministicExtractor:
                             continue
                         A, B = frag_start + a, frag_start + b
                         if vr.variant_template_id:
-                            if _claim(spans, A, B):
+                            if _claim(spans, A, B, "vault"):
                                 values["vault"] = vr.candidates[0].display_name
                                 hit = True
                             break
@@ -1508,7 +1679,7 @@ class DeterministicExtractor:
                                 other = next(
                                     (c for c in vr.candidates if c.form != want), None
                                 )
-                                if mine is not None and _claim(spans, A, B):
+                                if mine is not None and _claim(spans, A, B, "vault"):
                                     values["vault"] = mine.display_name
                                     if other is not None:
                                         switches.append(Switch(
@@ -1519,7 +1690,7 @@ class DeterministicExtractor:
                                         ))
                                     hit = True
                                     break
-                            if _claim(spans, A, B):
+                            if _claim(spans, A, B, "vault"):
                                 picks.append(Pick(
                                     "vault", chosen,
                                     tuple((c.display_name,
@@ -1566,7 +1737,7 @@ class DeterministicExtractor:
             # which is the honest outcome and the one the ruling asks for.
             if len(found) == 1:
                 a, b, phrase = found[0]
-                if _claim(spans, a, b):
+                if _claim(spans, a, b, "deceased_name"):
                     values["deceased_name"] = phrase
 
         # ── service date / time / eta ───────────────────────────────────
@@ -1587,7 +1758,7 @@ class DeterministicExtractor:
                     if pt and pt.get("value"):
                         a = mk.start()
                         b = mk.end() + tm.end()
-                        if _claim(spans, a, b):
+                        if _claim(spans, a, b, "eta"):
                             values["eta"] = pt["value"]
 
         # ── a graveside service: the location IS the service location ───
@@ -1610,14 +1781,14 @@ class DeterministicExtractor:
         # location's claim the one that owns it.
         if once("service_location"):
             gw = _GRAVESIDE_WORD.search(line)
-            if gw is not None and _claim(spans, gw.start(), gw.end()):
+            if gw is not None and _claim(spans, gw.start(), gw.end(), "service_location"):
                 values["service_location"] = SERVICE_LOCATION_GRAVESIDE
 
         if once("service_time"):
             gt = _graveside_time(line)
             if gt is not None:
                 when, (a, b) = gt
-                if _claim(spans, a, b):
+                if _claim(spans, a, b, "service_time"):
                     values["service_time"] = when
                     # ⚠️ THE LOCATION IS NOT SET HERE. The pass above owns it and
                     # has already claimed the word; setting it twice would be two
@@ -1635,7 +1806,7 @@ class DeterministicExtractor:
                 pt = parse_time(tm.group(0))
                 if pt and pt.get("value"):
                     a = frag_start + tm.start()
-                    if _claim(spans, a, frag_start + tm.end()):
+                    if _claim(spans, a, frag_start + tm.end(), "service_time"):
                         values["service_time"] = pt["value"]
                     break
 
@@ -1644,14 +1815,14 @@ class DeterministicExtractor:
                 pd = parse_date(frag)
                 if pd and pd.get("value"):
                     i = low.find(frag.casefold())
-                    if i >= 0 and _claim(spans, i, i + len(frag)):
+                    if i >= 0 and _claim(spans, i, i + len(frag), "service_date"):
                         values["service_date"] = pd["value"]
                         continue
             if once("service_time"):
                 pt = parse_time(frag)
                 if pt and pt.get("value"):
                     i = low.find(frag.casefold())
-                    if i >= 0 and _claim(spans, i, i + len(frag)):
+                    if i >= 0 and _claim(spans, i, i + len(frag), "service_time"):
                         values["service_time"] = pt["value"]
 
         # ⚠️ A DISJOINTNESS ASSERTION STOOD HERE AND WAS DELETED, BECAUSE A BREAK
@@ -1682,6 +1853,7 @@ class DeterministicExtractor:
             picks=tuple(picks),
             unrecognized=_leftovers(line, spans) + tuple(restated),
             switches=tuple(switches),
+            spans=_describe_spans(line, spans),
         )
 
 
@@ -2098,13 +2270,51 @@ class TextExtraction:
     #: the same vault replaces the earlier switch rather than offering two.
     switches: tuple[Switch, ...] = ()
     policy: MentionPolicy = MentionPolicy.LAST_WINS
+    #: ⚠️ WHOLE-TEXT COORDINATES, ordered by position. See `TextSpan`.
+    spans: tuple[TextSpan, ...] = ()
+
+
+def segments_with_offsets(text: str) -> tuple[tuple[int, str], ...]:
+    """`(offset_in_text, segment)` for each statement, in order. Empty pieces dropped.
+
+    ⚠️ THE OFFSET IS THE WHOLE REASON THIS EXISTS, and it is the same argument
+    `_unclaimed_slices` makes one level down. Each segment is extracted in isolation,
+    so every span a parser records is relative to THAT SEGMENT; reporting spans
+    against the text the director can see needs the segment's own position. `re.split`
+    throws that away, and recovering it with `text.find(segment)` is wrong the moment
+    the same words appear in two segments — "monticello, actually monticello" is not
+    a strange thing to type.
+
+    ⚠️ THE OFFSET POINTS AT THE STRIPPED SEGMENT, NOT THE RAW CHUNK. Segments are
+    `.strip()`ed, so leading whitespace has to be added back or every span after a
+    ", " separator would render two characters to the left.
+    """
+    out: list[tuple[int, str]] = []
+    body = text or ""
+    pos = 0
+
+    def take(start: int, end: int) -> None:
+        raw = body[start:end]
+        stripped = raw.strip()
+        if stripped:
+            out.append((start + (len(raw) - len(raw.lstrip())), stripped))
+
+    for m in _SEGMENT_RE.finditer(body):
+        take(pos, m.start())
+        pos = m.end()
+    take(pos, len(body))
+    return tuple(out)
 
 
 def segments(text: str) -> tuple[str, ...]:
-    """The text as separate statements, in order. Empty pieces dropped."""
-    return tuple(
-        piece for piece in (p.strip() for p in _SEGMENT_RE.split(text or "")) if piece
-    )
+    """The text as separate statements, in order. Empty pieces dropped.
+
+    ⚠️ DELEGATES SINCE 2026-10-15 RATHER THAN HOLDING A SECOND COPY of the splitting
+    rule. Two implementations of "where does a statement end" would look right in
+    isolation and drift on the first edit — the same reason `_leftovers` was made to
+    delegate to `_leftover_pairs` on 2026-10-07.
+    """
+    return tuple(piece for _, piece in segments_with_offsets(text))
 
 
 def extract_text(
@@ -2185,9 +2395,22 @@ def extract_text(
     # Guarding against the SNAPSHOT lets pass-2 segments overwrite each other while
     # still never touching what pass 1 decided.
     decided = frozenset(last)
-    for segment in segs:
+    # ⚠️ SPANS COME FROM PASS 2 FOR THE SAME REASON `unrecognized` DOES. Pass 1's
+    # leftovers include every word a gated pass is about to claim, so a span list
+    # built from pass 1 would put a dotted "not understood" underline beneath the
+    # very word the response captures — "nameplate and vinyl, cross" would underline
+    # `cross` while filling the symbol row.
+    text_spans: list[TextSpan] = []
+    for offset, segment in segments_with_offsets(text):
         ex = EXTRACTOR.extract_line(
             db, tenant_id=tenant_id, line=segment, answers={}, gating=gating
+        )
+        # ⚠️ SHIFTED INTO WHOLE-TEXT COORDINATES HERE, where the segment's own offset
+        # is still in hand. The pane renders over the text the director can see.
+        text_spans.extend(
+            TextSpan(start=sp.start + offset, end=sp.end + offset,
+                     state=sp.state, field_ids=sp.field_ids)
+            for sp in ex.spans
         )
         for field_id, value in ex.values.items():
             if field_id not in decided:
@@ -2236,6 +2459,7 @@ def extract_text(
         unrecognized=tuple(unrecognized),
         switches=switches,
         policy=MentionPolicy.LAST_WINS,
+        spans=tuple(sorted(text_spans, key=lambda s: (s.start, s.end))),
     )
 
 
@@ -2413,34 +2637,21 @@ def evaluate_typed(db: Session, *, tenant_id: str | None, answers: dict[str, obj
             )
         )
 
-    # ⚠️ ZERO EXTRA CHAIRS IS A CONTRADICTION, NOT A QUANTITY. "8 chairs" names the
-    # eight the graveside package already includes, so the extra count is 0 — and an
-    # order line for 0 chairs at $5.00 is a $0.00 line nobody asked for. Reported
-    # rather than billed, and reported rather than dropped: the director said
-    # something about chairs and the pane has to answer it, which is walk note 2
-    # ("unavailable personalization must be said, never dropped") applied to the one
-    # field where the engine can arrive at zero by arithmetic.
+    # ⚠️ ZERO EXTRA CHAIRS RAISES NOTHING, BY RULING (James, 2026-10-15), SUPERSEDING
+    # THE CONFLICT THAT STOOD HERE FOR ONE DAY. His words: "8 or fewer chairs: no
+    # extra-chairs line, no conflict."
     #
-    # ⚠️ IT IS NOT CORRECTED TO "no equipment" EITHER. A director who says "8 chairs"
-    # may want the full setup, or may be confirming what is included; choosing for
-    # them would put an equipment package on a statement they never named.
-    chair_count = answers.get("extra_chairs_count")
-    if (
-        answers.get("cemetery_equipment") == "extra_chairs"
-        and str(chair_count) == "0"
-    ):
-        conflicts.append(
-            Conflict(
-                field_id="extra_chairs_count",
-                value=chair_count,
-                permitted=(),
-                message=(
-                    f"A graveside setup already includes {CHAIRS_INCLUDED} chairs, so "
-                    f"that is no extra chairs to bill. Say how many chairs beyond "
-                    f"the {CHAIRS_INCLUDED}, or take the chairs off the order."
-                ),
-            )
-        )
+    # What was here argued that an extra count of 0 is a contradiction the office must
+    # resolve, so it blocked Approve with a message. That reasoning was MINE — his
+    # original dispatch gave two examples and neither reaches zero — and he has now
+    # ruled the other way. "8 chairs" is a director describing the standard setup, not
+    # a mistake to be corrected: there is simply nothing extra to bill.
+    #
+    # ⚠️ THE ANSWER IS STILL CAPTURED AND STILL SHOWN, which is what keeps this from
+    # being a silent drop. `cemetery_equipment` stays `extra_chairs` and the count
+    # stays 0, so the pane says it understood; what changes is that `approval.assess`
+    # builds no line and nothing blocks. See `_equipment_quantity` and the row
+    # rendering of a zero count.
 
     already = {c.field_id for c in conflicts}
     for field_id in state.not_applicable:

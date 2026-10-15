@@ -358,21 +358,12 @@ def write_for_a_human(value: str, kind: str | None) -> str:
     congruence, so the output is the same everywhere.
     """
     if kind == "name":
-        # ⚠️ TITLE-CASED FOR DISPLAY ONLY, BY RULING (2026-10-14), SUPERSEDING
-        # "display as given" from the day before. A director typing fast gives
-        # "smith"; the pane shows "Smith". The stored value is untouched — this
-        # function renders, it does not write.
-        #
-        # ⚠️ IT ONLY ACTS ON AN ALL-LOWERCASE WORD, and that is the whole care in it.
-        # `.title()` applied unconditionally turns "deSoto" into "Desoto", "MacLeod"
-        # into "Macleod" and "O'Brien" into "O'Brien" only by luck — names carry
-        # capitalisation that is information. A value the director already
-        # capitalised is left exactly alone.
-        if value and value == value.lower():
-            return " ".join(
-                w[:1].upper() + w[1:] if w else w for w in value.split(" ")
-            )
-        return value
+        # ⚠️ DELEGATED SINCE 2026-10-15, NOT REIMPLEMENTED. The same rule now renders
+        # the order page through `SalesOrderResponse`, and a casing rule with two
+        # bodies would drift on the first edit while both still looked right.
+        from app.services.display_name import title_case_for_display
+
+        return title_case_for_display(value) or ""
 
     if kind == "count":
         # ⚠️ IT NAMES THE UNIT, BECAUSE A BARE NUMBER IN AN EQUIPMENT ROW IS AMBIGUOUS.
@@ -385,6 +376,16 @@ def write_for_a_human(value: str, kind: str | None) -> str:
         # ⚠️ A NON-NUMERIC VALUE PASSES THROUGH, same contract as every other kind
         # here: a stored row may predate a parser change, and a visible oddity an
         # operator can report beats raising and taking the pane down over one row.
+        # ⚠️ ZERO READS AS WORDS, NOT AS "0 chairs". Since James's 2026-10-15 ruling a
+        # count of zero is a legitimate captured answer — "8 chairs" means the eight
+        # the package includes and nothing extra — and it bills no line. "Extra Chairs
+        # (Over 8) · 0 chairs" reads like a defect; "none extra" reads like the
+        # sentence the director said.
+        #
+        # ⚠️ THE WORDING IS MINE, NOT HIS. He ruled on the LINE and the CONFLICT and
+        # said nothing about the row. Flagged.
+        if value == "0":
+            return "none extra"
         if value.isdigit():
             return f"{value} chair" if value == "1" else f"{value} chairs"
         return value

@@ -726,6 +726,20 @@ def read_state(
         # built from the same missing set the rows colour from, so the bar cannot
         # name something the pane is not highlighting.
         "missing_labels": list(_missing_labels(state)),
+        # ⚠️ ONE QUESTION, AND IT REPLACES "Still need: ..." IN THE BAR (James,
+        # 2026-10-15). `missing_labels` stays because the Approve BLOCKERS still name
+        # every gap at once — that is a report and should be — but the line above the
+        # bar is a conversation and asks for one thing. Both read the same `missing`
+        # set, so the bar cannot ask for something the pane is not highlighting.
+        "next_question": _next_question(state.missing),
+        # ⚠️ THE SPANS, IN WHOLE-TEXT COORDINATES, WITH THEIR SEQUENCE. James: "Spans
+        # apply only to the exact text they were computed for (sequence number).
+        # While typing, stale spans are hidden, never misplaced." The sequence is the
+        # TEXT ITSELF rather than a counter: a client that has moved on by one
+        # keystroke can compare what it sent against `spans_for_text` and drop the
+        # lot, with no shared counter to get out of step.
+        "spans": _spans_payload(db, row, company_id, conflicts),
+        "spans_for_text": _session_text(row),
         # ⚠️ TRANSIENT AND FALSE ON A PLAIN READ. It is the answer to "did somebody
         # just try to finish this order", which is what turns the rows amber — not a
         # property of the order. A typed completion phrase is detected on the SERVER,
@@ -786,6 +800,55 @@ def assess_approval(db: Session, row: CaptureSession):
         # answer the vault cannot take did not stop the order being approved.
         conflicts=tuple(c.message for c in conflicts),
     )
+
+
+def _next_question(missing) -> str:
+    """⚠️ IMPORTED AT CALL TIME, matching `_missing_labels` just below, which imports
+    `PLATFORM_DEFAULT_FIELDS` the same way. `schema` is a heavy module and this file
+    is on the session hot path."""
+    from app.services.capture.schema import next_question
+
+    return next_question(missing)
+
+
+def _session_text(row) -> str:
+    """The text this session actually has.
+
+    ⚠️ A TYPED-PANE SESSION HAS `full_text`; A LINE-CAPTURED ONE HAS LINES AND NONE.
+    The done-signal derivation a few lines up reads both for exactly this reason, and
+    spans must agree with it — reporting spans against `full_text` for a session that
+    has none would quietly return an empty list on the older pane rather than saying
+    there is nothing to mark.
+    """
+    return row.full_text or ""
+
+
+def _spans_payload(db, row, company_id: str, conflicts) -> list[dict]:
+    """The claimed spans for this session's text, with conflicts marked.
+
+    ⚠️ CONFLICT STATE IS APPLIED HERE, NOT IN `extract_text`, because conflicts are
+    not a property of the TEXT — they come from evaluating the answers against the
+    vault's availability, which the extractor deliberately does not do. A span whose
+    field is in conflict is re-stated rather than re-computed, so the amber and the
+    blocker always name the same field.
+    """
+    text_value = _session_text(row)
+    if not text_value:
+        return []
+    from app.services.capture.typed_extraction import extract_text
+
+    ex = extract_text(db, tenant_id=company_id, text=text_value)
+    conflicted = {c.field_id for c in (conflicts or ())}
+    out = []
+    for sp in ex.spans:
+        state = sp.state
+        if state == "captured" and any(f in conflicted for f in sp.field_ids):
+            state = "conflict"
+        out.append({
+            "start": sp.start, "end": sp.end, "state": state,
+            "field_ids": list(sp.field_ids),
+        })
+    return out
 
 
 def _missing_labels(state) -> tuple[str, ...]:

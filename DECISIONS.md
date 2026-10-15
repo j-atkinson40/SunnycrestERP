@@ -3336,3 +3336,103 @@ vault. The list is closed vocabulary and product names are per-tenant data a
 module-level frozenset cannot know; fixing it means a catalog lookup inside a name
 parser. Flagged to James; pinned as an expected value in
 `test_the_two_word_form_does_not_absorb_a_word_that_is_something_else`.
+
+## 2026-10-15 — Zero extra chairs raises nothing
+
+**Ruled by James**, superseding the conflict landed the day before: *"8 or fewer
+chairs: no extra-chairs line, no conflict."*
+
+⚠️ **THE ENTRY THIS SUPERSEDES WAS MINE RATHER THAN HIS, AND SAID SO.** The
+2026-10-14 entry recorded: *"ZERO EXTRA CHAIRS IS A CONFLICT, NOT A QUANTITY, AND
+THAT PART IS MINE RATHER THAN JAMES'S. The dispatch gave two examples and neither
+reaches zero... **Flagged to James as a decision he did not make.**"* He has now made
+it, the other way. A director typing "8 chairs" is describing the standard setup, not
+making a mistake that needs resolving.
+
+**The answer is still captured and still shown**, which is what keeps this from being
+the silent drop walk note 2 forbids. `cemetery_equipment` stays `extra_chairs`, the
+count stays 0, and `approval.assess` builds no line.
+
+⚠️ **A ZERO QUANTITY AND A ZERO PRICE ARE DIFFERENT THINGS.** Chairs at quantity 0
+build no line; `Vault Placer` at $0.00 builds a REAL line, because its PRICE is zero
+and its QUANTITY is one. Collapsing the two would either bill a $0.00 chair line or
+drop the placer from the order it was used on. Pinned in both directions.
+
+**Not his:** the row renders a zero count as "none extra" rather than "0 chairs". He
+ruled on the line and the conflict and said nothing about the row. Flagged.
+
+## 2026-10-15 — A name never absorbs another field's word, and the party half is scoped
+
+**Ruled by James:** *"Name spans never absorb a product, alias, funeral home or
+cemetery word ('decedent smith monticello' -> Smith + Monticello)."* This closes the
+limit declared and flagged on 2026-10-14.
+
+**The catalog half is decisive and tenant-independent.** Measured 2026-10-15:
+`monticello` resolves to 2 catalog candidates on testco AND sunnycrest. So the
+trailing-word guard catches his example everywhere, and the vault survives as a value
+or — when the word is ambiguous, like `continental` — as the same PICK it raises when
+no name clause is present at all. Released, not merely removed from the name.
+
+⚠️ **THE PARTY HALF COLLIDES WITH THE RULING OF THE DAY BEFORE, AND I SCOPED IT
+RATHER THAN PICKING A WINNER.** The 2026-10-14 ruling says a surname is accepted
+behind a marker **even if it appears inside a multi-word FH or cemetery record**, and
+it was made because testco's commonest surname is a fragment of "Smith & Sons Funeral
+Home". Measured: `resolve_funeral_home(testco, "smith")` returns a candidate. So
+applying "never absorb a funeral-home word" flatly re-breaks "decedent mary smith" —
+the exact sentence he ruled on — on a tenant he tests on.
+
+**So the party half fires only on a WHOLE-NAME match:** the word must BE the record,
+not appear inside it. "Smith & Sons Funeral Home" is not "smith", so the surname
+survives; a cemetery actually named "Oakwood" would be caught. **This scoping is mine,
+not his.** Both tests are pinned side by side so neither ruling can quietly win.
+
+## 2026-10-15 — One casing rule for a name, at the API boundary
+
+**Ruled by James:** *"Deceased name title-cased wherever displayed (order page
+too)."* The 2026-10-14 display ruling reached the capture pane only, so the pane read
+"Mary Smith" and `/ar/orders/:id` read "mary smith" for the same order — both
+consistent with "stored as typed, title-cased for display", and the second simply
+never taught the display half.
+
+⚠️ **RENDERED AT THE API BOUNDARY RATHER THAN AT EACH RENDER SITE, AND THE CHOICE IS
+THE DECISION.** Measured: 25+ frontend files reference a deceased name. An enumeration
+of them is exhaustive on the day it is written and silently stops being so — the
+constructed-scope failure CLAUDE.md §11 names. A `field_validator` on
+`SalesOrderResponse` / `InvoiceResponse` is correct for a surface nobody has built
+yet. It is NOT on the `*Create` schemas, which decide what is stored.
+
+**One function, two callers.** `display_name.title_case_for_display` is shared by
+`rows.write_for_a_human` and the response schemas; a casing rule with two bodies
+would drift on the first edit while both still looked right.
+
+**Improved on the way through, deliberately:** inside the all-lowercase guard the
+rule now uses `.title()`, so "o'brien" renders "O'Brien" and "smith-jones" renders
+"Smith-Jones" — the per-word version got both wrong. What makes `.title()` safe here
+is the guard: a value that is not already all-lowercase never reaches it, so "deSoto"
+and "MacLeod" are untouched.
+
+## 2026-10-15 — The bar asks one question, in call order
+
+**Ruled by James** after a walk: *"it works, but typing into a blank bar with no
+guidance feels strange."* The bar read "Still need: service date, cemetery,
+equipment". Three gaps at once is a report; one question is a conversation.
+
+⚠️ **THE CALL ORDER IS A THIRD ORDERING AND IS DECLARED, NOT DERIVED.** It is not
+`PLATFORM_DEFAULT_FIELDS` order (which groups by when fields were added) and not
+either surface's row order (which is a layout). A phone call starts with who is
+calling. `CALL_ORDER` lives in `schema.py` beside the fields; hand-written in the
+frontend it would drift from the set the pane colours from, and the bar and the pane
+would disagree about what is outstanding.
+
+⚠️ **THE LIST IS A PRIORITY, NOT A FILTER.** A field added to the template and
+forgotten in `CALL_ORDER` is still asked — last, and plainly — rather than becoming
+invisible. A whitelist would make "forgotten" mean "never mentioned again".
+
+**"Never asks optional fields" and "never re-asks something answered" are not rules
+here.** Both fall out of reading `state.missing`, which `CaptureState` already
+partitions away from `unanswered_optional`. There is no second rule to keep in step.
+
+⚠️ **ONE CONSEQUENCE CONTRADICTS HIS OWN VERIFY WALK, AND THE RULE SHIPPED.** His
+walk lists "equipment" in the sequence, but `cemetery_equipment` is
+`required_when=Never()`, so it never enters `missing` and is never asked. His stated
+rule — "Optional fields are never asked" — excludes it. Flagged.

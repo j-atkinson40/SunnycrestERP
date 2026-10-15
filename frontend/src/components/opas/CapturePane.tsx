@@ -108,6 +108,8 @@ export function placeholderFor(args: {
    *  `THE HEADER CHIP AND THE BAR AGREE` was written to catch. One names, one
    *  counts, and there is nothing left to contradict. */
   readonly missingLabels?: readonly string[]
+  /** The server's single next question. See `next_question` in schema.py. */
+  readonly nextQuestion?: string | null
   readonly reviewing: boolean
 }): string {
   if (!args.ready) return "Starting the order…"
@@ -118,6 +120,17 @@ export function placeholderFor(args: {
   if (args.reviewing) return "Ready to review"
   if (args.inFlight) return "Reading what you typed…"
   if (args.text.trim() === "") return "Say what the director said"
+  // ⚠️ ONE QUESTION, FROM THE SERVER, REPLACING "Still need: a, b, c" (James,
+  // 2026-10-15). Three gaps named at once is a report; the bar is a conversation and
+  // asks for the next thing. The wording and the ORDER are the server's — see
+  // `CALL_ORDER` in schema.py — because the bar and the pane must not disagree about
+  // what is outstanding, and a hand-written order in the frontend is exactly how
+  // they would.
+  //
+  // ⚠️ IT FALLS BACK TO THE OLD SENTENCE WHEN THE SERVER DID NOT SEND ONE. An older
+  // server has no `next_question`, and the same blank-pane defect of 2026-10-12 came
+  // from reading a key an older server omits.
+  if (args.nextQuestion) return args.nextQuestion
   if (args.missing > 0) {
     const named = (args.missingLabels ?? []).join(", ").toLowerCase()
     if (named) return `Still need: ${named}`
@@ -516,6 +529,7 @@ export function CapturePane({
     picks: livePicks,
     missing: liveMissing,
     missingLabels: state?.missing_labels ?? [],
+    nextQuestion: state?.next_question ?? null,
     reviewing: liveReviewing,
   })
   useEffect(() => {

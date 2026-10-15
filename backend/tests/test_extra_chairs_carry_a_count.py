@@ -205,31 +205,38 @@ def test_the_count_is_not_asked_when_chairs_were_not_chosen(db, tenant):
 # ── zero is a contradiction, not a quantity ─────────────────────────────
 
 @pytest.mark.parametrize("body", ["8 chairs", "6 chairs"])
-def test_no_extra_chairs_is_REPORTED(db, tenant, body):
-    """⚠️ "8 chairs" NAMES THE EIGHT THE PACKAGE INCLUDES. The extra count is zero,
-    and a line for 0 chairs at $5.00 is a $0.00 line nobody asked for.
+def test_no_extra_chairs_RAISES_NOTHING(db, tenant, body):
+    """⚠️ REWRITTEN 2026-10-15. James: "8 or fewer chairs: no extra-chairs line, no
+    conflict." This test asserted the opposite for one day.
 
-    ⚠️ IT IS NOT SILENTLY DROPPED EITHER, which is walk note 2 ("unavailable
-    personalization must be said, never dropped") applied to the one field the
-    engine can reach zero on by arithmetic. The director said something about
-    chairs; the pane has to answer it.
+    It read: "8 chairs" names the eight the package includes, the extra count is
+    zero, and a $0.00 line is one nobody asked for — so it was raised as a conflict
+    that blocked Approve. **That reasoning was mine**; his original dispatch gave two
+    phrasings and neither reaches zero. He has ruled the other way: a director saying
+    "8 chairs" is describing the standard setup, not making a mistake to resolve.
+
+    ⚠️ THE ANSWER IS STILL CAPTURED, which is what separates this from a silent drop.
+    The count is still 0 and the equipment is still `extra_chairs`, so the pane shows
+    it understood; what changed is that nothing blocks and nothing bills.
     """
     v = _vals(db, tenant, body)
+    assert v.get("cemetery_equipment") == "extra_chairs", (body, v)
     assert v.get("extra_chairs_count") == "0", (body, v)
+
     _r, _st, conflicts = evaluate_typed(db, tenant_id=tenant, answers=v)
-    fields = [c.field_id for c in conflicts]
-    assert "extra_chairs_count" in fields, (body, fields)
-    msg = next(c.message for c in conflicts if c.field_id == "extra_chairs_count")
-    # ⚠️ THE MESSAGE NAMES THE NUMBER AND BOTH WAYS OUT, because a blocker the office
-    # cannot act on is the defect `approval.py`'s docstring exists about.
-    assert "8 chairs" in msg, msg
-    assert "take the chairs off" in msg, msg
+    assert [c.field_id for c in conflicts] == [], [c.message for c in conflicts]
 
 
-def test_the_zero_conflict_BLOCKS_approve(db, tenant):
-    """⚠️ A CONFLICT IS A BLOCKER, BY THE 2026-10-13 RULING, and this asserts the
-    whole way through rather than trusting that `assess` is still wired to
-    conflicts."""
+def test_zero_chairs_BUILDS_NO_LINE_and_does_not_block(db, tenant):
+    """The other half of the ruling, asserted through `assess` rather than trusting
+    that the conflict's removal was the whole of it.
+
+    ⚠️ A ZERO QUANTITY AND A ZERO PRICE ARE DIFFERENT THINGS, and this is the test
+    that keeps them apart. Chairs at quantity 0 build NO line; `Vault Placer` at
+    $0.00 builds a REAL line (`test_vault_placer_bills_a_ZERO_line_rather_than_blocking`
+    in test_approve_creates_a_draft_order.py). Collapsing the two would either bill a
+    $0.00 chair line or drop the placer from the order it was used on.
+    """
     v = _vals(db, tenant, "8 chairs")
     _r, _st, conflicts = evaluate_typed(db, tenant_id=tenant, answers=v)
     ap = assess(
@@ -240,8 +247,22 @@ def test_the_zero_conflict_BLOCKS_approve(db, tenant):
         open_picks=(),
         conflicts=tuple(c.message for c in conflicts),
     )
-    assert not ap.ready
-    assert any("8 chairs" in b for b in ap.blockers), ap.blockers
+    assert [l for l in ap.lines if l.kind == "equipment"] == [], ap.lines
+    assert not any("chair" in b.lower() for b in ap.blockers), ap.blockers
+
+
+def test_a_zero_count_reads_as_words_on_the_row(db, tenant):
+    """⚠️ "Extra Chairs (Over 8) · 0 chairs" READS LIKE A DEFECT. Since a zero count
+    is now a legitimate captured answer it is rendered "none extra", which is the
+    sentence the director said rather than the number the engine computed.
+
+    ⚠️ THE WORDING IS MINE. James ruled on the line and the conflict and said nothing
+    about the row; flagged to him.
+    """
+    assert write_for_a_human("0", "count") == "none extra"
+    # and the non-zero renderings are unchanged
+    assert write_for_a_human("4", "count") == "4 chairs"
+    assert write_for_a_human("1", "count") == "1 chair"
 
 
 # ── the quantity reaches the order line ─────────────────────────────────

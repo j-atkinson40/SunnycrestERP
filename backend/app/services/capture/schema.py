@@ -1079,3 +1079,106 @@ def without_field(
     return tuple(
         replace(f, required_when=Never()) if f.field_id == field_id else f for f in fields
     )
+
+
+#: The order a director actually gives an order in, and therefore the order the bar
+#: asks for what is still missing.
+#:
+#: ⚠️ RULED BY JAMES 2026-10-15: "A single quiet line directly above the bar names the
+#: next missing thing, in call order: funeral home, decedent, vault, service (day,
+#: where, time), cemetery, equipment, then any personalization follow-up."
+#:
+#: ⚠️ IT IS A THIRD ORDERING, AND THAT IS WHY IT IS DECLARED RATHER THAN DERIVED. It
+#: is NOT `PLATFORM_DEFAULT_FIELDS` order (which groups by how fields were added) and
+#: NOT the row order on either surface (which is a layout). A phone call starts with
+#: who is calling and ends with the details, and nothing already in this module
+#: encodes that. Hand-written in the FRONTEND is the one place it must not live —
+#: the bar and the pane would then disagree about what is outstanding.
+#:
+#: ⚠️ FIELDS ABSENT FROM THIS TUPLE ARE STILL ASKED FOR, LAST. The list is a
+#: PRIORITY, not a filter: a field added to the template and forgotten here still
+#: reaches the director rather than becoming invisible, which is the failure mode a
+#: whitelist would have. `test_the_question_line.py` pins that.
+CALL_ORDER: tuple[str, ...] = (
+    "funeral_home",
+    "deceased_name",
+    "vault",
+    "service_date",
+    "service_location",
+    "service_location_other",
+    "service_time",
+    "cemetery",
+    "cemetery_city",
+    "grave_location",
+    "cemetery_equipment",
+    "extra_chairs_count",
+    # ── personalization and its follow-ups, last, in the order they are chosen ──
+    QUESTION_PERSONALIZATION,
+    LEGACY_SERIES_FIELD_ID,
+    "legacy_print_name",
+    "lifes_reflections_symbol",
+    "date_of_birth",
+    "date_of_death",
+    "nameplate_date_format",
+)
+
+#: What the bar says when a field is the next thing missing.
+#:
+#: ⚠️ SHORT, AND A QUESTION. James gave four verbatim ("Which funeral home?", "Which
+#: vault?", "Where's the service?", "What day is the service?") and the rest follow
+#: their shape. A field with no entry here falls back to its label, so a new field is
+#: asked about awkwardly rather than not at all.
+CALL_QUESTIONS: dict[str, str] = {
+    "funeral_home": "Which funeral home?",
+    "deceased_name": "Who is the decedent?",
+    "vault": "Which vault?",
+    "service_date": "What day is the service?",
+    "service_location": "Where's the service?",
+    "service_location_other": "Where exactly?",
+    "service_time": "What time is the service?",
+    "cemetery": "Which cemetery?",
+    "cemetery_city": "Which town is the cemetery in?",
+    "grave_location": "Which grave?",
+    "cemetery_equipment": "What equipment?",
+    "extra_chairs_count": "How many extra chairs?",
+    QUESTION_PERSONALIZATION: "Any personalization?",
+    LEGACY_SERIES_FIELD_ID: "Which Legacy series?",
+    "legacy_print_name": "Which print?",
+    "lifes_reflections_symbol": "Which symbol?",
+    "date_of_birth": "Date of birth?",
+    "date_of_death": "Date of death?",
+    "nameplate_date_format": "How should the dates read?",
+}
+
+#: What it says when nothing is missing. ⚠️ HIS WORDING, VERBATIM.
+READY_TO_REVIEW = "Ready. Press Enter to review."
+
+
+def next_question(missing: object) -> str:
+    """The one thing to ask for next, or the ready line.
+
+    ⚠️ ONE QUESTION, NEVER A LIST, BY RULING. The bar used to read "Still need:
+    service date, cemetery, equipment" — three things at once, which is a report
+    rather than a conversation. This replaces that text so there is one voice.
+
+    ⚠️ IT ASKS ONLY WHAT IS MISSING, AND `missing` ALREADY EXCLUDES THE OPTIONAL. A
+    field that is merely unanswered is not a gap — `CaptureState` partitions
+    `unanswered_optional` away from `missing` — so "never asks optional fields" and
+    "never re-asks something answered" both come from using that set rather than from
+    a rule here.
+    """
+    outstanding = set(missing or ())
+    if not outstanding:
+        return READY_TO_REVIEW
+    for field_id in CALL_ORDER:
+        if field_id in outstanding:
+            return CALL_QUESTIONS.get(field_id, _fallback_question(field_id))
+    # ⚠️ NOT IN `CALL_ORDER` AT ALL. Asked last and asked plainly, rather than
+    # silently skipped — a field nobody thought to prioritise is still a gap.
+    field_id = sorted(outstanding)[0]
+    return CALL_QUESTIONS.get(field_id, _fallback_question(field_id))
+
+
+def _fallback_question(field_id: str) -> str:
+    labels = {f.field_id: f.label for f in PLATFORM_DEFAULT_FIELDS}
+    return f"{labels.get(field_id) or field_id.replace('_', ' ')}?"
