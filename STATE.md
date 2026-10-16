@@ -2,6 +2,16 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 2026-10-16 (night) — The clock fix verified end-to-end on production
+
+The first night the end-of-day batch ran on the corrected clock. **Both halves of a two-sided check passed**, and the new undated-order surface produced its first real output.
+
+- **2026-10-16** — **THE BATCH DID NOT FIRE AT 18:00Z (2 PM Eastern) AND DID FIRE AT 22:00:00Z (6 PM Eastern).** The 22:00 run: `completed`, `tenant_count 4`, `success_count 4`, `error_count 0`, 0.75s. ⚠️ **The quiet half carries a positive control, which is the only thing that makes an absence evidence**: four other jobs (`BRIEFING_SWEEP`, `NOTE_SETTLING_SWEEP`, `PLATFORM_INCIDENT_DISPATCHER`, `DISPATCH_AUTO_FINALIZE`) fired at exactly `18:00:00Z` in the same tick, so the scheduler was alive and the batch specifically was absent — rather than the whole scheduler being down, which would look identical from the batch's row alone. Confirmed twice: a direct read-only probe at 18:04Z and an armed watch that reported independently.
+- **2026-10-16** — **SO-2026-0001 was untouched, and its service date was TODAY.** Still `status='draft'`, `delivered_at` NULL, `delivery_auto_confirmed` false, `modified_at` **NULL** — nothing has ever modified the row. This is the case the whole arc was about: an order whose service date had arrived, sitting in front of a batch that ran. It is excluded because it is a draft, which is the safety property `capture/session_service.approve` was built on.
+- **2026-10-16** — **Zero invoices have ever been created by the batch on sunnycrest** (`generation_reason='end_of_day_batch'`), and **nothing was auto-confirmed on any tenant tonight** — correct, because no tenant had a confirmed order whose service date had arrived and which was not already invoiced.
+- **2026-10-16** — **THE UNDATED-ORDER SURFACE FIRED FOR THE FIRST TIME**, and its arithmetic checks out against production: it raised `2 confirmed orders with no service date` for **st-marys** and `23` for **testco**. ⚠️ st-marys actually has **4** such orders — the alert said 2 because **two of the four already carry invoices and the alert excludes already-invoiced orders**, which is the "do not train the office to ignore the alert" rule, verified against real rows rather than only in a test. **sunnycrest: 0.**
+- **2026-10-16** — ⚠️ **AND EVERY ROW IT FOUND IS ON A SYNTHETIC TENANT, so this is not a discovery about real money.** testco's 23 all carry `order_date = 2026-08-20` and `total = $0.00` — one seeding run, zero value. st-marys' 4 total $9,148 across 2026-06-01..06-15; st-marys is the canonical synthetic cemetery dev tenant (CLAUDE.md §7). The surface works and has nothing real to report yet; it becomes meaningful when Sunnycrest starts taking orders through it. Recorded this way deliberately — "25 stuck orders found" would be true and would misrepresent what was found.
+
 ## 2026-10-16 — Step 2: delivered on the night of the service date, and Undo confirm
 
 Migration head → **r213_sunnycrest_timezone**. Commits `e0843aeb` (step 1, the clock), `def4c263` (step 2), plus this one. Steps 1 and 2 are deployed and verified on production; the undo work in this entry ships with it.
