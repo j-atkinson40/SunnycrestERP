@@ -20,7 +20,7 @@
  *
  * ⚠️ ADMIN-ONLY, via the EXISTING role check (`useAuth().isAdmin`). No new flag mechanism.
  */
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { useAuth } from "@/contexts/auth-context"
 import { useOpas } from "@/contexts/opas-context"
@@ -36,7 +36,12 @@ import {
 import { acceptGhost, completionFor, type VocabTerm } from "./ghost"
 import { sameEntryStatus } from "./entry-status-guard"
 import { fieldsAtCaret } from "./mirror-spans"
-import { CAPTURE_START, isCatalogRequest, routeResolution } from "./opas-routing"
+import {
+  CAPTURE_START,
+  isCatalogRequest,
+  routeResolution,
+  startsCaptureWithParty,
+} from "./opas-routing"
 import { isEntryPane } from "./pane-mode"
 import { EXTRACT_DEBOUNCE_MS } from "./capture-sequence"
 
@@ -360,12 +365,33 @@ export function OpasHost() {
   // tenant catalog for every user who merely opens Opas; fetching per keystroke is
   // what the ruling forbids. The guard on `vocab.length` makes a second entry pane
   // reuse what the first already has.
+  // ⚠️ FETCHED WHEN OPAS OPENS, NOT WHEN CAPTURE OPENS, AND THE ORDER MATTERS. The
+  // opener now asks whether the words after "order" prefix a funeral home, so the
+  // vocabulary has to be in hand BEFORE capture starts — fetching it on `entryMode`
+  // was a chicken-and-egg: no capture without the names, no names without a capture.
+  // James named this directly: "The vocabulary must be loaded by then."
   useEffect(() => {
-    if (!entryMode || vocab.length > 0) return
+    if (!opas.isOpen || vocab.length > 0) return
     let live = true
     void fetchVocabulary().then((terms) => { if (live) setVocab(terms) })
     return () => { live = false }
-  }, [entryMode, vocab.length])
+  }, [opas.isOpen, vocab.length])
+
+  /** The funeral-home names, for the forgiving opener. */
+  const funeralHomes = useMemo(
+    () => vocab.filter((t) => t.kind === "funeral_home").map((t) => t.text),
+    [vocab],
+  )
+
+  /** ⚠️ ONE PREDICATE, TWO CALL SITES. Capture opens from live typing AND from
+   *  submit; a broadened rule applied to only one of them would make the pane
+   *  appear for a phrase that Enter then refused, or the reverse. */
+  const opensCapture = useCallback(
+    (phrase: string) =>
+      CAPTURE_START.test(phrase.toLowerCase()) ||
+      startsCaptureWithParty(phrase, funeralHomes),
+    [funeralHomes],
+  )
 
   /** ⚠️ DERIVED ON EVERY RENDER, NOT STORED. A ghost held in state outlives its
    *  cause — the director deletes a character and the old completion is still on
@@ -502,12 +528,12 @@ export function OpasHost() {
     if (entryMode) return
     const phrase = text.trim()
     if (phrase === "") return
-    if (!CAPTURE_START.test(phrase.toLowerCase())) return
+    if (!opensCapture(phrase)) return
     const id = opas.openPane({ kind: "capture", label: "Order" })
     opas.setEntryText(id, phrase)
     setText("")
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [text, entryMode, opas.isOpen])
+  }, [text, entryMode, opas.isOpen, opensCapture])
 
   /**
    * The bar's height follows its content.
@@ -739,7 +765,7 @@ export function OpasHost() {
       // vault resolver would resolve "order" against product names and open the wrong
       // thing. The whole line is passed through so the funeral home is captured on the
       // opening keystroke (prototype `:568`).
-      if (CAPTURE_START.test(phrase.toLowerCase())) {
+      if (opensCapture(phrase)) {
         opas.openPane({ kind: "capture", label: "Order", openingLine: phrase })
         setText("")
         return

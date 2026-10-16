@@ -4417,3 +4417,15 @@ the other.
   **How to tell a real failure from the window, without reading deploy logs** (which must not be read — `seed_sunnycrest.py` prints a generated password once): import the app under production env via `railway run`, check `alembic_version`, and probe `/api/health` on a timer. All three were clean here while the API was still 502.
 
   ⚠️ **AND A NEW ROUTE CAN BE VERIFIED ON PRODUCTION WITHOUT CREDENTIALS.** An unauthenticated request discriminates: `/capture/vocabulary` returned **403** exactly like a known-good capture route, while a genuinely absent path returned **404**. That is route registration confirmed on the real deployment, with no credential transiting.
+
+- **2026-10-16 — "order hopk" starts a capture. No migration.**
+
+  James typed it on production and got nothing — no pane, no question line, no ghost. **Not a regression:** the two commits since his working walk touched zero shipping-code files, and `acceptGhost` has one revision in its entire history, so the capitalisation change he suspected was never pushed. `CAPTURE_START` simply required a verb before "order" or the exact phrase "order for".
+
+  The opener now also accepts `order` / `new order` / `order for` / `order from` followed by **a prefix of a known funeral home** — gated on the vocabulary rather than on "order plus anything", because `isOrderListPhrase` matches `\borders?\b` and capture is checked first, so a blanket rule would steal "order list" and "order status".
+
+  **That forced the vocabulary fetch from capture-open to Opas-open**, closing a chicken-and-egg: no capture without the names, no names without a capture.
+
+  **Verified in a real browser, typed character by character:** `order hopk`, `order for hopk` and `new order hopk` all open the pane, show the ghost `ins Funeral Home`, and ask "Which funeral home?". `hopk` alone does not capture — reported, not assumed. The vocabulary reads 115 terms **before** any capture exists.
+
+  ⚠️ **`session_service.START_SIGNAL` IS DEAD AND IS LEFT THAT WAY ON PURPOSE.** It is documented as the server's copy of this regex and has one reference in the backend — its own definition. Changing it in the same commit as a production fix would be changing something nothing exercises; it is recorded instead.

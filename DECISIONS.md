@@ -3593,3 +3593,41 @@ wording gives nothing and this gives the shared stem.
 because the ruling says "inserts the remainder". So "monti" + Tab reads "monticello
 Burial Vault", keeping the director's lowercase. Harmless downstream — every resolver
 is case-insensitive — but it is a second ruling, not an implementation detail.
+
+## 2026-10-16 — The opening is as forgiving as people are, gated on the vocabulary
+
+James typed **"order hopk"** on production and got nothing — no pane, no question
+line, no ghost. Nothing had regressed. `CAPTURE_START` required a VERB before "order"
+("new order…") or the exact phrase "order for":
+
+    "order hopk"       no capture        "order for hopk"   capture
+    "order from hopk"  no capture        "new order hopk"   capture
+
+⚠️ **THE COST COMPOUNDED, WHICH IS WHY IT READ AS A DEAD FEATURE RATHER THAN A NARROW
+ONE.** The ghost only runs in entry mode, so an opening that does not start capture
+takes the completion down with it. The bar was least able to help at the exact moment
+the director was typing a name it knew — which is the moment he tried it.
+
+**The gate is the VOCABULARY, not "order" plus anything.** `isOrderListPhrase` matches
+`\borders?\b`, and capture is checked FIRST, so a blanket rule would silently route
+"order list" and "order status" into an order capture. Requiring the words after the
+opener to PREFIX a known funeral home is narrower and is what James asked for.
+
+⚠️ **WHICH FORCED THE FETCH EARLIER AND CLOSED A CHICKEN-AND-EGG.** The vocabulary
+was fetched when CAPTURE opened; the opener now needs it BEFORE capture opens. It is
+fetched when OPAS opens. James saw this himself: "The vocabulary must be loaded by
+then."
+
+⚠️ **AND IT DEGRADES RATHER THAN FAILING.** The original regex is untouched and
+checked first, so a failed vocabulary fetch leaves exactly the behaviour that shipped
+the day before, not nothing.
+
+**"hopk" alone still does not start a capture, reported rather than assumed.** Every
+opener James listed contains an order word; a bar that captured on any funeral-home
+prefix could not be used to ASK about one.
+
+⚠️ **AND THE SERVER'S COPY OF THIS REGEX IS DEAD.** `session_service.START_SIGNAL` is
+documented as "the SERVER carries the same regex" and has exactly one reference in
+the whole backend — its own definition. It gates nothing. Left in place and recorded
+rather than changed in the same commit as a production fix; a second copy of a rule
+that enforces nothing is still a copy somebody will later trust.

@@ -24,6 +24,44 @@
 export const CAPTURE_START =
   /\b(new|create|start|make|enter|put in|take)\b.*\border\b|^order for\b/
 
+/**
+ * An opener followed by the beginning of a funeral home's name.
+ *
+ * ⚠️ JAMES TYPED "order hopk" ON PRODUCTION AND GOT NOTHING — no pane, no question
+ * line, no ghost. `CAPTURE_START` requires a VERB before "order" ("new order…") or
+ * the exact phrase "order for". Measured 2026-10-16: "order hopk" and "order from
+ * hopk" both failed; "order for hopk" and "new order hopk" both worked. Nothing had
+ * regressed — the opening was simply narrower than people type.
+ *
+ * ⚠️ AND THE COST COMPOUNDS, WHICH IS WHY IT READ AS A DEAD FEATURE. The ghost only
+ * runs in entry mode, so an opening that does not start capture takes the completion
+ * down with it — the bar is least able to help at exactly the moment the director is
+ * typing a name it knows.
+ *
+ * ⚠️ IT IS GATED ON THE VOCABULARY, NOT ON "order" PLUS ANYTHING, AND THAT IS
+ * DELIBERATE. `isOrderListPhrase` matches `\borders?\b`, so a blanket "order + word"
+ * rule would swallow "order list" and route a list question into an order capture.
+ * Requiring the next words to PREFIX a known funeral home is both narrower and
+ * exactly what James asked for: "plus a funeral-home prefix".
+ */
+export function startsCaptureWithParty(
+  phrase: string,
+  funeralHomes: readonly string[],
+): boolean {
+  const m = /^\s*(?:new\s+|create\s+|start\s+(?:an?\s+)?|make\s+)?orders?\s+(?:for\s+|from\s+)?(.+)$/i
+    .exec(phrase)
+  if (!m) return false
+  const rest = m[1].trim().toLowerCase()
+  if (rest.length < 2) return false
+  return funeralHomes.some((name) => {
+    const n = name.toLowerCase()
+    // ⚠️ EITHER DIRECTION: the typed text may be a prefix of the name ("hopk"), or
+    // the name may be a prefix of a longer typed line ("hopkins funeral home
+    // monticello"), which is what an opening line usually is.
+    return n.startsWith(rest) || rest.startsWith(n.split(/\s+/)[0])
+  })
+}
+
 /** Phrases that open the Product List. Lower-cased, trimmed, punctuation-stripped. */
 const CATALOG_PHRASES: readonly string[] = [
   "catalog",
