@@ -16,7 +16,38 @@ from app.database import SessionLocal
 
 logger = logging.getLogger(__name__)
 
-scheduler = BackgroundScheduler(timezone="America/New_York")
+#: The business timezone every hour-bearing job in this file is written for.
+#:
+#: ⚠️ EVERY `CronTrigger` MUST BE PASSED A TIMEZONE EXPLICITLY. It is not inherited
+#: from the scheduler, and until 2026-10-16 none of them had one — so every job in
+#: this file fired on UTC while its comment said ET. Four hours early in EDT, five
+#: in EST; the end-of-day invoice batch ran at 2 PM Eastern.
+#:
+#: The mechanism, because it is not guessable from the call site:
+#: `BaseScheduler._create_trigger` opens `if isinstance(trigger, BaseTrigger): return
+#: trigger`, so a trigger OBJECT is returned untouched and never reaches
+#: `trigger_args.setdefault("timezone", self.timezone)` — that line only runs for
+#: STRING triggers (`add_job(fn, "cron", hour=18)`). `CronTrigger.__init__` then falls
+#: through to `self.timezone = get_localzone()`, which is UTC on the container.
+#:
+#: `tests/test_scheduler_timezone.py` fails if any `CronTrigger` here is built without
+#: one, and asserts it against the registered jobs as well as the source.
+BUSINESS_TZ = "America/New_York"
+
+#: For jobs whose declared time is genuinely UTC rather than business-local.
+#:
+#: ⚠️ THIS IS NOT A FALLBACK — pick it deliberately or not at all. Two kinds qualify:
+#: a coverage WINDOW that has to open early enough for every tenant's own local time
+#: (`dispatch_auto_finalize`, whose real gate is in-service), and a minute-only
+#: cadence (`*/15`, `:07`) which fires at the same instants in either zone and whose
+#: UTC declaration keeps it out of DST reasoning entirely.
+UTC_TZ = "UTC"
+
+#: ⚠️ KEPT, AND INERT FOR EVERY TRIGGER IN THIS FILE. It governs string triggers only
+#: (there are none today). It is not deleted because its absence would read as "no
+#: business timezone intended", which is the opposite of true — and because a future
+#: string trigger should land in Eastern rather than in the container's zone.
+scheduler = BackgroundScheduler(timezone=BUSINESS_TZ)
 
 
 # ---------------------------------------------------------------------------
@@ -707,7 +738,7 @@ def register_all_jobs():
     # DAILY at 6pm ET — end-of-day draft invoice generation
     scheduler.add_job(
         job_draft_invoice_generator,
-        CronTrigger(hour=18, minute=0),
+        CronTrigger(hour=18, minute=0, timezone=BUSINESS_TZ),
         id="draft_invoice_generator",
         name="draft_invoice_generator",
         replace_existing=True,
@@ -730,7 +761,7 @@ def register_all_jobs():
     for name, func, minute_offset in nightly_jobs:
         scheduler.add_job(
             func,
-            CronTrigger(hour=23, minute=int(minute_offset)),
+            CronTrigger(hour=23, minute=int(minute_offset), timezone=BUSINESS_TZ),
             id=name,
             name=name,
             replace_existing=True,
@@ -740,7 +771,7 @@ def register_all_jobs():
     # DAILY at 2am ET — AR balance reconciliation (drift detection)
     scheduler.add_job(
         job_ar_balance_reconciliation,
-        CronTrigger(hour=2, minute=0),
+        CronTrigger(hour=2, minute=0, timezone=BUSINESS_TZ),
         id="ar_balance_reconciliation",
         name="ar_balance_reconciliation",
         replace_existing=True,
@@ -750,7 +781,7 @@ def register_all_jobs():
     # DAILY at 2:30am ET — sales-tax period accumulation (idempotent)
     scheduler.add_job(
         job_tax_accumulation,
-        CronTrigger(hour=2, minute=30),
+        CronTrigger(hour=2, minute=30, timezone=BUSINESS_TZ),
         id="tax_accumulation",
         name="tax_accumulation",
         replace_existing=True,
@@ -760,7 +791,7 @@ def register_all_jobs():
     # DAILY at 8am ET — discount expiry alerts
     scheduler.add_job(
         job_discount_expiry_monitor,
-        CronTrigger(hour=8, minute=0),
+        CronTrigger(hour=8, minute=0, timezone=BUSINESS_TZ),
         id="discount_expiry_monitor",
         name="discount_expiry_monitor",
         replace_existing=True,
@@ -770,7 +801,7 @@ def register_all_jobs():
     # WEEKLY Saturday at 2am ET — payment pattern enrichment
     scheduler.add_job(
         job_payment_pattern_enrichment,
-        CronTrigger(day_of_week="sat", hour=2, minute=0),
+        CronTrigger(day_of_week="sat", hour=2, minute=0, timezone=BUSINESS_TZ),
         id="payment_pattern_enrichment",
         name="payment_pattern_enrichment",
         replace_existing=True,
@@ -780,7 +811,7 @@ def register_all_jobs():
     # DAILY at 4:40am — audit health findings become tasks (HC-1)
     scheduler.add_job(
         job_audit_health_tasks,
-        CronTrigger(hour=4, minute=40),
+        CronTrigger(hour=4, minute=40, timezone=BUSINESS_TZ),
         id="audit_health_tasks",
         name="audit_health_tasks",
         replace_existing=True,
@@ -790,7 +821,7 @@ def register_all_jobs():
     # DAILY at 5am — financial health score
     scheduler.add_job(
         job_financial_health_score,
-        CronTrigger(hour=5, minute=3),
+        CronTrigger(hour=5, minute=3, timezone=BUSINESS_TZ),
         id="financial_health_score",
         name="financial_health_score",
         replace_existing=True,
@@ -800,7 +831,7 @@ def register_all_jobs():
     # DAILY at 6am — cross-system synthesis
     scheduler.add_job(
         job_cross_system_synthesis,
-        CronTrigger(hour=6, minute=7),
+        CronTrigger(hour=6, minute=7, timezone=BUSINESS_TZ),
         id="cross_system_synthesis",
         name="cross_system_synthesis",
         replace_existing=True,
@@ -810,7 +841,7 @@ def register_all_jobs():
     # DAILY at 7:00am — vault reorder suggestions (delivery-aware)
     scheduler.add_job(
         job_reorder_suggestion,
-        CronTrigger(hour=7, minute=0),
+        CronTrigger(hour=7, minute=0, timezone=BUSINESS_TZ),
         id="reorder_suggestion",
         name="reorder_suggestion",
         replace_existing=True,
@@ -820,7 +851,7 @@ def register_all_jobs():
     # MONTHLY 1st at 2am — network snapshot
     scheduler.add_job(
         job_network_snapshot,
-        CronTrigger(day=1, hour=2, minute=17),
+        CronTrigger(day=1, hour=2, minute=17, timezone=BUSINESS_TZ),
         id="network_snapshot",
         name="network_snapshot",
         replace_existing=True,
@@ -830,7 +861,7 @@ def register_all_jobs():
     # MONTHLY 1st at 4am — onboarding pattern analysis
     scheduler.add_job(
         job_onboarding_pattern,
-        CronTrigger(day=1, hour=4, minute=13),
+        CronTrigger(day=1, hour=4, minute=13, timezone=BUSINESS_TZ),
         id="onboarding_pattern",
         name="onboarding_pattern",
         replace_existing=True,
@@ -840,7 +871,7 @@ def register_all_jobs():
     # WEEKLY Sunday at 3am — funeral home behavioral profile enrichment
     scheduler.add_job(
         job_profile_update,
-        CronTrigger(day_of_week="sun", hour=3, minute=17),
+        CronTrigger(day_of_week="sun", hour=3, minute=17, timezone=BUSINESS_TZ),
         id="profile_update",
         name="profile_update",
         replace_existing=True,
@@ -850,7 +881,7 @@ def register_all_jobs():
     # WEEKLY Sunday at 3:30am — cemetery network readiness (new tenant connection suggestions)
     scheduler.add_job(
         job_network_readiness,
-        CronTrigger(day_of_week="sun", hour=3, minute=30),
+        CronTrigger(day_of_week="sun", hour=3, minute=30, timezone=BUSINESS_TZ),
         id="network_readiness",
         name="network_readiness",
         replace_existing=True,
@@ -860,7 +891,7 @@ def register_all_jobs():
     # DAILY at 2:15am ET — platform health recalculation
     scheduler.add_job(
         job_platform_health_recalculate,
-        CronTrigger(hour=2, minute=15),
+        CronTrigger(hour=2, minute=15, timezone=BUSINESS_TZ),
         id="platform_health_recalculate",
         name="platform_health_recalculate",
         replace_existing=True,
@@ -870,7 +901,7 @@ def register_all_jobs():
     # EVERY 15 MINUTES — incident auto-fix dispatcher
     scheduler.add_job(
         job_platform_incident_dispatcher,
-        CronTrigger(minute="*/15"),
+        CronTrigger(minute="*/15", timezone=UTC_TZ),
         id="platform_incident_dispatcher",
         name="platform_incident_dispatcher",
         replace_existing=True,
@@ -886,7 +917,7 @@ def register_all_jobs():
     # DAILY at midnight ET — price version activation
     scheduler.add_job(
         job_price_version_activation,
-        CronTrigger(hour=0, minute=1),
+        CronTrigger(hour=0, minute=1, timezone=BUSINESS_TZ),
         id="price_version_activation",
         name="price_version_activation",
         replace_existing=True,
@@ -1000,7 +1031,7 @@ def register_all_jobs():
     # logic and `docs/briefings_architecture.md` for the pattern doc.
     scheduler.add_job(
         job_briefing_sweep,
-        CronTrigger(minute="*/15"),
+        CronTrigger(minute="*/15", timezone=UTC_TZ),
         id="briefing_sweep",
         name="briefing_sweep",
         replace_existing=True,
@@ -1014,24 +1045,37 @@ def register_all_jobs():
     # in the window check.
     scheduler.add_job(
         job_note_settling_sweep,
-        CronTrigger(minute="*/15"),
+        CronTrigger(minute="*/15", timezone=UTC_TZ),
         id="note_settling_sweep",
         name="note_settling_sweep",
         replace_existing=True,
         misfire_grace_time=900,
     )
 
-    # EVERY 15 MINUTES starting 13:00 UTC — Phase B Session 1
-    # dispatch auto-finalize. Runs hourly in aggregate (four ticks)
-    # but only tenants whose LOCAL time is past 13:00 finalize this
-    # tick. In-service tz resolution + Focus-open deferral in
+    # EVERY 15 MINUTES over hours 13-23 UTC — Phase B Session 1
+    # dispatch auto-finalize. Only tenants whose own LOCAL time is past
+    # 13:00 finalize on a given tick; in-service tz resolution + Focus-open
+    # deferral live in
     # `delivery_schedule_service.auto_finalize_pending_schedules`.
-    # Hourly upper bound: fires at :00, :15, :30, :45 of hours 13-23
-    # UTC (covers every tenant tz from UTC-11 to UTC+13 with some
-    # overlap for safety).
+    #
+    # ⚠️ `UTC_TZ` IS DELIBERATE AND THIS IS THE ONE HOUR-BEARING JOB THAT MUST
+    # NOT BECOME EASTERN. The window is a COVERAGE RANGE, not a business time:
+    # it has to open early enough to catch the earliest tenant's 13:00 local.
+    # Measured 2026-10-16 — all four production tenants carry
+    # `companies.timezone = 'UTC'`, so they reach 13:00 local at 13:00 UTC and
+    # the first tick catches them. An Eastern window would open at 17:00 UTC
+    # and finalize every production tenant FOUR HOURS LATE.
+    #
+    # ⚠️ AND `auto_finalize_pending_schedules`'S OWN DOCSTRING CONTRADICTS THIS
+    # — it says the cron "runs in the scheduler's timezone = America/New_York
+    # by default". That was wrong in both halves: the scheduler-level timezone
+    # never reached a pre-constructed trigger (see `BUSINESS_TZ` above), and
+    # this window was never meant to be business-local anyway. Corrected there
+    # in the same commit; if the two ever disagree again, this comment is the
+    # one standing next to the code that decides.
     scheduler.add_job(
         job_dispatch_auto_finalize,
-        CronTrigger(hour="13-23", minute="*/15"),
+        CronTrigger(hour="13-23", minute="*/15", timezone=UTC_TZ),
         id="dispatch_auto_finalize",
         name="dispatch_auto_finalize",
         replace_existing=True,
@@ -1051,7 +1095,7 @@ def register_all_jobs():
 
     scheduler.add_job(
         email_imap_polling_sweep,
-        CronTrigger(minute="*/5"),
+        CronTrigger(minute="*/5", timezone=UTC_TZ),
         id="email_imap_polling_sweep",
         name="email_imap_polling_sweep",
         replace_existing=True,
@@ -1059,7 +1103,7 @@ def register_all_jobs():
     )
     scheduler.add_job(
         email_token_refresh_sweep,
-        CronTrigger(minute=7),  # hourly at :07
+        CronTrigger(minute=7, timezone=UTC_TZ),  # hourly at :07
         id="email_token_refresh_sweep",
         name="email_token_refresh_sweep",
         replace_existing=True,
@@ -1067,7 +1111,7 @@ def register_all_jobs():
     )
     scheduler.add_job(
         email_subscription_renewal_sweep,
-        CronTrigger(minute=23),  # hourly at :23
+        CronTrigger(minute=23, timezone=UTC_TZ),  # hourly at :23
         id="email_subscription_renewal_sweep",
         name="email_subscription_renewal_sweep",
         replace_existing=True,
@@ -1085,7 +1129,7 @@ def register_all_jobs():
 
     scheduler.add_job(
         calendar_token_refresh_sweep,
-        CronTrigger(minute=11),  # hourly at :11 (offset from email at :07)
+        CronTrigger(minute=11, timezone=UTC_TZ),  # hourly at :11 (offset from email at :07)
         id="calendar_token_refresh_sweep",
         name="calendar_token_refresh_sweep",
         replace_existing=True,
@@ -1093,7 +1137,7 @@ def register_all_jobs():
     )
     scheduler.add_job(
         calendar_subscription_renewal_sweep,
-        CronTrigger(minute=27),  # hourly at :27 (offset from email at :23)
+        CronTrigger(minute=27, timezone=UTC_TZ),  # hourly at :27 (offset from email at :23)
         id="calendar_subscription_renewal_sweep",
         name="calendar_subscription_renewal_sweep",
         replace_existing=True,

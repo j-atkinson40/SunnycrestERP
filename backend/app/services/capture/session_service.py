@@ -877,13 +877,29 @@ def approve(
     """Create the sales order this capture describes. One transaction, idempotent.
 
     ⚠️ STATUS `draft`, BY JAMES'S DECISION D1 (2026-10-13), AND IT IS A SAFETY
-    MECHANISM RATHER THAN A DEFAULT. Measured on production: the 18:00 end-of-day
-    batch selects `status IN ('confirmed','processing','shipped','delivered',
+    MECHANISM RATHER THAN A DEFAULT. Measured on production: the end-of-day batch
+    selects `status IN ('confirmed','processing','shipped','delivered',
     'completed')` (`draft_invoice_service.py:226-228`) and, in the auto-confirm mode
     every production tenant runs, it SETS THE ORDER TO `delivered` and drafts an
-    invoice against it. 12 invoices and 5 rewritten orders on production prove it is
-    live. `draft` is outside that net, and `create_invoice_from_order` refuses a
-    draft outright besides.
+    invoice against it. `draft` is outside that net, and
+    `create_invoice_from_order` refuses a draft outright besides.
+
+    ⚠️ CORRECTED 2026-10-16 — THE FIGURES WERE TESTCO'S AND THIS SENTENCE CALLED
+    THEM PRODUCTION'S. It read: "12 invoices and 5 rewritten orders on production
+    prove it is live." Re-measured unbounded across all tenants: those 12
+    `generation_reason='end_of_day_batch'` invoices ($30,612.00) and 5
+    `delivery_auto_confirmed` orders are **testco's**. Sunnycrest has **0 and 0** —
+    it has never had a non-draft order due, so the batch has never selected one of
+    its rows. The batch IS live and fires nightly for all four tenants (148
+    completed runs, last 2026-10-15); what the figures prove is that it acts, on
+    the development tenant. A reader took them for evidence about Sunnycrest.
+
+    ⚠️ AND THE TIME IN THIS DOCSTRING WAS WRONG TOO — it said "18:00 end-of-day"
+    meaning 6 PM Eastern. Until 2026-10-16 the batch fired at 18:00 **UTC** = 2 PM
+    Eastern, because `CronTrigger` never inherited the scheduler's timezone. Fixed
+    in `app/scheduler.py`; see `docs/investigations/2026-10-16-scheduler-timezone.md`.
+    The hour is deliberately not restated here — `scheduler.py` owns it, and a
+    second copy is a second thing to go stale.
 
     ⚠️ `order_type='funeral'` IS NOT A SECOND GUARD, THOUGH I WROTE THAT HERE FIRST
     AND A BREAK TEST CAUGHT IT. The batch's filter is

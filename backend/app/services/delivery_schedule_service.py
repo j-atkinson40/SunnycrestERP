@@ -424,10 +424,25 @@ def auto_finalize_pending_schedules(
     """Sweep tenants; finalize TOMORROW's draft schedule when tenant-
     local time has reached the 1pm auto-finalize window.
 
-    Called by the scheduler every 15 min starting at 13:00 tenant-
-    local (the cron in `app/scheduler.py` runs in the scheduler's
-    timezone = America/New_York by default; per-tenant tz resolution
-    still happens here for multi-tz tenants).
+    ⚠️ CORRECTED 2026-10-16. This read: "Called by the scheduler every 15 min
+    starting at 13:00 tenant-local (the cron in `app/scheduler.py` runs in the
+    scheduler's timezone = America/New_York by default; per-tenant tz resolution
+    still happens here for multi-tz tenants)." Both halves of the parenthetical
+    were wrong. `BackgroundScheduler(timezone=...)` never reached a
+    pre-constructed `CronTrigger` — every cron job in that file ran on container
+    UTC — and this job's window was never meant to be business-local in the
+    first place.
+
+    Called every 15 min over hours **13-23 UTC** — a coverage range, declared
+    `timezone=UTC_TZ` in `app/scheduler.py` on purpose. The cron's only job is to
+    tick often enough, and early enough, to catch the earliest tenant's 13:00
+    local; **the real gate is the `AUTO_FINALIZE_HOUR` check below**, which skips
+    any tenant whose own local time has not reached 13:00 yet.
+
+    ⚠️ So do not "tidy" that trigger into Eastern to match the rest of the file.
+    Measured 2026-10-16: all four production tenants carry
+    `companies.timezone = 'UTC'` and hit 13:00 local at 13:00 UTC. An Eastern
+    window opens at 17:00 UTC and would finalize all of them four hours late.
 
     Per-tenant logic:
       1. Resolve tenant tz + current tenant-local datetime.

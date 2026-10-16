@@ -564,3 +564,8 @@ tests/test_a_name_is_shown_the_same_way_everywhere.py
 tests/test_the_question_line.py
 tests/test_spans_are_reported.py
 tests/test_the_vocabulary.py
+
+# Every CronTrigger declares its timezone. No database — the static checks parse
+# `app/scheduler.py`, and the runtime checks call `register_all_jobs()` without
+# starting the scheduler, so nothing fires and no row is written.
+tests/test_scheduler_timezone.py
