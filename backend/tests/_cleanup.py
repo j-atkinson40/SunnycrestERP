@@ -96,6 +96,17 @@ _PURGE_STATEMENTS = [
     # helper started failing on the companies delete — which is its own small
     # proof of how unexercised that layer was.
     "DELETE FROM behavioral_insights WHERE tenant_id = ANY(:ids)",
+    # ⚠️ BOTH CLAUSES ARE NEEDED AND THE FIRST ONE ALONE WAS A SILENT GAP (2026-10-16).
+    # `agent_service.log_activity(db, tenant_id, ...)` takes `job_id` as OPTIONAL and the
+    # end-of-day batch calls it without one — so those rows carry `tenant_id` and a NULL
+    # `job_id`, and a delete keyed on `job_id IN (...)` misses every one of them. The
+    # company delete then fails on `agent_activity_log_tenant_id_fkey`, which is how this
+    # was found: a new test whose subject writes an activity row with no job.
+    #
+    # Keyed on `tenant_id` is the complete predicate; the job_id clause is kept because
+    # the column is nullable in the other direction too — a row could in principle carry
+    # a job for a tenant whose own id was already cleared.
+    "DELETE FROM agent_activity_log WHERE tenant_id = ANY(:ids)",
     "DELETE FROM agent_activity_log WHERE job_id IN (SELECT id FROM agent_jobs WHERE tenant_id = ANY(:ids))",
     "UPDATE agent_schedules SET last_job_id = NULL WHERE last_job_id IN (SELECT id FROM agent_jobs WHERE tenant_id = ANY(:ids))",
     "DELETE FROM period_locks WHERE tenant_id = ANY(:ids)",

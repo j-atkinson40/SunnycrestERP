@@ -319,9 +319,35 @@ class EmailService:
     ) -> dict[str, Any]:
         """Invoice email — mixes dynamic body content with the shared
         `email.base_wrapper` template. Stays inline-built for the body
-        (per D-2 decision) but routes through DeliveryService for audit."""
+        (per D-2 decision) but routes through DeliveryService for audit.
+
+        ⚠️ GATED ON A PER-TENANT SWITCH THAT DEFAULTS TO OFF (James 2026-10-16, step 2
+        item 5). Invoices are still created, posted to AR and carried onto statements;
+        only the EMAIL is withheld until a tenant turns `invoice_email_enabled` on.
+
+        ⚠️ THE GUARD IS HERE, AT THE CHOKEPOINT, NOT IN THE CALLERS. Two call sites reach
+        this today — `draft_invoice_service._try_send_invoice_email:99` and the manual
+        send route `api/routes/sales.py:1061` — and a guard per caller is a guard a third
+        caller will not have. Putting it in the function that actually hands bytes to
+        `delivery_service` makes a bypass unexpressible rather than merely discouraged.
+        See `invoice_email_allowed`.
+        """
         from app.services.delivery import delivery_service
         from app.services.documents import document_renderer
+        from app.services.invoice_email_switch import invoice_email_allowed
+
+        allowed, why = invoice_email_allowed(db, company_id)
+        if not allowed:
+            logger.warning(
+                "Invoice %s email WITHHELD (company_id=%s): %s",
+                invoice_number, company_id, why,
+            )
+            # ⚠️ THE SHAPE OF A SUCCESSFUL RESULT IS NOT RETURNED. Callers branch on
+            # `result.get("success")` and stamp `sent_at` / `sent_to_email` when it is
+            # truthy; returning success here would record a send that did not happen and
+            # make the invoice look delivered forever. `withheld` is carried so a caller
+            # that wants to distinguish "blocked" from "failed" can.
+            return {"success": False, "withheld": True, "reason": why}
 
         if deceased_name:
             subject = (

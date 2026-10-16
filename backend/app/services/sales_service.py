@@ -634,6 +634,27 @@ def update_sales_order(
     if getattr(data, "status", None) in CANCEL_SPELLINGS:
         data.status = STATUS_CANCELLED
 
+    # ⚠️ THE TRANSITION GATE (James 2026-10-16, step 2 item 4). Until this, `status` was
+    # an unconstrained `str` on the schema and whatever arrived was assigned — so
+    # `PATCH {"status": "delivered"}` on a DRAFT was accepted, skipping `confirmed`
+    # entirely and dropping the order into the end-of-day batch's net with
+    # `delivered_at` still NULL. The draft->confirmed->delivered sequence existed only
+    # as the order of buttons in the frontend.
+    #
+    # ⚠️ IT RUNS BEFORE ANY FIELD IS WRITTEN, so a rejected transition leaves the row
+    # untouched rather than half-updated. The loop below sets several fields; a check
+    # after it would have to undo them.
+    from app.services import sales_order_transitions as transitions
+
+    try:
+        transitions.check(
+            order.status, getattr(data, "status", None), order_number=order.number
+        )
+    except transitions.TransitionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
+
     for field in ("status", "required_date", "shipped_date", "notes",
                    "deceased_name", "service_location", "service_location_other",
                    "service_time", "eta"):

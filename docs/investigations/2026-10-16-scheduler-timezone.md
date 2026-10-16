@@ -197,25 +197,49 @@ isn't later read as instability.
 
 ## 3. DST — what happens to each job
 
-**Method.** Computed locally against `apscheduler 3.11.3` + stdlib `zoneinfo` by walking
-`get_next_fire_time` and measuring the **gap between consecutive fires in UTC**. A daily job
-should show 24h, or 23h/25h across a transition. 47h means a day was skipped; 1h means it
-fired twice.
+⚠️ **THIS SECTION WAS RE-DERIVED 2026-10-16 AFTER JAMES CHALLENGED IT, AND THE
+CHALLENGE WAS CORRECT.** The original said `price_version_activation` "skips one run on
+spring-forward day". US spring-forward moves 02:00 → 03:00, so **00:00 exists on
+2027-03-14 and that day fires normally**. The skipped day is **2027-03-15**. The
+conclusion (one skipped run, self-healing) survived; the derivation did not, which is the
+case CLAUDE.md §11 names as the dangerous one — nothing downstream would ever have
+contradicted the wrong reason.
 
-⚠️ **Arithmetic is done in UTC.** A first attempt advanced the cursor with
+**Method, corrected.** `BaseScheduler._process_jobs` advances a job with
+
+```python
+job_next_run = job.trigger.get_next_fire_time(run_times[-1], now)
+```
+
+— **both arguments supplied**, `now` ≈ the fire instant. That is the only faithful
+simulation, and it is what the numbers below use.
+
+⚠️ **`previous_fire_time` IS THE DISCRIMINATOR, AND TWO EARLIER INSTRUMENTS IN THIS ARC
+GOT IT WRONG IN OPPOSITE DIRECTIONS.** A dense grid sweeping independent `now` values with
+`previous_fire_time=None` reports **no missing days at all** — it is answering "what is the
+next fire from a cold start", which the scheduler only does on boot. Pass
+`previous_fire_time` and the skip appears. `CronTrigger.get_next_fire_time` opens
+`start_date = min(now, previous_fire_time + 1µs)` and walks the cron fields from there;
+the exact point at which that walk loses 2027-03-15 is **not traced**, and is not claimed
+here — only measured. Two earlier attempts to state a mechanism from reading were wrong,
+so this one is left as an observation.
+
+⚠️ **And a first attempt at the walk** advanced its cursor with
 `aware_dt + timedelta(seconds=1)`, which is wall-clock arithmetic — it discards `fold` and
 jumps *backwards* an hour across a fall-back boundary. That produced an apparent
 non-monotonic `get_next_fire_time` and nearly became a reported APScheduler bug. It was my
-cursor, not the library. Recorded because the false version was more interesting than the
-true one.
+cursor, not the library.
+
+A daily job should show gaps of 24h, or 23h/25h across a transition. 47h means a day was
+skipped; 1h means it fired twice.
 
 **Controls.** Both hazards are reachable by the instrument, so its silence elsewhere means
 something:
 
 | control | result |
 |---|---|
-| hypothetical job at `01:30` ET across 2026-11-01 fall-back | gaps `[1.0, 24, 24, 24]` — **fires twice**, 01:30 EDT = 05:30Z and 01:30 EST = 06:30Z |
-| hypothetical job at `00:31` ET across 2027-03-14 spring-forward | gaps `[47.0, 24, 24, 24]` — **skips a day** |
+| hypothetical job at `01:30` ET across 2026-11-01 fall-back | gaps `[1, 24, 24, 24]` — **fires twice**: `11-01 01:30` appears in the fire list twice (01:30 EDT and 01:30 EST) |
+| hypothetical job at `00:31` ET across 2027-03-14 spring-forward | gaps `[47, 24, 24, 24]` — fires `03-14 00:31`, then `03-16 00:31`: **03-15 skipped** |
 
 ### Fall-back, Sunday 2026-11-01 (02:00 EDT → 01:00 EST; local 01:00–01:59 occurs twice)
 
@@ -234,19 +258,41 @@ artefact of rendering UTC instants into ET during the doubled hour, not a double
 
 **So for the question as asked — nothing to fix or flag for Nov 1 2026.**
 
-### Spring-forward, Sunday 2027-03-14 (02:00 EST → 03:00 EDT; local 02:00–02:59 does not exist) — ⚠️ one job
+### Spring-forward, Sunday 2027-03-14 (02:00 EST → 03:00 EDT) — ⚠️ one job, and it skips **March 15**
 
-| job | ET time | gaps across the transition | verdict |
-|---|---|---|---|
-| **`price_version_activation`** | **00:01** | **`[47.0, 24, 24, 24]`** | ⚠️ **skips one run** |
-| `ar_balance_reconciliation` | 02:00 | `[23.0, 24, 24]` | fires once, slipped to 03:00 EDT |
-| `platform_health_recalculate` | 02:15 | `[23.0, 24, 24]` | slipped to 03:15 EDT |
-| `tax_accumulation` | 02:30 | `[23.0, 24, 24]` | slipped to 03:30 EDT |
-| every other hour-bearing job | 01:xx–23:xx | `[23.0 or 24.0, 24, 24]` | clean |
+Scheduler-faithful walk, fire times in ET local:
 
-Only `hour=0` skips. `hour=1` and up are clean; measured `00:01` and `00:31` both skip,
-`01:01` does not. The non-existent-local-time jobs (02:00/02:15/02:30) resolve **forward** to
-03:xx EDT and fire once — correct behaviour, no skip, no double.
+| job | ET time | fires | gaps (h) | verdict |
+|---|---|---|---|---|
+| **`price_version_activation`** | **00:01** | `03-14`, **`03-16`**, `03-17`, `03-18` | **`[47, 24, 24]`** | ⚠️ **03-14 fires; 03-15 is SKIPPED** |
+| `ar_balance_reconciliation` | 02:00 | `03-14`, `03-15`, `03-16` | `[23, 24, 24]` | clean |
+| `platform_health_recalculate` | 02:15 | `03-14`, `03-15`, `03-16` | `[23, 24, 24]` | clean |
+| `tax_accumulation` | 02:30 | `03-14`, `03-15`, `03-16` | `[23, 24, 24]` | clean |
+| `profile_update` | 03:17 | `03-14`, `03-15`, `03-16` | `[24, 24, 24]` | clean |
+| the batch | 18:00 | `03-13`, `03-14`, `03-15` | `[23, 24, 24]` | clean |
+| the nightly block | 23:00 | `03-13`, `03-14`, `03-15` | `[23, 24, 24]` | clean |
+
+**Only `hour=0` skips.** Measured: `00:01` and `00:31` skip; `01:01` does not; every hour
+from 01 upward is clean. So **`price_version_activation` is the only affected job on the
+platform**, and 2027-03-14 is not the day it misses — **2027-03-15 is**.
+
+⚠️ **Note what the 02:xx jobs do, since it was the original (wrong) theory for the skip.**
+The non-existent local hour is handled correctly: `02:00`/`02:15`/`02:30` each fire once on
+03-14 with a 23h gap. The missing hour is not the mechanism.
+
+**Flagged, not fixed, and the reason is that it self-heals twice over:**
+
+1. `activate_scheduled_versions` selects `PriceListVersion.effective_date <= today` with
+   `status == "scheduled"` (`price_increase_service.py`), so a skipped run activates the
+   same versions on the next run and already-activated versions are never reselected.
+   Worst case: a version effective 2027-03-15 goes live at 00:01 ET on 2027-03-16.
+2. The wrong `next_run_time` lives only in the in-memory job store. **Any process restart
+   between 03-14 05:01Z and 03-15 04:01Z recomputes from scratch and restores 03-15.** On
+   Railway, every deploy is such a restart.
+
+Moving it to `hour=3` would remove the skip and is a one-line change — but it changes when
+a price list becomes effective, which is a business decision rather than a clock fix, so it
+is surfaced rather than taken.
 
 **`price_version_activation` is flagged, not fixed, and the reason is that it self-heals.**
 `activate_scheduled_versions` selects `PriceListVersion.effective_date <= today` with
@@ -303,4 +349,53 @@ been through it. Corrected to name the tenant.
 
 ## 6. Post-deploy observation
 
-*Filled in after the deploy — see the bottom of this document.*
+Pushed `e0843aeb` at **15:53 UTC**, inside the `[12:00, 18:00)` safe window from F-3. The
+API served the new commit at **16:02 UTC**; the 15:56–16:02 gap is the documented
+canonical-seed window where the API returns 502 (`STATE.md`, 2026-10-12 deploy-window
+finding), not a failure.
+
+### Verified immediately — the scheduler booted and `UTC_TZ` works
+
+First tick after the deploy, production `job_runs`, UTC:
+
+| job_type | fired | status |
+|---|---|---|
+| `BRIEFING_SWEEP` | **16:15:00** | completed |
+| `DISPATCH_AUTO_FINALIZE` | **16:15:00** | completed |
+| `PLATFORM_INCIDENT_DISPATCHER` | **16:15:00** | completed |
+| `NOTE_SETTLING_SWEEP` | **16:15:00** | completed |
+
+Three things follow, and the first is the one that mattered most:
+
+1. **`register_all_jobs()` ran without raising on the new code.** A bad timezone string or
+   a malformed trigger would have aborted boot; instead all four ticked on schedule.
+2. **`UTC_TZ` behaves as declared** — these fire on the UTC quarter-hour, exactly as before
+   the change. The eight minute-only sweeps are unchanged, which is the intent.
+3. **F-1 holds.** `DISPATCH_AUTO_FINALIZE` fired at 16:15Z, inside its 13–23 **UTC** window.
+   Had it been "tidied" to Eastern its window would not have opened until 17:00Z.
+
+### Pending — the Eastern jobs cannot be observed yet
+
+The fix moves every business-local job later in UTC, so none of them has a fire time
+between the 16:02 deploy and now:
+
+| job | first observable fire after deploy | UTC |
+|---|---|---|
+| `draft_invoice_generator` | 18:00 ET today | **22:00Z** |
+| the nightly block ×10 | 23:00–23:45 ET today | 03:00–03:45Z tomorrow |
+| the early-morning group | 00:01–08:00 ET tomorrow | 04:01–12:00Z tomorrow |
+
+A **two-sided watch** is armed on the batch, because one side alone proves little:
+
+- **18:00Z must stay quiet.** The old fire time going silent is the positive evidence that
+  the trigger moved — a new fire at 22:00Z would be consistent with a *second* trigger
+  having been added.
+- **22:00Z must fire.** And it must report `tenant_count 4`.
+
+⚠️ The watch also fails loudly at 22:40Z if nothing has fired, rather than simply staying
+silent — a monitor whose failure mode is silence cannot be distinguished from a monitor
+that is still waiting.
+
+### Results
+
+*To be appended when the 18:00Z and 22:00Z observations land.*

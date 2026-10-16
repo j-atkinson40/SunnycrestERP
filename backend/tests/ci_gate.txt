@@ -569,3 +569,9 @@ tests/test_the_vocabulary.py
 # `app/scheduler.py`, and the runtime checks call `register_all_jobs()` without
 # starting the scheduler, so nothing fires and no row is written.
 tests/test_scheduler_timezone.py
+
+# Step 2 of the confirm arc: the batch waits for the service date; the status
+# transition graph; the invoice-email switch. Both files purge their own tenants
+# by slug prefix, so neither moves the company count.
+tests/test_r213_sunnycrest_timezone.py
+tests/test_delivered_on_the_service_date.py

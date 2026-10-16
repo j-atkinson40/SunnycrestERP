@@ -782,6 +782,28 @@ def _as_date(value: object):
         return None
 
 
+def _as_datetime_midnight(value: object):
+    """The same day `_as_date` would return, as a UTC-midnight timestamp, or None.
+
+    ⚠️ DERIVED FROM `_as_date` RATHER THAN RE-PARSING. `sales_orders.required_date` is a
+    `DateTime` and `scheduled_date` is a `Date`, and the two must name the SAME DAY —
+    `approve` writes both from one answer. A second parser would be a second set of
+    year-vs-date edge cases to keep in step, and the one that matters ("1948" is not a
+    date) is already handled once, carefully, up there.
+
+    ⚠️ RETURNS None EXACTLY WHEN `_as_date` DOES, which is the property the batch depends
+    on: its `COALESCE(scheduled_date, date(required_date))` must not find a date in one
+    column and nothing in the other, or an order with no service date would still be
+    selected through the fallback.
+    """
+    from datetime import datetime as _datetime, time as _time, timezone as _timezone
+
+    d = _as_date(value)
+    if d is None:
+        return None
+    return _datetime.combine(d, _time.min, tzinfo=_timezone.utc)
+
+
 def assess_approval(db: Session, row: CaptureSession):
     """The blockers and prospective lines for a session, without writing anything."""
     from app.services.capture.approval import assess
@@ -957,10 +979,32 @@ def approve(
         status="draft",
         order_type="funeral",
         order_date=datetime.now(timezone.utc),
-        # ⚠️ THE SERVICE DATE, BY DISPATCH. It is also the field the 18:00 batch
-        # compares against `today`, which is why `status` and `order_type` carry
-        # the protection rather than this.
+        # ⚠️ THE SERVICE DATE, BY DISPATCH. It is also the field the end-of-day batch
+        # compares against the tenant's today, which is why `status` and `order_type`
+        # carry the protection rather than this.
         scheduled_date=_as_date(answers.get("service_date")),
+        # ⚠️ THE SAME DAY, WRITTEN TWICE ON PURPOSE, AND THIS IS THE FIELD THE DELIVERY
+        # HOOK READS (James's step 2, item 3). The two columns are not redundant — they
+        # have different types and different consumers:
+        #
+        #   scheduled_date  Date       the service date. First branch of the batch's
+        #                              COALESCE; what the scheduling surfaces read.
+        #   required_date   DateTime   what `order_integration_service.on_order_confirmed`
+        #                              dates the auto-created delivery from
+        #                              (`requested_date = order.required_date.date()`),
+        #                              and the batch's COALESCE fallback for pre-Opas
+        #                              orders that carry only this one.
+        #
+        # ⚠️ LEAVING IT NULL WAS A LATENT BUG, not a saving. Measured 2026-10-16: with
+        # `auto_create_delivery_from_order` enabled, a captured order would have produced
+        # a delivery with `requested_date = NULL` — a stop on nobody's day. The flag is
+        # OFF for Sunnycrest today, so nothing had surfaced it; turning the flag on
+        # without this would have.
+        #
+        # Midnight in the TENANT's zone would be more precise, but this column is
+        # consumed only as `.date()`, and a date-only value with a UTC midnight stamp
+        # round-trips to the same day for every zone from UTC-11 to UTC+13.
+        required_date=_as_datetime_midnight(answers.get("service_date")),
         # ⚠️ DERIVED FROM THE SERVICE DATE, NOT FROM THE CAPTURED ANSWER. Ruled
         # 2026-10-13: the burial is always the service day, so Opas stopped asking —
         # `burial_date` is no longer required and is normally absent from `answers`.

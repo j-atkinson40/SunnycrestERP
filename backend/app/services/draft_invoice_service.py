@@ -1,22 +1,48 @@
 """End-of-day draft invoice generation for funeral service orders.
 
-Runs at 6 PM daily.  For each manufacturing tenant with
-invoice_generation_mode = 'end_of_day', finds all qualifying sales orders
-for today and creates draft invoices that require morning review.
+Runs at 18:00 in the scheduler's declared timezone — `BUSINESS_TZ` in
+`app/scheduler.py`, i.e. 6 PM Eastern.
+
+⚠️ IT RAN AT 2 PM EASTERN UNTIL 2026-10-16, and "Runs at 6 PM daily" sat here the whole
+time. Every `CronTrigger` in `app/scheduler.py` was built without a timezone and so
+inherited the container's, which is UTC; 18:00 UTC is 2 PM EDT. See
+`docs/investigations/2026-10-16-scheduler-timezone.md`. The hour is NOT restated here
+beyond "18:00" — `scheduler.py` owns it, and a second copy of a number is a second thing
+to go stale, which is exactly what happened.
+
+WHICH ORDERS IT SELECTS (James's ruling, 2026-10-16 — step 2 of the confirm arc):
+
+An order is selected only if **its service date has arrived in the TENANT'S local time**
+and its status is one of `INVOICEABLE_STATUSES` (confirmed or beyond) and it is not
+cancelled/postponed and it is not already invoiced.
+
+  * Confirmed with a service date in the future  -> UNTOUCHED. It waits.
+  * Confirmed with no service date at all        -> NEVER auto-delivered, and raised as
+                                                    an `AgentAlert` so the office is told
+                                                    rather than left to notice the
+                                                    missing money. See
+                                                    `confirmed_without_a_service_date`.
+
+⚠️ "TODAY" IS THE TENANT'S DATE, NOT THE CONTAINER'S. It was `date.today()` until
+2026-10-16 — the container's date, UTC in production. A service on Friday evening in
+Skaneateles is still Friday locally when UTC has already rolled to Saturday. See
+`app/services/tenant_clock.py`, which also records that eight existing readers of
+`companies.timezone` disagree about the fallback.
 
 Two modes, controlled by require_driver_status_updates on DeliverySettings:
 
   False (default — auto-confirm):
-    Query every funeral order scheduled today that is not cancelled/postponed
-    and not yet invoiced.  Orders that are not already marked delivered are
-    automatically confirmed by the system (delivery_auto_confirmed = True,
-    delivered_at = now(), status → 'delivered').  A draft invoice is created
-    for every such order.
+    Every selected order that a driver has NOT already marked delivered is marked
+    delivered by the system (`delivery_auto_confirmed = True`, `delivered_at = now()`,
+    `status -> 'delivered'`) and a draft invoice is created against it.
+    ⚠️ `delivery_auto_confirmed = True` is the system recording that it ASSUMED the
+    delivery happened. Nothing asks anyone to confirm or correct that assumption today;
+    the morning queue reviews the INVOICE, not the delivery.
 
   True (require driver):
-    Only create draft invoices for orders that drivers have already marked
-    delivered/completed/shipped.  Orders that are still unconfirmed are
-    gathered into a warning alert so dispatch staff can follow up.
+    Only orders already in `DRIVER_CONFIRMED_STATUSES` are invoiced. Everything else is
+    gathered into a warning alert for dispatch to follow up. No tenant runs this mode on
+    production as of 2026-10-16.
 """
 
 import logging
@@ -31,6 +57,7 @@ from app.models.invoice import Invoice
 from app.models.sales_order import CANCEL_SPELLINGS, SalesOrder
 
 from app.services.job_outcome import JobOutcome
+from app.services.tenant_clock import tenant_today
 
 logger = logging.getLogger(__name__)
 
@@ -151,6 +178,37 @@ def _try_send_invoice_email(db: Session, inv: Invoice) -> None:
 # Statuses that count as driver-confirmed delivery
 DRIVER_CONFIRMED_STATUSES = {"completed", "shipped", "delivered"}
 
+#: Statuses from which an order may be auto-delivered and invoiced by this batch.
+#:
+#: ⚠️ `draft` IS NOT HERE AND THAT IS THE WHOLE SAFETY PROPERTY — see
+#: `capture/session_service.approve`'s docstring. Everything in this set is at or past
+#: `confirmed`, i.e. somebody or something has already asserted the order is real.
+#:
+#: ⚠️ EXTRACTED TO A CONSTANT 2026-10-16 so `app/services/capture/session_service.py` and
+#: the tests can import the ACTUAL list instead of restating it. It had been written out
+#: inline here and quoted by hand in two docstrings, which is three places to go stale.
+INVOICEABLE_STATUSES = (
+    "confirmed",
+    "processing",
+    "shipped",
+    "delivered",
+    "completed",
+)
+
+#: An order's service date: the day the service happens.
+#:
+#: ⚠️ ONE EXPRESSION, BECAUSE THREE THINGS NEED THE SAME ANSWER — the selection filter,
+#: the "confirmed but undated" alert (which must be its exact complement), and the tests.
+#: Written inline as a two-branch OR until 2026-10-16, which meant the undated case was
+#: only implicit and could not be reported on.
+#:
+#: `scheduled_date` is a DATE and is what Opas Approve writes. `required_date` is a
+#: TIMESTAMP and is the pre-Opas field; `func.date()` narrows it so the comparison is
+#: date-to-date rather than timestamp-to-date.
+SERVICE_DATE = func.coalesce(
+    SalesOrder.scheduled_date, func.date(SalesOrder.required_date)
+)
+
 # Statuses that mean the order is cancelled / won't be invoiced.
 # CANCEL_SPELLINGS covers legacy inbound rows defensively; the canonical
 # spelling is STATUS_CANCELLED (see app/models/sales_order.py).
@@ -171,6 +229,95 @@ def _stamp_billing_policy(invoice) -> None:
     if invoice.notes and _POLICY_NOTE in invoice.notes:
         return
     invoice.notes = f"{invoice.notes}\n{_POLICY_NOTE}" if invoice.notes else _POLICY_NOTE
+
+
+#: `alert_type` for the undated-order surface. Stable because anything that later wants
+#: to filter or dismiss these needs a name that does not move.
+UNDATED_ALERT_TYPE = "confirmed_order_without_service_date"
+
+
+def confirmed_without_a_service_date(db: Session, tenant_id: str) -> list[SalesOrder]:
+    """Orders that are confirmed-or-beyond, uncancelled, and have NO service date.
+
+    ⚠️ THE EXACT COMPLEMENT OF THE SELECTION FILTER'S DATE CONDITION, and it is written
+    from the same `SERVICE_DATE` expression for that reason. If the two were derived
+    separately, an order could fall through both — invisible to the batch AND absent from
+    the alert — which is the state this function exists to end.
+
+    Public because the office-facing surface should be able to ask the question directly
+    rather than waiting for the nightly alert.
+    """
+    return (
+        db.query(SalesOrder)
+        .filter(
+            SalesOrder.company_id == tenant_id,
+            SalesOrder.status.in_(INVOICEABLE_STATUSES),
+            ~SalesOrder.status.in_(SKIP_STATUSES),
+            SERVICE_DATE.is_(None),
+            (SalesOrder.order_type == "funeral") | (SalesOrder.order_type.is_(None)),
+        )
+        .order_by(SalesOrder.order_date.asc())
+        .all()
+    )
+
+
+def _alert_confirmed_without_a_service_date(
+    db: Session, tenant_id: str, already_invoiced_order_ids: set[str]
+) -> int:
+    """Raise one alert naming every confirmed order the batch can never reach.
+
+    ⚠️ ALREADY-INVOICED ORDERS ARE EXCLUDED. An order that was invoiced by hand is not
+    stuck, whatever its dates look like, and alerting on it every night would train the
+    office to ignore the alert — which is the failure mode that matters for a surface
+    whose whole job is to be noticed.
+
+    ⚠️ BEST-EFFORT, AND NEVER RAISES. This is a report about the run, not part of it: an
+    alert that fails must not abort a batch that has invoices to create. It returns the
+    count so the caller can put it in the outcome rather than discovering it from logs.
+    """
+    try:
+        stuck = [
+            o
+            for o in confirmed_without_a_service_date(db, tenant_id)
+            if o.id not in already_invoiced_order_ids
+        ]
+        if not stuck:
+            return 0
+
+        from app.services.agent_service import create_alert
+
+        names = ", ".join(
+            f"{o.number} ({o.deceased_name or 'no name'})" for o in stuck[:5]
+        )
+        more = f" and {len(stuck) - 5} more" if len(stuck) > 5 else ""
+        create_alert(
+            db,
+            tenant_id,
+            UNDATED_ALERT_TYPE,
+            "warning",
+            f"{len(stuck)} confirmed order{'s' if len(stuck) != 1 else ''} "
+            "with no service date",
+            # ⚠️ THE MESSAGE SAYS WHAT WILL HAPPEN IF NOBODY ACTS, not just what is true.
+            # "N orders have no service date" is a fact; "they will never be delivered or
+            # invoiced until one is set" is the reason to open it.
+            f"{names}{more}. An order with no service date is never auto-delivered and "
+            "never invoiced — the end-of-day batch cannot see it. Set the service date "
+            "on each one, or cancel it.",
+            action_label="Review orders",
+            action_url="/orders?filter=missing_service_date",
+        )
+        logger.warning(
+            "[DRAFT_INVOICE_GENERATOR] Tenant %s: %d confirmed order(s) have no "
+            "service date and can never be invoiced: %s",
+            tenant_id, len(stuck), [o.number for o in stuck],
+        )
+        return len(stuck)
+    except Exception as exc:
+        logger.error(
+            "[DRAFT_INVOICE_GENERATOR] Tenant %s: undated-order alert failed: %s",
+            tenant_id, exc,
+        )
+        return 0
 
 
 # ---------------------------------------------------------------------------
@@ -196,7 +343,12 @@ def generate_draft_invoices(db: Session, tenant_id: str) -> JobOutcome:
 
     require_driver = getattr(settings, "require_driver_status_updates", False)
 
-    today = date.today()
+    # ⚠️ THE TENANT'S OWN TODAY, NOT THE CONTAINER'S. This was `date.today()` until
+    # 2026-10-16, which is the container's date — UTC in production. "The night of the
+    # service date" has to mean the night where the service happened: a service on
+    # Friday in Skaneateles is still Friday at 23:30 local even though UTC has already
+    # rolled over to Saturday. See `tenant_today`.
+    today = tenant_today(db, tenant_id)
     tomorrow = today + timedelta(days=1)
     now = datetime.now(timezone.utc)
 
@@ -211,9 +363,21 @@ def generate_draft_invoices(db: Session, tenant_id: str) -> JobOutcome:
         .all()
     )
 
-    # Base query: funeral orders due today or overdue, not cancelled, not yet invoiced
-    # Eligibility: scheduled_date <= today, or if no scheduled_date then required_date <= today
-    # Orders with neither date set are never auto-delivered (require explicit scheduling)
+    # Base query: funeral orders whose SERVICE DATE HAS ARRIVED in the tenant's own
+    # local time, not cancelled, not yet invoiced.
+    #
+    # ⚠️ THE SERVICE DATE IS `COALESCE(scheduled_date, date(required_date))`, EXPRESSED
+    # ONCE AS `SERVICE_DATE` AND USED EVERYWHERE. It was previously written out as a
+    # two-branch OR inline, and the same expression had to be re-derived by hand
+    # wherever anything else wanted to ask "what is this order's service date" — so the
+    # no-date case was only implicit (neither branch matched) and nothing could report
+    # on it. One expression, three consumers: this filter, the no-date surface below,
+    # and the tests.
+    #
+    # ⚠️ `required_date` IS KEPT AS A FALLBACK DELIBERATELY, though Opas writes
+    # `scheduled_date`. Pre-Opas and hand-entered orders carry only `required_date`, and
+    # dropping the fallback would silently stop invoicing them — a quiet regression in
+    # the opposite direction from the one this dispatch is fixing.
     base_q = (
         db.query(SalesOrder)
         .filter(
@@ -223,19 +387,16 @@ def generate_draft_invoices(db: Session, tenant_id: str) -> JobOutcome:
             # OR by manual PATCH / seeds (possibly never invoiced — these
             # were stranded forever, ~$9,942 on dev). The double-invoice
             # guard + already_invoiced_order_ids make inclusion safe.
-            SalesOrder.status.in_(
-                ["confirmed", "processing", "shipped", "delivered", "completed"]
-            ),
+            SalesOrder.status.in_(INVOICEABLE_STATUSES),
             ~SalesOrder.status.in_(SKIP_STATUSES),
         )
-        .filter(
-            (SalesOrder.scheduled_date <= today)
-            | (
-                SalesOrder.scheduled_date.is_(None)
-                & (func.date(SalesOrder.required_date) <= today)
-                & SalesOrder.required_date.isnot(None)
-            )
-        )
+        # ⚠️ `IS NOT NULL` IS STATED RATHER THAN RELIED UPON. `NULL <= today` is NULL,
+        # which SQL treats as not-true, so an order with no service date would be
+        # excluded either way. It is written explicitly because the exclusion is a RULE
+        # James gave ("confirmed with no service date = never auto-delivered"), not an
+        # accident of three-valued logic — and because the no-date surface below has to
+        # select exactly the complement of this condition.
+        .filter(SERVICE_DATE.isnot(None), SERVICE_DATE <= today)
         .filter(
             (SalesOrder.order_type == "funeral") | (SalesOrder.order_type.is_(None))
         )
@@ -244,14 +405,31 @@ def generate_draft_invoices(db: Session, tenant_id: str) -> JobOutcome:
     all_today = base_q.all()
     uninvoiced = [o for o in all_today if o.id not in already_invoiced_order_ids]
 
+    # ⚠️ THE NO-DATE ORDERS, SURFACED RATHER THAN SILENTLY SKIPPED. Before this they
+    # simply failed to match and nobody was told. An order that is confirmed and has no
+    # service date is stuck: it will never be auto-delivered and never be invoiced, and
+    # the only way anyone found out was by noticing the money was missing.
+    undated = _alert_confirmed_without_a_service_date(
+        db, tenant_id, already_invoiced_order_ids
+    )
+
     if not uninvoiced:
         logger.info(
-            "[DRAFT_INVOICE_GENERATOR] Tenant %s: no uninvoiced orders for %s",
+            "[DRAFT_INVOICE_GENERATOR] Tenant %s: no uninvoiced orders for %s "
+            "(tenant-local)",
             tenant_id,
             today,
         )
+        # ⚠️ `undated` RIDES IN THE DETAIL, so a day that drafted nothing BECAUSE orders
+        # are stuck reads differently from a genuinely quiet day. Both are `no_work`;
+        # only the detail distinguishes them, and that distinction is the whole reason
+        # the undated surface exists.
         return JobOutcome.nothing_to_do(
-            orders_due=len(all_today), uninvoiced=0, mode="end_of_day"
+            orders_due=len(all_today),
+            uninvoiced=0,
+            mode="end_of_day",
+            tenant_today=today.isoformat(),
+            confirmed_without_service_date=undated,
         )
 
     from app.services import sales_service
@@ -279,6 +457,8 @@ def generate_draft_invoices(db: Session, tenant_id: str) -> JobOutcome:
         failed=stats["failed"],
         mode="require_driver" if require_driver else "auto_confirm",
         orders_uninvoiced=len(uninvoiced),
+        tenant_today=today.isoformat(),
+        confirmed_without_service_date=undated,
         **{k: v for k, v in stats.items() if k != "failed"},
     )
 
