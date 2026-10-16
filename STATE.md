@@ -4407,3 +4407,13 @@ the other.
   ⚠️ **`--reload` WAS TRIED AND REVERTED.** It restarts the APScheduler on every edit, and the scheduler floods on a missing `ANTHROPIC_API_KEY` until the server stops answering (`http=000`). Stale-but-alive beats fresh-but-wedged; the restart-after-backend-edit discipline stands, with the file-timestamp check that caught it.
 
   **Not James's, flagged:** Tab APPENDS rather than replacing, per "inserts the remainder" — so "monti" + Tab reads "monticello Burial Vault", keeping the typed lowercase.
+
+- **2026-10-16 — Production deploys take the API down for several minutes, by design, and it is worth knowing before the next one.**
+
+  Measured twice today: after a push the frontend goes live first and the API returns **502 from Cloudflare for ~8 minutes**, then recovers on its own. It is not a failure. `railway-start.sh:191` runs `run_canonical_seeds.sh` **outside** the `ENV_RESOLVED != "production"` branch (which closes at :169), so **production runs the canonical seed sequence on every deploy** — 66 `seed_*.py` on disk minus the `manual` tier — behind a boot lock that holds `uvicorn` until it finishes.
+
+  ⚠️ **SO A HALF-DEPLOYED WINDOW IS NORMAL AND LOOKS LIKE AN OUTAGE.** The new bundle is being served while the API it talks to is down; for the ghost specifically that means `fetchVocabulary` fails, is caught, and the bar simply does not complete. Anyone walking production in that window sees a feature that "did not ship".
+
+  **How to tell a real failure from the window, without reading deploy logs** (which must not be read — `seed_sunnycrest.py` prints a generated password once): import the app under production env via `railway run`, check `alembic_version`, and probe `/api/health` on a timer. All three were clean here while the API was still 502.
+
+  ⚠️ **AND A NEW ROUTE CAN BE VERIFIED ON PRODUCTION WITHOUT CREDENTIALS.** An unauthenticated request discriminates: `/capture/vocabulary` returned **403** exactly like a known-good capture route, while a genuinely absent path returned **404**. That is route registration confirmed on the real deployment, with no credential transiting.
