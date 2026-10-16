@@ -380,7 +380,6 @@ def test_the_batch_reads_the_tenant_clock_not_date_today():
         ("draft", "delivered"),      # James's named case
         ("draft", "completed"),
         ("draft", "shipped"),
-        ("confirmed", "draft"),      # reversal
         ("delivered", "confirmed"),  # reversal
         ("delivered", "shipped"),    # reversal
         ("completed", "delivered"),  # out of a terminal state
@@ -407,6 +406,10 @@ def test_forbidden_transitions(current, target):
         ("shipped", "delivered"),
         ("delivered", "completed"),
         ("confirmed", "confirmed"),      # no-op: a PATCH carrying other fields
+        # ⚠️ ALLOWED SINCE 2026-10-16 — "Undo confirm". It was in the FORBIDDEN list
+        # above until James's step-3 addendum; whether a PARTICULAR order may take it is
+        # decided by `undo_confirm_blocker`, tested separately below.
+        ("confirmed", "draft"),
         ("draft", "spring_burial"),
         ("spring_burial", "confirmed"),  # the hold comes back
         ("canceled", "canceled"),        # legacy spelling normalises
@@ -652,3 +655,161 @@ def test_the_hopkins_walk(db, monkeypatch):
     # --- and nothing was emailed, because the tenant switch is off
     assert inv.sent_at is None
     assert inv.sent_to_email is None
+
+
+# ── step 3 addendum item 1: "Undo confirm" ───────────────────────────────────
+
+
+def test_undo_confirm_takes_a_confirmed_order_back_to_draft(db):
+    """The ordinary case: confirmed by mistake, nothing has happened yet."""
+    from app.schemas.sales import SalesOrderUpdate
+    from app.services import sales_service
+
+    co = _tenant(db)
+    cust = _customer(db, co)
+    o = _order(db, co, cust, status="confirmed", scheduled=date(2026, 10, 20))
+
+    sales_service.update_sales_order(
+        db, co.id, None, o.id, SalesOrderUpdate(status="draft")
+    )
+    db.expire_all()
+    assert db.get(SalesOrder, o.id).status == "draft"
+
+
+def test_an_undone_order_is_invisible_to_the_batch(db, monkeypatch):
+    """⚠️ THE POINT OF THE FEATURE, NOT A COROLLARY. Undo is only worth having if it
+    actually pulls the order out of the net — and the net is what James's step 2 built.
+    A service date in the PAST is used deliberately: if the undo did not work, this
+    order would be delivered and invoiced on the very next run.
+    """
+    from app.schemas.sales import SalesOrderUpdate
+    from app.services import sales_service
+
+    co = _tenant(db)
+    cust = _customer(db, co)
+    today = date(2026, 10, 16)
+    _freeze_today(monkeypatch, today)
+    o = _order(db, co, cust, status="confirmed", scheduled=today - timedelta(days=1))
+
+    # It IS in the net while confirmed.
+    assert _selected(db, co) == {o.number}
+
+    sales_service.update_sales_order(
+        db, co.id, None, o.id, SalesOrderUpdate(status="draft")
+    )
+    db.commit()
+    assert _selected(db, co) == set(), "an undone order must leave the batch's net"
+
+    dis.generate_draft_invoices(db, co.id)
+    db.expire_all()
+    row = db.get(SalesOrder, o.id)
+    assert row.status == "draft"
+    assert row.delivered_at is None
+
+    from app.models.invoice import Invoice
+
+    assert db.query(Invoice).filter(Invoice.sales_order_id == o.id).count() == 0
+
+
+def test_undo_confirm_is_refused_once_delivered_at_is_set(db):
+    """⚠️ CHECKED ON `delivered_at`, NOT ON THE STATUS WORD. This row's status is
+    `confirmed` and its `delivered_at` is set — the state a hand-PATCH can produce, and
+    the one case where trusting the status would undo a real delivery.
+    """
+    from fastapi import HTTPException
+
+    from app.schemas.sales import SalesOrderUpdate
+    from app.services import sales_service
+
+    co = _tenant(db)
+    cust = _customer(db, co)
+    o = _order(db, co, cust, status="confirmed", scheduled=date(2026, 10, 16))
+    o.delivered_at = datetime(2026, 10, 16, 22, 0, tzinfo=timezone.utc)
+    db.commit()
+
+    with pytest.raises(HTTPException) as exc:
+        sales_service.update_sales_order(
+            db, co.id, None, o.id, SalesOrderUpdate(status="draft")
+        )
+    assert exc.value.status_code == 409
+    assert "marked delivered" in str(exc.value.detail)
+    db.rollback()
+    db.expire_all()
+    assert db.get(SalesOrder, o.id).status == "confirmed"
+
+
+def test_undo_confirm_is_refused_once_an_invoice_exists(db):
+    """`create_invoice_from_order` accepts a CONFIRMED order, so the office can invoice
+    before the service night. Undoing then would leave a draft order with a live invoice
+    against it."""
+    from fastapi import HTTPException
+
+    from app.schemas.sales import SalesOrderUpdate
+    from app.services import sales_service
+
+    co = _tenant(db)
+    cust = _customer(db, co)
+    o = _order(db, co, cust, status="confirmed", scheduled=date(2026, 10, 16))
+    inv = sales_service.create_invoice_from_order(db, co.id, None, o.id)
+    db.commit()
+
+    with pytest.raises(HTTPException) as exc:
+        sales_service.update_sales_order(
+            db, co.id, None, o.id, SalesOrderUpdate(status="draft")
+        )
+    assert exc.value.status_code == 409
+    assert inv.number in str(exc.value.detail)
+    db.rollback()
+    db.expire_all()
+    assert db.get(SalesOrder, o.id).status == "confirmed"
+
+
+def test_a_voided_invoice_does_not_block_undo(db):
+    """A voided invoice is the office saying it did not happen — the same direction as
+    the undo, so it must not stand in the way."""
+    from app.schemas.sales import SalesOrderUpdate
+    from app.services import sales_service
+
+    co = _tenant(db)
+    cust = _customer(db, co)
+    o = _order(db, co, cust, status="confirmed", scheduled=date(2026, 10, 16))
+    inv = sales_service.create_invoice_from_order(db, co.id, None, o.id)
+    inv.status = "void"
+    db.commit()
+
+    sales_service.update_sales_order(
+        db, co.id, None, o.id, SalesOrderUpdate(status="draft")
+    )
+    db.expire_all()
+    assert db.get(SalesOrder, o.id).status == "draft"
+
+
+def test_undo_is_not_available_from_delivered_or_later(db):
+    """Undo is `confirmed -> draft` only. `delivered` and `completed` are not confirmed,
+    and the graph must not have quietly opened a path from them."""
+    assert not transitions.is_allowed("delivered", "draft")
+    assert not transitions.is_allowed("completed", "draft")
+    assert not transitions.is_allowed("processing", "draft")
+    assert not transitions.is_allowed("shipped", "draft")
+
+
+def test_the_blocker_is_consulted_only_for_the_undo_edge(db):
+    """⚠️ A POSITIVE CONTROL ON THE WIRING. If `is_undo_confirm` were wrong in the
+    permissive direction, the blocker would run on ordinary transitions and an order with
+    an invoice could not move at all. Confirmed -> delivered on an invoiced order must
+    still work.
+    """
+    from app.schemas.sales import SalesOrderUpdate
+    from app.services import sales_service
+
+    co = _tenant(db)
+    cust = _customer(db, co)
+    o = _order(db, co, cust, status="confirmed", scheduled=date(2026, 10, 16))
+    sales_service.create_invoice_from_order(db, co.id, None, o.id)
+    db.commit()
+
+    sales_service.update_sales_order(
+        db, co.id, None, o.id, SalesOrderUpdate(status="delivered")
+    )
+    db.expire_all()
+    assert db.get(SalesOrder, o.id).status == "delivered"

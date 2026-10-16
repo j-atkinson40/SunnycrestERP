@@ -655,6 +655,18 @@ def update_sales_order(
             status_code=status.HTTP_409_CONFLICT, detail=str(exc)
         ) from exc
 
+    # ⚠️ UNDO CONFIRM IS THE ONE EDGE THE GRAPH CANNOT DECIDE ALONE. `confirmed -> draft`
+    # is permitted in shape, but only for an order nothing has happened to yet — not one
+    # already delivered, and not one already carrying a live invoice. The per-order half
+    # of the rule lives in `transitions.undo_confirm_blocker` so there is one home for
+    # the whole rule rather than a graph entry here and a condition there.
+    if transitions.is_undo_confirm(order.status, getattr(data, "status", None)):
+        blocker = transitions.undo_confirm_blocker(db, order)
+        if blocker:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail=blocker
+            )
+
     for field in ("status", "required_date", "shipped_date", "notes",
                    "deceased_name", "service_location", "service_location_other",
                    "service_time", "eta"):

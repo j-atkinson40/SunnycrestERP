@@ -60,8 +60,14 @@ ALLOWED: dict[str, frozenset[str]] = {
     "draft": frozenset({"confirmed", STATUS_CANCELLED, "spring_burial"}),
     # Real and scheduled. `delivered` is reachable directly because a small shop does
     # not run a production stage for every order.
+    #
+    # ⚠️ `draft` IS HERE — "UNDO CONFIRM" (James 2026-10-16, step 3 addendum item 1), AND
+    # IT IS THE ONE EDGE THAT IS NOT DECIDED BY STATUS ALONE. See
+    # `undo_confirm_blocker`: the status graph says it is shaped right, and that function
+    # says whether this particular order may still take it. Confirming by mistake
+    # previously had no way back except cancelling the order.
     "confirmed": frozenset(
-        {"processing", "shipped", "delivered", STATUS_CANCELLED, "spring_burial"}
+        {"draft", "processing", "shipped", "delivered", STATUS_CANCELLED, "spring_burial"}
     ),
     "processing": frozenset({"shipped", "delivered", STATUS_CANCELLED}),
     "shipped": frozenset({"delivered", STATUS_CANCELLED}),
@@ -77,11 +83,21 @@ ALLOWED: dict[str, frozenset[str]] = {
     STATUS_CANCELLED: frozenset(),
 }
 
-#: Recorded so the absence is a decision rather than an oversight: there is no
-#: `confirmed -> draft`. Un-confirming an order that the batch may already have acted on
-#: would mean reversing a delivery and an invoice, and nothing in the system knows how to
-#: do that. An order confirmed in error is cancelled, not demoted.
-REOPEN_IS_NOT_A_TRANSITION = True
+#: ⚠️ SUPERSEDED 2026-10-16 by James's step-3 addendum, item 1. This read:
+#:
+#:     "Recorded so the absence is a decision rather than an oversight: there is no
+#:      `confirmed -> draft`. Un-confirming an order that the batch may already have
+#:      acted on would mean reversing a delivery and an invoice, and nothing in the
+#:      system knows how to do that. An order confirmed in error is cancelled, not
+#:      demoted."
+#:
+#: The reasoning was sound about an order the batch HAS acted on and wrong to generalise
+#: from there — it refused the case it could not handle by refusing every case. Once
+#: Approve confirms directly (step 3), a mis-keyed order has no way back except
+#: cancelling, which loses the order number and the capture's own record of what the
+#: director said. The repair is to permit the edge and refuse it per-order: see
+#: `undo_confirm_blocker`, which declines exactly the orders the old reasoning was about.
+REOPEN_IS_NOT_A_TRANSITION = False
 
 
 class TransitionError(ValueError):
@@ -132,6 +148,68 @@ def check(current: str | None, target: str | None, *, order_number: str = "") ->
         f"{where}is {cur}; it cannot go straight to {_canonical(target)}. "
         f"From {cur} it can become: {', '.join(reachable) or '(nothing)'}."
     )
+
+
+def is_undo_confirm(current: str | None, target: str | None) -> bool:
+    """Whether this transition is the undo-confirm edge."""
+    return _canonical(current) == "confirmed" and _canonical(target) == "draft"
+
+
+def undo_confirm_blocker(db, order) -> str | None:
+    """Why this particular order may NOT be taken back to draft, or None if it may.
+
+    ⚠️ THE STATUS GRAPH CANNOT ANSWER THIS, which is why it is a separate function
+    rather than another entry in `ALLOWED`. Whether undo is safe depends on what has
+    already HAPPENED to the order, not on what its status word is — and the two can
+    disagree, because `delivered_at` and an `invoices` row are both written by paths
+    that do not necessarily leave the status at `delivered`.
+
+    Two blockers, and each is a thing the old blanket refusal was really about:
+
+    1. **It has been delivered.** `delivered_at` is set by the end-of-day batch at the
+       same moment it rewrites the status, and by `delivery_service`. Taking such an
+       order back to draft would assert the delivery never happened.
+       ⚠️ CHECKED ON `delivered_at`, NOT ON THE STATUS. A status of `confirmed` with a
+       `delivered_at` already set is exactly the state a hand-PATCH can produce, and it
+       is the one case where trusting the status word would undo a real delivery.
+
+    2. **It has a live invoice.** `create_invoice_from_order` accepts a `confirmed`
+       order — it refuses only drafts and cancelled — so the office can invoice before
+       the service night. Undoing then would leave a draft order with a live invoice
+       against it, which `create_invoice_from_order`'s own one-invoice-per-order guard
+       would later report as "already invoiced" for an order that looks un-confirmed.
+       Voided invoices do not block: a voided invoice is the office saying it did not
+       happen, which is the same direction as the undo.
+
+    Returns the operator-facing sentence, not a code — the office needs to know which of
+    the two it hit, because the remedies differ (cancel vs void the invoice first).
+    """
+    delivered_at = getattr(order, "delivered_at", None)
+    if delivered_at is not None:
+        return (
+            f"Order {order.number} was marked delivered "
+            f"({delivered_at:%Y-%m-%d}), so it cannot go back to draft. "
+            "Cancel it instead if it should not have happened."
+        )
+
+    from app.models.invoice import Invoice
+
+    existing = (
+        db.query(Invoice)
+        .filter(
+            Invoice.company_id == order.company_id,
+            Invoice.sales_order_id == order.id,
+            Invoice.status != "void",
+        )
+        .first()
+    )
+    if existing is not None:
+        return (
+            f"Order {order.number} already has invoice {existing.number} "
+            f"({existing.status}), so it cannot go back to draft. "
+            "Void the invoice first if this order should not have been confirmed."
+        )
+    return None
 
 
 def _canonical(status: str | None) -> str:

@@ -141,9 +141,26 @@ function SalesOrderDetailView({ id }: { id: string }) {
           : {}),
       });
       setOrder(updated);
-      toast.success(`Order marked as ${statusLabel(newStatus)}`);
-    } catch {
-      toast.error("Failed to update status.");
+      toast.success(
+        newStatus === "draft"
+          ? "Confirmation undone — the order is a draft again."
+          : `Order marked as ${statusLabel(newStatus)}`,
+      );
+    } catch (err: unknown) {
+      // ⚠️ THE SERVER'S MESSAGE IS SHOWN, NOT A GENERIC ONE. This was a bare
+      // `catch { toast.error("Failed to update status.") }`, which is adequate for a
+      // network blip and useless for the two refusals that matter: the transition graph
+      // says what the order CAN become, and the undo blocker names the invoice to void
+      // or tells you to cancel instead. Both are 409s with a sentence written for the
+      // office, and swallowing them turned actionable refusals into a dead end.
+      const detail = (
+        err as { response?: { data?: { detail?: unknown } } }
+      )?.response?.data?.detail;
+      toast.error(
+        typeof detail === "string" && detail
+          ? detail
+          : "Failed to update status.",
+      );
     } finally {
       setActionBusy(false);
     }
@@ -206,6 +223,22 @@ function SalesOrderDetailView({ id }: { id: string }) {
               onClick={() => handleStatusUpdate("processing")}
             >
               Move to Production
+            </Button>
+          )}
+          {/* ⚠️ UNDO CONFIRM (James 2026-10-16). Confirming is what puts an order in
+              front of the end-of-day batch, and before this the only way back was
+              cancelling — which loses the order number and the capture's record of what
+              the director said. Shown only while `confirmed`: the server refuses it once
+              the order is delivered or invoiced, and a button that is usually refused is
+              worse than no button. */}
+          {order.status === "confirmed" && (
+            <Button
+              variant="ghost"
+              disabled={actionBusy}
+              onClick={() => handleStatusUpdate("draft")}
+              title="Put this order back to draft. It will not be delivered or invoiced until it is confirmed again."
+            >
+              Undo confirm
             </Button>
           )}
           {order.status === "processing" && (

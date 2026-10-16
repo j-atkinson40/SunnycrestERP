@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/auth-context";
 import { usePresetTheme } from "@/contexts/preset-theme-context";
+import { toast } from "sonner";
 import { salesService } from "@/services/sales-service";
 import type { SalesOrder } from "@/types/sales";
 import { Button } from "@/components/ui/button";
@@ -149,6 +150,9 @@ function OrdersTable() {
   const [page, setPage] = useState(1);
   const [filterStatus, setFilterStatus] = useState("");
   const [loading, setLoading] = useState(true);
+  // The order currently being un-confirmed, so only its own button reads "Working…"
+  // rather than every row's. A single boolean would disable the whole column.
+  const [undoing, setUndoing] = useState<string | null>(null);
 
   const loadOrders = useCallback(async () => {
     setLoading(true);
@@ -168,6 +172,30 @@ function OrdersTable() {
   useEffect(() => {
     loadOrders();
   }, [loadOrders]);
+
+  // Undo confirm (James 2026-10-16). The SERVER owns the rule — it refuses once the
+  // order is delivered or already invoiced — so this does not pre-judge. It shows the
+  // server's sentence, which names the remedy (void the invoice, or cancel instead).
+  async function handleUndoConfirm(order: SalesOrder) {
+    setUndoing(order.id);
+    try {
+      await salesService.updateSalesOrder(order.id, { status: "draft" });
+      toast.success(
+        `${order.number} is a draft again — it will not be delivered or invoiced.`,
+      );
+      await loadOrders();
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: unknown } } })
+        ?.response?.data?.detail;
+      toast.error(
+        typeof detail === "string" && detail
+          ? detail
+          : "Could not undo the confirmation.",
+      );
+    } finally {
+      setUndoing(null);
+    }
+  }
 
   const totalPages = Math.ceil(total / 20);
 
@@ -208,18 +236,21 @@ function OrdersTable() {
               <TableHead>Required Date</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Total</TableHead>
+              <TableHead className="text-right">
+                <span className="sr-only">Actions</span>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center">
+                <TableCell colSpan={7} className="text-center">
                   Loading...
                 </TableCell>
               </TableRow>
             ) : orders.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center">
+                <TableCell colSpan={7} className="text-center">
                   No sales orders found
                 </TableCell>
               </TableRow>
@@ -244,6 +275,27 @@ function OrdersTable() {
                   <TableCell>{statusBadge(order.status)}</TableCell>
                   <TableCell className="text-right font-medium">
                     {fmtCurrency(order.total)}
+                  </TableCell>
+                  {/* ⚠️ UNDO CONFIRM (James 2026-10-16), on the row as well as the
+                      order page. Confirming is what puts an order in front of the
+                      end-of-day batch, and the office notices a mis-confirm while
+                      scanning the list far more often than while on one order's page.
+                      Rendered only while `confirmed` — the server refuses it once the
+                      order is delivered or invoiced, and a button that is usually
+                      refused is worse than no button. */}
+                  <TableCell className="text-right">
+                    {order.status === "confirmed" && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={undoing === order.id}
+                        data-testid={`undo-confirm-${order.id}`}
+                        onClick={() => handleUndoConfirm(order)}
+                        title="Put this order back to draft. It will not be delivered or invoiced until it is confirmed again."
+                      >
+                        {undoing === order.id ? "Working…" : "Undo confirm"}
+                      </Button>
+                    )}
                   </TableCell>
                 </TableRow>
               ))
