@@ -813,3 +813,219 @@ def test_the_blocker_is_consulted_only_for_the_undo_edge(db):
     )
     db.expire_all()
     assert db.get(SalesOrder, o.id).status == "delivered"
+
+
+# ── a second run on an already-delivered order ───────────────────────────────
+#
+# James's addendum line: the selection admits `delivered` and `completed` as well as
+# `confirmed`, so the batch sees an order it has already finished with on every
+# subsequent night. Two things must not happen: a second invoice, and a re-marking.
+#
+# ⚠️ TWO GUARDS, AND EACH ONE ALONE IS SUFFICIENT — measured by break test, and worth
+# writing down because it changes what these tests prove:
+#
+#   A. `uninvoiced = [o for o in all_today if o.id not in already_invoiced_order_ids]`
+#      removes the order before the loop, so nothing is reached.
+#   B. `if order.status not in DRIVER_CONFIRMED_STATUSES` inside the loop blocks the
+#      three delivery writes for an order already at delivered/shipped/completed.
+#
+# Break A alone: `test_a_second_run_does_not_re_mark_delivered_at` and
+# `test_many_runs_are_idempotent` stay GREEN, because B catches it. Break B alone: same
+# two stay green, because A catches it. Only breaking BOTH turns them red.
+#
+# So those two tests assert "at least one of the two guards held", not "guard X held".
+# That is genuine defence in depth rather than an accident — but it is the shape
+# CLAUDE.md §11 names (*a guard whose protection is supplied by a layer beneath it*), and
+# a reader who takes them as pinning one specific mechanism would be wrong. The
+# single-mechanism assertions are `test_a_driver_confirmed_delivery_is_not_restamped_as_auto`
+# and `test_a_completed_order_is_not_demoted_to_delivered` (both isolate B, since those
+# orders have no prior invoice for A to catch) and
+# `test_a_voided_invoice_still_keeps_the_order_out_of_the_batch` (isolates A).
+
+
+def test_a_second_run_creates_no_second_invoice(db, monkeypatch):
+    from app.models.invoice import Invoice
+
+    co = _tenant(db)
+    cust = _customer(db, co)
+    today = date(2026, 10, 16)
+    _freeze_today(monkeypatch, today)
+    o = _order(db, co, cust, scheduled=today)
+
+    dis.generate_draft_invoices(db, co.id)
+    db.commit()
+    first = db.query(Invoice).filter(Invoice.sales_order_id == o.id).all()
+    assert len(first) == 1
+
+    # The next night. The order is now `delivered`, which IS in the selection's
+    # status list, so it is seen again.
+    outcome = dis.generate_draft_invoices(db, co.id)
+    db.commit()
+    again = db.query(Invoice).filter(Invoice.sales_order_id == o.id).all()
+    assert len(again) == 1, f"a second run invoiced it again: {[i.number for i in again]}"
+    assert again[0].id == first[0].id
+    # ⚠️ `orders_due` IS 1, NOT 0, AND THAT IS CORRECT — my first assertion here was
+    # wrong. `orders_due` counts what status+date SELECTED; the already-invoiced filter
+    # runs after it and is reported separately as `uninvoiced`. The outcome deliberately
+    # distinguishes "the batch saw it" from "the batch had work to do", and flattening
+    # the two would lose the distinction that makes a quiet night readable.
+    assert outcome.detail.get("orders_due") == 1, "it is still selected by status+date"
+    assert outcome.detail.get("uninvoiced") == 0, (
+        "the already-invoiced filter should leave nothing to work on"
+    )
+    assert outcome.succeeded == 0, "no invoice was created on the second run"
+
+
+def test_a_second_run_does_not_re_mark_delivered_at(db, monkeypatch):
+    """⚠️ THE 'RE-MARK ANYTHING' HALF. `delivered_at` is the record of WHEN the
+    delivery was taken to have happened. A second run overwriting it would quietly move
+    that moment forward one night at a time, forever — and nothing downstream would
+    object, because each value looks like a plausible delivery time.
+    """
+    co = _tenant(db)
+    cust = _customer(db, co)
+    today = date(2026, 10, 16)
+    _freeze_today(monkeypatch, today)
+    o = _order(db, co, cust, scheduled=today)
+
+    dis.generate_draft_invoices(db, co.id)
+    db.commit()
+    db.expire_all()
+    row = db.get(SalesOrder, o.id)
+    first_delivered_at = row.delivered_at
+    assert first_delivered_at is not None
+
+    dis.generate_draft_invoices(db, co.id)
+    db.commit()
+    db.expire_all()
+    row = db.get(SalesOrder, o.id)
+    assert row.delivered_at == first_delivered_at, "delivered_at moved on a second run"
+    assert row.status == "delivered"
+
+
+def test_a_driver_confirmed_delivery_is_not_restamped_as_auto(db, monkeypatch):
+    """⚠️ THE CASE THAT MATTERS MOST, AND THE ONE A HAPPY-PATH TEST MISSES. An order a
+    human marked delivered carries `delivery_auto_confirmed = False` — that flag is the
+    system's own admission of whether it ASSUMED the delivery. If the batch restamped it
+    True, a real confirmation would be recorded as an assumption, and the one field that
+    distinguishes "somebody said so" from "the date arrived" would be destroyed.
+
+    Equally: the hand-set `delivered_at` must survive. The batch's `now` is not when the
+    vault was placed.
+    """
+    co = _tenant(db)
+    cust = _customer(db, co)
+    today = date(2026, 10, 16)
+    _freeze_today(monkeypatch, today)
+
+    driver_moment = datetime(2026, 10, 16, 14, 30, tzinfo=timezone.utc)
+    o = _order(db, co, cust, status="delivered", scheduled=today)
+    o.delivered_at = driver_moment
+    o.delivery_auto_confirmed = False
+    db.commit()
+
+    dis.generate_draft_invoices(db, co.id)
+    db.commit()
+    db.expire_all()
+    row = db.get(SalesOrder, o.id)
+
+    assert row.delivered_at == driver_moment, "the batch overwrote a real delivery time"
+    assert row.delivery_auto_confirmed is False, (
+        "a driver-confirmed delivery was restamped as auto-confirmed"
+    )
+    # It still gets its invoice — being already delivered is not a reason to skip billing.
+    from app.models.invoice import Invoice
+
+    assert db.query(Invoice).filter(Invoice.sales_order_id == o.id).count() == 1
+
+
+def test_a_completed_order_is_not_demoted_to_delivered(db, monkeypatch):
+    """`completed` is in the selection list (audit #2 D-3, so manually-completed orders
+    are not stranded uninvoiced). It must be invoiced without being walked backwards —
+    and `delivered` is backwards from `completed`."""
+    co = _tenant(db)
+    cust = _customer(db, co)
+    today = date(2026, 10, 16)
+    _freeze_today(monkeypatch, today)
+    o = _order(db, co, cust, status="completed", scheduled=today)
+
+    dis.generate_draft_invoices(db, co.id)
+    db.commit()
+    db.expire_all()
+    row = db.get(SalesOrder, o.id)
+    assert row.status == "completed", "a completed order was demoted"
+    assert row.delivered_at is None, "a completed order was given a delivery stamp"
+
+    from app.models.invoice import Invoice
+
+    assert db.query(Invoice).filter(Invoice.sales_order_id == o.id).count() == 1
+
+
+def test_many_runs_are_idempotent(db, monkeypatch):
+    """Five nights. One invoice, one delivery stamp. ⚠️ FIVE RATHER THAN TWO because an
+    off-by-one guard can survive a second run and fail on a third — the state the second
+    run leaves is not necessarily the state the first one did.
+    """
+    from app.models.invoice import Invoice
+
+    co = _tenant(db)
+    cust = _customer(db, co)
+    today = date(2026, 10, 16)
+    _freeze_today(monkeypatch, today)
+    o = _order(db, co, cust, scheduled=today)
+
+    stamps = []
+    for _ in range(5):
+        dis.generate_draft_invoices(db, co.id)
+        db.commit()
+        db.expire_all()
+        stamps.append(db.get(SalesOrder, o.id).delivered_at)
+
+    assert db.query(Invoice).filter(Invoice.sales_order_id == o.id).count() == 1
+    assert len(set(stamps)) == 1, f"delivered_at changed across runs: {stamps}"
+
+
+def test_the_remark_guard_is_the_driver_confirmed_set(db):
+    """⚠️ A STRUCTURAL CHECK ON WHY THE ABOVE HOLDS, so the reason is pinned and not only
+    the symptom. The three writes are guarded by `status not in
+    DRIVER_CONFIRMED_STATUSES`; if a status were dropped from that set, every test above
+    would still pass for `delivered` while `shipped` or `completed` silently started
+    being re-marked.
+    """
+    assert dis.DRIVER_CONFIRMED_STATUSES == {"completed", "shipped", "delivered"}
+    # every one of them is also selectable, which is the whole reason the guard is needed
+    for s in dis.DRIVER_CONFIRMED_STATUSES:
+        assert s in dis.INVOICEABLE_STATUSES
+
+
+def test_a_voided_invoice_still_keeps_the_order_out_of_the_batch(db, monkeypatch):
+    """⚠️ PINNED AS CURRENT BEHAVIOUR, AND IT IS NOT OBVIOUSLY THE RIGHT ONE.
+    `already_invoiced_order_ids` is built with NO invoice-status filter, so a VOIDED
+    invoice excludes its order from the batch permanently — voiding does not hand the
+    order back for re-invoicing.
+
+    That is the safe direction for this dispatch (no second invoice can ever appear), and
+    it is recorded here rather than silently relied upon because the office's mental model
+    of "void and let it re-run" does not match it. Surfaced for James; not changed, since
+    widening the filter to `status != 'void'` is exactly how a second invoice would become
+    reachable.
+    """
+    from app.models.invoice import Invoice
+    from app.services import sales_service
+
+    co = _tenant(db)
+    cust = _customer(db, co)
+    today = date(2026, 10, 16)
+    _freeze_today(monkeypatch, today)
+    o = _order(db, co, cust, scheduled=today)
+
+    inv = sales_service.create_invoice_from_order(db, co.id, None, o.id)
+    inv.status = "void"
+    db.commit()
+
+    outcome = dis.generate_draft_invoices(db, co.id)
+    db.commit()
+    assert outcome.detail.get("orders_due") == 1, "it is still selected by date+status"
+    assert db.query(Invoice).filter(Invoice.sales_order_id == o.id).count() == 1, (
+        "a voided invoice did not prevent a second one"
+    )
