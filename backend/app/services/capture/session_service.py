@@ -718,6 +718,10 @@ def read_state(
                     # row — so "2 needed" could mean one amber row and the director
                     # had to guess which fields were meant.
                     "missing_field_ids": list(r.missing_field_ids),
+                    # ⚠️ EVERY FIELD THE ROW SOURCES, for the row -> span link. The
+                    # pointer cannot reach a span (the textarea owns it), so the pane
+                    # row is the handle and it needs its own field ids to be one.
+                    "field_ids": list(r.field_ids),
                 }
                 for r in rendered.rows
             ],

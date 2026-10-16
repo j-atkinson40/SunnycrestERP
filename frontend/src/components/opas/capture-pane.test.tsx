@@ -579,7 +579,18 @@ describe("numbered picks", () => {
 })
 
 describe("never dropped", () => {
-  it("shows unrecognized text", async () => {
+  it("COUNTS unrecognized text in the header", async () => {
+    /**
+     * ⚠️ REWRITTEN 2026-10-16. It asserted the "Not understood" BOX, which James
+     * ruled away: the words now carry a dotted underline in the bar, where the
+     * director is already looking, and a list underneath repeated them in a second
+     * place.
+     *
+     * ⚠️ THE RULE IT GUARDS IS UNCHANGED AND IS WHY THIS WAS REWRITTEN RATHER THAN
+     * DELETED. E1's never-dropped guarantee is only worth something if the director
+     * can SEE what was not understood. What moved is the surface, not the duty — so
+     * the count carries the words in its tooltip and the mirror underlines them.
+     */
     const user = userEvent.setup()
     vi.mocked(startCapture).mockResolvedValue(
       state({ unrecognized: ["oversized"] }) as never,
@@ -587,9 +598,25 @@ describe("never dropped", () => {
     openOverlay()
     await type(user, "start an order")
 
-    await waitFor(() =>
-      expect(screen.getByTestId("capture-unrecognized")).toHaveTextContent("oversized"),
-    )
+    const count = await screen.findByTestId("capture-unrecognized-count")
+    expect(count).toHaveTextContent("1")
+    expect(count).toHaveTextContent("not understood")
+    // the words themselves are still reachable, not merely tallied
+    expect(count).toHaveAttribute("title", "oversized")
+    // and the box is gone
+    expect(screen.queryByTestId("capture-unrecognized")).not.toBeInTheDocument()
+  })
+
+  it("shows NO count when nothing is unrecognized", async () => {
+    // ⚠️ A PERSISTENT "0 not understood" WOULD BE THE NOISE THE BOX WAS REMOVED FOR.
+    const user = userEvent.setup()
+    vi.mocked(startCapture).mockResolvedValue(state({ unrecognized: [] }) as never)
+    openOverlay()
+    await type(user, "start an order")
+    await screen.findByTestId("capture-pane")
+    expect(
+      screen.queryByTestId("capture-unrecognized-count"),
+    ).not.toBeInTheDocument()
   })
 
   it("shows a re-statement as a correction naming the settled field", async () => {
@@ -602,8 +629,13 @@ describe("never dropped", () => {
     openOverlay()
     await type(user, "start an order")
 
+    // ⚠️ A RE-STATEMENT RIDES THE SAME CHANNEL AS UNRECOGNIZED TEXT, so it moved to
+    // the same place. The sentence naming the settled field is in the tooltip.
     await waitFor(() =>
-      expect(screen.getByTestId("capture-unrecognized")).toHaveTextContent("already"),
+      expect(screen.getByTestId("capture-unrecognized-count")).toHaveAttribute(
+        "title",
+        expect.stringContaining("already"),
+      ),
     )
   })
 

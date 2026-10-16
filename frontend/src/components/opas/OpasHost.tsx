@@ -26,6 +26,15 @@ import { useAuth } from "@/contexts/auth-context"
 import { useOpas } from "@/contexts/opas-context"
 import { abandonCapture } from "@/services/opas-capture-service"
 import { CapturePane, type EntryPaneStatus } from "./CapturePane"
+import {
+  CaptureMirror,
+  MIRROR_BOX,
+  MIRROR_TEXTAREA_EXTRA,
+  MirrorStack,
+  useMirrorSync,
+} from "./CaptureMirror"
+import { sameEntryStatus } from "./entry-status-guard"
+import { fieldsAtCaret } from "./mirror-spans"
 import { CAPTURE_START, isCatalogRequest, routeResolution } from "./opas-routing"
 import { isEntryPane } from "./pane-mode"
 import { EXTRACT_DEBOUNCE_MS } from "./capture-sequence"
@@ -110,6 +119,12 @@ export function OpasHost() {
    *  its content, and a single read at mount would be correct exactly until the
    *  first time it mattered. */
   const barRef = useRef<HTMLDivElement>(null)
+  /** ⚠️ THE MIRROR'S OWN NODE, so its scroll can be driven from the textarea's. */
+  const mirrorRef = useRef<HTMLDivElement>(null)
+  /** ⚠️ WHERE THE CARET IS, SO THE PANE CAN LIGHT THE ROW IT IS INSIDE. Tracked from
+   *  the events that can move it — typing, clicking and arrowing — rather than polled,
+   *  because a poll would either lag the caret or run forever. */
+  const [caret, setCaret] = useState<number | null>(null)
   const [barH, setBarH] = useState(0)
   const [text, setText] = useState("")
   const [busy, setBusy] = useState(false)
@@ -143,17 +158,19 @@ export function OpasHost() {
   const reportStatus = useCallback((paneId: string, next: EntryPaneStatus) => {
     setEntryStatus((prev) => {
       const cur = prev[paneId]
-      if (
-        cur !== undefined &&
-        cur.placeholder === next.placeholder &&
-        cur.capturing === next.capturing &&
-        cur.ready === next.ready &&
-        cur.picks.length === next.picks.length &&
-        cur.picks.every((p, i) => p.field_id === next.picks[i].field_id &&
-          p.options.length === next.picks[i].options.length)
-      ) {
-        return prev
-      }
+      // ⚠️ THIS GUARD SWALLOWED A WHOLE FEATURE, AND THE SHAPE OF THE MISTAKE IS
+      // WORTH MORE THAN THE FIX. It compared four of the status's fields. Three more
+      // were added for the tinting — `spans`, `spansForText`, `hoveredFieldIds` —
+      // and a status that differed ONLY in those was judged equal and dropped. So
+      // hovering a pane row set the state, reported it, and the report was discarded
+      // one function later: every piece worked and the feature did not.
+      //
+      // ⚠️ IT IS A HAND-MAINTAINED LIST THAT MUST TRACK A TYPE, which is the real
+      // defect — adding a field to `EntryPaneStatus` silently fails to propagate
+      // unless somebody also edits this. `entry-status-guard.test.ts` now iterates
+      // the type's own fields and fails when one of them cannot get through, so the
+      // NEXT field added is a failing test rather than a silent feature.
+      if (cur !== undefined && sameEntryStatus(cur, next)) return prev
       return { ...prev, [paneId]: next }
     })
   }, [])
@@ -330,6 +347,10 @@ export function OpasHost() {
   const entryMode = entryPane !== undefined
   const status = entryPane !== undefined ? entryStatus[entryPane.id] : undefined
   const entryValue = entryPane !== undefined ? (opas.entryText[entryPane.id] ?? "") : ""
+  // ⚠️ THE MIRROR FOLLOWS WHICHEVER VALUE THE BAR IS SHOWING. The textarea is one
+  // input with two jobs — an entry pane's order text, or the request line — and the
+  // mirror has to track the same one or it would lay out the other.
+  useMirrorSync(inputRef, mirrorRef, entryMode ? entryValue : text)
   const picks = status?.picks ?? []
 
   /**
@@ -952,6 +973,12 @@ export function OpasHost() {
                   onSessionStarted={(id) => opas.setCaptureSession(pane.id, id)}
                   text={opas.entryText[pane.id] ?? ""}
                   onStatus={(st) => reportStatus(pane.id, st)}
+                  caretFieldIds={fieldsAtCaret(
+                    status?.spans,
+                    status?.spansForText,
+                    opas.entryText[pane.id] ?? "",
+                    caret,
+                  )}
                   pickRequest={pickRequest[pane.id]}
                   onApproved={() => onApproved(pane.id)}
                   completeRequest={completeRequest[pane.id]}
@@ -1082,6 +1109,14 @@ export function OpasHost() {
                 FRONT — not by a mode the director has to set or notice. An entry pane
                 in front makes this that order's text field; otherwise it is the
                 request line. `pane-mode.ts` owns the classification. */}
+            <MirrorStack>
+              <CaptureMirror
+                value={entryMode ? entryValue : text}
+                mirrorRef={mirrorRef}
+                spans={entryMode ? status?.spans : undefined}
+                spansForText={entryMode ? status?.spansForText : undefined}
+                litFieldIds={entryMode ? status?.hoveredFieldIds : undefined}
+              />
             <textarea
               ref={inputRef}
               rows={1}
@@ -1095,6 +1130,10 @@ export function OpasHost() {
                   setText(e.target.value)
                 }
               }}
+              onSelect={(e) => setCaret((e.target as HTMLTextAreaElement).selectionStart)}
+              onClick={(e) => setCaret((e.target as HTMLTextAreaElement).selectionStart)}
+              onKeyUp={(e) => setCaret((e.target as HTMLTextAreaElement).selectionStart)}
+              onBlur={() => setCaret(null)}
               onKeyDown={(e) => {
                 if (e.key !== "Enter") return
                 // ⚠️ ENTER FINISHES THE ORDER, BY RULING (James, 2026-10-14),
@@ -1122,22 +1161,26 @@ export function OpasHost() {
               placeholder={entryMode ? (status?.placeholder ?? "Starting the order…") : "orders · the catalog"}
               aria-label={entryMode ? "Say what the director said" : "Ask Opas"}
               style={{
-                flex: 1, minWidth: 0, background: "transparent", border: 0, padding: "10px 0",
-                color: "#f2f2f2", fontFamily: "'IBM Plex Mono', ui-monospace, Menlo, monospace",
-                fontSize: 15, outline: "none",
-                // ⚠️ THE BAR GROWS INSTEAD OF SCROLLING. `resize: none` keeps the
-                // drag handle off a chrome element; `overflow: hidden` matters because
-                // the height is set from `scrollHeight` and a visible scrollbar would
-                // feed its own width back into the measurement.
+                // ⚠️ EVERY TYPOGRAPHIC PROPERTY COMES FROM `MIRROR_BOX` SINCE 2026-10-16, AND
+                // NONE IS REPEATED HERE. The mirror behind this textarea must break lines in
+                // exactly the same places; two style blocks that happen to match today drift
+                // the first time one of them is tuned, and the symptom is a tint sliding a
+                // character sideways on the last line of a long order. `padding`, `border`,
+                // `fontFamily`, `fontSize`, `lineHeight` and `maxHeight` all moved into it.
+                ...MIRROR_BOX,
+                ...MIRROR_TEXTAREA_EXTRA,
+                width: "100%",
+                color: "#f2f2f2",
+                outline: "none",
+                // ⚠️ THE BAR GROWS INSTEAD OF SCROLLING. `resize: none` keeps the drag handle
+                // off a chrome element; `overflow: hidden` matters because the height is set
+                // from `scrollHeight` and a visible scrollbar would feed its own width back
+                // into the measurement.
                 resize: "none",
                 overflow: "hidden",
-                lineHeight: 1.45,
-                // ⚠️ A CEILING, SO ONE PASTED PAGE CANNOT PUSH THE PANE OFF SCREEN.
-                // Past this the bar scrolls, which is the lesser evil — but an order
-                // read aloud on a call does not reach it.
-                maxHeight: "40vh",
               }}
             />
+            </MirrorStack>
           </div>
           {said !== null && (
             <div data-testid="opas-said" style={{ padding: "0 0 6px 52px", fontSize: 12, color: "#9a9a9a" }}>

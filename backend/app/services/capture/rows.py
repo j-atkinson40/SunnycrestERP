@@ -296,6 +296,14 @@ class ResolvedRow:
     #: rows that carry a non-empty list makes the two agree by construction rather
     #: than by two call sites happening to match.
     missing_field_ids: tuple[str, ...] = ()
+    #: EVERY template field this row sources, missing or not.
+    #:
+    #: ⚠️ ADDED 2026-10-16 FOR THE ROW -> SPAN LINK. Hovering a row lights its span in
+    #: the bar, and the span is keyed by field id — so the row has to be able to say
+    #: which fields it owns. `missing_field_ids` is a SUBSET and cannot stand in: the
+    #: rows worth hovering are the ones that are filled, which is exactly the set it
+    #: excludes.
+    field_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -641,6 +649,7 @@ def resolve_surface(
             # ⚠️ THE SAME `unanswered_required` THE STATE ABOVE IS DECIDED FROM, not a
             # second derivation. A row is amber-able exactly when it has one of these.
             missing_field_ids=tuple(unanswered_required),
+            field_ids=row_field_ids(row),
         ))
 
     subj_p = subj_s = None

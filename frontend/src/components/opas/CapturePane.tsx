@@ -53,6 +53,7 @@ import {
   type CapturePick,
   type CaptureState,
 } from "@/services/opas-capture-service"
+import type { CaptureSpan } from "@/services/opas-capture-service"
 import { EXTRACT_DEBOUNCE_MS, createSequencer } from "./capture-sequence"
 
 /** What the pane tells the command line about itself.
@@ -68,6 +69,13 @@ export interface EntryPaneStatus {
   readonly picks: readonly CapturePick[]
   readonly capturing: boolean
   readonly ready: boolean
+  /** ⚠️ THE SPANS TRAVEL PANE -> BAR because the pane owns the server state and the
+   *  bar owns the mirror. Sending them up the existing status channel avoids a
+   *  second place that knows how to fetch capture state. */
+  readonly spans?: readonly CaptureSpan[]
+  readonly spansForText?: string | null
+  /** Fields whose span should light up — the row the pointer is over. */
+  readonly hoveredFieldIds?: readonly string[]
 }
 
 /** The placeholder, derived from what is true right now.
@@ -141,6 +149,11 @@ export function placeholderFor(args: {
 
 /** ⚠️ Per-state classes, named after the prototype's own selectors so a reader can find
  *  them in the source file. */
+/** ⚠️ THE CARET'S ROW, lit from the bar. Deliberately the same blue as the span's
+ *  lit state in the mirror so the two ends of the link read as one thing. */
+const ROW_CARET_CLASS =
+  "outline outline-1 outline-[rgba(138,164,189,0.55)] bg-[rgba(138,164,189,0.07)]"
+
 const ROW_CLASS: Record<string, string> = {
   done: "border-[rgba(74,160,110,0.35)] bg-[rgba(74,160,110,0.05)]",
   needed: "border-[rgba(224,168,74,0.55)] bg-[rgba(224,168,74,0.08)]",
@@ -271,6 +284,7 @@ export function CapturePane({
   pickRequest,
   onApproved,
   completeRequest,
+  caretFieldIds,
 }: {
   /** Fed through extraction on start, per the prototype (`:568` calls `feed` at once). */
   readonly openingLine?: string
@@ -280,6 +294,10 @@ export function CapturePane({
   readonly text?: string
   /** Reports the placeholder, the picks and the capturing flag up to the bar. */
   readonly onStatus?: (s: EntryPaneStatus) => void
+  /** ⚠️ WHICH FIELDS THE CARET IS INSIDE, from the bar. The link runs caret -> row
+   *  rather than hover -> row because the textarea owns the pointer over its own
+   *  text (James, 2026-10-16). */
+  readonly caretFieldIds?: readonly string[]
   /** ⚠️ A PICK REQUESTED FROM THE BAR (⌘1..9), as a counter-stamped value so the same
    *  option chosen twice still fires. A bare `{field_id, index}` object would be
    *  compared by identity and the second identical press would be a no-op. */
@@ -311,6 +329,10 @@ export function CapturePane({
   // un-highlighted the rows. Hover is transient, a click is sticky, and the rows are
   // lit by either.
   const [pillHover, setPillHover] = useState(false)
+  /** ⚠️ WHICH ROW THE POINTER IS OVER, so its span can light in the bar. The other
+   *  direction (caret -> row) arrives as a prop; the two are separate state because
+   *  they are driven by different devices and can be true at once. */
+  const [hoveredFields, setHoveredFields] = useState<readonly string[]>([])
   const [pillPinned, setPillPinned] = useState(false)
   const pillLit = pillHover || pillPinned
   const [inFlight, setInFlight] = useState(false)
@@ -538,9 +560,13 @@ export function CapturePane({
       picks: livePicks,
       capturing: state !== null && state.status === "capturing",
       ready: state !== null,
+      spans: state?.spans,
+      spansForText: state?.spans_for_text ?? null,
+      hoveredFieldIds: hoveredFields,
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [placeholder, livePicks, state?.status, state !== null])
+  }, [placeholder, livePicks, state?.status, state !== null, state?.spans,
+      state?.spans_for_text, hoveredFields])
 
   // ⚠️ DECLARED WITH THE OTHER HOOKS, ABOVE THE EARLY RETURNS. Placed after them it
   // ran conditionally and React reported "a change in the order of Hooks called by
@@ -738,6 +764,21 @@ export function CapturePane({
         >
           <b className="text-content-strong">{captured}</b> captured
         </span>
+        {/* ⚠️ THE COUNT THAT REPLACED THE "Not understood" BOX (James, 2026-10-16).
+            The words themselves are now dotted-underlined in the bar; this says HOW
+            MANY so a word scrolled out of view above the 40vh cap is still accounted
+            for. It renders only when there is something to count — a persistent
+            "0 not understood" would be the noise the box was removed for. */}
+        {state.unrecognized.length > 0 && (
+          <span
+            className="rounded-full border border-dashed border-border-base px-2 py-0.5 text-micro text-content-muted"
+            data-testid="capture-unrecognized-count"
+            title={state.unrecognized.join(", ")}
+          >
+            <b className="text-content-strong">{state.unrecognized.length}</b> not
+            understood
+          </span>
+        )}
         {/* ⚠️ A BUTTON, BECAUSE THE COUNT HAS TO ANSWER "WHICH ONES". Ruled
             2026-10-14: hovering or clicking the pill highlights the rows it counts.
             James read "2 needed" with nothing highlighted and had to guess. */}
@@ -799,6 +840,19 @@ export function CapturePane({
                     key={r.row_id}
                     data-testid={`capture-row-${r.row_id}`}
                     data-state={r.state}
+                    // ⚠️ HOVER LIGHTS THE SPAN; THE CARET LIGHTS THE ROW. Two
+                    // directions, two devices, and they can be true at once — see
+                    // `mirror-spans.ts` for why the pointer cannot reach a span.
+                    {...(hoveredFields.length > 0 &&
+                    (r.field_ids ?? []).some((f) => hoveredFields.includes(f))
+                      ? { "data-hovered": "true" }
+                      : {})}
+                    onMouseEnter={() => setHoveredFields(r.field_ids ?? [])}
+                    onMouseLeave={() => setHoveredFields([])}
+                    {...((caretFieldIds ?? []).length > 0 &&
+                    (r.field_ids ?? []).some((f) => (caretFieldIds ?? []).includes(f))
+                      ? { "data-caret": "true" }
+                      : {})}
                     {...((r.missing_field_ids ?? []).length > 0
                       ? { "data-missing": "true" }
                       : {})}
@@ -816,6 +870,13 @@ export function CapturePane({
                       (amber || pillLit) && (r.missing_field_ids ?? []).length > 0
                         ? ROW_CLASS.needed
                         : (ROW_CLASS[r.state] ?? ROW_CLASS.not_mentioned)
+                    } ${
+                      // ⚠️ THE CARET'S END OF THE LINK. Added rather than replacing the state
+                      // colour, because a row can be amber AND be the one the caret is in.
+                      (caretFieldIds ?? []).length > 0 &&
+                      (r.field_ids ?? []).some((f) => (caretFieldIds ?? []).includes(f))
+                        ? ROW_CARET_CLASS
+                        : ""
                     }`}
                   >
                     <span
@@ -974,29 +1035,15 @@ export function CapturePane({
             </div>
           )}
 
-          {/* ⚠️ UNRECOGNIZED TEXT IS VISIBLE AND ATTRIBUTED. E1's never-dropped rule is
-              only worth anything if the director can see what was not understood. */}
-          {state.unrecognized.length > 0 && (
-            <div
-              className="rounded-base border border-dashed border-border-base p-2"
-              data-testid="capture-unrecognized"
-            >
-              <div className="text-micro uppercase tracking-wide text-content-subtle">
-                Not understood
-              </div>
-              <ul className="mt-1 flex flex-col gap-0.5">
-                {state.unrecognized.map((u, i) => (
-                  <li
-                    key={`${u}-${i}`}
-                    className="text-body-sm text-content-muted"
-                    data-testid="capture-unrecognized-item"
-                  >
-                    {u}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {/* ⚠️ THE "NOT UNDERSTOOD" BOX IS GONE SINCE 2026-10-16, BY RULING. The
+              words themselves now carry a dotted underline in the bar, which is where
+              the director is already looking — a list underneath repeated them in a
+              second place and made a half-typed order look like it had errors.
+
+              ⚠️ THE COUNT STAYS, IN THE HEADER, because the underline is only visible
+              while the text is on screen and a long order can push a word out of view
+              above the 40vh cap. James asked for exactly that: "Remove the 'Not
+              understood' box; keep a count in the pane header." */}
 
           {/* ⚠️ WHAT THE SERVER IS READING, SHOWN BACK. Not an input — the bar is the
               only input, by ruling. This is the text the rows above were derived

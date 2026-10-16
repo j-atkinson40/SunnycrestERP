@@ -3436,3 +3436,117 @@ partitions away from `unanswered_optional`. There is no second rule to keep in s
 walk lists "equipment" in the sequence, but `cemetery_equipment` is
 `required_when=Never()`, so it never enters `missing` and is never asked. His stated
 rule — "Optional fields are never asked" — excludes it. Flagged.
+
+## 2026-10-16 — The mirror is one box, shared, not two that match
+
+The bar needed decoration drawn under individual characters, which a `<textarea>`
+cannot do. The standard answer is a mirror layer behind it that lays the same text
+out the same way.
+
+⚠️ **THE DECISION IS `MIRROR_BOX`, NOT THE MIRROR.** A textarea's text is laid out by
+the browser; a div's is laid out by us. They agree on where a line breaks only if
+EVERY property that affects breaking is identical — font, size, weight, line-height,
+letter-spacing, padding, border, white-space, wrapping, tab-size. Two style blocks
+that match today drift the first time one of them is tuned, and the symptom is a tint
+sliding one character sideways on the last line of a long order: visible only to
+somebody typing a long order, and attributed to the parser rather than the renderer.
+So there is ONE constant, both elements spread it, and a test reads the bar's source
+and fails if the textarea declares any of those properties itself.
+
+**Width is deliberately NOT in the constant.** Both layers are stretched by the same
+positioned parent, so the width is shared by construction rather than by two numbers
+agreeing. A declared width would be a third place to get it wrong.
+
+⚠️ **THE GATE WAS A MEASUREMENT, NOT A SCREENSHOT, AND THE CONTROL IS THE HALF THAT
+MATTERS.** "No drift on the last line" judged by eye is a judgement about a few
+pixels at whatever zoom the screenshot happens to be. A single differing wrap point
+moves the content height by exactly one line, so `scrollHeight` equality answers the
+real question at any width and any zoom. Measured: zero computed-style differences
+and identical heights at two widths × three zooms. Then — because "no drift" is also
+what a blind instrument reports — four deliberate mismatches were injected and all
+four were caught. **`white-space: pre` was caught only by the style diff; the heights
+stayed equal.** Had the gate been height-only it would have passed a mirror that did
+not wrap at all.
+
+⚠️ **AND THE TWO WIDTHS ARE WEAKER THAN THE DISPATCH ASSUMED.** The bar is a fixed
+`BAR_WIDTH`, so `clientWidth` is 540 at 1280 and at 1920 — the two widths exercise
+the same wrap. The zoom levels are real variation. Recorded rather than quietly
+treated as two data points.
+
+## 2026-10-16 — Stale spans are dropped, never moved
+
+Spans arrive from the server for a particular text. The bar's text changes on every
+keystroke, and the response for keystroke N arrives after keystroke N+2.
+
+**Ruled by James:** render spans "only when spans_for_text === current text exactly.
+Otherwise render none."
+
+⚠️ **THE ALTERNATIVE IS NOT "SLIGHTLY WRONG", IT IS WRONG IN A WAY THAT GETS
+DEBUGGED IN THE WRONG HALF OF THE SYSTEM.** A span computed for "order for hop" says
+nothing about "order for hopkins f". Shifting, clamping or best-effort-ing it paints
+a tint over words the engine never claimed — and a tint over the wrong words reads as
+an extraction bug. Someone would go looking in the parser.
+
+**The sequence is the TEXT, not a counter.** A counter needs both sides to agree
+about sequencing and has its own failure mode; comparing the text cannot get out of
+step with itself. The server returns `spans_for_text` alongside the spans for exactly
+this.
+
+**A span that does not fit the text is discarded, not clamped**, for the same reason:
+clamping paints something, and painting something hides the bug that produced it.
+
+## 2026-10-16 — The link runs caret → row, because the textarea owns the pointer
+
+The previous dispatch asked for span-hover: hovering a tinted word would highlight
+its pane row. **James changed it after it was pointed out that a textarea swallows
+pointer events over its own text** — a span in a layer *behind* it can never be
+hovered.
+
+The faked version is worse than it sounds: a transparent overlay above the textarea
+to catch the hover would also catch the click, and the director would lose the
+caret — the bar would stop being typable to gain a highlight.
+
+**So: the caret lights the row, and hovering a row lights the span.** Both directions
+survive; neither needs the pointer to reach a layer it cannot reach.
+
+⚠️ **IT NEEDED A NEW FIELD ON THE ROW, AND THE OBVIOUS ONE WOULD NOT DO.**
+`missing_field_ids` already existed and is a SUBSET — it excludes exactly the rows
+worth hovering, which are the filled ones. `ResolvedRow.field_ids` carries every
+field the row sources.
+
+**The caret is half-open at the end:** resting immediately after a span is outside
+it, or typing a space after a captured word would keep its row lit after the director
+has moved on.
+
+## 2026-10-16 — A status guard that compares a subset of its payload
+
+`reportStatus` avoided a re-render by comparing the incoming entry-pane status with
+the stored one. It compared four fields. The payload has seven.
+
+A status differing ONLY in `spans`, `spansForText` or `hoveredFieldIds` was judged
+equal and discarded one function after being reported — so hovering a pane row set
+the state, reported it, and the report was dropped. Every piece worked and the
+feature did not.
+
+⚠️ **THE DEFECT IS THE HAND-MAINTAINED LIST, NOT THE FOUR MISSING COMPARISONS.**
+Adding a field to `EntryPaneStatus` silently fails to propagate unless somebody also
+edits a comparison in a different file. So the guard moved out of the `useCallback`
+where no test could reach it, and `entry-status-guard.test.ts` iterates the payload's
+own fields and fails when one of them cannot get through. The next field added is a
+failing test rather than a silent feature.
+
+⚠️ **AND IT WAS NOT THE FAILURE THAT WAS REPORTED, WHICH IS WHY THIS ENTRY EXISTS.**
+I found it while diagnosing and assumed it was the cause. Controlled by restoring the
+original four-field guard: the hover still lit its span. The defect is LATENT rather
+than constant — a hover almost always lands in the same window as a debounced
+extraction response that moves `placeholder` or `spans`, and the combined update gets
+through. What is lost is the hover that arrives alone, which is not reproducible on
+demand.
+
+**The guard is corrected on its own merits.** Claiming it as the reported fix would
+have been a correct conclusion resting on a falsified derivation — the shape CLAUDE.md
+§11 names as the worst case, because nothing downstream ever contradicts it.
+
+**The reported failure was a stale dev server**: `field_ids` was added to the row
+payload six minutes after the local backend started, and both link directions need
+it. One process, two symptoms.

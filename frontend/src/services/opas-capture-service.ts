@@ -34,6 +34,9 @@ export interface CaptureRow {
    *  absent list reads as "nothing missing on this row", which is the safe way to be
    *  wrong: no amber rather than a crash. */
   readonly missing_field_ids?: readonly string[]
+  /** ⚠️ EVERY field this row sources, not just the missing ones — the handle for the
+   *  row -> span link. Optional because an older server does not send it. */
+  readonly field_ids?: readonly string[]
 }
 
 /** An ambiguous resolution awaiting a numbered pick. */

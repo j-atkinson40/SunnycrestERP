@@ -4363,3 +4363,31 @@ the other.
   **Gates:** backend gate green on the pushed code; frontend `tsc` clean and the opas suites green. Both reported with their denominators in the commit body.
 
   **Flagged to James, in the dispatch's own terms:** his verify walk lists "equipment" in the question sequence, but `cemetery_equipment` is `required_when=Never()` and his own rule says optional fields are never asked — so it is never asked, and the rule is what shipped. Separately, the party half of ruling (b) is scoped to whole-name matches because applying it flatly re-breaks the sentence he ruled on the day before; that scoping is mine.
+
+- **2026-10-16 — The mirror, and tinting in it (steps 1 and 2 of three). No migration.**
+
+  **Step 1, the mirror.** A layer behind the bar's textarea that lays out the same text the same way. ⚠️ **ONE BOX CONSTANT SPREAD INTO BOTH, NOT TWO MATCHING STYLE BLOCKS** — `MIRROR_BOX` in `CaptureMirror.tsx` owns every property that decides where a line breaks, and the textarea's own style block declares none of them. `mirror-box.test.tsx` reads the bar's source and fails if one reappears there, because the failure mode is a tint sliding a character sideways on the last line of a long order.
+
+  **THE ALIGNMENT GATE, AND WHAT IT TOOK.** James required an outline-and-screenshot check before anything was built on the layer. I measured instead of eyeballing: computed-style diff across 13 layout-critical properties, plus `scrollHeight` equality — a single differing wrap point moves the content height by exactly one line (21.75px), at any width and any zoom, with no interpretation. Result: **zero style differences and identical heights at 1280 and 1920, at 90/100/125% zoom**. A screenshot with the mirror's text in red over the real text is in the commit.
+
+  ⚠️ **AND THE FOUR-WAY POSITIVE CONTROL IS THE HALF THAT MATTERS.** "No drift" is also what a blind instrument reports. Injecting `fontSize +1px`, `letterSpacing 0.3px`, `paddingLeft 6px` and `whiteSpace: pre` one at a time: all four CAUGHT. **`whiteSpace: pre` was caught only by the style diff — the heights stayed equal** — which is why both checks exist rather than just the cheap one.
+
+  ⚠️ **THE TWO WIDTHS ARE WEAKER THAN THEY LOOK AND I AM SAYING SO.** The bar is a fixed `BAR_WIDTH`, so `clientWidth` is **540 at both 1280 and 1920** — the two widths exercise the same wrap. The three ZOOM levels are real variation (last-glyph height 15.5 / 17.5 / 22). Testing a responsive bar would need the bar to be responsive first.
+
+  **Step 2, tinting.** Spans render in the mirror **only when `spans_for_text` equals the current text exactly**; otherwise nothing is decorated. Stale spans are DROPPED, never shifted or clamped — painting something would hide the bug that produced it. captured = a 14% green wash, unrecognized = a dotted underline (not a colour: "not understood" is not an error), conflict = amber.
+
+  **The link runs caret → row and row-hover → span**, per James's correction that the textarea owns the pointer. A span in a layer *behind* a textarea can never be hovered, so the previous dispatch's design was unbuildable; faking it with a transparent overlay would have stolen the caret. `ResolvedRow.field_ids` was added to give a row the handle — `missing_field_ids` is a subset and excludes exactly the filled rows worth hovering.
+
+  **The "Not understood" box is gone**, replaced by a header count that renders only when non-zero and carries the words in its tooltip.
+
+  **Verified in real Chrome, typed character by character:** decorated spans stayed at **0 through all 38 keystrokes** and appeared only once the response for that exact text landed; one further keystroke dropped them to 0 again. A 5-line wrapped order with 9 tinted spans kept `scrollHeight` equal at both widths.
+
+  **Step 3 (ghost completion) is NOT in this push**, by the dispatch's own staging — it is the second push so each can be walked alone.
+
+  ⚠️ **THE SPAN ↔ ROW LINK WAS BROKEN WHEN FIRST MEASURED, AND IT WAS MY DEV SERVER.** James reported item 4 failing. Measured first: production was serving `78592b5c` and its bundle contained **zero** occurrences of `capture-mirror`, `data-span-state` or `spans_for_text` — **step 2 was never pushed**, because the backend gate was still running when the session ended and I handed him a walk script anyway. The linking could not have failed on production because nothing of step 2 was there.
+
+  **The real defect, found locally with real browser input:** uvicorn started 07:20:18 and `rows.py` gained `field_ids` at 07:26:25. Both link directions need that field, so one stale process broke both. This is the THIRD session lost to a dev backend older than the edit under test; the local server now runs with `--reload` so the trap is removed rather than remembered.
+
+  ⚠️ **AND MY OWN HARNESS LIED ABOUT THE SECOND DIRECTION.** After the restart, row → span still read as broken. It was not: the detector filtered on `boxShadow.includes('138,164,189')` while the browser normalises to `'138, 164, 189'` WITH SPACES. An instrument that cannot see returns exactly what a true absence returns.
+
+  ⚠️ **AND THE FIX I REACHED FOR FIRST WAS NOT THE BUG.** `reportStatus` compared four fields of a seven-field payload, so a status differing only in `hoveredFieldIds` was dropped — a real latent defect, and I assumed it was the cause. **Controlled:** restoring the original four-field guard, the hover STILL lit its span. The defect is latent, not constant, because a hover usually lands in the same window as another status change. The completed guard and `entry-status-guard.test.ts` are kept on their own merits; they are not the reported failure, and saying otherwise would be a fix with no defect behind it.
