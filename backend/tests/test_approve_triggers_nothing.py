@@ -1,5 +1,18 @@
 """James's hard constraint: Approve must not set off anything downstream.
 
+⚠️ THE CONSTRAINT SURVIVES STEP 3 INTACT; WHAT CHANGED IS THE ORDER'S STATUS, NOT
+APPROVE'S BLAST RADIUS. Approve now writes `confirmed` (superseding D1 of 2026-10-13),
+so three tests here were re-pointed rather than deleted — the batch no longer excludes
+the order by STATUS, it excludes it by the service date not having arrived. Each
+rewritten test quotes what it used to assert and why that stopped being the truth.
+
+⚠️ AND THIS FILE IS WHY THE DELIVERY HOOK IS NOT CALLED FROM `approve`. Firing
+`on_order_confirmed` there would have made `confirmed` mean one thing on both creation
+paths — a real consistency argument — but it would also have given Approve a second
+downstream effect, which is precisely what this file forbids. The hook was added, then
+backed out on the strength of this constraint; see the comment at the end of `approve`
+for the latent divergence that leaves.
+
 ⚠️ EACH CLAIM IS TESTED AGAINST AN ORDER APPROVE ACTUALLY CREATED, not against a
 hand-built row. A fixture order could differ from a real one in exactly the field
 that matters — `status` and `order_type` are the two the batch selects on, and they
@@ -171,30 +184,37 @@ def approved(db, tenant):
 # ── the 18:00 batch ─────────────────────────────────────────────────────────
 
 def test_the_END_OF_DAY_BATCH_DOES_NOT_SEE_IT(db, tenant, approved):
-    """⚠️ THE JOB IS RUN, NOT ITS FILTER RESTATED. This is the test James asked for.
+    """⚠️ THE JOB IS RUN, NOT ITS FILTER RESTATED. This is the test James asked for, and
+    what it proves CHANGED on 2026-10-16 while the name stayed right.
 
-    The batch is live on production in the auto-confirm branch, where it sets the
-    ORDER to `delivered` and drafts an invoice against it. Running it here and
-    showing the order comes out untouched is the only evidence that `status='draft'`
-    actually excludes it.
+    It used to move the service date into the PAST so that only `status='draft'` could
+    be excluding the order — that was the point under D1, where the status was the whole
+    protection. Step 3 makes Approve write `confirmed`, so the past-dated version of
+    this test now asserts the opposite of the truth: a confirmed order whose service
+    date has passed is exactly what the batch is FOR.
+
+    The protection is now the DATE, so that is what is pinned: the order Approve just
+    created, with its real service date in the future, comes out of a real batch run
+    untouched. `test_the_batch_DOES_see_it_once_the_service_date_passes` below is the
+    other half — without it this would be satisfied by a batch that never acts at all.
     """
+    from datetime import date, timedelta
+
     from app.services.draft_invoice_service import generate_draft_invoices
 
     before = db.execute(
-        text("SELECT status, delivery_auto_confirmed, delivered_at "
+        text("SELECT status, scheduled_date, delivery_auto_confirmed, delivered_at "
              "FROM sales_orders WHERE id = :o"), {"o": approved}
     ).mappings().first()
-    assert before["status"] == "draft"
-
-    # ⚠️ THE SERVICE DATE IS MOVED INTO THE PAST FIRST, so the date half of the
-    # batch's selection is SATISFIED and only `status`/`order_type` can be doing the
-    # excluding. Left in the future the order would be skipped for the wrong reason
-    # and this test would prove nothing.
-    db.execute(
-        text("UPDATE sales_orders SET scheduled_date = CURRENT_DATE - 1 WHERE id = :o"),
-        {"o": approved},
+    assert before["status"] == "confirmed"
+    # ⚠️ ASSERTED, NOT ASSUMED. If the fixture's answers ever stopped carrying a future
+    # service date, this test would pass for the wrong reason — the order would be
+    # excluded by having no date rather than by having a later one.
+    assert before["scheduled_date"] is not None, "the fixture lost its service date"
+    assert before["scheduled_date"] > date.today(), (
+        f"the fixture's service date is not in the future ({before['scheduled_date']}); "
+        "this test would then prove nothing about the date gate"
     )
-    db.commit()
 
     generate_draft_invoices(db, tenant)
     db.commit()
@@ -203,27 +223,37 @@ def test_the_END_OF_DAY_BATCH_DOES_NOT_SEE_IT(db, tenant, approved):
         text("SELECT status, delivery_auto_confirmed, delivered_at "
              "FROM sales_orders WHERE id = :o"), {"o": approved}
     ).mappings().first()
-    assert after["status"] == "draft", after["status"]
+    assert after["status"] == "confirmed", after["status"]
     assert not after["delivery_auto_confirmed"]
     assert after["delivered_at"] is None
-    assert db.execute(
-        text("SELECT count(*) FROM invoices WHERE sales_order_id = :o"), {"o": approved}
-    ).scalar() == 0
+
+    from app.models.invoice import Invoice
+
+    assert (
+        db.query(Invoice).filter(Invoice.sales_order_id == approved).count() == 0
+    ), "the batch invoiced an order whose service date has not arrived"
 
 
-def test_and_the_batch_WOULD_have_taken_it_if_it_were_confirmed(db, tenant, approved):
+def test_and_the_batch_WOULD_have_taken_it_once_the_service_date_PASSES(db, tenant, approved):
     """⚠️ THE POSITIVE CONTROL, AND WITHOUT IT THE TEST ABOVE PROVES NOTHING.
 
     A batch that selected no orders at all — wrong tenant, mode off, a filter typo —
-    would pass the exclusion test every time. This flips the one field under test to
-    `confirmed`, runs the same job, and shows it IS taken: marked delivered and
-    invoiced. That is the behaviour `draft` is protecting the office from.
+    would pass the exclusion test every time. This flips the one field under test, runs
+    the same job, and shows the order IS taken: marked delivered and invoiced.
+
+    ⚠️ WHAT GETS FLIPPED CHANGED ON 2026-10-16, AND THE TEST'S VALUE IS UNCHANGED. It
+    was named `..._if_it_were_confirmed` and set BOTH `status='confirmed'` and a past
+    service date, because under D1 the status was the thing being excluded. Approve now
+    writes `confirmed`, so the status is no longer the variable — the SERVICE DATE is,
+    and that is the only field this now moves. Its closing line used to read "That is
+    the behaviour `draft` is protecting the office from"; the protection is the date.
     """
     from app.services.draft_invoice_service import generate_draft_invoices
 
+    # ⚠️ ONLY THE DATE IS MOVED. Setting the status too would reintroduce two variables
+    # and the test would no longer isolate the gate it is named for.
     db.execute(
-        text("UPDATE sales_orders SET status = 'confirmed', "
-             "scheduled_date = CURRENT_DATE - 1 WHERE id = :o"),
+        text("UPDATE sales_orders SET scheduled_date = CURRENT_DATE - 1 WHERE id = :o"),
         {"o": approved},
     )
     db.commit()
@@ -278,24 +308,55 @@ def test_no_delivery_is_created(db, approved):
     ).scalar() == 0
 
 
-def test_the_order_is_not_marked_delivered_or_confirmed(db, approved):
+def test_the_order_is_confirmed_but_NOT_delivered(db, approved):
+    """⚠️ WAS `test_the_order_is_not_marked_delivered_or_confirmed` AND THE NAME CARRIED
+    THE SUPERSEDED HALF. Under D1 the order was neither delivered nor confirmed; step 3
+    makes it confirmed. Everything else the old test asserted still holds and is the
+    part that matters — confirming is not delivering, and Approve must not pretend a
+    vault has been placed.
+    """
     row = db.execute(
         text("SELECT status, delivered_at, driver_confirmed, completed_at "
              "FROM sales_orders WHERE id = :o"), {"o": approved}
     ).mappings().first()
-    assert row["status"] == "draft"
+    assert row["status"] == "confirmed"
     assert row["delivered_at"] is None
     assert not row["driver_confirmed"]
     assert row["completed_at"] is None
 
 
-def test_invoicing_it_directly_is_REFUSED_while_it_is_a_draft(db, tenant, approved):
-    """⚠️ THE GUARD BELOW THE GUARD. Even if something tried to invoice this order on
-    purpose, `create_invoice_from_order` refuses a draft (`sales_service.py:739`)."""
+def test_invoicing_it_directly_is_now_PERMITTED_and_that_is_the_point(db, tenant, approved):
+    """⚠️ WAS `test_invoicing_it_directly_is_REFUSED_while_it_is_a_draft`, AND ITS
+    SUBJECT IS GONE RATHER THAN BROKEN.
+
+    Under D1 the order was a draft, so `create_invoice_from_order` refused it — "the
+    guard below the guard". Step 3 makes it confirmed, which means an order the office
+    wants to bill early CAN be billed, deliberately. That is not a weakening: the
+    draft refusal still exists and still fires for an actual draft, which is asserted
+    below rather than taken on trust.
+
+    ⚠️ AND THE BATCH IS UNAFFECTED BY THIS. A hand-invoiced order drops out of the
+    batch's net through `already_invoiced_order_ids`, so invoicing early cannot produce
+    a second invoice on the service night — pinned in
+    `tests/test_delivered_on_the_service_date.py`.
+    """
     from fastapi import HTTPException
 
     from app.services import sales_service
 
+    inv = sales_service.create_invoice_from_order(db, tenant, None, approved)
+    db.commit()
+    assert inv.number
+
+    # the draft refusal still exists — proven against a real draft, not by reading
+    db.execute(
+        text("UPDATE sales_orders SET status = 'draft' WHERE id = :o"), {"o": approved}
+    )
+    db.execute(
+        text("UPDATE invoices SET status = 'void' WHERE sales_order_id = :o"),
+        {"o": approved},
+    )
+    db.commit()
     with pytest.raises(HTTPException) as e:
         sales_service.create_invoice_from_order(db, tenant, None, approved)
     assert e.value.status_code == 400

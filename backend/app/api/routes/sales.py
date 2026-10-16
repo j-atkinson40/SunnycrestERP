@@ -81,7 +81,13 @@ def _quote_to_response(q) -> dict:
     return data
 
 
-def _order_to_response(o) -> dict:
+def _order_to_response(o, db=None) -> dict:
+    """⚠️ `db` IS OPTIONAL SO EVERY EXISTING CALLER KEEPS WORKING. Several call sites
+    render an order without a session to hand; they get `voided_invoice_count = 0` and no
+    live-invoice fields, which is the same shape the response had before this. Only the
+    detail route passes `db`, because it is the only surface that offers the re-bill
+    control.
+    """
     data = {
         "id": o.id,
         "company_id": o.company_id,
@@ -134,6 +140,30 @@ def _order_to_response(o) -> dict:
             for ln in (o.lines or [])
         ],
     }
+
+    # ⚠️ THE ORDER'S BILLING STATE, for the three cases that want three controls:
+    # never invoiced / invoiced / invoiced-and-voided. Only computed when a session was
+    # passed; see the docstring.
+    if db is not None:
+        from app.models.invoice import Invoice
+
+        rows = (
+            db.query(Invoice.number, Invoice.status)
+            .filter(
+                Invoice.company_id == o.company_id,
+                Invoice.sales_order_id == o.id,
+            )
+            .all()
+        )
+        # ⚠️ "LIVE" IS `status != "void"`, THE SAME PREDICATE
+        # `create_invoice_from_order`'s 409 guard uses and the same one
+        # `undo_confirm_blocker` uses. Three places asking "is this order invoiced?"
+        # must agree, or the page offers a button the server refuses.
+        live = [r for r in rows if r.status != "void"]
+        data["live_invoice_number"] = live[0].number if live else None
+        data["live_invoice_status"] = live[0].status if live else None
+        data["voided_invoice_count"] = len(rows) - len(live)
+
     return data
 
 
@@ -445,7 +475,7 @@ def get_sales_order(
     current_user: User = Depends(require_permission("ar.view")),
 ):
     order = sales_service.get_sales_order(db, current_user.company_id, order_id)
-    return _order_to_response(order)
+    return _order_to_response(order, db)
 
 
 @router.patch("/orders/{order_id}", response_model=SalesOrderResponse)
@@ -459,7 +489,11 @@ def update_sales_order(
     order = sales_service.update_sales_order(
         db, current_user.company_id, current_user.id, order_id, data
     )
-    return _order_to_response(order)
+    # ⚠️ `db` HERE TOO: the page replaces its order state from the PATCH response, so
+    # omitting the billing fields would make a void-only order read as
+    # never-invoiced the moment anything was PATCHed — the Undo-confirm path in
+    # particular.
+    return _order_to_response(order, db)
 
 
 @router.post(

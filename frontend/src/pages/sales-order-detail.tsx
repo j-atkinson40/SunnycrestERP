@@ -123,8 +123,16 @@ function SalesOrderDetailView({ id }: { id: string }) {
       const newInvoice = await salesService.invoiceFromOrder(order.id);
       toast.success(`Invoice ${newInvoice.number} created`);
       navigate(`/ar/invoices/${newInvoice.id}`);
-    } catch {
-      toast.error("Failed to create invoice.");
+    } catch (err: unknown) {
+      // ⚠️ THE SERVER'S MESSAGE, for the same reason as the status handler. The 409 here
+      // names the existing invoice ("Order SO-… is already invoiced (INV-…, open). Void
+      // it first if this is a re-issue."), which is the whole next step. A generic
+      // "Failed to create invoice." threw that away.
+      const detail = (err as { response?: { data?: { detail?: unknown } } })
+        ?.response?.data?.detail;
+      toast.error(
+        typeof detail === "string" && detail ? detail : "Failed to create invoice.",
+      );
     } finally {
       setActionBusy(false);
     }
@@ -202,11 +210,47 @@ function SalesOrderDetailView({ id }: { id: string }) {
             variant="outline"
             size="sm"
           />
-          {!isTerminal && canCreateInvoice && (
-            <Button onClick={handleCreateInvoice} disabled={actionBusy}>
-              {actionBusy ? "Working..." : "Create Invoice"}
+          {/* ── billing: three cases, three controls (James's step 3, item 6) ──
+              ⚠️ THIS WAS ONE UNCONDITIONAL "Create Invoice" BUTTON. The page had no
+              view of the order's invoices, so it offered the control on an
+              already-invoiced order and the 409 came back as "Failed to create
+              invoice." Now: a live invoice is a LINK, never a second create; a
+              void-only order gets an explicit re-bill; an uninvoiced order gets the
+              plain create. */}
+          {order.live_invoice_number ? (
+            <Button
+              variant="outline"
+              onClick={() => navigate(`/ar/invoices?q=${order.live_invoice_number}`)}
+              data-testid="order-live-invoice"
+            >
+              Invoice {order.live_invoice_number}
             </Button>
-          )}
+          ) : !isTerminal && canCreateInvoice ? (
+            <Button
+              onClick={handleCreateInvoice}
+              disabled={actionBusy}
+              data-testid={
+                (order.voided_invoice_count ?? 0) > 0
+                  ? "order-rebill"
+                  : "order-create-invoice"
+              }
+              // ⚠️ A DIFFERENT LABEL, NOT JUST A DIFFERENT TESTID. Re-billing after a
+              // void is a deliberate act — the end-of-day batch will never do it,
+              // because a voided invoice keeps the order out of the batch permanently.
+              // The office is the only thing that can re-bill, so the button says so.
+              title={
+                (order.voided_invoice_count ?? 0) > 0
+                  ? "This order's invoice was voided. The nightly batch will not re-bill it — create a new invoice here."
+                  : undefined
+              }
+            >
+              {actionBusy
+                ? "Working..."
+                : (order.voided_invoice_count ?? 0) > 0
+                  ? "Create new invoice"
+                  : "Create Invoice"}
+            </Button>
+          ) : null}
           {order.status === "draft" && (
             <Button
               variant="outline"

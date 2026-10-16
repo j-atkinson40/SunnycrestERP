@@ -1223,6 +1223,22 @@ export function CapturePane({
             </div>
           )}
 
+          {/* ── what Approve will do ───────────────────────────────────────
+              ⚠️ STATED BEFORE THE PRESS, BECAUSE THE PRESS NOW CONFIRMS (James's
+              step 3, 2026-10-16). Approve used to make a draft; it now creates a
+              CONFIRMED order, which is the moment an order enters the end-of-day
+              batch's net. This line is the last chance to notice a wrong service
+              date, and it is the server's sentence rather than one rebuilt here —
+              see `approve_effect` in the service type. */}
+          {state.approve_effect && blockers.length === 0 && (
+            <div
+              className="text-body-sm text-content-muted"
+              data-testid="capture-approve-effect"
+            >
+              {state.approve_effect}
+            </div>
+          )}
+
           {/* ── the approve control ────────────────────────────────────────
               Prototype `:404`: a primary button labelled by the surface's own verb,
               beside a way back. ⚠️ ABSENT WHEN BLOCKED RATHER THAN DISABLED, which

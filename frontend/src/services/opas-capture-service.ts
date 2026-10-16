@@ -92,6 +92,17 @@ export interface CaptureState {
   /** Every reason Approve cannot run, in the office's words. `null` outside review. */
   readonly blockers?: readonly string[] | null
   readonly can_approve?: boolean
+  /**
+   * What pressing Approve will set in motion, in the server's words, from the real
+   * data — e.g. "Confirms the order · Delivered Tue Oct 20 · Invoiced at month end
+   * (Hopkins)". Null when the order is not approvable.
+   *
+   * ⚠️ THE SERVER COMPOSES IT, DELIBERATELY. It depends on the customer's billing
+   * preference AND the tenant's invoice-email switch, neither of which the pane has;
+   * rebuilding the sentence here would be a second answer to "what will happen" that
+   * could disagree with the one the press obeys.
+   */
+  readonly approve_effect?: string | null
   /** The missing fields in the office's words, for the bar's own sentence. */
   readonly missing_labels?: readonly string[]
   /** ⚠️ TRANSIENT: somebody just tried to finish this order, so the rows go amber.

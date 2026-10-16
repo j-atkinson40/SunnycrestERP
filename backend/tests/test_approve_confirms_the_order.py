@@ -1,4 +1,9 @@
-"""Approve: the capture becomes a draft sales order, and nothing else fires.
+"""Approve: the capture becomes a CONFIRMED sales order, and nothing else fires.
+
+⚠️ RENAMED FROM `test_approve_creates_a_draft_order.py` ON 2026-10-16, because a filename
+is a claim and that one had become false. (My first instinct was to document the wrong
+name instead, on the belief that a rename loses history — it does not: `git log --follow`
+is exactly the flag that follows renames, and `git mv` keeps the blame intact.)
 
 ⚠️ RUN AGAINST THE `sunnycrest` TENANT, NOT `testco`, AND THAT IS LOAD-BEARING.
 Approve matches a captured vault to a tenant product BY EXACT NAME. Measured
@@ -489,14 +494,25 @@ def approved(db, tenant, world, user_id):
     db.commit()
 
 
-def test_it_writes_a_DRAFT_order_of_type_funeral(db, approved):
+def test_it_writes_a_CONFIRMED_order_of_type_funeral(db, approved):
+    """⚠️ WAS `test_it_writes_a_DRAFT_order_of_type_funeral` UNTIL 2026-10-16, asserting
+    `status == "draft"` with the note "⚠️ D1. `draft` IS THE WHOLE PROTECTION".
+
+    D1 is superseded by James's step 3. `draft` WAS the whole protection while the batch
+    selected on `scheduled_date <= today` regardless of whether the service had happened;
+    step 2 moved that gate to the tenant-local service date, so the protection is now the
+    DATE and the order is born billable. The old assertion is quoted here rather than
+    deleted because the reason it existed is the reason it stopped being needed.
+
+    ⚠️ `funeral` IS STILL NOT A SECOND GUARD. The batch admits `'funeral' OR NULL`, so
+    both are in its net. I claimed otherwise until a break test on `order_type` failed
+    only this assertion and none of the behavioural ones, which is what gave it away. It
+    is asserted because it is the correct value, not because it defends anything.
+    """
+    from app.services.capture.session_service import CONFIRMED_ON_APPROVE
+
     _row, order = approved
-    # ⚠️ D1. `draft` IS THE WHOLE PROTECTION and `funeral` is not a second guard —
-    # the batch admits `'funeral' OR NULL`, so both are in its net. I claimed
-    # otherwise until a break test on `order_type` failed only this assertion and
-    # none of the behavioural ones, which is what gave it away. `funeral` is
-    # asserted because it is the correct value, not because it defends anything.
-    assert order["status"] == "draft", order["status"]
+    assert order["status"] == CONFIRMED_ON_APPROVE == "confirmed", order["status"]
     assert order["order_type"] == "funeral", order["order_type"]
 
 

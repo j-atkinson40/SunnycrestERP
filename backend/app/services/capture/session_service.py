@@ -10,11 +10,20 @@ sentence someone is in the middle of saying. `_load` takes both and returns None
 than raising, so the route turns a cross-user id into a 404 and the caller cannot tell a
 wrong id from someone else's id.
 
-⚠️ NO ORDER IS WRITTEN. E5 ends this slice at `review`. There is no approve function
-here, deliberately — a stub would read as an intention the slice does not carry out.
+⚠️ CORRECTED 2026-10-16 — THIS SAID THE OPPOSITE OF WHAT THE FILE DOES. It read: "NO
+ORDER IS WRITTEN. E5 ends this slice at `review`. There is no approve function here,
+deliberately — a stub would read as an intention the slice does not carry out." True of
+slice E5; `approve` landed on 2026-10-13 and has written every Opas order since. The
+sentence survived three dispatches that changed what `approve` does, which is the §11
+shape: a file's own account of itself is tested by nobody and read by everybody.
+
+⚠️ `approve` WRITES A SALES ORDER AND IT IS NOW `confirmed` (James's step 3, 2026-10-16,
+superseding D1). What that means for the end-of-day batch, and what still creates drafts,
+is in that function's docstring.
 """
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from dataclasses import asdict
@@ -33,12 +42,15 @@ from app.models.capture_session import (
     CaptureSession,
 )
 from app.services import capture
+from app.services.capture.approval import describe_approve_effect
 from app.services.capture.typed_extraction import (
     EXTRACTOR,
     evaluate_typed,
     extract_text,
     segments,
 )
+
+logger = logging.getLogger(__name__)
 
 #: ⚠️ THE DONE-SIGNAL, VERBATIM FROM THE OPAS OVERLAY PROTOTYPE
 #: (`docs/prototypes/2026-10-01-opas-overlay.html:539`). Not re-worded: the prototype is
@@ -88,6 +100,16 @@ DONE_SIGNAL = re.compile(
 START_SIGNAL = re.compile(
     r"\b(new|create|start|make|enter|put in|take)\b.*\border\b|^order for\b", re.I
 )
+
+
+#: The status Opas Approve gives a new order, superseding D1 of 2026-10-13.
+#:
+#: ⚠️ IT IS ASSERTED AGAINST THE BATCH'S OWN LIST RATHER THAN SPELLED OUT TWICE. The
+#: whole point of step 3 is that this value is now INSIDE
+#: `draft_invoice_service.INVOICEABLE_STATUSES` — the order is meant to be billable once
+#: its service date arrives. A literal here plus a literal there is two places for the
+#: spine to drift; `test_approve_confirms.py` pins the membership.
+CONFIRMED_ON_APPROVE = "confirmed"
 
 
 class SessionNotFound(LookupError):
@@ -648,6 +670,16 @@ def read_state(
         ),
         "blockers": list(appraisal.blockers) if appraisal else None,
         "can_approve": bool(appraisal.ready) if appraisal else False,
+        # ⚠️ WHAT APPROVE WILL DO, SAID BEFORE IT IS PRESSED (James's step 3, item 3).
+        # Approve now creates a CONFIRMED order, so the press is the moment an order
+        # enters the end-of-day batch's net — the Review is the last place anyone sees
+        # it first. Derived from the same `appraisal` the button is gated on, so the
+        # promise and the press cannot disagree; None when the order is not approvable.
+        "approve_effect": (
+            describe_approve_effect(db, company_id, answers, appraisal)
+            if appraisal
+            else None
+        ),
         "sales_order_id": row.sales_order_id,
         "sales_order_number": order_number,
         "typed_lines": [ln["line"] for ln in (row.typed_lines or [])],
@@ -898,30 +930,45 @@ def approve(
 ) -> CaptureSession:
     """Create the sales order this capture describes. One transaction, idempotent.
 
-    ⚠️ STATUS `draft`, BY JAMES'S DECISION D1 (2026-10-13), AND IT IS A SAFETY
-    MECHANISM RATHER THAN A DEFAULT. Measured on production: the end-of-day batch
-    selects `status IN ('confirmed','processing','shipped','delivered',
-    'completed')` (`draft_invoice_service.py:226-228`) and, in the auto-confirm mode
-    every production tenant runs, it SETS THE ORDER TO `delivered` and drafts an
-    invoice against it. `draft` is outside that net, and
-    `create_invoice_from_order` refuses a draft outright besides.
+    ⚠️ STATUS `confirmed`, BY JAMES'S STEP-3 DISPATCH (2026-10-16). **THIS SUPERSEDES
+    DECISION D1 OF 2026-10-13**, which made it `draft`, and the supersession is
+    recorded in DECISIONS rather than only here.
 
-    ⚠️ CORRECTED 2026-10-16 — THE FIGURES WERE TESTCO'S AND THIS SENTENCE CALLED
-    THEM PRODUCTION'S. It read: "12 invoices and 5 rewritten orders on production
-    prove it is live." Re-measured unbounded across all tenants: those 12
-    `generation_reason='end_of_day_batch'` invoices ($30,612.00) and 5
-    `delivery_auto_confirmed` orders are **testco's**. Sunnycrest has **0 and 0** —
-    it has never had a non-draft order due, so the batch has never selected one of
-    its rows. The batch IS live and fires nightly for all four tenants (148
-    completed runs, last 2026-10-15); what the figures prove is that it acts, on
-    the development tenant. A reader took them for evidence about Sunnycrest.
+    D1's reason was specific and it is gone. The end-of-day batch used to select on
+    `scheduled_date <= today` with no regard for whether the service had happened, so
+    an order that was merely CONFIRMED could be marked delivered and invoiced on the
+    afternoon of its service date — or, before the clock fix, at 2 PM Eastern, ahead
+    of an afternoon service. `draft` was the only thing standing outside that net.
+    Step 2 moved the gate: the batch now acts only once the service date has arrived
+    in the TENANT'S local time, and the three-status spine plus
+    `sales_order_transitions` means nothing skips ahead. With the hazard removed, the
+    draft was costing a step rather than buying safety.
 
-    ⚠️ AND THE TIME IN THIS DOCSTRING WAS WRONG TOO — it said "18:00 end-of-day"
-    meaning 6 PM Eastern. Until 2026-10-16 the batch fired at 18:00 **UTC** = 2 PM
-    Eastern, because `CronTrigger` never inherited the scheduler's timezone. Fixed
-    in `app/scheduler.py`; see `docs/investigations/2026-10-16-scheduler-timezone.md`.
-    The hour is deliberately not restated here — `scheduler.py` owns it, and a
-    second copy is a second thing to go stale.
+    ⚠️ WHAT STILL CREATES A DRAFT, because "drafts remain only for a capture saved
+    partway" is a claim about this file and is only true of Opas:
+
+        capture saved partway   `capture_sessions` in `capturing` / `review`. ⚠️ NOT A
+                                SALES ORDER AT ALL — no `sales_orders` row exists until
+                                this function runs, and abandoning leaves an
+                                `abandoned` session and no order.
+        Undo confirm            `confirmed -> draft` via the PATCH path, refused once
+                                the order is delivered or invoiced
+                                (`sales_order_transitions.undo_confirm_blocker`).
+        every non-Opas creator  `sales_service.create_sales_order` and the quote
+                                conversion still create drafts, unchanged. This
+                                dispatch moved OPAS APPROVE, not the order model's
+                                default, and the office's own New Order form is
+                                untouched.
+
+    ⚠️ APPROVE STILL SETS OFF NOTHING DOWNSTREAM, which is James's own constraint on
+    this function and survives step 3 intact. The status changed; the blast radius did
+    not. In particular the delivery hook is NOT called here — see the comment at the
+    bottom of this function for why, and for the one latent divergence that creates.
+
+    ⚠️ `required_date` IS STILL WRITTEN, because the batch's
+    `COALESCE(scheduled_date, date(required_date))` reads it and because the hook will
+    read it if it is ever wired here or the order is later confirmed by hand. See the
+    field comments below.
 
     ⚠️ `order_type='funeral'` IS NOT A SECOND GUARD, THOUGH I WROTE THAT HERE FIRST
     AND A BREAK TEST CAUGHT IT. The batch's filter is
@@ -976,12 +1023,19 @@ def approve(
         company_id=company_id,
         number=number,
         customer_id=assessment.customer_id,
-        status="draft",
+        # ⚠️ `confirmed`, SUPERSEDING D1 — see the docstring. Imported from the batch
+        # rather than written as a literal so the two cannot drift: this value must be
+        # IN `draft_invoice_service.INVOICEABLE_STATUSES`, and the test asserts that
+        # rather than restating the word.
+        status=CONFIRMED_ON_APPROVE,
         order_type="funeral",
         order_date=datetime.now(timezone.utc),
-        # ⚠️ THE SERVICE DATE, BY DISPATCH. It is also the field the end-of-day batch
-        # compares against the tenant's today, which is why `status` and `order_type`
-        # carry the protection rather than this.
+        # ⚠️ THE SERVICE DATE, BY DISPATCH, AND NOW THE ONLY THING KEEPING THIS ORDER
+        # OUT OF TONIGHT'S BATCH. While the order was born `draft` the status was the
+        # protection; now that it is born `confirmed`, the batch's
+        # `SERVICE_DATE <= tenant_today` is. An order approved for next Tuesday is
+        # untouched until Tuesday evening *because of this field* — which is why
+        # `assess_approval` refuses to approve without it (James's step 3, item 4).
         scheduled_date=_as_date(answers.get("service_date")),
         # ⚠️ THE SAME DAY, WRITTEN TWICE ON PURPOSE, AND THIS IS THE FIELD THE DELIVERY
         # HOOK READS (James's step 2, item 3). The two columns are not redundant — they
@@ -1055,6 +1109,25 @@ def approve(
 
     _write_personalization_tasks(db, order, answers, company_id)
 
+    # ⚠️ THE DELIVERY HOOK IS **NOT** FIRED HERE, AND I ADDED IT BEFORE TAKING IT BACK
+    # OUT. The reasoning for firing it was that `sales_service.update_sales_order` calls
+    # `order_integration_service.on_order_confirmed` whenever a status becomes
+    # `confirmed`, so without it an order born confirmed and one confirmed by hand
+    # differ in whether a delivery exists.
+    #
+    # It is not fired because James's constraint on this function is explicit and
+    # narrower than that consistency argument: "Approve must not set off anything
+    # downstream" (`tests/test_approve_triggers_nothing.py`). Step 3 asked for the
+    # STATUS to change, not for Approve to acquire a second effect, and a hook is
+    # exactly the kind of thing that is cheap to add and hard to notice later.
+    #
+    # ⚠️ THE DIVERGENCE IS THEREFORE LATENT AND IS FLAGGED RATHER THAN RESOLVED. Today
+    # it cannot bite: `auto_create_delivery_from_order` is False for every production
+    # tenant, so the PATCH path's hook no-ops too and the two paths agree by accident.
+    # The moment that flag is enabled, a PATCH-confirmed order will get a `deliveries`
+    # row and an Opas-approved one will not. That is a decision about whether Opas
+    # orders belong on the dispatch board, which is James's to make at the point he
+    # turns the flag on — see STATE.
     row.status = STATUS_APPROVED
     row.sales_order_id = order.id
 

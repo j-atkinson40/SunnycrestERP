@@ -3631,3 +3631,21 @@ documented as "the SERVER carries the same regex" and has exactly one reference 
 the whole backend — its own definition. It gates nothing. Left in place and recorded
 rather than changed in the same commit as a production fix; a second copy of a rule
 that enforces nothing is still a copy somebody will later trust.
+
+---
+
+## 2026-10-16 — Opas Approve creates a CONFIRMED order, superseding D1 of 2026-10-13
+
+**Supersedes the 2026-10-13 decision (D1) that Approve creates a `draft` sales order.** D1's rationale was specific and it no longer holds. At the time, the end-of-day batch selected orders on `scheduled_date <= today` with no regard for whether the service had happened, and in the auto-confirm mode every production tenant runs it then marked the order `delivered` and drafted an invoice against it. An order that was merely *confirmed* could therefore be billed on the afternoon of its service date — and, until the clock fix of the same day, at 2 PM Eastern, ahead of an afternoon service. `draft` was the only status outside that net, so it was the whole protection. Step 2 moved the gate: the batch now acts only once the service date has arrived **in the tenant's own local time**, and `sales_order_transitions` makes skipping a step unexpressible rather than merely unusual. With the hazard removed, the draft was costing the office a second press rather than buying safety. The protection is now the service date, which is why `service_date` remains unconditionally required and why Approve is refused without one.
+
+Two things make the reversal safe rather than merely reasoned. First, confirmed-on-create already existed — `vault_order_service` has created `confirmed` orders carrying a `required_date` all along, so Opas is joining a pattern rather than inventing one. Second, the same dispatch added **Undo confirm** (`confirmed -> draft`, refused once the order is delivered or carries a live invoice), so Approve is recoverable; D1's implicit assumption that a confirm could not be taken back was true when it was written and is no longer.
+
+Drafts remain for a capture saved partway — which is a `capture_sessions` row in `capturing`/`review`, not a sales order at all, since no `sales_orders` row exists until Approve runs — for Undo confirm, and for every non-Opas creator (`sales_service.create_sales_order`, the quote conversion, call extraction, legacy studio), none of which this decision touches.
+
+---
+
+## 2026-10-16 — The dispatch board's auto-finalize stays at 1 PM tenant-local for Sunnycrest
+
+`AUTO_FINALIZE_HOUR = 13` has always declared "1 pm tenant-local" and never meant it for Sunnycrest, because the tenant's timezone was the column default `"UTC"` and the cron window is a UTC coverage range. Sunnycrest effectively finalized tomorrow's draft schedule at 9 AM Eastern. Setting the tenant to `America/New_York` (r213) made the declared hour the real one, moving the lock four hours later, and James ruled that 1 PM stands.
+
+The reasoning that settled it: **auto-finalize locks *tomorrow's* schedule, never today's** — the service explicitly refuses past-dated drafts and today's live work. The yard's morning list was therefore locked the previous afternoon, so the hour does not change what anyone sees on any given morning; it changes only how late a same-day call can still land on tomorrow's run. That makes the trade one-sided — 1 PM gains four hours of morning calls, 9 AM gains nothing operational — and two existing mechanisms cap the downside: `revert_schedule` takes a finalized schedule back to draft while preserving `finalized_at`/`finalized_by_user_id` as an audit trail, and a dispatcher with the Scheduling Focus open on tomorrow's date defers finalization through the 13:00–13:14:59 grace window. The one consideration the code could not answer — whether anyone at Sunnycrest had built a habit around tomorrow reading "final" by mid-morning — was put to James, who confirmed nobody had.

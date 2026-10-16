@@ -156,6 +156,17 @@ export interface SalesOrder {
   created_at: string;
   modified_at: string | null;
   lines: SalesOrderLine[];
+  /**
+   * The order's billing state. Three cases want three controls: never invoiced,
+   * invoiced, invoiced-and-voided (James's step 3, item 6).
+   *
+   * ⚠️ Only populated by the order DETAIL and PATCH responses. List responses leave
+   * `voided_invoice_count` at 0 and the live fields null — the same shape the type had
+   * before these were added, so list consumers are unaffected.
+   */
+  live_invoice_number?: string | null;
+  live_invoice_status?: string | null;
+  voided_invoice_count?: number;
   driver_confirmed?: boolean;
   completed_at?: string | null;
   has_inventory_warning?: boolean;

@@ -234,7 +234,7 @@ def test_zero_chairs_BUILDS_NO_LINE_and_does_not_block(db, tenant):
     ⚠️ A ZERO QUANTITY AND A ZERO PRICE ARE DIFFERENT THINGS, and this is the test
     that keeps them apart. Chairs at quantity 0 build NO line; `Vault Placer` at
     $0.00 builds a REAL line (`test_vault_placer_bills_a_ZERO_line_rather_than_blocking`
-    in test_approve_creates_a_draft_order.py). Collapsing the two would either bill a
+    in test_approve_confirms_the_order.py). Collapsing the two would either bill a
     $0.00 chair line or drop the placer from the order it was used on.
     """
     v = _vals(db, tenant, "8 chairs")

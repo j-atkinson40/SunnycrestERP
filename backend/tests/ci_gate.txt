@@ -367,7 +367,7 @@ tests/test_a_director_types_lowercase.py
 tests/test_a_director_types_no_commas.py
 tests/test_the_form_default_picks_burial.py
 tests/test_a_cemetery_is_named_the_way_people_say_it.py
-tests/test_approve_creates_a_draft_order.py
+tests/test_approve_confirms_the_order.py
 tests/test_approve_triggers_nothing.py
 tests/test_r211_writes_the_cemetery_and_the_equipment.py
 tests/test_nothing_the_extractor_captures_is_dropped.py
@@ -575,3 +575,7 @@ tests/test_scheduler_timezone.py
 # by slug prefix, so neither moves the company count.
 tests/test_r213_sunnycrest_timezone.py
 tests/test_delivered_on_the_service_date.py
+
+# Step 3: Approve confirms, and the service date is what keeps the order safe.
+# Purges its own tenants by slug prefix.
+tests/test_approve_confirms_and_the_batch_waits.py

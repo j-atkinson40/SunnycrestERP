@@ -184,6 +184,17 @@ class SalesOrderResponse(BaseModel):
     created_at: datetime
     modified_at: datetime | None = None
     lines: list[SalesOrderLineResponse] = []
+    #: The order's billing state, so the page can tell "never invoiced" from
+    #: "already invoiced" from "invoiced and voided" — three cases that want three
+    #: different controls (James's step 3, item 6).
+    #:
+    #: ⚠️ THE PAGE CANNOT DERIVE THIS. It had no view of the order's invoices at all, so
+    #: its "Create Invoice" button was offered unconditionally and a second press on an
+    #: already-invoiced order got a 409 that the catch discarded as "Failed to create
+    #: invoice." A re-bill after a void is a DELIBERATE act and needs its own label.
+    live_invoice_number: str | None = None
+    live_invoice_status: str | None = None
+    voided_invoice_count: int = 0
 
     class Config:
         from_attributes = True

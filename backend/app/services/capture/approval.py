@@ -256,3 +256,106 @@ def assess(
         total=total,
         customer_id=customer_id,
     )
+
+
+# ---------------------------------------------------------------------------
+# What Approve will do, said before it is pressed
+# ---------------------------------------------------------------------------
+
+
+def describe_approve_effect(
+    db: Session, tenant_id: str, answers: dict, approval: Approval
+) -> str | None:
+    """One line stating what pressing Approve will set in motion, from the real data.
+
+    James's step 3, item 3. Example shape:
+
+        Confirms the order · Delivered Tue Oct 20 · Invoiced at month end (Hopkins)
+
+    ⚠️ IT IS BUILT FROM THE SAME `Approval` THE BUTTON IS GATED ON, not from a second
+    read of the answers. A preview derived independently could promise something the
+    press would not do — which is the whole failure this line exists to prevent, since
+    Approve is now the step that puts an order in front of the batch.
+
+    ⚠️ RETURNS None WHEN THE ORDER IS NOT APPROVABLE. A promise about a press that will
+    be refused is worse than no promise; the blockers already say what is wrong.
+
+    ⚠️ AND IT DOES NOT SAY "EMAILED" UNLESS MAIL CAN ACTUALLY LEAVE. A customer set to
+    `invoice_immediately` would otherwise read as "Invoiced immediately" while the
+    per-tenant `invoice_email_enabled` switch is off and nothing is sent — a sentence on
+    screen that the system contradicts silently. The switch is consulted so the line
+    describes what happens rather than what the customer record prefers.
+    """
+    if not approval.ready:
+        return None
+
+    parts = ["Confirms the order"]
+
+    service = answers.get("service_date")
+    when = _format_service_day(service)
+    # ⚠️ NO DATE MEANS NO SENTENCE RATHER THAN A VAGUER ONE. `service_date` is
+    # unconditionally required, so `approval.ready` already implies it is present; if
+    # that ever changes, omitting the clause is better than promising "Delivered" with
+    # no day attached.
+    if when:
+        parts.append(f"Delivered {when}")
+
+    billing = _describe_billing(db, tenant_id, approval.customer_id)
+    if billing:
+        parts.append(billing)
+
+    return " · ".join(parts)
+
+
+def _format_service_day(value: object) -> str | None:
+    """`'2026-10-20'` -> `'Tue Oct 20'`, or None if it is not a full date.
+
+    The capture stores partial dates for other fields (a birth YEAR, commonly), so this
+    refuses anything that is not a real day rather than rendering "Delivered 1948".
+    """
+    from datetime import date as _date
+
+    if isinstance(value, _date):
+        d = value
+    elif isinstance(value, str):
+        try:
+            d = _date.fromisoformat(value.strip())
+        except ValueError:
+            return None
+    else:
+        return None
+    # ⚠️ `%-d` RATHER THAN `%d`: "Oct 20" not "Oct 20" with a leading zero on single
+    # digits. Platform-specific, so it is done by hand.
+    return f"{d:%a %b} {d.day}"
+
+
+def _describe_billing(db: Session, tenant_id: str, customer_id: str | None) -> str | None:
+    """"Invoiced at month end (Hopkins)" — what billing will do, and for whom."""
+    if not customer_id:
+        return None
+    row = db.execute(
+        text(
+            "SELECT name, invoice_delivery_preference FROM customers "
+            "WHERE id = :c AND company_id = :t"
+        ),
+        {"c": customer_id, "t": tenant_id},
+    ).first()
+    if row is None:
+        return None
+    name, preference = row[0], (row[1] or "statement_only")
+
+    # ⚠️ THE FIRST WORD OF THE NAME, because this line is read at a glance next to two
+    # other clauses and "Hopkins" is how the office says it. The full name is on the
+    # Review's own customer row.
+    short = (name or "").split()[0] if name else "customer"
+
+    if preference in ("invoice_immediately", "both"):
+        from app.services.invoice_email_switch import invoice_email_allowed
+
+        allowed, _why = invoice_email_allowed(db, tenant_id)
+        if allowed:
+            return f"Invoiced and emailed ({short})"
+        # ⚠️ SAYS SO RATHER THAN IMPLYING A SEND. The invoice is still created; only the
+        # mail is withheld, and the office should not be told otherwise.
+        return f"Invoiced, not emailed ({short})"
+    return f"Invoiced at month end ({short})"
