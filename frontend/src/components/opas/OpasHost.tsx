@@ -24,7 +24,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 
 import { useAuth } from "@/contexts/auth-context"
 import { useOpas } from "@/contexts/opas-context"
-import { abandonCapture } from "@/services/opas-capture-service"
+import { abandonCapture, fetchVocabulary } from "@/services/opas-capture-service"
 import { CapturePane, type EntryPaneStatus } from "./CapturePane"
 import {
   CaptureMirror,
@@ -33,6 +33,7 @@ import {
   MirrorStack,
   useMirrorSync,
 } from "./CaptureMirror"
+import { acceptGhost, completionFor, type VocabTerm } from "./ghost"
 import { sameEntryStatus } from "./entry-status-guard"
 import { fieldsAtCaret } from "./mirror-spans"
 import { CAPTURE_START, isCatalogRequest, routeResolution } from "./opas-routing"
@@ -125,6 +126,9 @@ export function OpasHost() {
    *  the events that can move it — typing, clicking and arrowing — rather than polled,
    *  because a poll would either lag the caret or run forever. */
   const [caret, setCaret] = useState<number | null>(null)
+  /** ⚠️ FETCHED ONCE WHEN CAPTURE OPENS, never per keystroke — see `fetchVocabulary`.
+   *  Held on the host rather than the pane because the BAR is what completes. */
+  const [vocab, setVocab] = useState<readonly VocabTerm[]>([])
   const [barH, setBarH] = useState(0)
   const [text, setText] = useState("")
   const [busy, setBusy] = useState(false)
@@ -351,6 +355,24 @@ export function OpasHost() {
   // input with two jobs — an entry pane's order text, or the request line — and the
   // mirror has to track the same one or it would lay out the other.
   useMirrorSync(inputRef, mirrorRef, entryMode ? entryValue : text)
+
+  // ⚠️ ONCE PER CAPTURE, AND ONLY WHILE CAPTURING. Fetching on mount would pull a
+  // tenant catalog for every user who merely opens Opas; fetching per keystroke is
+  // what the ruling forbids. The guard on `vocab.length` makes a second entry pane
+  // reuse what the first already has.
+  useEffect(() => {
+    if (!entryMode || vocab.length > 0) return
+    let live = true
+    void fetchVocabulary().then((terms) => { if (live) setVocab(terms) })
+    return () => { live = false }
+  }, [entryMode, vocab.length])
+
+  /** ⚠️ DERIVED ON EVERY RENDER, NOT STORED. A ghost held in state outlives its
+   *  cause — the director deletes a character and the old completion is still on
+   *  screen. Same argument as `placeholderFor`. */
+  const ghost = entryMode
+    ? completionFor(entryValue, caret, vocab)
+    : null
   const picks = status?.picks ?? []
 
   /**
@@ -1091,6 +1113,11 @@ export function OpasHost() {
         <div
           ref={barRef}
           data-testid="opas-command-line"
+          /* ⚠️ OBSERVABLE BECAUSE THE INSTRUMENTS WERE NOT. Diagnosing the ghost, both
+             resource-timing and the server access log reported ZERO requests for calls
+             that demonstrably happened — an empty list from a blind instrument reads
+             exactly like a true absence. The state says so directly instead. */
+          data-vocab={vocab.length}
           style={{
             ...GLASS, position: "fixed", zIndex: 44, right: 24, bottom: 24,
             width: BAR_WIDTH, borderRadius: 28, padding: "6px 8px 6px 10px",
@@ -1116,6 +1143,7 @@ export function OpasHost() {
                 spans={entryMode ? status?.spans : undefined}
                 spansForText={entryMode ? status?.spansForText : undefined}
                 litFieldIds={entryMode ? status?.hoveredFieldIds : undefined}
+                ghostSuffix={ghost?.suffix ?? null}
               />
             <textarea
               ref={inputRef}
@@ -1130,11 +1158,29 @@ export function OpasHost() {
                   setText(e.target.value)
                 }
               }}
+              // ⚠️ THE CARET FOLLOWS THE VALUE, NOT ONLY THE KEYBOARD. Tracked from
+              // select/click/keyUp alone it misses every way the text changes without
+              // a key coming back up: paste, IME, undo, autofill. The ghost needs the
+              // caret at the end, so a stale caret means no completion at all.
+              onInput={(e) => setCaret((e.target as HTMLTextAreaElement).selectionStart)}
               onSelect={(e) => setCaret((e.target as HTMLTextAreaElement).selectionStart)}
               onClick={(e) => setCaret((e.target as HTMLTextAreaElement).selectionStart)}
               onKeyUp={(e) => setCaret((e.target as HTMLTextAreaElement).selectionStart)}
               onBlur={() => setCaret(null)}
               onKeyDown={(e) => {
+                // ⚠️ TAB ACCEPTS THE GHOST AND NEVER LEAVES THE BAR WHILE CAPTURING,
+                // by ruling. `preventDefault` is the whole mechanism: without it the
+                // browser moves focus to the next control and the director is typing
+                // into nothing. It is called even when there is NO ghost, because a
+                // Tab that sometimes moves focus and sometimes does not is worse than
+                // either — the bar is the only input while an order is open.
+                if (e.key === "Tab" && entryMode) {
+                  e.preventDefault()
+                  if (ghost && entryPane !== undefined) {
+                    opas.setEntryText(entryPane.id, acceptGhost(entryValue, ghost))
+                  }
+                  return
+                }
                 if (e.key !== "Enter") return
                 // ⚠️ ENTER FINISHES THE ORDER, BY RULING (James, 2026-10-14),
                 // SUPERSEDING "Enter is a hard no-op while capturing". It is the

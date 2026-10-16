@@ -48,6 +48,14 @@ export interface CapturePick {
   readonly discriminator: string | null
 }
 
+export interface VocabTerm {
+  readonly text: string
+  readonly kind: string
+  readonly carried?: boolean
+  readonly note?: string | null
+  readonly form?: string | null
+}
+
 export interface CaptureSpan {
   readonly start: number
   readonly end: number
@@ -177,6 +185,23 @@ export interface CaptureState {
 }
 
 const BASE = "/capture/sessions"
+
+/**
+ * The tenant's completable vocabulary, fetched ONCE when capture opens.
+ *
+ * ⚠️ ONE FETCH, NOT ONE PER KEYSTROKE, BY RULING. Matching happens client-side so
+ * keystroke latency never touches the network. A failure resolves to an EMPTY list
+ * rather than throwing: a bar that cannot complete is a bar; a bar that throws is a
+ * pane that does not render.
+ */
+export async function fetchVocabulary(): Promise<readonly VocabTerm[]> {
+  try {
+    const r = await apiClient.get<{ terms: VocabTerm[] }>("/capture/vocabulary")
+    return r.data?.terms ?? []
+  } catch {
+    return []
+  }
+}
 
 export async function startCapture(openingLine?: string): Promise<CaptureState> {
   const r = await apiClient.post<CaptureState>(BASE, {

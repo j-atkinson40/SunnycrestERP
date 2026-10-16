@@ -563,3 +563,4 @@ tests/test_r212_price_alignment.py
 tests/test_a_name_is_shown_the_same_way_everywhere.py
 tests/test_the_question_line.py
 tests/test_spans_are_reported.py
+tests/test_the_vocabulary.py

@@ -50,6 +50,11 @@ vi.mock("@/services/opas-capture-service", () => ({
   // button's handler throw mid-click, so the pane stayed open and the next order
   // could not start. Exactly the production symptom, found only by running this.
   takeSwitch: vi.fn(),
+  // ⚠️ ADDED WHEN THE BAR GAINED GHOST COMPLETION. Same reasoning this file already
+  // records twice: a mock omitting a function the component imports does not fail at
+  // import — it fails when the component CALLS it, inside an effect, as
+  // `undefined is not a function`, which surfaces as a pane that renders nothing.
+  fetchVocabulary: vi.fn(async () => []),
   abandonCapture: vi.fn(),
 }))
 vi.mock("@/services/opas-catalog-service", () => ({

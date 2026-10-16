@@ -275,3 +275,37 @@ def read_session(
 ):
     """The session's current state. ⚠️ The pane re-reads this after a tuck."""
     return _state(db, session_id, current_user)
+
+
+@router.get("/vocabulary")
+def read_vocabulary(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Everything the bar may complete, for THIS tenant. Fetched once per capture.
+
+    ⚠️ A WHOLE-LIST ENDPOINT RATHER THAN A PER-KEYSTROKE SEARCH, BY RULING (James,
+    2026-10-16): "Matching is client-side only... keystroke latency must not depend on
+    the network." A search endpoint would be the obvious shape and the wrong one — the
+    bar is where a director is mid-sentence, and a completion that stutters on a slow
+    connection is worse than none.
+
+    ⚠️ IT IS SMALL BECAUSE IT IS TENANT-SCOPED. Measured 2026-10-16: 101 terms on
+    sunnycrest, 115 on testco. If a tenant's catalog ever made this large enough to
+    matter, the fix is to narrow what is sent, not to move matching back to the wire.
+    """
+    from app.services.capture.vocabulary import build_vocabulary
+
+    terms = build_vocabulary(db, current_user.company_id)
+    return {
+        "terms": [
+            {
+                "text": t.text,
+                "kind": t.kind,
+                "carried": t.carried,
+                "note": t.note,
+                "form": t.form,
+            }
+            for t in terms
+        ],
+    }

@@ -182,6 +182,7 @@ export function CaptureMirror({
   spans,
   spansForText,
   litFieldIds,
+  ghostSuffix,
   children,
   debugOutline = false,
 }: {
@@ -191,7 +192,8 @@ export function CaptureMirror({
   readonly spansForText?: string | null
   /** Field ids whose span should read as lit — the hovered pane row. */
   readonly litFieldIds?: readonly string[]
-  /** The ghost is drawn by step 3; step 2 renders text and spans. */
+  /** Faint completion drawn after the text. See `ghost.ts`. */
+  readonly ghostSuffix?: string | null
   readonly children?: ReactNode
   /**
    * ⚠️ THE ALIGNMENT GATE'S INSTRUMENT, and it ships rather than living in a scratch
@@ -237,6 +239,15 @@ export function CaptureMirror({
           </span>
         )
       })}
+      {/* ⚠️ THE GHOST LIVES IN THE MIRROR, NOT IN A SEPARATE LAYER, so it inherits
+          the same box and lands exactly where the next character would. A second
+          absolutely-positioned element would need the caret's pixel position, which
+          a textarea does not expose. */}
+      {ghostSuffix ? (
+        <span data-testid="capture-ghost" style={{ color: "rgba(214,214,214,0.42)" }}>
+          {ghostSuffix}
+        </span>
+      ) : null}
       {children}
       {/* ⚠️ A TRAILING NEWLINE NEEDS A CHARACTER AFTER IT OR THE LAST LINE COLLAPSES.
           A textarea reserves a final empty line; a div does not, so "a\n" is two lines

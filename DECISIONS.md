@@ -3550,3 +3550,46 @@ have been a correct conclusion resting on a falsified derivation — the shape C
 **The reported failure was a stale dev server**: `field_ids` was added to the row
 payload six minutes after the local backend started, and both link directions need
 it. One process, two symptoms.
+
+## 2026-10-16 — The ghost's tie-break: tenant scope, then form, then common prefix
+
+**Ruled by James in two parts.** First dispatch: "If several terms match, offer none
+unless one is a strict extension of all others." Then, on seeing the implementation:
+"when the only thing separating the matches is the form (burial vs urn), offer the
+burial vault, the same default capture already uses."
+
+⚠️ **THE FIRST RULE COULD NOT SATISFY ITS OWN VERIFY LINE, AND THAT IS WHY THERE ARE
+THREE STEPS.** Measured 2026-10-16: the platform catalog holds BOTH `Monticello
+Burial Vault` and `Monticello Urn Vault`. Across the catalog "monti" is ambiguous and
+neither is an extension of the other — so the stated rule offers nothing, while the
+dispatch's own verify line says it must offer "cello Burial Vault".
+
+**Step 5, tenant scope.** If any match is carried by this tenant, only carried matches
+count. This is also the more correct scope on its own terms: completing to a vault the
+tenant does not sell produces an order Approve then refuses with "has no product on
+this tenant" — the bar would be suggesting what the next screen rejects.
+
+**Step 6a, the form default.** James saw that tenant scope is not permanent: the day
+sunnycrest stocks a Monticello urn vault, both are carried and the case returns. The
+form rule covers it either way.
+
+⚠️ **IT MIRRORS THE CAPTURE'S EXISTING CONDITION EXACTLY — `discriminators ==
+("form",)`, NOT "form is among them".** `Continental Burial Vault` and `Continental
+34"` differ by SIZE as well; the 2026-10-13 ruling refuses to guess there and so does
+the ghost. A looser rule would pick a size for the office.
+
+⚠️ **AND A BREAK TEST SHOWED WHICH GUARD ACTUALLY PROTECTS THE SIZE CASE.** Patching
+the stem comparison changed nothing — both Continentals share `burial_vault`, so the
+DISTINCT-FORMS guard returns false first. The stem check protects a different case.
+The first break proved nothing and was redone against the whole predicate.
+
+**Step 7, the common prefix.** Where several still match, complete as far as they
+AGREE and stop — what shell completion does. It can never insert a word the terms
+disagree about. Where one term IS a strict extension of all others, this and the
+dispatch's wording give the same answer; where they are siblings, the dispatch's
+wording gives nothing and this gives the shared stem.
+
+**Not his, flagged:** Tab APPENDS the remainder rather than replacing what was typed,
+because the ruling says "inserts the remainder". So "monti" + Tab reads "monticello
+Burial Vault", keeping the director's lowercase. Harmless downstream — every resolver
+is case-insensitive — but it is a second ruling, not an implementation detail.

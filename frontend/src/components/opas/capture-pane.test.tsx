@@ -38,6 +38,11 @@ vi.mock("@/services/opas-capture-service", () => ({
   // fails as `undefined is not a function` inside an effect — which the director
   // sees as a pane that does not appear.
   takeSwitch: vi.fn(),
+  // ⚠️ ADDED WHEN THE BAR GAINED GHOST COMPLETION. Same reasoning this file already
+  // records twice: a mock omitting a function the component imports does not fail at
+  // import — it fails when the component CALLS it, inside an effect, as
+  // `undefined is not a function`, which surfaces as a pane that renders nothing.
+  fetchVocabulary: vi.fn(async () => []),
   abandonCapture: vi.fn(),
   approveCapture: vi.fn(),
   completeCapture: vi.fn(),

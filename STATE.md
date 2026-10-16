@@ -4391,3 +4391,19 @@ the other.
   ⚠️ **AND MY OWN HARNESS LIED ABOUT THE SECOND DIRECTION.** After the restart, row → span still read as broken. It was not: the detector filtered on `boxShadow.includes('138,164,189')` while the browser normalises to `'138, 164, 189'` WITH SPACES. An instrument that cannot see returns exactly what a true absence returns.
 
   ⚠️ **AND THE FIX I REACHED FOR FIRST WAS NOT THE BUG.** `reportStatus` compared four fields of a seven-field payload, so a status differing only in `hoveredFieldIds` was dropped — a real latent defect, and I assumed it was the cause. **Controlled:** restoring the original four-field guard, the hover STILL lit its span. The defect is latent, not constant, because a hover usually lands in the same window as another status change. The completed guard and `entry-status-guard.test.ts` are kept on their own merits; they are not the reported failure, and saying otherwise would be a fix with no defect behind it.
+
+- **2026-10-16 — Step 3: ghost completion. No migration.**
+
+  The bar completes the word at the caret in faint text; Tab accepts. Vocabulary fetched ONCE when capture opens (115 terms on testco, 101 on sunnycrest) and matched entirely client-side, because the ruling forbids keystroke latency touching the network. **Measured p50 0.3ms, p95 2.2ms over 200 keystrokes** against a 16ms target.
+
+  **THE TIE-BREAK IS THREE STEPS AND THE FIRST RULE COULD NOT SATISFY ITS OWN VERIFY LINE.** The platform catalog holds BOTH `Monticello Burial Vault` and `Monticello Urn Vault`, so "monti" is ambiguous and "offer none unless one is a strict extension of all others" offers nothing — while the dispatch's own line says it must offer "cello Burial Vault". Resolved by (5) scoping to what the tenant carries, (6a) James's form default, mirroring the capture's exact `discriminators == ("form",)` condition, and (7) completing to the longest common prefix otherwise.
+
+  ⚠️ **ON testco THE FORM RULE IS WHAT DELIVERS HIS VERIFY LINE**, not tenant scope — testco carries neither Monticello. His instinct that scoping alone was not permanent was already true on one of the two tenants.
+
+  ⚠️ **THREE BLIND INSTRUMENTS IN ONE SESSION, AND TWICE I NEARLY REPORTED A WORKING FEATURE AS BROKEN.** Resource-timing returned zero `/api/v1` entries for calls that demonstrably happened; the uvicorn access log recorded nothing; and the span detector missed on `rgba` comma spacing. Each empty result read exactly like a true absence. The bar now carries `data-vocab` alongside `data-caret` and `data-hovered` so state is read directly rather than inferred.
+
+  **The real defect underneath:** the caret was tracked from select/click/keyUp only, missing every way text changes without a key coming back up — paste, IME, undo, autofill, and `Input.insertText`. It now follows `input` too.
+
+  ⚠️ **`--reload` WAS TRIED AND REVERTED.** It restarts the APScheduler on every edit, and the scheduler floods on a missing `ANTHROPIC_API_KEY` until the server stops answering (`http=000`). Stale-but-alive beats fresh-but-wedged; the restart-after-backend-edit discipline stands, with the file-timestamp check that caught it.
+
+  **Not James's, flagged:** Tab APPENDS rather than replacing, per "inserts the remainder" — so "monti" + Tab reads "monticello Burial Vault", keeping the typed lowercase.
