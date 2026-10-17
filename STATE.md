@@ -18,9 +18,30 @@ Commit `52e8769c`, deployed 00:35 UTC. Deployed bundle `index-DMysZxZj.js` verif
 - **2026-10-17** — **`test_note_surface::test_a_different_day_is_a_different_note` compared two different clocks** and had been passing by luck. It took "today" from `note.service.tenant_today` (the **tenant's** zone — `"UTC"` for a fixture tenant, from the column default) and "tomorrow" from `date.today() + 1` (the **container's** zone). Those agree for twenty hours a day and diverge between 20:00 and midnight Eastern, when UTC has already rolled over: both resolved to the 17th and returned the same note. **It passed every run that day until 00:18 UTC.** Confirmed pre-existing by a HEAD control before touching it. Fixed by deriving tomorrow from the note's own day. Same family as the batch's `date.today()`, found the same week.
 - **2026-10-17** — ⚠️ **AND THERE IS A NINTH ANSWER TO "WHAT DAY IS IT", WITH A NAME COLLISION.** `app/services/note/service.py:34` defines its own `tenant_today(db, company_id)` — same name, same signature, different module from `app/services/tenant_clock.py`. Two functions with one name is worse than two that merely disagree, because an import line decides which a caller gets and neither looks wrong. Recorded in `tenant_clock`'s enumeration; **the duplication is parked, not fixed** — it is the same sweep as the eight disagreeing fallbacks.
 
-### Item 4 — pending, not verifiable yet
+### Item 4 — ⚠️ CONFIRMED 2026-10-17 22:00Z. The first batch run on step-3 code ran clean.
 
-The 22:00Z run on 2026-10-16 fired **before** the step-3 deploy (22:00Z vs 23:19Z), so **the first batch run on step-3 code is 2026-10-17 at 22:00Z**. A watch is armed that reports the run with its per-tenant counts and errors loudly at 22:40Z rather than going silent. **One-line retest if the watch does not survive the session:**
+Production was serving **`f4d239a3`** at the time — `52e8769c` (step 3) plus one
+STATE-only commit, with nothing else deployed in between, so this run really was on
+step-3 code rather than on something that had drifted since.
+
+| check | result |
+|---|---|
+| the run | **2026-10-17 22:00:00 UTC** — `completed`, `tenant_count 4`, `success_count 4`, `error_count 0`, 0.40s, `error_message` NULL |
+| ⚠️ positive control | four other jobs fired at **exactly 22:00:00** in the same tick (`BRIEFING_SWEEP`, `DISPATCH_AUTO_FINALIZE`, `NOTE_SETTLING_SWEEP`, `PLATFORM_INCIDENT_DISPATCHER`) — so the scheduler was alive and this is not a dead-scheduler coincidence |
+| the OLD time | **0 runs at 18:00Z** — the two-sided property holds a second night, not just on the day it was fixed |
+| SO-2026-0001 | `draft`, `delivered_at` NULL, **`modified_at` still NULL** |
+| SO-2026-0002 | `cancelled`, `modified_at` unchanged from the walk (2026-10-16 23:21Z) |
+| acted on, any tenant | **0** auto-confirmed, **0** batch invoices |
+| the undated surface | fired again: st-marys 2, testco 23 — same as the previous night, consistent, still all synthetic |
+
+⚠️ **AND SO-2026-0001'S SERVICE DATE HAS NOW PASSED**, which makes this a better test than
+the night before. Its `scheduled_date` is 2026-10-16 and the run was on the 17th, so the
+date gate no longer excludes it — the only thing keeping it out is that it is still a
+`draft`. That is the safety property `session_service.approve` relied on under D1, still
+holding for an order that predates step 3, with the batch now looking straight at it.
+
+**The three-step arc is verified end to end on production.** The one-line retest, kept for
+any future night:
 
 ```
 railway run --project ad95792e-6625-4bf5-ad61-ead9c291bdf9 --environment production --service SunnycrestERP -- psql $DATABASE_URL -c "SELECT started_at, status, tenant_count, success_count, error_count FROM job_runs WHERE job_type='DRAFT_INVOICE_GENERATOR' AND trigger='scheduled' ORDER BY started_at DESC LIMIT 1"
