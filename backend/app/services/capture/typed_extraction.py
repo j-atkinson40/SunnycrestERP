@@ -2657,6 +2657,26 @@ def evaluate_typed(db: Session, *, tenant_id: str | None, answers: dict[str, obj
     for field_id in state.not_applicable:
         if field_id in already or field_id not in answers:
             continue
+        # ⚠️ DECLINING IS NEVER A CONFLICT, ON ANY VAULT (James, 2026-10-16). "none"
+        # answers the question rather than contradicting it: a director saying "no
+        # personalization" on a vault that offers none is AGREEING with the vault, and
+        # being told "Monticello Burial Vault doesn't offer None" is the engine arguing
+        # with someone who said the same thing it did.
+        #
+        # ⚠️ AND THE OTHER ENFORCEMENT PATH ALREADY HELD THIS RULE, which is what makes
+        # the omission here a bug rather than a design choice. `missing._reject_unpermitted`
+        # exempts `ANSWER_NONE` with the comment "Declining is permitted wherever the
+        # question is asked at all" — that guard covers a vault with a CONFIGURED
+        # permitted set, and this loop covers a vault where the question does not apply
+        # at all. Two paths, one rule, and only one of them had it. Measured on
+        # production 2026-10-16: the item-8 walk was refused for answering "none".
+        #
+        # ⚠️ IT DOES NOT MAKE THE FIELD `answered`. The field stays in `not_applicable`,
+        # which is correct — the vault genuinely offers nothing — so no row claims a
+        # personalization that will not be made and `assess` builds no line. What
+        # changes is only that the decline stops blocking Approve.
+        if str(answers[field_id]) == ANSWER_NONE:
+            continue
         permitted = _permitted_for(
             template, field_id, resolution.variant_template_id, config
         )

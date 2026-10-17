@@ -481,3 +481,205 @@ def test_the_response_without_a_session_keeps_its_old_shape(db):
     db.refresh(o)
     r = _order_to_response(o)
     assert "live_invoice_number" not in r or r.get("live_invoice_number") is None
+
+
+# ── the two confirm paths must not diverge (James, 2026-10-16, follow-up item 2) ──
+
+
+def _enable_auto_delivery(db, co: Company) -> None:
+    """Turn `auto_create_delivery_from_order` on for this tenant.
+
+    ⚠️ THROUGH `delivery_settings_service.get_settings`, WHICH CREATES THE ROW IF IT IS
+    ABSENT. Writing the table directly would miss the model-side defaults and would not
+    exercise the same read path the hook uses.
+    """
+    from app.services.delivery_settings_service import get_settings
+
+    s = get_settings(db, co.id)
+    s.auto_create_delivery_from_order = True
+    db.commit()
+
+
+def _deliveries_for(db, order_id: str) -> list[dict]:
+    """The delivery rows for one order, in the fields that reflect the PATH.
+
+    ⚠️ `customer_id` IS NOT SELECTED, AND LEAVING IT IN WAS MY OWN TEST BUG. Each order
+    in the parity test gets its own customer, so comparing it made two identical paths
+    look divergent — and the noise nearly hid the real finding underneath it (a delivery
+    dated a day early). A parity test must compare what the path decides, not what the
+    fixture happened to create.
+    """
+    rows = db.execute(
+        sql_text(
+            "SELECT status, priority, delivery_type, requested_date, special_instructions "
+            "FROM deliveries WHERE order_id = :o ORDER BY created_at"
+        ),
+        {"o": order_id},
+    ).mappings().all()
+    return [dict(r) for r in rows]
+
+
+def test_the_two_confirm_paths_do_not_diverge(db):
+    """⚠️ THE TEST JAMES ASKED FOR, AND IT ONLY MEANS ANYTHING WITH THE FLAG ON.
+
+    `auto_create_delivery_from_order` is False for every production tenant, so both
+    paths no-op today and agree by accident. That accidental agreement is exactly what
+    made the divergence I introduced invisible: I removed the hook from `approve`, every
+    test stayed green, and the difference would only have surfaced the day somebody
+    enabled the flag.
+
+    So this enables it, confirms one order each way, and compares the deliveries.
+    """
+    from app.schemas.sales import SalesOrderUpdate
+    from app.services import sales_service
+
+    co = _tenant(db)
+    _enable_auto_delivery(db, co)
+    service = date(2026, 10, 23)
+
+    # Path A — an order born confirmed, as Opas Approve writes it.
+    via_approve = _order_as_approve_would(db, co, service=service)
+    from app.services import order_integration_service
+
+    order_integration_service.on_order_confirmed(db, via_approve)
+    db.commit()
+
+    # Path B — a draft confirmed through the PATCH path.
+    via_patch = _order_as_approve_would(db, co, service=service)
+    db.execute(
+        sql_text("UPDATE sales_orders SET status = 'draft' WHERE id = :i"),
+        {"i": via_patch.id},
+    )
+    db.commit()
+    db.expire_all()
+    sales_service.update_sales_order(
+        db, co.id, None, via_patch.id, SalesOrderUpdate(status="confirmed")
+    )
+    db.commit()
+
+    a = _deliveries_for(db, via_approve.id)
+    b = _deliveries_for(db, via_patch.id)
+
+    assert len(a) == 1, f"the Opas path created {len(a)} deliveries, expected 1"
+    assert len(b) == 1, f"the PATCH path created {len(b)} deliveries, expected 1"
+    # ⚠️ COMPARED FIELD BY FIELD, NOT BY COUNT. Two deliveries both existing is not
+    # parity if one of them has no date on it — which is precisely the defect
+    # `required_date` was written to avoid, and which a count would not see.
+    assert a[0] == b[0], f"the two confirm paths produced different deliveries:\n  opas  {a[0]}\n  patch {b[0]}"
+    assert a[0]["requested_date"] == service, (
+        f"the delivery is not dated from the service date: {a[0]['requested_date']}"
+    )
+
+
+def test_approve_fires_the_hook_at_all(db):
+    """⚠️ THE NARROWER CLAIM, SO A FAILURE POINTS AT ONE PATH. The divergence test above
+    would also fail if BOTH paths stopped creating deliveries, which reads as parity.
+    """
+    import inspect
+
+    from app.services.capture import session_service
+
+    src = inspect.getsource(session_service.approve)
+    assert "order_integration_service.on_order_confirmed(db, order)" in src, (
+        "approve no longer fires the delivery hook; an Opas-confirmed order would "
+        "diverge from a hand-confirmed one the moment the flag is enabled"
+    )
+
+
+def test_neither_path_creates_a_delivery_while_the_flag_is_off(db):
+    """The default, pinned. ⚠️ Without this, the parity test above is satisfied by a hook
+    that fires unconditionally — which would put a stop on the board for every tenant
+    that never asked for one.
+    """
+    from app.schemas.sales import SalesOrderUpdate
+    from app.services import order_integration_service, sales_service
+
+    co = _tenant(db)  # flag left at its default
+    o = _order_as_approve_would(db, co, service=date(2026, 10, 23))
+    order_integration_service.on_order_confirmed(db, o)
+    db.commit()
+    assert _deliveries_for(db, o.id) == []
+
+    o2 = _order_as_approve_would(db, co, service=date(2026, 10, 23))
+    db.execute(
+        sql_text("UPDATE sales_orders SET status = 'draft' WHERE id = :i"), {"i": o2.id}
+    )
+    db.commit()
+    db.expire_all()
+    sales_service.update_sales_order(
+        db, co.id, None, o2.id, SalesOrderUpdate(status="confirmed")
+    )
+    db.commit()
+    assert _deliveries_for(db, o2.id) == []
+
+
+def test_the_delivery_is_dated_the_SERVICE_day_not_the_evening_before(db):
+    """⚠️ A DAY-EARLY DELIVERY FOR A FUNERAL. Found by the parity test above, 2026-10-16.
+
+    Opas writes `required_date` as midnight UTC on the service day, and
+    `on_order_confirmed` used to date the delivery `order.required_date.date()`. `.date()`
+    on a `DateTime(timezone=True)` is evaluated in whatever zone the SESSION reads in —
+    and midnight UTC is the previous evening in every negative offset. On a session set
+    to `America/New_York` (which is what `SHOW TimeZone` returns on a dev box) a service
+    on the 23rd produced a delivery requested for the **22nd**.
+
+    ⚠️ IT IS PINNED AGAINST A TENANT-LOCAL READ, NOT AGAINST UTC, because UTC is the one
+    configuration where the bug does not appear — production's own server is UTC, which
+    is why this would have shipped looking fine and gone wrong on any Eastern-configured
+    database or any future per-tenant session timezone.
+    """
+    from app.services import order_integration_service
+
+    co = _tenant(db)
+    _enable_auto_delivery(db, co)
+    service = date(2026, 10, 23)
+    o = _order_as_approve_would(db, co, service=service)
+
+    # the precondition: required_date really is a midnight-UTC stamp
+    stored = db.execute(
+        sql_text("SELECT required_date FROM sales_orders WHERE id = :i"), {"i": o.id}
+    ).scalar()
+    assert stored is not None
+
+    order_integration_service.on_order_confirmed(db, o)
+    db.commit()
+
+    got = db.execute(
+        sql_text("SELECT requested_date FROM deliveries WHERE order_id = :o"),
+        {"o": o.id},
+    ).scalar()
+    assert got == service, (
+        f"the delivery is dated {got}, the service is {service} — a stop on the board "
+        "on the wrong day"
+    )
+
+
+def test_the_fallback_is_used_only_when_there_is_no_scheduled_date(db):
+    """⚠️ THE POSITIVE CONTROL ON THE FIX. Preferring `scheduled_date` must not mean
+    IGNORING `required_date` — pre-Opas and hand-entered orders carry only the timestamp,
+    and dropping them would silently stop creating their deliveries.
+    """
+    from app.services import order_integration_service
+
+    co = _tenant(db)
+    _enable_auto_delivery(db, co)
+    o = _order_as_approve_would(db, co, service=date(2026, 10, 23))
+    # a pre-Opas shape: the timestamp alone, at noon so no zone can shift the day
+    db.execute(
+        sql_text(
+            "UPDATE sales_orders SET scheduled_date = NULL, "
+            "required_date = :r WHERE id = :i"
+        ),
+        {"r": datetime(2026, 10, 23, 12, 0, tzinfo=timezone.utc), "i": o.id},
+    )
+    db.commit()
+    db.expire_all()
+    o = db.get(SalesOrder, o.id)
+
+    order_integration_service.on_order_confirmed(db, o)
+    db.commit()
+    got = db.execute(
+        sql_text("SELECT requested_date FROM deliveries WHERE order_id = :o"),
+        {"o": o.id},
+    ).scalar()
+    assert got == date(2026, 10, 23), f"the required_date fallback stopped working: {got}"

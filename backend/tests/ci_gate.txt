@@ -579,3 +579,7 @@ tests/test_delivered_on_the_service_date.py
 # Step 3: Approve confirms, and the service date is what keeps the order safe.
 # Purges its own tenants by slug prefix.
 tests/test_approve_confirms_and_the_batch_waits.py
+
+# "none" answers the question and never conflicts (James, 2026-10-16). Reads the
+# real sunnycrest catalogue and skips if that tenant is absent; writes nothing.
+tests/test_declining_is_never_a_conflict.py

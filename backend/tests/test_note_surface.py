@@ -139,9 +139,27 @@ def test_one_note_per_user_per_day(db, user):
 
 
 def test_a_different_day_is_a_different_note(db, user):
+    """⚠️ "TOMORROW" IS DERIVED FROM THE NOTE'S OWN DAY, AND IT WAS `date.today() + 1`
+    UNTIL 2026-10-16. That mixed two clocks: `get_or_create_note` defaults to
+    `tenant_today(db, user.company_id)` — the TENANT's zone, which for this fixture's
+    tenant is the `companies.timezone` column default of "UTC" — while `date.today()` is
+    the CONTAINER's zone. On a machine set to America/New_York the two agree for twenty
+    hours a day and disagree between 20:00 and midnight Eastern, when UTC has already
+    rolled over: "today" resolved to the 17th and "today + 1" also resolved to the 17th,
+    so both calls returned the same note and the ids matched.
+
+    ⚠️ IT FAILED FOR THE FIRST TIME AT 00:18 UTC / 20:18 EDT, having passed every earlier
+    run that day — a test whose meaning changes at 8 PM, which is the shape CLAUDE.md §11
+    warns about in *a gate that cannot see a defect its environment cannot contain*. The
+    defect is the same family as the end-of-day batch's `date.today()`, fixed the same
+    day: two sources for "what day is it", and nothing saying which one a caller gets.
+    """
     today = get_or_create_note(db, user)
-    tomorrow = get_or_create_note(db, user, on_date=date.today() + timedelta(days=1))
+    tomorrow = get_or_create_note(
+        db, user, on_date=today.note_date + timedelta(days=1)
+    )
     assert today.id != tomorrow.id
+    assert tomorrow.note_date == today.note_date + timedelta(days=1)
 
 
 def test_subject_id_matches_the_contract_s_user_day_key(db, user):

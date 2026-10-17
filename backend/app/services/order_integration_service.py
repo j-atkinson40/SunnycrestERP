@@ -20,6 +20,19 @@ from app.models.sales_order import SalesOrder
 logger = logging.getLogger(__name__)
 
 
+def _requested_date_for(order: SalesOrder):
+    """The day this delivery is wanted: the service date, zone-proof.
+
+    ⚠️ THE WHOLE POINT IS THAT A `Date` CANNOT SHIFT AND A `DateTime` CAN. See the
+    comment at the call site for the day-early delivery this prevents.
+    """
+    scheduled = getattr(order, "scheduled_date", None)
+    if scheduled is not None:
+        return scheduled
+    required = getattr(order, "required_date", None)
+    return required.date() if required is not None else None
+
+
 def on_order_confirmed(db: Session, order: SalesOrder) -> Delivery | None:
     """Auto-create a pending delivery when a sales order is confirmed.
 
@@ -63,7 +76,26 @@ def on_order_confirmed(db: Session, order: SalesOrder) -> Delivery | None:
         order_id=order.id,
         customer_id=order.customer_id,
         delivery_address=delivery_address,
-        requested_date=order.required_date.date() if order.required_date else None,
+        # ⚠️ `scheduled_date` FIRST, AND THAT ORDER IS A BUG FIX (2026-10-16). This read
+        # `order.required_date.date()` alone, and `.date()` on a `DateTime(timezone=True)`
+        # is evaluated in WHATEVER ZONE THE SESSION READS IT IN. Opas writes
+        # `required_date` as midnight UTC on the service day, and midnight UTC is the
+        # PREVIOUS EVENING in every negative-offset zone — so with a session on
+        # `America/New_York` (which is what `SHOW TimeZone` returns on a dev box, and
+        # what any Eastern-configured server returns) a service on the 23rd produced a
+        # delivery requested for the 22nd. A stop on the board the day before the
+        # funeral.
+        #
+        # ⚠️ AND A COMMENT OF MINE IN `capture/session_service.approve` ASSERTED THIS WAS
+        # SAFE — "a date-only value with a UTC midnight stamp round-trips to the same day
+        # for every zone from UTC-11 to UTC+13". That is false for every negative offset,
+        # which is most of the Americas. It is corrected there.
+        #
+        # `scheduled_date` is a plain `Date`. It has no zone and cannot shift. It is also
+        # the field that MEANS the service day, so preferring it is both safer and more
+        # honest; `required_date` stays as the fallback for pre-Opas and hand-entered
+        # orders that carry only it.
+        requested_date=_requested_date_for(order),
         status="pending",
         priority="normal",
         special_instructions=order.notes,

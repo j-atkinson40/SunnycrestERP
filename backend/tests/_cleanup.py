@@ -220,6 +220,18 @@ _PURGE_STATEMENTS = [
     # sales_orders reference customers. Delete certs → order lines → orders
     # before customers below.
     "DELETE FROM social_service_certificates WHERE company_id = ANY(:ids)",
+    # ⚠️ `deliveries` BLOCKS BOTH `sales_orders` AND `customers`, AND WAS MISSING
+    # (2026-10-16). It carries non-cascading FKs on `order_id` AND `customer_id`, so a
+    # purge raised `deliveries_customer_id_fkey` the first time a test let the
+    # auto-create-delivery hook fire — which nothing had done before, because
+    # `auto_create_delivery_from_order` is False on every tenant and the hook had never
+    # created a row in a test. Same shape as the `agent_activity_log` gap fixed earlier
+    # today: the helper covers the tables the existing suites happen to touch, and the
+    # next test to exercise a new path finds the next hole.
+    #
+    # Delete its children first — stops reference the delivery, not the order.
+    "DELETE FROM delivery_stops WHERE delivery_id IN (SELECT id FROM deliveries WHERE company_id = ANY(:ids))",
+    "DELETE FROM deliveries WHERE company_id = ANY(:ids)",
     "DELETE FROM sales_order_lines WHERE sales_order_id IN (SELECT id FROM sales_orders WHERE company_id = ANY(:ids))",
     "DELETE FROM sales_orders WHERE company_id = ANY(:ids)",
     "DELETE FROM customers WHERE company_id = ANY(:ids)",

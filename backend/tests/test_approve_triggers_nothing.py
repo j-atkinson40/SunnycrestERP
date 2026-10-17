@@ -1,17 +1,31 @@
-"""James's hard constraint: Approve must not set off anything downstream.
+"""What Approve does downstream — and the rule this file was named for is RETIRED.
 
-⚠️ THE CONSTRAINT SURVIVES STEP 3 INTACT; WHAT CHANGED IS THE ORDER'S STATUS, NOT
-APPROVE'S BLAST RADIUS. Approve now writes `confirmed` (superseding D1 of 2026-10-13),
-so three tests here were re-pointed rather than deleted — the batch no longer excludes
-the order by STATUS, it excludes it by the service date not having arrived. Each
-rewritten test quotes what it used to assert and why that stopped being the truth.
+⚠️ THE FILE NAME IS NOW HISTORY, NOT A CLAIM. It was written for James's constraint
+"Approve must not set off anything downstream", which was true and useful for exactly as
+long as Approve produced a `draft` — a row nothing acted on. James retired it on
+2026-10-16: once Approve confirms, "sets nothing in motion" is not available as a
+property, because confirming IS what sets the order in motion. The replacement rule is
+PARITY — an order confirmed from Opas behaves exactly like one confirmed any other way —
+and it lives in `test_approve_confirms_and_the_batch_waits.py`'s
+`test_the_two_confirm_paths_do_not_diverge`.
 
-⚠️ AND THIS FILE IS WHY THE DELIVERY HOOK IS NOT CALLED FROM `approve`. Firing
-`on_order_confirmed` there would have made `confirmed` mean one thing on both creation
-paths — a real consistency argument — but it would also have given Approve a second
-downstream effect, which is precisely what this file forbids. The hook was added, then
-backed out on the strength of this constraint; see the comment at the end of `approve`
-for the latent divergence that leaves.
+The name is left alone this time rather than renamed again: `test_approve_confirms_the_order.py`
+was renamed in the same arc and a second rename in two commits makes the history harder
+to follow than the stale name does. What the file still legitimately covers is below.
+
+⚠️ WHAT SURVIVES, AND IT IS MOST OF IT. Three tests were re-pointed rather than deleted
+when Approve started writing `confirmed`: the batch no longer excludes the order by
+STATUS, it excludes it by the service date not having arrived. Each quotes what it used
+to assert and why that stopped being true. Confirming still must not pretend a vault has
+been placed — no `delivered_at`, no `driver_confirmed`, no `completed_at` — and that is
+the part of the original constraint with real force left in it.
+
+⚠️ AND THIS FILE IS WHY THE DELIVERY HOOK WAS BRIEFLY ABSENT FROM `approve`. I added it,
+then backed it out on the strength of the retired rule, then re-added it on James's
+ruling. The round trip is recorded because the middle state shipped: for one commit, an
+Opas-confirmed order and a hand-confirmed one would have diverged the moment
+`auto_create_delivery_from_order` was enabled — invisibly, since every test was green
+with the flag off.
 
 ⚠️ EACH CLAIM IS TESTED AGAINST AN ORDER APPROVE ACTUALLY CREATED, not against a
 hand-built row. A fixture order could differ from a real one in exactly the field

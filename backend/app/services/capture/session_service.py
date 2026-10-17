@@ -960,15 +960,17 @@ def approve(
                                 default, and the office's own New Order form is
                                 untouched.
 
-    ⚠️ APPROVE STILL SETS OFF NOTHING DOWNSTREAM, which is James's own constraint on
-    this function and survives step 3 intact. The status changed; the blast radius did
-    not. In particular the delivery hook is NOT called here — see the comment at the
-    bottom of this function for why, and for the one latent divergence that creates.
+    ⚠️ "APPROVE SETS OFF NOTHING DOWNSTREAM" IS RETIRED (James, 2026-10-16). It was a
+    true and useful rule for as long as Approve produced a `draft` — a row nothing acted
+    on. Once Approve confirms, it is not available as a property: confirming IS what
+    sets the order in motion. The replacement rule is parity — an order confirmed from
+    Opas behaves exactly like one confirmed any other way — which is why the delivery
+    hook is fired at the bottom of this function and why
+    `test_the_two_confirm_paths_do_not_diverge` exists.
 
-    ⚠️ `required_date` IS STILL WRITTEN, because the batch's
-    `COALESCE(scheduled_date, date(required_date))` reads it and because the hook will
-    read it if it is ever wired here or the order is later confirmed by hand. See the
-    field comments below.
+    ⚠️ `required_date` IS WRITTEN FOR BOTH CONSUMERS: the batch's
+    `COALESCE(scheduled_date, date(required_date))`, and the hook, which dates the
+    delivery from it. See the field comments below.
 
     ⚠️ `order_type='funeral'` IS NOT A SECOND GUARD, THOUGH I WROTE THAT HERE FIRST
     AND A BREAK TEST CAUGHT IT. The batch's filter is
@@ -1055,9 +1057,22 @@ def approve(
         # OFF for Sunnycrest today, so nothing had surfaced it; turning the flag on
         # without this would have.
         #
-        # Midnight in the TENANT's zone would be more precise, but this column is
-        # consumed only as `.date()`, and a date-only value with a UTC midnight stamp
-        # round-trips to the same day for every zone from UTC-11 to UTC+13.
+        # ⚠️ CORRECTED 2026-10-16 — THIS COMMENT ASSERTED SOMETHING FALSE AND THE
+        # DIVERGENCE TEST CAUGHT IT. It read: "Midnight in the TENANT's zone would be
+        # more precise, but this column is consumed only as `.date()`, and a date-only
+        # value with a UTC midnight stamp round-trips to the same day for every zone
+        # from UTC-11 to UTC+13."
+        #
+        # It does not. Midnight UTC is the PREVIOUS EVENING in every negative offset —
+        # most of the Americas — so `.date()` read on an Eastern session returns the day
+        # BEFORE the service. Measured: a service on 2026-10-23 produced a delivery
+        # requested for 2026-10-22.
+        #
+        # The value is left as midnight UTC because the fix belongs at the consumer:
+        # `order_integration_service` now reads `scheduled_date`, a plain `Date` that
+        # has no zone and cannot shift, and falls back to this column only for orders
+        # that carry nothing else. Changing what is stored here would fix one consumer
+        # and leave the next one to rediscover the same trap.
         required_date=_as_datetime_midnight(answers.get("service_date")),
         # ⚠️ DERIVED FROM THE SERVICE DATE, NOT FROM THE CAPTURED ANSWER. Ruled
         # 2026-10-13: the burial is always the service day, so Opas stopped asking —
@@ -1109,25 +1124,40 @@ def approve(
 
     _write_personalization_tasks(db, order, answers, company_id)
 
-    # ⚠️ THE DELIVERY HOOK IS **NOT** FIRED HERE, AND I ADDED IT BEFORE TAKING IT BACK
-    # OUT. The reasoning for firing it was that `sales_service.update_sales_order` calls
-    # `order_integration_service.on_order_confirmed` whenever a status becomes
-    # `confirmed`, so without it an order born confirmed and one confirmed by hand
-    # differ in whether a delivery exists.
+    # ⚠️ THE DELIVERY HOOK, BY JAMES'S RULING OF 2026-10-16: "an order confirmed from
+    # Opas behaves exactly like one confirmed any other way. When
+    # auto_create_delivery_from_order is turned on for any tenant, both paths must
+    # create the delivery."
     #
-    # It is not fired because James's constraint on this function is explicit and
-    # narrower than that consistency argument: "Approve must not set off anything
-    # downstream" (`tests/test_approve_triggers_nothing.py`). Step 3 asked for the
-    # STATUS to change, not for Approve to acquire a second effect, and a hook is
-    # exactly the kind of thing that is cheap to add and hard to notice later.
+    # This is the same call `sales_service.update_sales_order` makes when a status
+    # becomes `confirmed` (`sales_service.py:660-667`), so `confirmed` means one thing
+    # however the order got there.
     #
-    # ⚠️ THE DIVERGENCE IS THEREFORE LATENT AND IS FLAGGED RATHER THAN RESOLVED. Today
-    # it cannot bite: `auto_create_delivery_from_order` is False for every production
-    # tenant, so the PATCH path's hook no-ops too and the two paths agree by accident.
-    # The moment that flag is enabled, a PATCH-confirmed order will get a `deliveries`
-    # row and an Opas-approved one will not. That is a decision about whether Opas
-    # orders belong on the dispatch board, which is James's to make at the point he
-    # turns the flag on — see STATE.
+    # ⚠️ IT WAS ADDED, BACKED OUT, AND RE-ADDED, AND THE MIDDLE STEP IS WORTH KNOWING.
+    # It came out because `tests/test_approve_triggers_nothing.py` carried an explicit
+    # rule that Approve must not set off anything downstream — a rule that belonged to
+    # the DRAFT era, when Approve produced a row nothing acted on. James has now retired
+    # it: once Approve confirms, "sets nothing in motion" is no longer available as a
+    # property, because confirming IS the thing that sets the order in motion.
+    #
+    # ⚠️ AFTER `db.flush()` AND THE LINES, DELIBERATELY. The hook reads `order.id`,
+    # `order.required_date` and `order.ship_to_*`, and it COMMITS when it creates a
+    # delivery. Firing it before the lines existed would commit a priced order with no
+    # lines on it.
+    #
+    # ⚠️ SWALLOWED TO A LOG LINE, EXACTLY AS THE PATCH PATH DOES. An integration failure
+    # must not lose the order the office just approved. The parity is the point: if this
+    # ever stops matching `update_sales_order`'s handling,
+    # `test_the_two_confirm_paths_do_not_diverge` is what fails.
+    try:
+        from app.services import order_integration_service
+
+        order_integration_service.on_order_confirmed(db, order)
+    except Exception as exc:
+        logger.error(
+            "Order integration hook failed for approved order %s: %s", order.id, exc
+        )
+
     row.status = STATUS_APPROVED
     row.sales_order_id = order.id
 

@@ -18,6 +18,18 @@ Seven say Eastern, one says UTC, and the COLUMN DEFAULT is `"UTC"`
 (`app/models/company.py:39-41`). So a tenant with no timezone gets two different
 answers to "what day is it" depending on which surface is asked.
 
+⚠️ AND THERE IS A NINTH, WITH THIS MODULE'S OWN FUNCTION NAME. `note/service.py:34`
+defines its own `tenant_today(db, company_id)` — same signature, same name, different
+module. Two functions called `tenant_today` is worse than two that merely disagree,
+because an import line decides which one a caller gets and neither is wrong-looking.
+
+⚠️ THAT COLLISION HAS ALREADY COST A TEST. `test_a_different_day_is_a_different_note`
+compared `note.service.tenant_today` (the TENANT's zone — "UTC" for a fixture tenant)
+against `date.today()` (the CONTAINER's zone), which agree for twenty hours a day and
+diverge between 20:00 and midnight Eastern. It passed every run that day until 00:18
+UTC. Fixed in the test by deriving tomorrow from the note's own day; the duplication is
+untouched and is the reason this enumeration exists.
+
 ⚠️ THIS MODULE DOES NOT FIX THAT, AND SAYING SO IS THE POINT. Repointing eight readers
 at one resolver changes the behaviour of the note surface, the briefing sweep, the
 dispatch board and the order list all at once — each of which has its own tests written
