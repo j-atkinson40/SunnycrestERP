@@ -2,6 +2,86 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 2026-10-19 — Sales Order Pane, slice 1, and the four multi-pane rules
+
+Commits `03ca5089` (the prototype, with digests) and `05532e38` (the build).
+**⚠️ NOT YET PUSHED at the time of writing — the push was blocked by the permission
+classifier twice, as it was on 2026-10-16. So nothing below is deployed, the real-Chrome
+verification the dispatch asks for has NOT run, and every figure here is from a local
+gate or a read-only production query, never from a deployed bundle.**
+
+- **2026-10-19** — **The dispatch's prototype URL does not resolve and its short id is not in James's artifact listing** (`39R6gdLS6PrrAPWr4GmjBh`, 30 artifacts enumerated, no match). Proceeded on `115f1411-7c22-4983-91e4-6dca3d99fcc4` ("Sales Order Pane", updated 2026-10-04), verified by the five things the dispatch says to OMIT — all five present, which is what a superset of slice 1 looks like. Bytes now in `docs/prototypes/`, md5 `1fe0b308…`.
+- **2026-10-19** — ⚠️ **Two dispatch items are NOT in the prototype, so for those the dispatch wins:** `Confirmed` 0 hits (its steps are Proof → Scheduled → Delivered → Invoiced) and `Undo confirm` 0 hits. Consistent with the artifact predating the confirm step by twelve days. Look and layout from the prototype; state vocabulary from the dispatch.
+- **2026-10-19** — ⚠️ **AND A CONFIRMED INSTANCE OF THE 2026-10-06 PROVENANCE CAVEAT.** That file warned a whole-file digest covers the artifact *as served*. The injected `frame-runtime` block is **40448** bytes here against **39424** in the October 6 pair and is no longer byte-identical, so the digest is not a version identifier for the design. The authored remainder is digested separately.
+- **2026-10-19** — **`"riverside order"` returned "No order for Riverside" before this**, which is James's own walk line. `_open_decedent` matched the DECEDENT and nothing else, so a funeral home's name — how the office refers to most orders — found nothing. Now `_open_one` over four declared fields (decedent, funeral home, cemetery, vault), live orders first, cancelled only if nothing live matches.
+- **2026-10-19** — **Order numbers were not an opening path at all.** `SO-2026-0004` and `0004` matched no rule, fell through to the catalog resolver, matched no product, and opened an unfiltered catalog. New rule on both sides. The bare form needs **3–4 digits** because a 1–2 digit line is what the bar's ⌘1..9 pick settles.
+- **2026-10-19** — ⚠️ **TWO DEFERRED `setPanes` WRITERS DROPPED A PANE ENTIRELY.** React runs a state updater at RENDER time, so when both `openPane` and `closePane` deferred, the close's updater overwrote the ref mirror after the open's lazy read resolved from it. "Approve closes the capture and opens the order's pane" rendered an **empty desk**. Invariant now: every writer of `panes` writes the ref at CALL time and hands `setPanes` a value.
+- **2026-10-19** — ⚠️ **AND MY COMMENT EXPLAINING THAT NAMED THE WRONG CAUSE** — it blamed `openPane`'s laziness alone. A break test reverting each writer in turn showed that with `closePane` eager and `openPane` lazy the suite stays **green**; the failure needs both. Corrected in place, quoting itself. ⚠️ **Two further test versions claimed to pin the defect and did not** — the first yielded between the writes, the second calls the context directly and still does not reproduce it (measured, with the pane count printed). The only test that goes red under both-lazy is `capture-pane.test.tsx`'s "WITH AN ORDER ID THE CAPTURE CLOSES", and the probe test's docstring now says so.
+- **2026-10-19** — ⚠️ **`include_cancelled=False` IS NOT WHAT KEEPS CANCELLED ORDERS OUT OF THE LIST.** A test docstring of mine claimed the pane's flag and the list's exclusion were "one decision". Break test: flipping the default to True turned only the test asserting the default red and left every list test green. `stage.group_of` is what fires; `stage.matches` is the third guard. Each alone is sufficient, the SQL exclusion is **defensive not load-bearing**, both docstrings now say so, and `group_of` is asserted directly because nothing was asserting the guard that actually works.
+- **2026-10-19** — **`capture-approved-link` DELETED, and the 2026-10-14 ruling behind it superseded rather than forgotten.** "The order number links to the order" needed `sales_order_id`; an id is exactly the condition under which the host now closes the capture pane, so the anchor was **unreachable in the app** — dead machinery behind a live-looking guard. The ruling is better served by the order's own pane opening by itself and carrying "Open the full order". The no-id fallback still prints the number as plain text.
+- **2026-10-19** — **Also deleted: the `openSalesOrder` dedupe and two "close every other sales-order pane" loops.** The dedupe moved into `openPane` so every caller gets it — the Product pane had none, so one vault opened from two orders made **two identical panes**. The closing loops belonged to the one-order-beside-the-list arrangement; closing the order you came from is the opposite of chaining.
+- **2026-10-19** — **Placement was an index cascade and overlapped on a screen with room to spare.** `right: 24 + i * 18, top: 72 + i * 22` put a second 390px pane 18px from the first, covering 372px of it. Replaced by a right-to-left first-free-space scan measured from the prototype's own `place()`, with its 16px gap, 24px step and index-cascade fallback. ⚠️ **One deviation, stated:** the prototype scans left-to-right from 6% of the stage; this scans right-to-left so the FIRST pane stays exactly where James has walked it for three rounds.
+
+### What production holds, and what the pane therefore cannot show
+
+Measured on **production** 2026-10-19, read-only. Each of these is a row that is coded and renders for nothing today, stated so it is not mistaken for coverage.
+
+| fact | measured | consequence |
+|---|---|---|
+| `products.variant_template_id` | **NULL on all 39, every tenant** | the vault link resolves from the line's NAME, through the resolver the bar uses |
+| `order_personalization_tasks` (sunnycrest) | **0 rows** | the Personalization row renders for no order |
+| `invoice_delivery_preference` | **`statement_only` on all 22 platform-wide** | "Invoiced after delivery" is unreachable with today's data |
+| `customers.payment_terms` | **NULL on all 22** | the prototype's "Hopkins is Net 30" is omitted, not invented |
+| `sales_orders.eta` | **NULL on all orders** | the cemetery-ETA clause appears for nothing yet |
+| `deliveries` on sunnycrest orders | **0 rows** | no Delivery row (the dispatch's list omits it too) |
+| `audit_logs` / `sales_order` | 3 `created` with `changes`; **2 `updated` with `changes` NULL** | History ships; an `updated` entry says "no fields recorded" |
+
+⚠️ **The resolver is discriminating, measured:** `Monticello Burial Vault` → 1 candidate; `Continental Burial Vault` → **2**, differing by size; the eight equipment and urn names → 0. So an ambiguous vault gets **no link** rather than an arbitrary one.
+
+### The two demo orders — ⚠️ ONE WAS WRITTEN, NOT TWO
+
+The dispatch's premise had moved: *"Sunnycrest only has one real draft and one cancelled order"* was true when written, and at execution there were **three**, the third being a confirmed Hopkins order with a service next week.
+
+| number | who | service | state | provenance |
+|---|---|---|---|---|
+| `SO-2026-0003` | Hopkins Funeral Home · smith | Fri **2026-10-23** 11:00 AM church | confirmed | **James's own**, 2026-10-19 12:03 UTC, capture session `b99c4498…` |
+| `SO-2026-0004` | Riverside Memorial Chapel · hart | Wed **2026-10-28** 10:00 AM graveside | confirmed, $1,705 | **written by this dispatch**, 13:22 UTC |
+
+So the Hopkins half was already satisfied and writing a second one would have duplicated what James made an hour earlier. `SO-2026-0001` (draft) and `SO-2026-0002` (cancelled) untouched. **Both demo orders are cancellable; neither is invoiced.**
+
+`SO-2026-0004` went through `session_service` — the same start → set_text → complete → approve path the pane drives — rather than a raw INSERT, because "through Opas capture" is what the dispatch says. The HTTP layer was skipped because reaching it needs a password and no credential passes through a session; same code, no credential. Ran twice: a dry run that printed the Review and **abandoned** the session, then the approving run.
+
+⚠️ **The first dry run reported the order as NOT APPROVABLE and was wrong.** It read the state while the session was still `capturing`, where the summary surface is empty — `can_approve=False`, `blockers=None`, `total=None`, no lines. Nothing was wrong with the order; `complete` has to run first, and it is still abandonable. Recorded because "not approvable" is exactly the reading that would have stopped the write for no reason.
+
+### Four panes on 1440px — recorded, not redesigned
+
+```
+  order list 592 + sales order 390 + product 390               = 1372px of pane
+  + right anchor 24 + two 16px gaps + 16px left pad            = 1444px needed
+```
+
+**1444 > 1440 by four pixels**, so the order list plus two 390px panes does not fit and the third takes the fallback cascade and overlaps. Two order panes WITHOUT the list fit with room to spare. Both are asserted in `opas-multipane.test.tsx`, the four-pane case deliberately as a RECORD of today's behaviour so a future change to the widths or the anchor shows up there rather than on James's screen.
+
+### Gates, with denominators
+
+| gate | result | of what |
+|---|---|---|
+| backend pytest, `tests/ci_gate.txt` | **3639 passed, 4 skipped, 0 failed** | **234 of 512** test files (45.7%) |
+| frontend vitest | **4852 passed, 5 skipped, 1 todo, 0 failed** | **365 of 365** test files |
+| `tsc -b --noEmit` | exit 0 | whole frontend |
+| `npm run build` | exit 0 | — |
+
+Bundle measured against a **`git worktree` build of HEAD** rather than remembered: `index.js` 6,742.67 → **6,750.25 kB** (+7.58 kB, +0.11%); gzip 1,631.68 → 1,633.49 kB; CSS −0.06 kB.
+
+**44 new backend tests, 65 new frontend tests.** Re-pointed rather than deleted: four drag tests in `opas-slice.test.tsx` that asserted `style.left === ""` to mean "not dragged" (anchored panes now carry a `left` too), one tuck assertion that had become unfailable, and two capture-approve tests. **18 break tests, each naming the assertion it had to turn red; 16 caught on the first attempt** and the two that were not are the second and third findings above — one a false claim in a test docstring, one a false claim in a code comment.
+
+Full write-up, every figure with its environment, in `docs/investigations/2026-10-19-sales-order-pane.md`.
+
+### Owed when the push lands
+
+1. **The real-Chrome verification the dispatch asks for has not run** — open an order three ways, open its vault, open the same order twice, three panes at once, drag, close from the bar, and the 4-pane screenshot. It needs the deploy.
+2. **Nothing here is on production's frontend.** The two demo orders exist in the database; the pane that reads them does not yet ship.
+
 ## 2026-10-17 — Step-3 follow-ups: declining is never a conflict, and the two confirm paths must not diverge
 
 Commit `52e8769c`, deployed 00:35 UTC. Deployed bundle `index-DMysZxZj.js` verified to carry all six new markers (`capture-approve-effect`, `undo-confirm-`, `order-rebill`, `order-live-invoice`, "Create new invoice", "Undo confirm"), with a backend-only control string at 0 so the grep is discriminating.
