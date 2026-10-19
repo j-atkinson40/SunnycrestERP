@@ -288,9 +288,18 @@ describe("⚠️ drag, bring-to-front, and bounds", () => {
 
   it("a dragged pane moves to left/top and keeps the position through a tuck and back", async () => {
     const { pane } = await mountWithPane()
+    // ⚠️ THE ANCHORED SLOT IS READ FIRST, AND IT IS THE DISCRIMINATOR. Until 2026-10-19
+    // an anchored pane used `right` and a dragged one used `left`, so `right === ""`
+    // proved the pane had not re-anchored. Anchored panes now use `left` too
+    // (`pane-placement.ts`), so that assertion became one that cannot fail — see
+    // CLAUDE.md §11, "if a check cannot be made to fail, it is documentation". Comparing
+    // against the slot the pane WOULD occupy if it re-anchored is the claim that remains.
+    const anchoredLeft = pane.style.left
+    expect(anchoredLeft, "an anchored pane has no placement at all").not.toBe("")
     await act(async () => drag(pane, [500, 300], [300, 200]))
     const left = pane.style.left
     expect(left, "the pane did not switch to left/top addressing").not.toBe("")
+    expect(left, "the drag did not move it off its anchored slot").not.toBe(anchoredLeft)
 
     // Esc tucks…
     await act(async () => {
@@ -302,13 +311,23 @@ describe("⚠️ drag, bring-to-front, and bounds", () => {
       fireEvent.click(screen.getByTestId("opas-sphere"))
     })
     expect(pane.style.left, "the position did not survive the tuck").toBe(left)
-    expect(pane.style.right, "an anchored pane would still be using right/*").toBe("")
+    expect(pane.style.left, "the pane re-anchored across the tuck").not.toBe(anchoredLeft)
   })
 
   it("⚠️ the 4px dead zone — a 2px nudge is a click, not a drag", async () => {
     const { pane } = await mountWithPane()
+    // ⚠️ RE-POINTED 2026-10-19, AND IT USED TO ASSERT `left === ""`. An anchored pane was
+    // positioned with `right`, so an empty `left` meant "never dragged". Anchored panes
+    // now carry a `left` from the first-free-space placement (`pane-placement.ts`), so
+    // that discriminator is gone — and it was never the thing this test was about. The
+    // claim is that the position DID NOT MOVE, which is now asserted directly, against
+    // the value the pane actually had before the nudge.
+    const before = { left: pane.style.left, top: pane.style.top, right: pane.style.right }
     await act(async () => drag(pane, [500, 300], [501, 301]))
-    expect(pane.style.left, "a sub-threshold move became a drag").toBe("")
+    expect(
+      { left: pane.style.left, top: pane.style.top, right: pane.style.right },
+      "a sub-threshold move became a drag",
+    ).toEqual(before)
   })
 
   it("a pane cannot be dragged fully off screen", async () => {
@@ -344,16 +363,25 @@ describe("⚠️ drag, bring-to-front, and bounds", () => {
     expect(Number(panes[0].style.zIndex)).toBeGreaterThan(Number(panes[1].style.zIndex))
   })
 
-  it("a new pane still cascades even after another has been dragged", async () => {
+  it("a new pane is placed away from a dragged one, not on top of it", async () => {
+    // ⚠️ RENAMED AND RE-POINTED 2026-10-19. It was "a new pane still cascades even after
+    // another has been dragged" and asserted `panes[1].style.right !== ""` — the cascade
+    // positioned anchored panes with `right`. The cascade is GONE, by James's second
+    // multi-pane rule ("A new pane is placed in the first free space, not on top of
+    // another"), so `right` is empty on an anchored pane and the old assertion could
+    // only fail. What it was protecting — the dragged pane keeps its place and the new
+    // one does not land under it — is what is asserted now.
     const { pane, input } = await mountWithPane()
     await act(async () => drag(pane, [500, 300], [300, 200]))
+    const draggedLeft = pane.style.left
     fireEvent.change(input, { target: { value: "the catalog" } })
     await act(async () => {
       fireEvent.keyDown(input, { key: "Enter" })
     })
     const panes = Array.from(screen.getByTestId("opas-desk").children) as HTMLElement[]
-    expect(panes[0].style.left, "the dragged pane lost its place").not.toBe("")
-    expect(panes[1].style.right, "the new pane did not cascade").not.toBe("")
+    expect(panes[0].style.left, "the dragged pane lost its place").toBe(draggedLeft)
+    expect(panes[1].style.left, "the new pane got no placement at all").not.toBe("")
+    expect(panes[1].style.left, "the new pane landed on the dragged one").not.toBe(draggedLeft)
   })
 
   it("⚠️ A CLICK ON A CATALOG ROW OPENS THE PRODUCT AND NEVER STARTS A DRAG", () => {
@@ -366,8 +394,11 @@ describe("⚠️ drag, bring-to-front, and bounds", () => {
         variant_template_id: "a", name: "Vault A", kind: "burial_vault",
       })
       const rowBtn = screen.getByTestId("opas-list-row-a")
+      // ⚠️ SAME RE-POINTING AS THE DEAD ZONE: the claim is that the pane did not MOVE,
+      // not that it has no `left`. See that test's note.
+      const before = pane.style.left
       await act(async () => drag(pane, [500, 300], [300, 200], rowBtn))
-      expect(pane.style.left, "a row click started a drag").toBe("")
+      expect(pane.style.left, "a row click started a drag").toBe(before)
       fireEvent.click(rowBtn)
       await waitFor(() => expect(screen.getByTestId("opas-product-pane")).toBeTruthy())
     })()
@@ -389,8 +420,10 @@ describe("⚠️ drag, bring-to-front, and bounds", () => {
   it("⚠️ the close button is excluded too — pressing × must not drag", async () => {
     const { pane } = await mountWithPane()
     const close = pane.querySelector("[data-testid^='opas-pane-close-']") as HTMLElement
+    // ⚠️ SAME RE-POINTING AS THE DEAD ZONE. See that test's note.
+    const before = pane.style.left
     await act(async () => drag(pane, [500, 300], [300, 200], close))
-    expect(pane.style.left).toBe("")
+    expect(pane.style.left).toBe(before)
   })
 })
 

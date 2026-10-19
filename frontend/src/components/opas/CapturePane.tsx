@@ -41,7 +41,6 @@
  *   `capture-sequence.ts` for why the client decides and not the server.
  */
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Link } from "react-router-dom"
 
 import {
   completeCapture,
@@ -304,7 +303,16 @@ export function CapturePane({
   readonly pickRequest?: { readonly fieldId: string; readonly index: number; readonly nonce: number }
   /** ⚠️ CALLED ONCE THE ORDER EXISTS, so the HOST can clear the bar and end the
    *  capture. The pane does not own the bar and must not reach for it. */
-  readonly onApproved?: (order: { readonly number: string; readonly total: string }) => void
+  /** ⚠️ `id` ADDED 2026-10-19 so the host can open the new order's pane. James's third
+   *  opening path: "After Approve on the capture Review: the capture closes and the new
+   *  order's pane opens in its place." It is OPTIONAL because the server's
+   *  `sales_order_id` is — see the `capture-approved-link` guard below — and the host
+   *  falls back to leaving this pane open when it is absent. */
+  readonly onApproved?: (order: {
+    readonly number: string
+    readonly total: string
+    readonly id: string | null
+  }) => void
   /** Enter pressed in the bar, as a counter so a second press is not swallowed.
    *
    *  ⚠️ THE PANE DECIDES WHICH ACTION THAT IS, because the pane holds the stage:
@@ -712,6 +720,7 @@ export function CapturePane({
         onApprovedRef.current?.({
           number: next.sales_order_number,
           total: next.total ?? "0.00",
+          id: next.sales_order_id ?? null,
         })
       }
     } catch (e) {
@@ -740,6 +749,9 @@ export function CapturePane({
       ? {
           number: state.sales_order_number,
           total: state.total ?? "0.00",
+          // ⚠️ KEPT THOUGH THIS COMPONENT NO LONGER RENDERS IT: `onApproved` hands it to
+          // the host, which is what decides whether to close this pane and open the
+          // order's. Dropping it here would make the host's id branch unreachable.
           id: state.sales_order_id ?? null,
         }
       : null
@@ -1302,30 +1314,28 @@ export function CapturePane({
 
       {/* ── after approve ─────────────────────────────────────────────────
           Prototype `:493` echoes one line and is done. ⚠️ THE NUMBER AND THE TOTAL,
-          because those are the two things the office writes down. */}
+          because those are the two things the office writes down.
+
+          ⚠️ THIS IS NOW THE FALLBACK PATH, NOT THE NORMAL ONE. Since 2026-10-19 the HOST
+          closes this pane the moment Approve returns an order id and opens the order's
+          own pane in its place — James's third opening path. So the office reads the
+          number off the Sales Order Pane, which also carries "Open the full order". This
+          block is what they see when the server sent NO id and there is therefore no
+          pane to open: the number as plain text, for the few seconds before the timer
+          closes it.
+
+          ⚠️ THE `capture-approved-link` ANCHOR IS DELETED, and its ruling is superseded
+          rather than forgotten. It was added 2026-10-14 — "the order number links to the
+          order", because James was reading SO-2026-0001 off this pane and navigating to
+          /ar/orders by hand. It required `approvedOrder.id`, and an id is exactly the
+          condition under which the host now closes this pane, so the anchor had become
+          unreachable in the app: dead machinery behind a live-looking guard. What the
+          ruling asked for is better served by the order's pane opening by itself. */}
       {approvedOrder && (
         <div className="flex flex-col gap-1" data-testid="capture-approved">
-          {/* ⚠️ THE NUMBER IS A LINK, BY RULING (James, 2026-10-14): "the order
-              number links to the order". He was reading SO-2026-0001 off the pane
-              and then navigating to /ar/orders by hand to find it.
-
-              ⚠️ IT DEGRADES TO TEXT WITHOUT AN ID RATHER THAN LINKING NOWHERE. An
-              older server does not send `sales_order_id`, and an anchor to
-              `/ar/orders/undefined` would land on a broken detail page — worse than
-              the plain text it replaced, because it looks like it should work. */}
-          {approvedOrder.id ? (
-            <Link
-              to={`/ar/orders/${approvedOrder.id}`}
-              className="text-body-sm text-content-strong underline decoration-border-strong underline-offset-2 hover:decoration-current focus-ring-accent"
-              data-testid="capture-approved-link"
-            >
-              Created {approvedOrder.number}
-            </Link>
-          ) : (
-            <span className="text-body-sm text-content-strong">
-              Created {approvedOrder.number}
-            </span>
-          )}
+          <span className="text-body-sm text-content-strong">
+            Created {approvedOrder.number}
+          </span>
           <span className="text-micro tabular-nums text-content-muted">
             {money(approvedOrder.total)}
           </span>

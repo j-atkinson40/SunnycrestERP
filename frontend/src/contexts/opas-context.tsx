@@ -31,6 +31,7 @@ import {
   type ReactNode,
 } from "react"
 
+import { findDuplicate } from "@/components/opas/pane-identity"
 import { useCommandBar } from "@/core/CommandBarProvider"
 import { useFocus } from "@/contexts/focus-context"
 import type { OrderListSnapshot, OrderQuestion } from "@/services/order-list-service"
@@ -232,6 +233,13 @@ export function OpasProvider({ children }: { children: ReactNode }) {
 
   const [isOpen, setIsOpen] = useState(false)
   const [panes, setPanes] = useState<readonly OpasPane[]>([])
+  /** ⚠️ A SYNCHRONOUS MIRROR OF `panes`, for the dedupe check in `openPane` and the
+   *  removal in `closePane`. React state is not readable between two calls in the same
+   *  tick, and "close the capture, open the order's pane" is two calls in one tick. The
+   *  ref is the authority for those two functions and `panes` is what renders; the
+   *  effect below re-syncs it after every render, so a new setter that forgets the ref
+   *  diverges for one tick rather than forever. */
+  const panesRef = useRef<readonly OpasPane[]>([])
   const [pendingPick, setPendingPick] = useState<readonly string[] | null>(null)
   const [entryText, setEntryTextMap] = useState<Record<string, string>>({})
 
@@ -249,13 +257,16 @@ export function OpasProvider({ children }: { children: ReactNode }) {
    *  and retrigger the effect. Returning the SAME array when nothing changed keeps the
    *  identity stable. */
   const setCaptureSession = useCallback((paneId: string, sessionId: string) => {
-    setPanes((prev) => {
-      const i = prev.findIndex((p) => p.id === paneId)
-      if (i < 0 || prev[i].captureSessionId === sessionId) return prev
+    // ⚠️ EAGER AND SNAPSHOT, like `openPane` — the ref is the authority for same-tick
+    // reads, so every writer of `panes` has to keep it in step at CALL time.
+    const prev = panesRef.current
+    const i = prev.findIndex((p) => p.id === paneId)
+    if (i >= 0 && prev[i].captureSessionId !== sessionId) {
       const next = prev.slice()
       next[i] = { ...next[i], captureSessionId: sessionId }
-      return next
-    })
+      panesRef.current = next
+      setPanes(next)
+    }
     // ⚠️ NOT PERSISTED ANY MORE. Restore-on-mount is removed by ruling, so the id
     // had no reader — and a half-typed order's identity sitting in a shared
     // browser's storage with nothing reading it is pure exposure. The id lives on
@@ -263,14 +274,15 @@ export function OpasProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const updatePane = useCallback((id: string, patch: Partial<Omit<OpasPane, "id" | "kind">>) => {
-    setPanes((prev) => {
-      const i = prev.findIndex((p) => p.id === id)
-      if (i < 0) return prev
-      const current = prev[i]
-      const next = prev.slice()
-      next[i] = { ...current, ...patch, id: current.id, kind: current.kind }
-      return next
-    })
+    // ⚠️ EAGER AND SNAPSHOT, like `openPane` — see its note.
+    const prev = panesRef.current
+    const i = prev.findIndex((p) => p.id === id)
+    if (i < 0) return
+    const current = prev[i]
+    const next = prev.slice()
+    next[i] = { ...current, ...patch, id: current.id, kind: current.kind }
+    panesRef.current = next
+    setPanes(next)
   }, [])
 
   const [placements, setPlacements] = useState<Record<string, PanePlacement>>({})
@@ -279,6 +291,15 @@ export function OpasProvider({ children }: { children: ReactNode }) {
   // would re-shuffle every pane whenever one closed; a counter only ever moves one pane.
   const [zs, setZs] = useState<Record<string, number>>({})
   const zNext = useRef(1)
+
+  // ⚠️ THE RE-SYNC THE `panesRef` DOCSTRING PROMISES. Without it that docstring claims a
+  // safety net that does not exist — the ref would silently diverge from `panes` the
+  // first time a new setter forgot to write it, and the divergence would show up as a
+  // duplicate pane rather than as an error. It runs AFTER the render that `openPane`
+  // already wrote the ref for, so the two agree and this is a no-op in the normal case.
+  useEffect(() => {
+    panesRef.current = panes
+  }, [panes])
 
   // ⚠️ RULE 1 — a Focus open hides Opas, exactly as it hides the command bar. Closing
   // rather than merely hiding, so a tucked session cannot be resurrected by leaving a
@@ -376,9 +397,45 @@ export function OpasProvider({ children }: { children: ReactNode }) {
 
   const openPane = useCallback(
     (pane: Omit<OpasPane, "id">): string => {
+      // ⚠️ JAMES'S FIRST MULTI-PANE RULE, ENFORCED HERE RATHER THAN AT EACH CALLER
+      // (2026-10-19): "Opening a record that's already open focuses that pane; never a
+      // duplicate." `OpasHost.openSalesOrder` had this for sales orders only, so
+      // opening one vault from two orders made two identical Product panes. Which
+      // panes have an identity is declared in `pane-identity.ts`, exhaustively by type.
+      //
+      // ⚠️ IT READS THE REF, NOT THE `panes` STATE. Two calls in one tick — which is
+      // exactly what "the capture closes and the order's pane opens" does — would both
+      // see the same stale `panes` array: the second would re-find the pane the first
+      // removed, or miss the pane the first added. The ref is written EAGERLY by both
+      // `openPane` and `closePane`, before either returns, so the second call sees the
+      // first one's result.
+      const duplicate = findDuplicate(panesRef.current, pane)
+      if (duplicate !== undefined) {
+        raisePane(duplicate.id)
+        return duplicate.id
+      }
       paneSeq += 1
       const id = `opas-pane-${paneSeq}`
-      setPanes((prev) => [...prev, { ...pane, id }])
+      const created = { ...pane, id }
+      // ⚠️ A SNAPSHOT VALUE, NOT A LAZY `() => panesRef.current`. React runs an updater
+      // FUNCTION at render time, not at call time, so two writers that both defer leave
+      // the later one's updater reading a ref the earlier one has already overwritten —
+      // and the newly-opened pane is dropped. Measured: "approve closes the capture and
+      // opens the order's pane" rendered an EMPTY desk, and the test asserting the
+      // order's pane caught it.
+      //
+      // ⚠️ CORRECTED AFTER A BREAK TEST — THIS COMMENT NAMED THE WRONG CAUSE. It read:
+      // "a lazy read of the ref would be evaluated AFTER any `closePane` queued in the
+      // same tick had already overwritten it". That blames THIS function's laziness
+      // alone. Measured by reverting each in turn: with `closePane` eager and this one
+      // lazy, the test stays GREEN — the lazy read resolves to a ref both calls have
+      // already written correctly. The failure needs BOTH writers deferred, which is
+      // the shape the code had. So the invariant is not "openPane must snapshot"; it is
+      // **every writer of `panes` writes the ref at CALL time and hands `setPanes` a
+      // value** — which is why `closePane`, `updatePane` and `setCaptureSession` all do.
+      const next = [...panesRef.current, created]
+      panesRef.current = next
+      setPanes(next)
       // A new pane arrives at the front, as the prototype's `raise` on creation does.
       raisePane(id)
       // ⚠️ RETURNED so the caller can address the pane it just made — the bar needs
@@ -390,23 +447,26 @@ export function OpasProvider({ children }: { children: ReactNode }) {
 
   const closePane = useCallback(
     (id: string) => {
-      setPanes((prev) => {
-        const next = prev.filter((p) => p.id !== id)
-        // ⚠️ THE PROTOTYPE RE-RAISES WHEN THE FRONT PANE CLOSES: "if(front===id){const n=
-        // wins.slice().sort((a,b)=>b.el.style.zIndex-a.el.style.zIndex)[0]; … if(n)raise(n)}".
-        // Without it, closing the front pane leaves NOTHING focused and the next click has
-        // to do the job — which reads as the overlay having lost track.
-        if (next.length > 0) {
-          setFrontPaneId((front) => {
-            if (front !== id) return front
-            const highest = next.reduce((a, b) => ((zs[b.id] ?? 0) > (zs[a.id] ?? 0) ? b : a))
-            return highest.id
-          })
-        } else {
-          setFrontPaneId(null)
-        }
-        return next
-      })
+      // ⚠️ EAGER, AND WITH A SNAPSHOT RATHER THAN AN UPDATER, for the same reason
+      // `openPane` is — see its note. Written as `setPanes((prev) => …)` this computed
+      // `next` at render time, so an `openPane` queued immediately after it read a stale
+      // ref and its pane never appeared.
+      const next = panesRef.current.filter((p) => p.id !== id)
+      panesRef.current = next
+      setPanes(next)
+      // ⚠️ THE PROTOTYPE RE-RAISES WHEN THE FRONT PANE CLOSES: "if(front===id){const n=
+      // wins.slice().sort((a,b)=>b.el.style.zIndex-a.el.style.zIndex)[0]; … if(n)raise(n)}".
+      // Without it, closing the front pane leaves NOTHING focused and the next click has
+      // to do the job — which reads as the overlay having lost track.
+      if (next.length > 0) {
+        setFrontPaneId((front) => {
+          if (front !== id) return front
+          const highest = next.reduce((a, b) => ((zs[b.id] ?? 0) > (zs[a.id] ?? 0) ? b : a))
+          return highest.id
+        })
+      } else {
+        setFrontPaneId(null)
+      }
       setPlacements((prev) => {
         const { [id]: _gone, ...rest } = prev
         return rest

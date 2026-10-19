@@ -831,7 +831,16 @@ describe("the done signal and the summary", () => {
     expect(shown.join(" ")).toContain("burial date")
   })
 
-  it("shows the order number and total once approved", async () => {
+  it("⚠️ WITH AN ORDER ID THE CAPTURE CLOSES — the order's own pane takes over", async () => {
+    // ⚠️ RE-POINTED 2026-10-19. It was "shows the order number and total once approved"
+    // and asserted `capture-approved` plus a `capture-approved-link` href of
+    // `/ar/orders/so-1`. Both are gone on this path, by James's third opening path:
+    // "After Approve on the capture Review: the capture closes and the new order's pane
+    // opens in its place." The old assertions are preserved in the no-id test below,
+    // which is the branch that still shows the footer.
+    //
+    // ⚠️ IT ASSERTS THE PANE IS GONE *AND* WHY — `onApproved` received the id. Asserting
+    // only the absence would pass if the whole overlay had failed to render.
     const user = userEvent.setup()
     vi.mocked(setCaptureText).mockResolvedValue(
       state({
@@ -852,19 +861,17 @@ describe("the done signal and the summary", () => {
     await type(user, "start an order for Hopkins")
     await user.click(await screen.findByTestId("capture-approve"))
 
-    const done = await screen.findByTestId("capture-approved")
-    expect(done).toHaveTextContent("SO-2026-0001")
-    expect(done).toHaveTextContent("$1,250.00")
-
-    // ⚠️ AND THE NUMBER LINKS TO THE ORDER, by ruling (James, 2026-10-14). He was
-    // reading the number off the pane and then navigating to /ar/orders by hand.
-    //
-    // ⚠️ THE `href` IS ASSERTED, NOT JUST THE ANCHOR'S PRESENCE. A `<Link>` whose
-    // target was built from the wrong field renders perfectly and lands on a broken
-    // detail page; `/ar/orders/undefined` is the shape that would ship.
-    const link = screen.getByTestId("capture-approved-link")
-    expect(link).toHaveAttribute("href", "/ar/orders/so-1")
-    expect(link).toHaveTextContent("SO-2026-0001")
+    await waitFor(() => expect(screen.queryByTestId("capture-pane")).not.toBeInTheDocument())
+    expect(screen.queryByTestId("capture-approved")).not.toBeInTheDocument()
+    // The pane the host opened in its place. It reads the order over the network, which
+    // this suite does not mock, so its loading state is what proves it mounted.
+    await waitFor(() =>
+      expect(
+        screen.queryByTestId("opas-sales-order-loading")
+        ?? screen.queryByTestId("opas-sales-order-failed")
+        ?? screen.queryByTestId("opas-sales-order"),
+      ).toBeTruthy(),
+    )
   })
 
   it("prints the number as PLAIN TEXT when the server sent no order id", async () => {
@@ -894,6 +901,11 @@ describe("the done signal and the summary", () => {
 
     const done = await screen.findByTestId("capture-approved")
     expect(done).toHaveTextContent("SO-2026-0002")
+    expect(done).toHaveTextContent("$1,250.00")
+    // ⚠️ AND THERE IS NO ANCHOR AT ALL ANY MORE, not merely none on this branch. The
+    // 2026-10-14 "the order number links to the order" ruling is superseded: the link
+    // needed an id, and an id now makes the host close this pane before anyone could
+    // click it. See the block comment in `CapturePane`'s after-approve section.
     expect(screen.queryByTestId("capture-approved-link")).not.toBeInTheDocument()
   })
 

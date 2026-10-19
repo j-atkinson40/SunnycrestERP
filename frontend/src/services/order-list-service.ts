@@ -96,6 +96,64 @@ export interface OrderListSnapshot {
   picks?: OrderPick[]
 }
 
+/** Where a kv row's value can take you. Absent means the value is plain text. */
+export interface OrderRowLink {
+  /** `"product"` opens the Product Pane; `"cemetery"` is inert in slice 1. */
+  kind: "product" | "cemetery"
+  /** Present only for `kind: "product"`, and only when the vault name resolved to
+   *  exactly ONE catalog variant. `products.variant_template_id` is NULL on every
+   *  product platform-wide, so the server resolves the line's NAME instead — an
+   *  ambiguous name yields no link rather than an arbitrary one. */
+  variant_template_id?: string
+  /** `true` for a link that is deliberately not wired yet. The pane renders the
+   *  reason rather than a dead click. */
+  inert?: boolean
+  why?: string
+}
+
+export interface OrderDetailRow {
+  label: string
+  value: string
+  link?: OrderRowLink
+}
+
+/** Confirmed -> Delivered -> Invoiced, or the state instead of steps.
+ *
+ * ⚠️ `kind` DISCRIMINATES, AND `steps` IS ABSENT ON THE OTHER TWO. "Draft and
+ * cancelled show as such, not as steps" (James, 2026-10-19), so a draft has no
+ * step list to render half-filled. */
+export type OrderState =
+  | { kind: "steps"; steps: { id: string; label: string; done: boolean }[]; stage: string }
+  | { kind: "draft"; label: string }
+  | { kind: "cancelled"; label: string }
+
+export interface OrderBillingLine {
+  description: string
+  quantity: string
+  unit_price: string | null
+  line_total: string | null
+}
+
+export interface OrderBilling {
+  lines: OrderBillingLine[]
+  total: string | null
+  /** The real invoicing line, from the customer's own setting, honest about sending. */
+  sentence: string
+}
+
+export interface OrderHistoryEntry {
+  action: string
+  who?: string
+  /** ISO 8601. */
+  when?: string
+  detail?: string
+  /** Present INSTEAD of `detail` when the audit row recorded no fields — which is every
+   *  `updated` row, because `sales_service.update_sales_order` logs without `changes`. */
+  detail_absent?: string
+}
+
+/** One order, shortened. Absent keys are absent, not null — the pane's
+ *  render-only-what-exists rule depends on that, same as the Product Pane. */
 export interface SalesOrderSummary {
   id: string
   number: string
@@ -105,6 +163,18 @@ export interface SalesOrderSummary {
   vault?: string
   service?: string
   cemetery?: string
+  /** The deceased's name, title-cased. The pane's largest text. */
+  title: string
+  state: OrderState
+  order: OrderDetailRow[]
+  billing: OrderBilling
+  /** ⚠️ ABSENT when the order has no audit trail, and the pane then leaves the tab
+   *  out — "if none, say so and leave the tab out rather than faking it". */
+  history?: OrderHistoryEntry[]
+  /** True only for a `confirmed` order. The SERVER owns the rest of the rule and
+   *  refuses the PATCH with the sentence that names the remedy. */
+  can_undo_confirm: boolean
+  customer_id?: string
 }
 
 export async function askOrderList(body: {

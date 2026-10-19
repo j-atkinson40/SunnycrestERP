@@ -1,0 +1,95 @@
+/**
+ * Opening a record that is already open focuses it. Never a duplicate.
+ *
+ * ⚠️ THE RUNTIME ENUMERATION IS NOT REDUNDANT WITH THE TYPE, the same argument as
+ * `pane-mode.test.ts`: `PANE_IDENTITY` is `Record<OpasPaneKind, …>`, which catches a
+ * missing row at compile time only while `OpasPaneKind` is a literal union. Widen it to
+ * `string` and the Record constraint goes vacuous. The list below is DATA, so widening
+ * fails here.
+ */
+import { describe, expect, it } from "vitest"
+
+import type { OpasPane, OpasPaneKind } from "@/contexts/opas-context"
+import { PANE_IDENTITY, findDuplicate, paneIdentity } from "./pane-identity"
+
+/** ⚠️ WRITTEN OUT, NOT DERIVED FROM `PANE_IDENTITY` — deriving the expected set from
+ *  the thing under test makes the test assert nothing. */
+const EVERY_KIND: readonly OpasPaneKind[] = [
+  "capture",
+  "product",
+  "product-list",
+  "order-list",
+  "sales-order",
+]
+
+function pane(kind: OpasPaneKind, extra: Partial<OpasPane> = {}): Omit<OpasPane, "id"> {
+  return { kind, label: "L", ...extra }
+}
+
+describe("every pane kind is classified", () => {
+  it("has a row for each kind in the union, and no extras", () => {
+    expect(Object.keys(PANE_IDENTITY).sort()).toEqual([...EVERY_KIND].sort())
+  })
+
+  it("the union has not been widened to string", () => {
+    const widened: string[] = EVERY_KIND as unknown as string[]
+    expect(widened.every((k) => typeof k === "string" && k.length > 0)).toBe(true)
+    expect(widened).toHaveLength(5)
+  })
+})
+
+describe("what has an identity and what does not", () => {
+  it("two captures are two orders and never dedupe", () => {
+    // ⚠️ THE ONE THAT WOULD HURT. Deduping captures would hand the second order the
+    // first one's half-typed text.
+    expect(paneIdentity(pane("capture", { openingLine: "order for hopkins" }))).toBeNull()
+    expect(paneIdentity(pane("capture"))).toBeNull()
+  })
+
+  it("a product pane is identified by its variant, and an empty one by nothing", () => {
+    expect(paneIdentity(pane("product", { variantTemplateId: "v1" }))).toBe("product:v1")
+    expect(paneIdentity(pane("product"))).toBeNull()
+  })
+
+  it("a sales order pane is identified by its order", () => {
+    expect(paneIdentity(pane("sales-order", { salesOrderId: "o1" }))).toBe("order:o1")
+    expect(paneIdentity(pane("sales-order"))).toBeNull()
+  })
+
+  it("the order list is a singleton and the catalog is not", () => {
+    expect(paneIdentity(pane("order-list"))).toBe("order-list")
+    // ⚠️ `product-list` CARRIES THREE DIFFERENT LISTS under one kind — the catalog, a
+    // numbered pick, an unmatched phrase. Deduping on kind would make a numbered pick
+    // raise the unfiltered catalog instead of showing the pick.
+    expect(paneIdentity(pane("product-list", { candidateIds: ["a", "b"] }))).toBeNull()
+  })
+})
+
+describe("findDuplicate", () => {
+  const open: OpasPane[] = [
+    { id: "p1", kind: "product", label: "Product", variantTemplateId: "v1" },
+    { id: "p2", kind: "sales-order", label: "Sales order", salesOrderId: "o1" },
+    { id: "p3", kind: "capture", label: "Order" },
+  ]
+
+  it("finds the open pane for the same record", () => {
+    expect(findDuplicate(open, pane("product", { variantTemplateId: "v1" }))?.id).toBe("p1")
+    expect(findDuplicate(open, pane("sales-order", { salesOrderId: "o1" }))?.id).toBe("p2")
+  })
+
+  it("finds nothing for a different record of the same kind", () => {
+    expect(findDuplicate(open, pane("product", { variantTemplateId: "v2" }))).toBeUndefined()
+    expect(findDuplicate(open, pane("sales-order", { salesOrderId: "o2" }))).toBeUndefined()
+  })
+
+  it("never matches a capture, even against an open capture", () => {
+    expect(findDuplicate(open, pane("capture"))).toBeUndefined()
+  })
+
+  it("does not match a kind with no identity to one of the same kind", () => {
+    // ⚠️ A KIND COMPARISON WOULD GET THIS WRONG. An identity-less product pane
+    // duplicates nothing, including another identity-less product pane.
+    const anonymous: OpasPane[] = [{ id: "x", kind: "product", label: "Product" }]
+    expect(findDuplicate(anonymous, pane("product"))).toBeUndefined()
+  })
+})

@@ -44,6 +44,49 @@ _NOT_A_DECEDENT = frozenset({
 })
 
 _OPEN_ONE = re.compile(r"^(?:open |show )?(?:the )?(.+?)(?:'s)? order$")
+# An order number, in the four shapes a director types it. James's first opening path
+# (2026-10-19): 'an order number ("SO-2026-0002", "0002")'.
+#
+# ⚠️ THE BARE FORM NEEDS 3 OR 4 DIGITS, not any digits, and that bound is the whole
+# reason this is a named constant. A bare "2" is what the bar's own ⌘1..9 pick settles,
+# and a 1-2 digit request would collide with answering "which one?" by typing the
+# number. Orders are numbered `SO-YYYY-####` (`sales_order.py:43`), so the suffix a
+# person reads off a pane is always 4 digits anyway; 3 is allowed for the one they
+# shorten.
+#
+# ⚠️ CORRECTED BEFORE SHIPPING — THIS COMMENT ASSERTED THE UNSAFE THING WAS SAFE. It
+# read: 'AND A BARE 4-DIGIT NUMBER IS AMBIGUOUS WITH A YEAR, which is why the year form
+# must carry its own separator: "2026-0002" and "so 2026 0002" reach here, "2026" alone
+# does not match (it needs the second group).'
+#
+# "2026" DOES match — through the `bare` alternative, which the sentence forgot it had
+# written two lines above. Measured: `order_number_query("2026") == "2026"`.
+#
+# Left matching, deliberately. A suffix of "2026" is a real order number for a tenant
+# that has written 2,026 orders, and the request resolves to "No order numbered 2026"
+# for everyone else, which is both true and the thing a stray keystroke deserves.
+# Excluding four-digit values that look like years would make the 2,026th order
+# unopenable by the number printed on it.
+_ORDER_NUMBER = re.compile(
+    r"^(?:open |show )?(?:so[\s\-_]?)?"
+    r"(?:(?P<year>\d{4})[\s\-_](?P<seq>\d{1,4})|(?P<bare>\d{3,4}))$",
+    re.IGNORECASE,
+)
+
+
+def order_number_query(text: str) -> str | None:
+    """The digits a typed order number names, or None when it is not one.
+
+    Returns the SUFFIX to match on (`"0002"`), not a reconstructed `SO-2026-0002` —
+    the tenant's own numbering prefix is not this function's to invent, and matching on
+    the suffix is what makes "0002" and "SO-2026-0002" the same request.
+    """
+    m = _ORDER_NUMBER.match(text.strip())
+    if m is None:
+        return None
+    if m.group("bare"):
+        return m.group("bare")
+    return m.group("seq")
 _GOING = re.compile(
     r"^(?:what(?:'s|s| is) )?(?:going out|go out)(?: on)? "
     r"(?P<day>today|tomorrow|this week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)$"
@@ -113,6 +156,11 @@ class Interpretation(BaseModel):
     kind: Literal["question", "open_order", "total", "picks", "unrecognized"]
     question: OrderQuestion | None = None
     decedent_query: str | None = None
+    #: ⚠️ A SECOND WAY TO NAME ONE ORDER, added 2026-10-19 for the Sales Order Pane's
+    #: first opening path ("SO-2026-0002", "0002"). Kept separate from
+    #: `decedent_query` rather than overloading it: the two are matched against
+    #: different columns and a shared field would make `_open_one` guess which it had.
+    number_query: str | None = None
     picks: list[Pick] = []
     hint: str | None = None
 
@@ -401,6 +449,12 @@ def interpret(
         if current is None:
             return Interpretation(kind="unrecognized", hint=TRY_HINT)
         return Interpretation(kind="total", question=current)
+
+    # ⚠️ BEFORE `_OPEN_ONE` AND BEFORE THE DEFAULT PHRASES. "0002" contains no word, so
+    # nothing below would match it and it would fall through to `unrecognized`.
+    number = order_number_query(text)
+    if number is not None:
+        return Interpretation(kind="open_order", number_query=number)
 
     opened = _OPEN_ONE.match(text)
     if opened is not None:

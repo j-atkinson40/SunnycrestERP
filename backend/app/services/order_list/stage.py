@@ -277,9 +277,19 @@ def is_driver(role_slug: str | None) -> bool:
     return bool(role_slug) and "driver" in role_slug.lower()
 
 
-def matches(facts: OrderFacts, question: OrderQuestion) -> bool:
-    """True when this order is inside the question. Default-view membership is separate."""
-    if facts.cancelled:
+def matches(
+    facts: OrderFacts, question: OrderQuestion, *, include_cancelled: bool = False,
+) -> bool:
+    """True when this order is inside the question. Default-view membership is separate.
+
+    ⚠️ `include_cancelled` IS A PARAMETER RATHER THAN A SECOND MATCHER, added 2026-10-19.
+    The Sales Order Pane opens one named order and must be able to reach a cancelled one
+    — "Draft and cancelled show as such" — while every LIST question still excludes them.
+    Writing a cancelled-tolerant copy of the five field comparisons below would have been
+    two sets of matching rules free to drift, which is the defect this codebase keeps
+    recording. Every list caller leaves the default alone.
+    """
+    if facts.cancelled and not include_cancelled:
         return False
     if question.funeral_home and not _contains(facts.funeral_home, question.funeral_home):
         return False

@@ -583,3 +583,8 @@ tests/test_approve_confirms_and_the_batch_waits.py
 # "none" answers the question and never conflicts (James, 2026-10-16). Reads the
 # real sunnycrest catalogue and skips if that tenant is absent; writes nothing.
 tests/test_declining_is_never_a_conflict.py
+
+# The Sales Order Pane's read, and the three ways an order opens (James, 2026-10-19).
+# The session rolls back; it creates no tenant that survives the test, so it does not
+# move the company count.
+tests/test_sales_order_pane.py

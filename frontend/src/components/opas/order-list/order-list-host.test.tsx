@@ -64,12 +64,53 @@ beforeEach(() => {
   resolvePhrase.mockReset()
   openFocus.mockReset()
   askOrderList.mockResolvedValue(OPEN)
+  // ⚠️ WIDENED 2026-10-19 TO THE SALES ORDER PANE'S REAL SHAPE. The five keys above were
+  // the whole of the old four-fact card; the pane reads `title`, `state`, `order`,
+  // `billing` and `can_undo_confirm` as well, and this double was the only thing
+  // supplying them. ⚠️ THE VALUES ARE WHAT THE SERVER PRODUCES FOR A CONFIRMED ORDER —
+  // taken from `detail.order_detail`'s contract, not from reading the component, which
+  // would be the fixtures-modelled-on-the-implementation defect.
   getSalesOrderSummary.mockResolvedValue({
     id: "so-1",
     number: "SO-1",
     deceased_name: "Walter Penn",
     funeral_home: "Hopkins",
     stands_at: "No driver yet",
+    title: "Walter Penn",
+    state: {
+      kind: "steps",
+      stage: "scheduled",
+      steps: [
+        { id: "confirmed", label: "Confirmed", done: true },
+        { id: "delivered", label: "Delivered", done: false },
+        { id: "invoiced", label: "Invoiced", done: false },
+      ],
+    },
+    order: [
+      {
+        label: "Vault",
+        value: "Monticello Burial Vault",
+        link: { kind: "product", variant_template_id: "variant-monticello" },
+      },
+      {
+        label: "Cemetery",
+        value: "St. Mary's Cemetery, Skaneateles",
+        link: { kind: "cemetery", inert: true, why: "The cemetery pane isn't built yet." },
+      },
+      { label: "Service", value: "Fri Oct 23 · 11:00 AM church" },
+      { label: "Total", value: "$1,705" },
+    ],
+    billing: {
+      lines: [
+        {
+          description: "Monticello Burial Vault", quantity: "1",
+          unit_price: "$1,405", line_total: "$1,405",
+        },
+      ],
+      total: "$1,705",
+      sentence: "Not invoiced yet. It goes out at month end with the October statement.",
+    },
+    can_undo_confirm: true,
   })
 })
 

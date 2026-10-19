@@ -110,10 +110,25 @@ def load_facts(
     order_id: str | None = None,
     assignee_id: str | None = None,
     scope_to_assignee: bool = False,
+    include_cancelled: bool = False,
 ) -> list[OrderFacts]:
     """Every non-cancelled order for this tenant, with the facts the list reads.
 
-    Cancelled orders are excluded in SQL. When `scope_to_assignee` is set, the
+    Cancelled orders are excluded in SQL unless `include_cancelled` is set, which only
+    the Sales Order Pane's detail read does — a director typing an old order number or
+    clicking a stale link must see "Cancelled" rather than a 404 (James, 2026-10-19:
+    "Draft and cancelled show as such, not as steps").
+
+    ⚠️ THE SQL EXCLUSION IS DEFENSIVE, NOT LOAD-BEARING FOR THE LIST, and the difference
+    is worth stating because the obvious reading is the other one. Measured by break
+    test 2026-10-19: flipping this default to `True` left every list test green. The
+    default view is kept clean by `stage.group_of` (`if facts.cancelled … return None`)
+    and every filtered question by `stage.matches`, so each of the three guards alone is
+    sufficient. What this one buys is independence from the other two — a future list
+    path that reached `load_facts` without going through either would still not see a
+    cancelled order. Keep it; do not cite it as the reason the list is clean.
+
+    When `scope_to_assignee` is set, the
     same query keeps only orders with a non-cancelled delivery assigned to
     `assignee_id`. A driver with no user id sees nothing. Invoice, delivery,
     and proof rows are loaded for the ids this query returned, and only for
@@ -143,9 +158,13 @@ def load_facts(
           LEFT JOIN cemeteries cem
             ON cem.id = so.cemetery_id AND cem.company_id = so.company_id
          WHERE so.company_id = :company_id
-           AND lower(so.status) NOT IN ('cancelled', 'canceled')
     """
     params: dict = {"company_id": company_id}
+    # ⚠️ THE CANCELLED FILTER IS APPENDED RATHER THAN INTERPOLATED INTO THE LITERAL, so
+    # the two populations differ by one clause in one place. Written as a conditional
+    # inside the f-string it would have been a second WHERE to keep in step.
+    if not include_cancelled:
+        sql += " AND lower(so.status) NOT IN ('cancelled', 'canceled')\n"
     if order_id is not None:
         sql += " AND so.id = :order_id"
         params["order_id"] = order_id
@@ -419,22 +438,97 @@ def _picks_body(picks: list[Pick], hint: str | None) -> dict:
     }
 
 
-def _open_decedent(facts: list[OrderFacts], query: str, today: date) -> dict:
-    found = [item for item in facts if matches(
-        item, OrderQuestion(decedent=query, title="Open orders"),
-    )]
-    if not found:
-        return {"kind": "unrecognized", "hint": f'No order for {_nice(query)}. {TRY_HINT}'}
+#: What a bare name is tried against, in order, when opening ONE order.
+#:
+#: ⚠️ THE ORDER IS THE RULING, AND IT IS NOT ALPHABETICAL. James's opening paths name
+#: "the deceased's surname ('smith order')" first and "'<funeral home> order' when
+#: there's exactly one match" second. A name that is both — a funeral home called
+#: Smith — resolves as the decedent, which is what "smith order" means to the person
+#: who typed it while looking at a service sheet.
+#:
+#: ⚠️ CEMETERY AND VAULT ARE HERE BECAUSE `bind_subject` ALREADY TREATS A BARE NAME AS
+#: ONE OF THESE FOUR. Leaving them out would mean "monticello order" opened nothing
+#: while "monticello orders" listed them — one trailing letter, two behaviours.
+OPEN_ONE_FIELDS: tuple[str, ...] = ("decedent", "funeral_home", "cemetery", "vault")
+
+
+def _pick_or_open(found: list[OrderFacts], today: date) -> dict:
+    """One match opens; several ask. Never a guess.
+
+    ⚠️ THE SAME SHAPE AS THE CATALOG'S NUMBERED PICK, by dispatch: "Several matches ->
+    a numbered pick, same as capture's picks (digit selects)". `_picks_body` numbers
+    them and the overlay's existing digit handling settles them, so this adds no second
+    picking mechanism.
+    """
     if len(found) == 1:
         return {"kind": "open_order", "open_order_id": found[0].id}
     picks = []
     for item in sorted(found, key=lambda row: row.service_date or date.max):
         when = format_when(item.service_date, item.service_time, today)
         label = item.deceased_name or "Unnamed"
+        # ⚠️ THE NUMBER IS ON THE LABEL, not only the name. Two Hopkins orders for the
+        # same week with no decedent recorded would otherwise be two identical choices.
+        label = f"{label} · {item.number}"
         if when.get("date_primary"):
             label = f"{label} · {when['date_primary']}"
         picks.append(Pick(label=label, order_id=item.id))
     return _picks_body(picks, "Which one?")
+
+
+def _open_by_number(facts: list[OrderFacts], suffix: str, today: date) -> dict:
+    """Open the order whose number ends in these digits.
+
+    ⚠️ A SUFFIX MATCH, NOT EQUALITY, because "0002" and "SO-2026-0002" are the same
+    request (James's first opening path). The tenant's prefix is not reconstructed —
+    see `question.order_number_query`.
+
+    ⚠️ AND IT IS STILL A PICK WHEN TWO YEARS COLLIDE. `SO-2025-0002` and `SO-2026-0002`
+    both end in "0002"; the digits alone do not say which, so the office is asked rather
+    than shown the newer one. Sunnycrest has one year of orders today, so this cannot
+    fire there yet — which is exactly why it is written now rather than discovered in
+    January.
+    """
+    wanted = suffix.lstrip("0") or "0"
+    hits = [
+        item for item in facts
+        if (item.number or "").endswith(suffix)
+        or (item.number or "").split("-")[-1].lstrip("0") == wanted
+    ]
+    if not hits:
+        return {"kind": "unrecognized", "hint": f"No order numbered {suffix}. {TRY_HINT}"}
+    return _pick_or_open(hits, today)
+
+
+def _open_one(facts: list[OrderFacts], query: str, today: date) -> dict:
+    """Open the one order a bare name picks out, over the four fields it could name.
+
+    ⚠️ IT WAS DECEDENT-ONLY UNTIL 2026-10-19, AND THAT IS WHY "riverside order" DID
+    NOTHING. The function was `_open_decedent`; it matched `OrderQuestion(decedent=...)`
+    and nothing else, so a funeral home's name — which is how the office refers to most
+    orders — returned "No order for Riverside". James's own walk for this slice is
+    'type "riverside order"', so the narrowness was the first thing it would have hit.
+
+    ⚠️ FIRST FIELD THAT MATCHES ANYTHING WINS, and it does not merge across fields. A
+    name matching one decedent and three funeral-home orders opens the decedent's
+    rather than asking about four, because the earlier field is the stronger reading.
+
+    ⚠️ LIVE ORDERS FIRST, CANCELLED ONLY IF NOTHING LIVE MATCHES. `matches()` refuses a
+    cancelled order by default, which is right for a list and wrong for "open the one
+    called X" — Sunnycrest's SO-2026-0002 is cancelled, so "walker order" would have
+    reported no such order while the pane is specifically required to be able to show
+    one as cancelled. Two passes rather than one so a live order is never buried under a
+    cancelled namesake.
+    """
+    for include_cancelled in (False, True):
+        for field in OPEN_ONE_FIELDS:
+            question = OrderQuestion(title="Open orders", **{field: query})
+            found = [
+                item for item in facts
+                if matches(item, question, include_cancelled=include_cancelled)
+            ]
+            if found:
+                return _pick_or_open(found, today)
+    return {"kind": "unrecognized", "hint": f'No order for {_nice(query)}. {TRY_HINT}'}
 
 
 def sales_order_summary(
@@ -446,38 +540,23 @@ def sales_order_summary(
     role_slug: str | None = None,
     user_id: str | None = None,
 ) -> dict | None:
-    found = load_facts(
-        db,
-        company_id,
-        order_id=order_id,
-        **_assignee_kwargs(role_slug, user_id),
+    """The Sales Order Pane's read. Kept at this name; the body moved to `detail.py`.
+
+    ⚠️ IT USED TO BE A FOUR-FACT CARD AND IS NOW THE WHOLE PANE. The old body built
+    `id/number/deceased_name/funeral_home/stands_at` plus a `vault`, `service` and
+    `cemetery` string. Those keys are all still here, produced by `detail.order_detail`,
+    so the tenant-isolation and driver-scoping tests that address this function keep
+    testing the thing the route calls.
+
+    ⚠️ ONE IMPLEMENTATION, NOT TWO. Leaving the short body here and adding a second
+    detail function would have given the pane and the card two formatters for the same
+    cemetery-and-town string, free to drift. `order_detail` is the only one.
+    """
+    from app.services.order_list.detail import order_detail
+
+    return order_detail(
+        db, company_id, order_id, today, role_slug=role_slug, user_id=user_id
     )
-    if not found:
-        return None
-    facts = found[0]
-    when = format_when(facts.service_date, facts.service_time, today)
-    service_bits: list[str] = []
-    if facts.service_date is not None:
-        service_bits.append(("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")[facts.service_date.weekday()])
-    if when.get("time_label"):
-        service_bits.append(str(when["time_label"]))
-    cemetery = facts.cemetery or ""
-    if facts.cemetery_city:
-        cemetery = f"{cemetery}, {facts.cemetery_city}" if cemetery else facts.cemetery_city
-    summary: dict = {
-        "id": facts.id,
-        "number": facts.number,
-        "deceased_name": facts.deceased_name or "Unnamed",
-        "funeral_home": facts.funeral_home,
-        "stands_at": stands_at(facts, today),
-    }
-    if facts.vault:
-        summary["vault"] = facts.vault
-    if service_bits:
-        summary["service"] = " · ".join(service_bits)
-    if cemetery:
-        summary["cemetery"] = cemetery
-    return summary
 
 
 def ask(
@@ -516,8 +595,17 @@ def ask(
         return {"kind": "unrecognized", "hint": interpreted.hint or TRY_HINT}
 
     if interpreted.kind == "open_order":
-        facts = load_facts(db, company_id, **_assignee_kwargs(role_slug, user_id))
-        return _open_decedent(facts, interpreted.decedent_query or "", today)
+        # ⚠️ `include_cancelled=True` HERE TOO, so typing a cancelled order's number
+        # opens its pane saying "Cancelled" instead of claiming no such order exists.
+        # SO-2026-0002 is Sunnycrest's cancelled order and is exactly what a stale note
+        # on a desk points at.
+        facts = load_facts(
+            db, company_id, include_cancelled=True,
+            **_assignee_kwargs(role_slug, user_id),
+        )
+        if interpreted.number_query:
+            return _open_by_number(facts, interpreted.number_query, today)
+        return _open_one(facts, interpreted.decedent_query or "", today)
 
     if interpreted.kind == "picks":
         return _picks_body(interpreted.picks, interpreted.hint)

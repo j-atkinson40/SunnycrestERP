@@ -23,7 +23,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { useAuth } from "@/contexts/auth-context"
-import { useOpas } from "@/contexts/opas-context"
+import { useOpas, type OpasPaneKind } from "@/contexts/opas-context"
 import { abandonCapture, fetchVocabulary } from "@/services/opas-capture-service"
 import { CapturePane, type EntryPaneStatus } from "./CapturePane"
 import {
@@ -43,6 +43,8 @@ import {
   startsCaptureWithParty,
 } from "./opas-routing"
 import { isEntryPane } from "./pane-mode"
+import { anchoredSlots, RIGHT_ANCHOR, TOP_ANCHOR } from "./pane-placement"
+import { isCloseRequest } from "./close-request"
 import { EXTRACT_DEBOUNCE_MS } from "./capture-sequence"
 
 import { consumePickDigit } from "./pick-digit"
@@ -87,6 +89,43 @@ export const INFO_WIDTH = "min(390px, calc(100vw - 32px))"
 
 /** The order list is a wide list. A product pane stays at INFO_WIDTH. */
 export const ORDER_LIST_WIDTH = "min(37rem, calc(100vw - 32px))"
+
+/** The same two widths as NUMBERS, for the first-free-space placement arithmetic.
+ *
+ * ⚠️ A SECOND SPELLING OF THE SAME MEASUREMENT, AND THE DUPLICATION IS DELIBERATE RATHER
+ * THAN LAZY. The CSS strings above are what the browser lays out; `pane-placement` needs
+ * pixels before layout exists, so it cannot measure them. The alternative — building the
+ * CSS from the numbers — would convert `37rem` into `592px` and silently drop the one
+ * property rem has, which is that it follows the reader's own font size.
+ *
+ * ⚠️ SO THE ORDER-LIST NUMBER ASSUMES A 16px ROOT, AND HERE IS WHAT GOES WRONG WHEN IT IS
+ * NOT. A reader at 20px root gets a 740px order list while placement reserves 592px, so
+ * the next pane is placed ~148px too far right and OVERLAPS it. That is a pane the
+ * director drags apart, not a broken layout, and it is the only consequence — which is
+ * why this is stated rather than solved with a layout round trip.
+ */
+export const INFO_WIDTH_PX = 390
+export const ORDER_LIST_WIDTH_PX = 37 * 16
+
+/** The clamp in both CSS strings: never wider than the viewport less 32px. */
+export function paneWidthPx(kind: OpasPaneKind, stageWidth: number): number {
+  const nominal = kind === "order-list" ? ORDER_LIST_WIDTH_PX : INFO_WIDTH_PX
+  return Math.min(nominal, Math.max(0, stageWidth - 32))
+}
+
+/** The stage's width, re-read on resize so placement follows the window. */
+function useStageWidth(): number {
+  const [width, setWidth] = useState(() =>
+    typeof window === "undefined" ? 1440 : window.innerWidth,
+  )
+  useEffect(() => {
+    const apply = () => setWidth(window.innerWidth)
+    apply()
+    window.addEventListener("resize", apply)
+    return () => window.removeEventListener("resize", apply)
+  }, [])
+  return width
+}
 
 const ORDER_TRY = "Try: Hopkins orders this month · going out Friday"
 const ORDER_CHANGE = 'Say it: "only Hopkins", "last month", "not invoiced"'
@@ -155,6 +194,7 @@ export function OpasHost() {
   const [completeRequest, setCompleteRequest] = useState<Record<string, number>>({})
   const completeNonce = useRef(0)
   const narrow = useNarrowScreen()
+  const stageWidth = useStageWidth()
 
   /**
    * ⚠️ FIELD-BY-FIELD COMPARISON, AND IT IS LOAD-BEARING RATHER THAN AN OPTIMISATION.
@@ -604,17 +644,73 @@ export function OpasHost() {
    * ⚠️ NO `abandonCapture` HERE. The session is `approved` and carries the order id;
    * telling the server it was abandoned would contradict the row it just wrote.
    */
+  /** ⚠️ IT NO LONGER DEDUPES OR CLOSES, AND BOTH REMOVALS ARE THE RULING.
+   *
+   *  The dedupe moved into `opas.openPane` (`pane-identity.ts`), so EVERY caller gets
+   *  "already open focuses that pane" rather than only this one — the Product pane had
+   *  no such check and made duplicates.
+   *
+   *  The `for (…) closePane(…)` loop that closed every OTHER sales-order pane is gone.
+   *  It belonged to the one-order-beside-the-list arrangement; panes chain now ("an
+   *  order links to its funeral home, its vault and its cemetery, so each pane opens the
+   *  next one"), and closing the order you came from is the opposite of chaining. */
+  const openSalesOrder = useCallback((orderId: string) => {
+    opas.openPane({ kind: "sales-order", label: "Sales order", salesOrderId: orderId })
+  }, [opas])
+
+  /** "close" in the bar closes the FRONT pane. James's fourth multi-pane rule. */
+  const closeFrontPane = useCallback((): boolean => {
+    const front = opas.panes.find((p) => p.id === opas.frontPaneId)
+    if (front === undefined) return false
+    // ⚠️ THE SAME TWO MEANINGS AS THE × BUTTON. An entry pane's close ENDS the capture
+    // (the session is abandoned on the server and the bar's text is cleared); an info
+    // pane's just closes the pane. Typing "close" at a half-typed order has to do what
+    // clicking its × does, or the two controls disagree about what closing means.
+    opas.closePane(front.id)
+    if (isEntryPane(front.kind)) {
+      setText("")
+      if (front.captureSessionId !== undefined) {
+        void abandonCapture(front.captureSessionId)
+      }
+    }
+    return true
+  }, [opas])
+
+  /**
+   * ⚠️ THE CAPTURE CLOSES AND THE ORDER'S PANE OPENS IN ITS PLACE, by James's third
+   * opening path (2026-10-19): "After Approve on the capture Review: the capture closes
+   * and the new order's pane opens in its place."
+   *
+   * ⚠️ THE `APPROVED_VISIBLE_MS` WINDOW IS NOW THE FALLBACK, NOT THE BEHAVIOUR, and it
+   * is kept rather than deleted for one reachable reason. The window existed so the
+   * office could read "Created SO-2026-0003" before the pane went; the order's own pane
+   * says that permanently, so it is no longer needed WHEN THERE IS AN ID. The server
+   * sends `sales_order_id` and `CapturePane` already guards on its absence
+   * (`capture-approved-link` degrades to plain text), so `id === null` is a state this
+   * app can reach — and closing the pane with no replacement would leave the office with
+   * nothing at all. In that case the old timer runs.
+   *
+   * ⚠️ AND THE ENTRY-MODE TRAP IS WHY THIS CANNOT JUST LEAVE THE PANE OPEN. An entry
+   * pane holds the bar in entry mode for as long as it is in front, which is the bug
+   * that cost three walk rounds. Either it closes now (id present) or the timer closes
+   * it (id absent). It is never left indefinitely.
+   */
   const onApproved = useCallback(
-    (paneId: string) => {
+    (paneId: string, order: { id: string | null }) => {
       setText("")
       opas.setEntryText(paneId, "")
+      if (order.id !== null) {
+        opas.closePane(paneId)
+        openSalesOrder(order.id)
+        return
+      }
       approvedPanes.current.add(paneId)
       window.setTimeout(() => {
         opas.closePane(paneId)
         approvedPanes.current.delete(paneId)
       }, APPROVED_VISIBLE_MS)
     },
-    [opas, setText],
+    [opas, setText, openSalesOrder],
   )
 
   /**
@@ -684,18 +780,6 @@ export function OpasHost() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entryValue, entryPane, picks])
 
-  const openSalesOrder = useCallback((orderId: string) => {
-    const same = opas.panes.find((p) => p.kind === "sales-order" && p.salesOrderId === orderId)
-    if (same) {
-      opas.raisePane(same.id)
-      return
-    }
-    for (const pane of opas.panes) {
-      if (pane.kind === "sales-order") opas.closePane(pane.id)
-    }
-    opas.openPane({ kind: "sales-order", label: "Sales order", salesOrderId: orderId })
-  }, [opas])
-
   const settleOrderAnswer = useCallback((result: OrderListSnapshot, spoken: string | undefined) => {
     if (result.kind === "unrecognized" || result.kind === "total") {
       setSaid(result.hint ?? ORDER_TRY)
@@ -717,11 +801,11 @@ export function OpasHost() {
     } else {
       opas.openPane({ kind: "order-list", label: "Orders", ...patch })
     }
-    if (result.kind === "question") {
-      for (const pane of opas.panes) {
-        if (pane.kind === "sales-order") opas.closePane(pane.id)
-      }
-    }
+    // ⚠️ THE "CLOSE EVERY SALES-ORDER PANE ON A NEW QUESTION" LOOP IS GONE, by the same
+    // ruling as `openSalesOrder`'s. A new list question used to sweep away the order
+    // pane the director had just opened from the previous one — which made "each pane
+    // opens the next one" impossible to walk. Panes close one at a time, by the × or by
+    // "close".
     if (result.hint) setSaid(result.hint)
   }, [opas, openSalesOrder])
 
@@ -760,6 +844,15 @@ export function OpasHost() {
     setBusy(true)
     setSaid(null)
     try {
+      // ⚠️ BEFORE EVERYTHING, INCLUDING THE CAPTURE ENTRANCE. "close" is a word about
+      // the overlay, not about an order, and it must work while an entry pane holds the
+      // bar — which is the one state where every other route is suppressed.
+      if (isCloseRequest(phrase)) {
+        const closed = closeFrontPane()
+        setText("")
+        if (!closed) setSaid("Nothing is open.")
+        return
+      }
       // ⚠️ THE CAPTURE ENTRANCE IS CHECKED BEFORE THE CATALOG AND BEFORE THE RESOLVER.
       // "start an order for Hopkins" contains no catalog phrase, but sending it to the
       // vault resolver would resolve "order" against product names and open the wrong
@@ -826,7 +919,42 @@ export function OpasHost() {
     } finally {
       setBusy(false)
     }
-  }, [text, busy, opas, settleOrderAnswer])
+  }, [text, busy, opas, settleOrderAnswer, closeFrontPane])
+
+  /** The panes on the desk. Order-list and sales-order panes move to the mobile track
+   *  below `narrow`, so they are not on the desk at all there. */
+  const visible = opas.panes.filter(
+    (pane) => !(narrow && (pane.kind === "order-list" || pane.kind === "sales-order")),
+  )
+
+  /** First-free-space slots for the anchored info panes, computed in pane order.
+   *
+   * ⚠️ DRAGGED PANES ARE OBSTACLES, NOT CANDIDATES. A pane the director has moved keeps
+   * its place (`placements[id].anchored === false`), and a new pane must not be placed
+   * under it — so it goes into `dragged` and is never given a slot.
+   *
+   * ⚠️ AN ENTRY PANE IS NEITHER. It anchors to the bar at the bottom right and is not in
+   * the anchored band, so it neither takes a slot nor blocks one.
+   */
+  const dragged = visible
+    .filter((pane) => {
+      const placed = opas.placements[pane.id]
+      return placed !== undefined && !placed.anchored
+    })
+    .map((pane) => ({
+      left: opas.placements[pane.id].x,
+      width: paneWidthPx(pane.kind, stageWidth),
+    }))
+  const slots = anchoredSlots(
+    visible
+      .filter((pane) => {
+        const placed = opas.placements[pane.id]
+        return !isEntryPane(pane.kind) && (placed === undefined || placed.anchored)
+      })
+      .map((pane) => ({ id: pane.id, width: paneWidthPx(pane.kind, stageWidth) })),
+    dragged,
+    stageWidth,
+  )
 
   // ⚠️ The sphere is admin-only for now. Not rendering is the whole gate: a hidden-but-
   // mounted sphere would still answer keyboard and pointer events.
@@ -861,8 +989,9 @@ export function OpasHost() {
       {/* PANES — above the veil. `tucked` hides without unmounting, so the session
           survives: opacity 0 / pointer-events none, exactly the prototype's `.win.tucked`. */}
       <div data-testid="opas-desk" style={{ position: "fixed", inset: 0, zIndex: 35, pointerEvents: "none" }}>
-        {opas.panes.filter((pane) => !(narrow && (pane.kind === "order-list" || pane.kind === "sales-order"))).map((pane, i) => {
+        {visible.map((pane, i) => {
           const placed = opas.placements[pane.id]
+          const slot = slots[pane.id]
           const isFront = opas.frontPaneId === pane.id
           // ⚠️ COMPUTED ONCE AND USED BY BOTH THE STYLE AND THE ATTRIBUTE, which is
           // the only arrangement a test can rely on. Two separate
@@ -911,7 +1040,18 @@ export function OpasHost() {
                 ? { left: placed.x, top: placed.y }
                 : isEntryPane(pane.kind)
                   ? { right: 24, bottom: 24 + (barH || 46) }
-                  : { right: 24 + i * 18, top: 72 + i * 22 }),
+                  // ⚠️ FIRST FREE SPACE, NOT AN INDEX CASCADE (James, 2026-10-19: "A new
+                  // pane is placed in the first free space, not on top of another"). This
+                  // read `{ right: 24 + i * 18, top: 72 + i * 22 }` — so a second pane sat
+                  // 18px left and 22px down from the first and covered nearly all of it,
+                  // on a screen with room for both side by side. `pane-placement.ts`
+                  // scans for a gap; `slot` is always defined for an anchored info pane
+                  // and the `right/top` fallback is the one render where it is not (a
+                  // kind that is neither entry nor in `slots`, which cannot happen today
+                  // and would otherwise be a pane at 0,0).
+                  : slot !== undefined
+                    ? { left: slot.left, top: slot.top }
+                    : { right: RIGHT_ANCHOR, top: TOP_ANCHOR }),
               zIndex: opas.zOf(pane.id),
               cursor: "grab",
               touchAction: "none",
@@ -1028,20 +1168,37 @@ export function OpasHost() {
                     caret,
                   )}
                   pickRequest={pickRequest[pane.id]}
-                  onApproved={() => onApproved(pane.id)}
+                  onApproved={(order) => onApproved(pane.id, order)}
                   completeRequest={completeRequest[pane.id]}
                 />
               ) : pane.kind === "order-list" && pane.orderSnapshot ? (
                 <OrderListPane
                   snapshot={pane.orderSnapshot}
-                  selectedId={opas.panes.find((p) => p.kind === "sales-order")?.salesOrderId}
+                  // ⚠️ THE FRONT ORDER PANE, NOT THE FIRST ONE. Several can be open now
+                  // that panes chain, and `find` would highlight whichever was opened
+                  // earliest rather than the one the director is looking at.
+                  selectedId={
+                    opas.panes.find(
+                      (p) => p.kind === "sales-order" && p.id === opas.frontPaneId,
+                    )?.salesOrderId
+                    ?? opas.panes.filter((p) => p.kind === "sales-order").at(-1)?.salesOrderId
+                  }
                   onOpenOrder={openSalesOrder}
                   onRemovePill={(pillId) => void removeOrderPill(pane.id, pillId)}
                   onAskHint={() => setSaid(ORDER_CHANGE)}
                   onChoosePick={(pick) => void chooseOrderPick(pick)}
                 />
               ) : pane.kind === "sales-order" && pane.salesOrderId ? (
-                <SalesOrderPane orderId={pane.salesOrderId} />
+                <SalesOrderPane
+                  orderId={pane.salesOrderId}
+                  // ⚠️ THE VAULT OPENS THE EXISTING PRODUCT PANE, which is the chain the
+                  // dispatch is testing ("Its vault opens the Product Pane, which already
+                  // exists"). `openPane` dedupes, so opening the same vault from two
+                  // different orders focuses one pane rather than stacking two.
+                  onOpenProduct={(id) =>
+                    opas.openPane({ kind: "product", label: "Product", variantTemplateId: id })
+                  }
+                />
               ) : pane.kind === "product" ? (
                 <ProductPane variantTemplateId={pane.variantTemplateId!} />
               ) : null}
@@ -1110,7 +1267,14 @@ export function OpasHost() {
                       onChoosePick={(pick) => void chooseOrderPick(pick)}
                     />
                   ) : pane.kind === "sales-order" && pane.salesOrderId ? (
-                    <SalesOrderPane orderId={pane.salesOrderId} />
+                    <SalesOrderPane
+                      orderId={pane.salesOrderId}
+                      onOpenProduct={(id) =>
+                        opas.openPane({
+                          kind: "product", label: "Product", variantTemplateId: id,
+                        })
+                      }
+                    />
                   ) : null}
                 </div>
               </div>
