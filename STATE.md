@@ -4,11 +4,54 @@ Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end 
 
 ## 2026-10-19 — Sales Order Pane, slice 1, and the four multi-pane rules
 
-Commits `03ca5089` (the prototype, with digests) and `05532e38` (the build).
-**⚠️ NOT YET PUSHED at the time of writing — the push was blocked by the permission
-classifier twice, as it was on 2026-10-16. So nothing below is deployed, the real-Chrome
-verification the dispatch asks for has NOT run, and every figure here is from a local
-gate or a read-only production query, never from a deployed bundle.**
+Commits `03ca5089` (the prototype, with digests), `05532e38` (the build) and `e9f43c20`
+(this entry). **Deployed 13:58 UTC 2026-10-19.**
+
+⚠️ **CORRECTED 2026-10-19 13:59 UTC — the original wording is kept because it was true
+when written and is no longer:** *"⚠️ NOT YET PUSHED at the time of writing — the push was
+blocked by the permission classifier twice, as it was on 2026-10-16. So nothing below is
+deployed, the real-Chrome verification the dispatch asks for has NOT run, and every figure
+here is from a local gate or a read-only production query, never from a deployed bundle."*
+
+The push was approved and landed. **One clause of that paragraph still stands: the
+real-Chrome verification has NOT run** — the Claude browser extension is not connected in
+this environment, so the walk is James's. See "Owed" at the end of this entry, which has
+been narrowed accordingly.
+
+### The deploy, verified two ways and neither of them a log
+
+⚠️ **NOT FROM DEPLOY LOGS** — `seed_sunnycrest.py` prints a generated admin password and
+CLAUDE.md forbids reading them. Verified from outside instead:
+
+| half | instrument | result |
+|---|---|---|
+| backend | `/api/health` `commit` | **`e9f43c20`** at 13:58:31 UTC, `db: connected` |
+| backend | route existence with **no credential** | `/order-list/orders/{real id}` **403**, `POST /order-list/ask` **403**, `/catalog-pane/variants/{id}` **403** — mounted and refusing auth |
+| ⚠️ its control | a path that does not exist | **404** — so 403 is not a blanket response, and the check discriminates |
+| frontend | marker grep on the served bundle `index-N1lMfw1i.js` (6,750,476 bytes) | all six new markers present: `opas-sales-order-steps`, `opas-sales-order-undo-confirm`, `opas-sales-order-tab-`, `opas-sales-order-inert-`, `Nothing is open.`, `close the pane` |
+| ⚠️ its control | the marker this slice **DELETED** | `capture-approved-link` = **0**. Two-sided: on the old bundle this would be 1 and the six would be 0. Observed the exact opposite. |
+
+### Tonight's 22:00Z batch cannot touch either demo order
+
+Measured read-only against production at 14:02 UTC, through the batch's **own** constants
+(`INVOICEABLE_STATUSES`, `SERVICE_DATE`) rather than a re-derived WHERE clause:
+
+| tenant | status+date population | already carries a live invoice | **would be invoiced tonight** |
+|---|---|---|---|
+| sunnycrest | **0** | 0 | **0** |
+| hopkins-fh | 0 | 0 | 0 |
+| st-marys | 0 | 0 | 0 |
+| testco | **8** | **8** | **0** |
+
+Both demo orders are excluded by the **date gate alone** — service 2026-10-23 and
+2026-10-28 against a tenant-local today of 2026-10-19 — before the invoice guard is
+consulted. `SO-2026-0003` and `SO-2026-0004` both: `modified_at` NULL, **0 invoices**.
+
+⚠️ **testco is the positive control and the first version of this probe overstated it.**
+That version applied only status + service date and reported eight orders as "WOULD BE
+SELECTED" — the POPULATION, not the selection. All eight already carry a live invoice, so
+the final count is zero. Reporting the population as the selection would have read as
+eight pending invoices on a tenant where the batch has recorded zero for three nights.
 
 - **2026-10-19** — **The dispatch's prototype URL does not resolve and its short id is not in James's artifact listing** (`39R6gdLS6PrrAPWr4GmjBh`, 30 artifacts enumerated, no match). Proceeded on `115f1411-7c22-4983-91e4-6dca3d99fcc4` ("Sales Order Pane", updated 2026-10-04), verified by the five things the dispatch says to OMIT — all five present, which is what a superset of slice 1 looks like. Bytes now in `docs/prototypes/`, md5 `1fe0b308…`.
 - **2026-10-19** — ⚠️ **Two dispatch items are NOT in the prototype, so for those the dispatch wins:** `Confirmed` 0 hits (its steps are Proof → Scheduled → Delivered → Invoiced) and `Undo confirm` 0 hits. Consistent with the artifact predating the confirm step by twelve days. Look and layout from the prototype; state vocabulary from the dispatch.
@@ -77,10 +120,19 @@ Bundle measured against a **`git worktree` build of HEAD** rather than remembere
 
 Full write-up, every figure with its environment, in `docs/investigations/2026-10-19-sales-order-pane.md`.
 
-### Owed when the push lands
+### Owed — one item, and it is James's
 
-1. **The real-Chrome verification the dispatch asks for has not run** — open an order three ways, open its vault, open the same order twice, three panes at once, drag, close from the bar, and the 4-pane screenshot. It needs the deploy.
-2. **Nothing here is on production's frontend.** The two demo orders exist in the database; the pane that reads them does not yet ship.
+**The real-Chrome walk.** The Claude browser extension is not connected in this
+environment, so it could not be driven from here, and Opas is admin-only behind a login —
+entering a password is forbidden either way (CLAUDE.md §7, credentials do not transit a
+session). Everything that could be checked without a browser was: the deploy both halves,
+the routes, the bundle markers with a two-sided control, the pane's rendered output for
+all four orders against production data, all three opening paths against production data,
+and the batch's selection for tonight.
+
+The walk: **open Opas, type `riverside order`, click Monticello Burial Vault, drag the two
+panes apart, then type `close`.** Then the four-pane case, which the arithmetic above says
+will overlap by four pixels' worth of missing room.
 
 ## 2026-10-17 — Step-3 follow-ups: declining is never a conflict, and the two confirm paths must not diverge
 
