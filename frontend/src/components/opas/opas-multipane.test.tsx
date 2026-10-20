@@ -330,7 +330,7 @@ describe('rule 4 — "close" closes the front pane, Esc still tucks', () => {
     // by closing anything.
     expect(resolvePhrase).toHaveBeenCalledWith("close it out")
     await waitFor(() => expect(screen.getByTestId("opas-said").textContent).toContain(
-      "no match for",
+      "Nothing matched",
     ))
   })
 })

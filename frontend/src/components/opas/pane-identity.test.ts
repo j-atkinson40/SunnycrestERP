@@ -58,10 +58,14 @@ describe("what has an identity and what does not", () => {
 
   it("the order list is a singleton and the catalog is not", () => {
     expect(paneIdentity(pane("order-list"))).toBe("order-list")
-    // ⚠️ `product-list` CARRIES THREE DIFFERENT LISTS under one kind — the catalog, a
-    // numbered pick, an unmatched phrase. Deduping on kind would make a numbered pick
-    // raise the unfiltered catalog instead of showing the pick.
-    expect(paneIdentity(pane("product-list", { candidateIds: ["a", "b"] }))).toBeNull()
+    // ⚠️ `product-list` CARRIES TWO DIFFERENT LISTS under one kind — the catalog, and an
+    // unmatched phrase with its own "nothing matched" line. Deduping on kind would make
+    // an unmatched phrase raise the plain catalog and lose the phrase.
+    //
+    // ⚠️ IT CARRIED THREE UNTIL 2026-10-20: the third was a numbered pick, filtered to
+    // the resolver's candidates. That surface is retired — the pick is above the bar
+    // now — and `candidateIds` is gone from `OpasPane` with it.
+    expect(paneIdentity(pane("product-list", { unmatchedPhrase: "zzz" }))).toBeNull()
   })
 })
 

@@ -95,11 +95,32 @@ export function isCatalogRequest(text: string): boolean {
   return CATALOG_PHRASES.includes(normalizeRequest(text))
 }
 
+/** The fields of a catalog candidate this module passes through. Structural on purpose
+ *  so `CatalogVariant` and a hand-built test double both satisfy it. */
+export interface RouteCandidate {
+  variant_template_id: string
+  name?: string
+  option_label?: string
+  sku?: string
+}
+
 export type OpasRoute =
   | { kind: "capture"; openingLine: string }
   | { kind: "product-list" }
   | { kind: "product"; variantTemplateId: string }
-  | { kind: "numbered-pick"; candidateIds: string[]; discriminators: string[] }
+  /** ⚠️ CARRIES THE WHOLE CANDIDATES, NOT JUST THEIR IDS, SINCE 2026-10-20. It was
+   *  `candidateIds: string[]`, which was enough while the pick lived in a pane that
+   *  could look the variants up for itself. The pick now renders above the bar as a
+   *  numbered option list (James's third rule), and a list of opaque uuids is not a
+   *  list of choices — each row has to say the product's name and what tells it apart.
+   *  `candidateIds` is kept alongside, derived, because three tests and the Escape
+   *  flag address it and deriving it here keeps the two from drifting. */
+  | {
+      kind: "numbered-pick"
+      candidateIds: string[]
+      candidates: RouteCandidate[]
+      discriminators: string[]
+    }
   | { kind: "product-list-unmatched"; phrase: string }
 
 /**
@@ -119,7 +140,7 @@ export type OpasRoute =
  */
 export function routeResolution(r: {
   phrase: string
-  candidates: { variant_template_id: string }[]
+  candidates: RouteCandidate[]
   discriminators: string[]
 }): OpasRoute {
   if (r.candidates.length === 1) {
@@ -128,7 +149,10 @@ export function routeResolution(r: {
   if (r.candidates.length > 1) {
     return {
       kind: "numbered-pick",
+      // ⚠️ DERIVED FROM `candidates`, NOT COLLECTED SEPARATELY, so the two cannot
+      // disagree about which candidates are in the pick or about their order.
       candidateIds: r.candidates.map((c) => c.variant_template_id),
+      candidates: r.candidates,
       discriminators: r.discriminators,
     }
   }

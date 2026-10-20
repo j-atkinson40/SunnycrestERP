@@ -46,7 +46,28 @@ describe("routeResolution — the three branches", () => {
   it("several candidates open a NUMBERED PICK carrying every id and the discriminators", () => {
     expect(
       routeResolution({ phrase: "Bronze Triune", candidates: c("v1", "v2"), discriminators: ["form"] }),
-    ).toEqual({ kind: "numbered-pick", candidateIds: ["v1", "v2"], discriminators: ["form"] })
+    ).toEqual({
+      kind: "numbered-pick",
+      candidateIds: ["v1", "v2"],
+      // ⚠️ THE WHOLE CANDIDATES TRAVEL TOO, SINCE 2026-10-20. The pick renders above the
+      // bar now and a row has to say the product's NAME; uuids are not choices.
+      candidates: c("v1", "v2"),
+      discriminators: ["form"],
+    })
+  })
+
+  it("⚠️ `candidateIds` IS DERIVED FROM `candidates` AND CANNOT DISAGREE WITH IT", () => {
+    // Two parallel lists is the shape that drifts. This asserts they are one list read
+    // two ways — same members, same order.
+    const candidates = [
+      { variant_template_id: "v1", name: "Monticello 28" },
+      { variant_template_id: "v2", name: "Monticello 33" },
+    ]
+    const r = routeResolution({ phrase: "monticello", candidates, discriminators: ["size"] })
+    expect(r.kind).toBe("numbered-pick")
+    if (r.kind !== "numbered-pick") return
+    expect(r.candidateIds).toEqual(r.candidates.map((x) => x.variant_template_id))
+    expect(r.candidates[0].name).toBe("Monticello 28")
   })
 
   it("⚠️ it never picks — all candidates survive, in order", () => {

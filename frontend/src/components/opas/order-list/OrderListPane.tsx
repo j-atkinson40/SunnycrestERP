@@ -8,7 +8,7 @@
 import { useEffect, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react"
 
 import { useFocusOptional } from "@/contexts/focus-context"
-import type { OrderListSnapshot, OrderPick, OrderRow } from "@/services/order-list-service"
+import type { OrderListSnapshot, OrderRow } from "@/services/order-list-service"
 
 import { totalsLine } from "./order-list-format"
 import { OrderListLens } from "./OrderListLens"
@@ -265,7 +265,6 @@ export function OrderListPane({
   onFix,
   onRemovePill,
   onAskHint,
-  onChoosePick,
 }: {
   snapshot: OrderListSnapshot
   selectedId?: string
@@ -276,7 +275,6 @@ export function OrderListPane({
   onFix?: (row: OrderRow) => void
   onRemovePill?: (pillId: string) => void
   onAskHint?: () => void
-  onChoosePick?: (pick: OrderPick) => void
 }) {
   const measuredPhone = usePhoneWidth()
   const phone = layout === "phone" || (layout === undefined && measuredPhone)
@@ -294,37 +292,23 @@ export function OrderListPane({
   const orders = snapshot.orders ?? []
   const line = totalsLine(snapshot.totals)
 
+  /**
+   * ⚠️ THE `picks` BODY IS GONE (James, 2026-10-20: "Replace the floating pick pane...
+   * Remove the old pick pane and its code; the bug where it stayed open goes with it.").
+   *
+   * It rendered `snapshot.picks` as a numbered `<ol data-testid="opas-order-picks">`
+   * inside this pane. Answering one opened the order and left THIS pane showing the
+   * list — the stale question the ruling names. `OpasHost.settleOrderAnswer` now routes
+   * `kind: "picks"` into the reply above the bar instead, and never opens or patches a
+   * pane for it.
+   *
+   * ⚠️ THE SERVER SHAPE IS UNCHANGED. `OrderListSnapshot.kind` still has `"picks"` and
+   * `picks` is still on it; what changed is only which surface reads them. A
+   * `picks` snapshot reaching this component at all would now be a routing bug, so the
+   * fall-through renders the empty state rather than silently nothing.
+   */
   let body: ReactNode
-  if (snapshot.kind === "picks") {
-    body = (
-      <ol data-testid="opas-order-picks" style={{ margin: "8px 0 0", padding: 0, listStyle: "none" }}>
-        {(snapshot.picks ?? []).map((pick) => (
-          <li key={pick.n}>
-            <button
-              type="button"
-              data-testid={`opas-order-pick-${pick.n}`}
-              onClick={() => onChoosePick?.(pick)}
-              style={{
-                display: "block",
-                width: "100%",
-                textAlign: "left",
-                background: "none",
-                border: 0,
-                borderTop: "1px solid rgba(255,255,255,.09)",
-                color: "#f2f2f2",
-                padding: "8px 0",
-                cursor: "pointer",
-                fontFamily: SANS,
-              }}
-            >
-              <span style={{ color: "#5e5e5e", marginRight: 8 }}>{pick.n}</span>
-              {pick.label}
-            </button>
-          </li>
-        ))}
-      </ol>
-    )
-  } else if (surface === "lens" && snapshot.lens) {
+  if (surface === "lens" && snapshot.lens) {
     body = (
       <OrderListLens
         lens={snapshot.lens}

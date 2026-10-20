@@ -57,8 +57,6 @@ export interface OpasPane {
   readonly label: string
   /** For `kind: "product"`. */
   readonly variantTemplateId?: string
-  /** For `kind: "product-list"` — a numbered pick when the resolver was ambiguous. */
-  readonly candidateIds?: readonly string[]
   /** The phrase that did not match, shown on an unfiltered list. */
   readonly unmatchedPhrase?: string
   /** For `kind: "capture"` — fed through extraction on start (prototype `:568`). */
@@ -107,7 +105,14 @@ interface OpasValue {
    *  `orb.classList.toggle('session', wins.length > 0)`. There is no clear-all control —
    *  panes close one at a time and the session ends when the last one goes. */
   readonly hasSession: boolean
-  /** A numbered pick awaiting an answer. Escape cancels THIS before it tucks. */
+  /** A question awaiting an answer. Escape cancels THIS before it tucks.
+   *
+   *  ⚠️ IT HOLDS THE REPLY'S OPTION IDS SINCE 2026-10-20, where it used to hold the
+   *  catalog resolver's candidate ids for a pane. The pane is gone; the question lives
+   *  above the bar. What did NOT change is why this lives in the context at all:
+   *  `onEscape` owns Escape's three branches and its first one cancels a pending
+   *  question without tucking, so the flag has to be readable from here. Giving the
+   *  reply its own flag would mean Escape consulting two. */
   readonly pendingPick: readonly string[] | null
   readonly setPendingPick: (ids: readonly string[] | null) => void
   /** ⚠️ RECORDS THE SERVER'S SESSION ID ON THE PANE, which is what makes a tucked capture

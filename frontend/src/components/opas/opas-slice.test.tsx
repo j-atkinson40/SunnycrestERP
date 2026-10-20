@@ -129,13 +129,25 @@ describe("ProductListPane", () => {
     expect(onOpen).toHaveBeenCalledWith("b")
   })
 
-  it("a numbered pick shows ONLY the candidates, numbered", async () => {
+  it("⚠️ THIS PANE IS NO LONGER A PICK — it shows the whole catalog, unnumbered", async () => {
+    // ⚠️ RE-POINTED 2026-10-20, AND THE OLD ASSERTION IS THE CONTRAST. It was "a
+    // numbered pick shows ONLY the candidates, numbered" and rendered
+    // `<ProductListPane candidateIds={["a","c"]}>`, asserting an `opas-list-pick` line
+    // and that row "b" was filtered out. James retired that surface: "Replace the
+    // floating pick pane... Remove the old pick pane and its code; the bug where it
+    // stayed open goes with it." The pick now lives above the bar
+    // (`opas-multipane.test.tsx` and `reply.test.ts` cover it).
+    //
+    // ⚠️ SO THIS ASSERTS THE REMOVAL, which is a claim worth holding: a `candidateIds`
+    // prop quietly coming back would restore the stale-list bug, and nothing else
+    // would notice.
     listVariants.mockResolvedValue(ROWS)
-    render(<ProductListPane candidateIds={["a", "c"]} onOpenProduct={() => {}} />)
-    await waitFor(() => expect(screen.getByTestId("opas-list-pick")).toBeTruthy())
-    expect(screen.getByTestId("opas-list-row-a")).toBeTruthy()
+    render(<ProductListPane onOpenProduct={() => {}} />)
+    await waitFor(() => expect(screen.getByTestId("opas-list-row-a")).toBeTruthy())
+    expect(screen.queryByTestId("opas-list-pick"), "the pick line came back").toBeNull()
+    // every row, not a filtered subset
+    expect(screen.getByTestId("opas-list-row-b")).toBeTruthy()
     expect(screen.getByTestId("opas-list-row-c")).toBeTruthy()
-    expect(screen.queryByTestId("opas-list-row-b"), "a non-candidate leaked into the pick").toBeNull()
   })
 
   it("an unmatched phrase is SAID, over the whole catalog", async () => {
@@ -218,8 +230,20 @@ describe("⚠️ through the REAL provider tree", () => {
     await act(async () => {
       fireEvent.keyDown(input, { key: "Enter" })
     })
-    await waitFor(() => expect(screen.getByTestId("opas-list-pick")).toBeTruthy())
-    expect(screen.getByTestId("opas-said").textContent).toContain("differs by form")
+    // ⚠️ RE-POINTED 2026-10-20. It waited on `opas-list-pick` — a line inside the
+    // product-list PANE — and that pane is no longer a pick. "Choices sit with the
+    // question, not in a floating pane" (James), so the options are above the bar and
+    // the pane does not open at all.
+    await waitFor(() => expect(screen.getByTestId("opas-options")).toBeTruthy())
+    expect(screen.getByTestId("opas-said").textContent).toContain("differ by form")
+    // the rows carry the product NAMES, which uuids could not
+    expect(screen.getByTestId("opas-option-1").textContent).toContain("A")
+    expect(screen.getByTestId("opas-option-2").textContent).toContain("B")
+    // ⚠️ AND NO PANE OPENED. This is the removal, asserted: the old branch opened a
+    // `product-list` pane alongside the message, and that pane stayed up after the
+    // choice was made.
+    expect(screen.queryByTestId("opas-list-pick")).toBeNull()
+    expect(screen.getByTestId("opas-desk").children.length).toBe(0)
   })
 
   it("the veil tucks on POINTERDOWN, and the pane survives", async () => {

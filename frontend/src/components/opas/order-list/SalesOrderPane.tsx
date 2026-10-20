@@ -41,7 +41,7 @@
  * Undo confirm, which goes through `PATCH /sales-orders/{id}` — the existing rule, the
  * existing refusal message, no second copy here.
  */
-import { useEffect, useState, type CSSProperties } from "react"
+import { useEffect, useRef, useState, type CSSProperties } from "react"
 
 import { salesService } from "@/services/sales-service"
 import {
@@ -70,9 +70,37 @@ export interface SalesOrderPaneProps {
   readonly onOpenProduct?: (variantTemplateId: string) => void
   /** Called after a successful Undo confirm so the host can re-read. */
   readonly onChanged?: () => void
+  /**
+   * The order, as read, handed up to the host.
+   *
+   * ⚠️ THE HOST NEEDS IT TO ANSWER IN THE REPLY LINE (James, 2026-10-20: "'when's the
+   * service', 'what's the total', 'who's it for' are answered in the reply line without
+   * opening anything"). The alternative was lifting the fetch into the host and passing
+   * the order down — which would make this component unable to render on its own, and
+   * every test of it would then need the host.
+   *
+   * ⚠️ IT FIRES ON EVERY SUCCESSFUL READ, INCLUDING THE RE-READ AFTER UNDO CONFIRM, so
+   * the host's copy cannot go stale behind a state change the pane itself caused.
+   */
+  readonly onLoaded?: (order: SalesOrderSummary) => void
+  /**
+   * A counter-stamped request to run Undo confirm, from the bar.
+   *
+   * ⚠️ A COUNTER, NOT A BOOLEAN, AND IT IS THE SAME SHAPE AS `CapturePane`'s
+   * `completeRequest` — one mechanism for "the bar is asking the front pane to do its
+   * thing", not two. A boolean would have to be reset, and a re-render between the set
+   * and the reset would fire twice.
+   *
+   * ⚠️ IT ROUTES THROUGH THE PANE RATHER THAN CALLING THE API FROM THE HOST, so the
+   * server's refusal message, the re-read and the notice are produced in exactly one
+   * place. Typing "undo confirm" and pressing the button are the same act.
+   */
+  readonly undoRequest?: number
 }
 
-export function SalesOrderPane({ orderId, onOpenProduct, onChanged }: SalesOrderPaneProps) {
+export function SalesOrderPane({
+  orderId, onOpenProduct, onChanged, onLoaded, undoRequest,
+}: SalesOrderPaneProps) {
   const [row, setRow] = useState<SalesOrderSummary | null>(null)
   const [failed, setFailed] = useState(false)
   const [tab, setTab] = useState<Tab | null>(null)
@@ -82,13 +110,21 @@ export function SalesOrderPane({ orderId, onOpenProduct, onChanged }: SalesOrder
   // flag would have to be flipped back — a second render in between would re-fire.
   const [reload, setReload] = useState(0)
 
+  // ⚠️ THE CALLBACK GOES THROUGH A REF. `onLoaded` is an inline arrow in the host, so a
+  // new identity every render; in the effect's dep list it would re-fetch the order on
+  // every host render.
+  const onLoadedRef = useRef(onLoaded)
+  onLoadedRef.current = onLoaded
+
   useEffect(() => {
     let alive = true
     setFailed(false)
     setRow(null)
     getSalesOrderSummary(orderId)
       .then((next) => {
-        if (alive) setRow(next)
+        if (!alive) return
+        setRow(next)
+        onLoadedRef.current?.(next)
       })
       .catch(() => {
         if (alive) setFailed(true)
@@ -104,21 +140,6 @@ export function SalesOrderPane({ orderId, onOpenProduct, onChanged }: SalesOrder
     setTab(null)
     setNotice(null)
   }, [orderId])
-
-  if (failed) {
-    return (
-      <p data-testid="opas-sales-order-failed" style={{ color: "#cc7452", fontSize: 13, margin: 0 }}>
-        This order could not be read.
-      </p>
-    )
-  }
-  if (row === null) {
-    return (
-      <p data-testid="opas-sales-order-loading" style={{ color: "#5e5e5e", fontSize: 13, margin: 0 }}>
-        Reading the order…
-      </p>
-    )
-  }
 
   async function undoConfirm() {
     if (row === null || undoing) return
@@ -141,6 +162,41 @@ export function SalesOrderPane({ orderId, onOpenProduct, onChanged }: SalesOrder
     } finally {
       setUndoing(false)
     }
+  }
+
+  /**
+   * The bar asked for Undo confirm.
+   *
+   * ⚠️ `undoConfirm` AND THIS EFFECT BOTH MOVED ABOVE THE EARLY RETURNS. A hook cannot
+   * sit after `if (failed) return`, and `undoConfirm` is what the hook calls — leaving
+   * it below would have worked only by function-declaration hoisting, which reads like
+   * a bug even when it is not.
+   *
+   * ⚠️ IT IS A NO-OP UNTIL THE ORDER IS READ. `undoConfirm` returns on `row === null`,
+   * so a request that arrives mid-read is dropped rather than queued — and the host has
+   * already said "Still reading the order…" in that case, so nothing is silent.
+   */
+  const lastUndo = useRef(0)
+  useEffect(() => {
+    if (undoRequest === undefined || undoRequest === lastUndo.current) return
+    lastUndo.current = undoRequest
+    void undoConfirm()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [undoRequest])
+
+  if (failed) {
+    return (
+      <p data-testid="opas-sales-order-failed" style={{ color: "#cc7452", fontSize: 13, margin: 0 }}>
+        This order could not be read.
+      </p>
+    )
+  }
+  if (row === null) {
+    return (
+      <p data-testid="opas-sales-order-loading" style={{ color: "#5e5e5e", fontSize: 13, margin: 0 }}>
+        Reading the order…
+      </p>
+    )
   }
 
   const history = row.history ?? []

@@ -45,11 +45,25 @@ import {
 import { isEntryPane } from "./pane-mode"
 import { anchoredSlots, RIGHT_ANCHOR, TOP_ANCHOR } from "./pane-placement"
 import { isCloseRequest } from "./close-request"
+import {
+  REPLY_FADE_MS,
+  REPLY_GAP_ABOVE_BAR,
+  matchAnswer,
+  type Reply,
+  type ReplyKind,
+  type ReplyOption,
+} from "./reply"
+import { contextIntent, type ContextIntent } from "./context-phrases"
 import { EXTRACT_DEBOUNCE_MS } from "./capture-sequence"
 
 import { consumePickDigit } from "./pick-digit"
 import { resolvePhrase } from "@/services/opas-catalog-service"
-import { askOrderList, type OrderListSnapshot, type OrderPick } from "@/services/order-list-service"
+import {
+  askOrderList,
+  type OrderListSnapshot,
+  type OrderPick,
+  type SalesOrderSummary,
+} from "@/services/order-list-service"
 import { ProductListPane } from "./ProductListPane"
 import { ProductPane } from "./ProductPane"
 import { OrderListPane } from "./order-list/OrderListPane"
@@ -192,6 +206,11 @@ export function OpasHost() {
   // is: the pane must act on the SECOND Enter as well as the first, and a bare flag
   // would be compared by value and the repeat would be a no-op.
   const [completeRequest, setCompleteRequest] = useState<Record<string, number>>({})
+  /** ⚠️ A COUNTER PER ORDER PANE, the same shape as `completeRequest` above — one
+   *  mechanism for "the bar is asking the front pane to act", not two. Keyed by ORDER id
+   *  rather than pane id because the phrase names the order, and the pane holding it is
+   *  an implementation detail of where it is on screen. */
+  const [undoRequest, setUndoRequest] = useState<Record<string, number>>({})
   const completeNonce = useRef(0)
   const narrow = useNarrowScreen()
   const stageWidth = useStageWidth()
@@ -243,7 +262,114 @@ export function OpasHost() {
    *  re-opening one unasked.
    */
 
-  const [said, setSaid] = useState<string | null>(null)
+  /** ⚠️ ONE VOICE, IN ONE PLACE (James, 2026-10-20). This replaced
+   *  `said: string | null`. A bare string could only ever be a sentence, so a question
+   *  that needed choices had nowhere to put them and they went into a floating pane —
+   *  which is the thing the ruling retires. The `kind` is what decides whether the line
+   *  fades, and `options` is what the list above the bar renders. */
+  const [reply, setReply] = useState<Reply | null>(null)
+  /** What each option DOES, keyed by option id.
+   *
+   *  ⚠️ A REF, NOT STATE, AND IT HOLDS CLOSURES. Putting functions in `reply` would make
+   *  every `say()` a new object identity, and the fade effect keys off that identity —
+   *  so a re-render that rebuilt the same reply would restart the fade timer. */
+  const answerActions = useRef<Record<string, () => void>>({})
+  /** The orders the open panes have read, keyed by order id.
+   *
+   *  ⚠️ IT IS A REF AND NOT STATE, because nothing RENDERS from it — only the reply
+   *  phrases read it, at the moment the director asks. In state, every order pane
+   *  finishing its fetch would re-render the whole host. */
+  const orderFacts = useRef<Record<string, SalesOrderSummary>>({})
+
+  /**
+   * The bar gets the cursor back. James's first rule of 2026-10-20: "After any Opas
+   * action (pane opens, pick resolved, click inside a pane, pane closed), focus returns
+   * to the bar's input."
+   *
+   * ⚠️ IT IS THE PROTOTYPE'S OWN LAST LINE OF `choose`, quoted:
+   * `function choose(i){ … p.then(o); show([{t:o.name}]); input.focus()}`. So this is
+   * recovering a behaviour the prototype had rather than inventing one.
+   *
+   * ⚠️ `preventScroll` BECAUSE THE BAR IS FIXED AT THE BOTTOM. Without it, focusing it
+   * from a click higher up the page can scroll the document under the overlay.
+   */
+  const focusBar = useCallback(() => {
+    inputRef.current?.focus({ preventScroll: true })
+  }, [])
+
+  /**
+   * Opas speaks. The ONE place.
+   *
+   * ⚠️ `pendingPick` IS SET FROM THE OPTIONS, and that is not bookkeeping — it is what
+   * keeps Escape's existing three-branch behaviour unchanged. `onEscape` cancels a
+   * pending pick without tucking (the prototype's own order), and it reads that flag
+   * from the context. Giving the reply its own separate "a question is outstanding" flag
+   * would be a second mechanism for one fact, and Escape would then have to consult
+   * both.
+   */
+  const say = useCallback(
+    (
+      kind: ReplyKind,
+      text: string,
+      options?: { readonly options: readonly ReplyOption[]; readonly act: Record<string, () => void> },
+    ) => {
+      answerActions.current = options?.act ?? {}
+      setReply({ kind, text, ...(options ? { options: options.options } : {}) })
+      opas.setPendingPick(options ? options.options.map((o) => o.id) : null)
+    },
+    [opas],
+  )
+
+  const hush = useCallback(() => {
+    answerActions.current = {}
+    setReply(null)
+    opas.setPendingPick(null)
+  }, [opas])
+
+  /**
+   * Answer the outstanding question by index.
+   *
+   * ⚠️ IT CLEARS THE QUESTION BEFORE ACTING, which is the fix for "the pane that stayed
+   * open" in James's own words. The old pick lived in a pane, so choosing opened the
+   * thing and left the list behind it; here the list IS the question and answering ends
+   * it. Clearing first also means an action that itself says something (opening an
+   * order acknowledges it) is not immediately overwritten by a stale clear.
+   */
+  /**
+   * A reply fades unless it is a question. The prototype's own rule, quoted:
+   *
+   *     said.classList.add('on');
+   *     if(!pending)saidTimer=setTimeout(()=>said.classList.remove('on'),4200)
+   *
+   * ⚠️ A QUESTION NEVER FADES, and that asymmetry is the whole of it: the director is
+   * mid-answer, and a question that vanished after four seconds would take its options
+   * with it. An acknowledgement and a miss both fade — "Opened Hart · SO-2026-0004" is
+   * worth seeing once, not for the rest of the session.
+   *
+   * ⚠️ IT CLEARS ONLY THE REPLY IT WAS STARTED FOR. Keyed on the `reply` object
+   * identity, so a reply that arrives during the window cancels the old timer with the
+   * effect's own cleanup rather than being wiped by it four seconds later.
+   */
+  useEffect(() => {
+    if (reply === null || reply.kind === "question") return
+    const timer = window.setTimeout(() => setReply((cur) => (cur === reply ? null : cur)), REPLY_FADE_MS)
+    return () => window.clearTimeout(timer)
+  }, [reply])
+
+  const answerOption = useCallback(
+    (index: number) => {
+      const options = reply?.options
+      if (options === undefined) return
+      const option = options[index]
+      if (option === undefined) return
+      const act = answerActions.current[option.id]
+      hush()
+      act?.()
+      focusBar()
+    },
+    [reply, hush, focusBar],
+  )
+
 
   // ⚠️ Escape at the document level, with the prototype's three branches. `onEscape` owns
   // the ordering; this only supplies what is focused and honours the verdict.
@@ -440,6 +566,104 @@ export function OpasHost() {
     ? completionFor(entryValue, caret, vocab)
     : null
   const picks = status?.picks ?? []
+
+  /**
+   * ⌘1..9 AND A BARE DIGIT ANSWER THE REPLY'S QUESTION.
+   *
+   * ⚠️ A SECOND, SEPARATE HANDLER FROM CAPTURE'S BELOW, AND THEY CANNOT BOTH BE LIVE.
+   * Capture's fires only while the front ENTRY pane has a field pick; this one only
+   * while the reply carries options, and a reply question is never raised while an
+   * entry pane is in front (every `say(…, {options})` site is reached from `submit`,
+   * which an entry pane's Enter does not call). Stated rather than assumed because two
+   * live ⌘1 handlers would both `preventDefault` and the order would decide.
+   *
+   * ⚠️ A BARE DIGIT WORKS HERE AND NOT IN CAPTURE, and the asymmetry is the data. In
+   * capture the bar holds an order's text, where "3" may be a grave depth or a vault
+   * size — the ruling of 2026-10-13 that `pick-digit.ts` implements. Here the bar holds
+   * a request, and a request that is just "2" is a choice and nothing else. The
+   * dispatch asks for both: "Answer by ⌘1-⌘9, a plain digit, a click, or typing words".
+   *
+   * ⚠️ IT DOES NOT FIRE PAST THE NUMBER OF OPTIONS. ⌘7 against a 3-option question is
+   * ignored rather than clamped.
+   */
+  useEffect(() => {
+    const options = reply?.options
+    if (!opas.isOpen || options === undefined || options.length === 0) return
+    // ⚠️ BOUND TO A LOCAL BEFORE THE CLOSURE, the same reason capture's handler below
+    // does it: TypeScript cannot carry the narrowing of `options` into a function
+    // defined after the guard. It is also the correct runtime behaviour — the listener
+    // answers the question that was on screen when it was attached.
+    const open = options
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.altKey || e.shiftKey) return
+      if (!/^[1-9]$/.test(e.key)) return
+      // ⚠️ A BARE DIGIT ONLY WHEN THE BAR IS EMPTY. Mid-phrase it is part of what is
+      // being typed — "monticello 28" names a size — and consuming it would both answer
+      // the wrong question and eat a character.
+      const bare = !(e.metaKey || e.ctrlKey)
+      if (bare && text.trim() !== "") return
+      const index = Number(e.key)
+      if (index > open.length) return
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      answerOption(index - 1)
+    }
+    document.addEventListener("keydown", onKeyDown, true)
+    return () => document.removeEventListener("keydown", onKeyDown, true)
+  }, [opas.isOpen, reply, text, answerOption])
+
+  /**
+   * ESCAPE CANCELS THE QUESTION, AND THE REPLY GOES WITH IT.
+   *
+   * ⚠️ IT WATCHES `pendingPick` RATHER THAN HANDLING THE KEY. `onEscape` in the context
+   * already owns Escape's three branches and clears `pendingPick` on the first one; a
+   * second Escape listener here would be a second opinion about what Escape does. So
+   * this reacts to the flag the context already flips.
+   */
+  useEffect(() => {
+    if (opas.pendingPick === null && reply?.options !== undefined) {
+      answerActions.current = {}
+      setReply(null)
+    }
+  }, [opas.pendingPick, reply])
+
+  /**
+   * A PRINTABLE KEYPRESS WITH NOTHING EDITABLE FOCUSED GOES INTO THE BAR, AND THE FIRST
+   * CHARACTER IS NOT LOST. James's first rule, 2026-10-20.
+   *
+   * ⚠️ FOCUSING THE BAR IS NOT ENOUGH, which is the whole difficulty. `focus()` during a
+   * keydown does not deliver that keydown to the newly-focused element — the browser has
+   * already decided where the event goes — so a handler that only focused would swallow
+   * the first letter of every sentence typed after a click. This appends the character
+   * itself and `preventDefault`s, so exactly one copy lands.
+   *
+   * ⚠️ `e.key.length === 1` IS THE PRINTABLE TEST, and it is what keeps Enter, Tab,
+   * Escape, the arrows and every F-key untouched — all of those have multi-character
+   * names. Modifier combinations are left alone for the same reason ⌘1 is: they belong
+   * to someone else.
+   */
+  useEffect(() => {
+    if (!opas.isOpen) return
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      if (e.key.length !== 1) return
+      const el = document.activeElement as HTMLElement | null
+      if (el === inputRef.current) return
+      // ⚠️ AN EDITABLE FIELD INSIDE A PANE KEEPS THE KEYSTROKE, by ruling: "Exception: an
+      // editable field inside a pane that the user clicked into keeps focus until Esc or
+      // blur." `closest` rather than a tag test, so a contenteditable's inner spans count.
+      if (el !== null && el.closest("input, textarea, select, [contenteditable='true']")) return
+      e.preventDefault()
+      inputRef.current?.focus({ preventScroll: true })
+      if (entryMode && entryPane !== undefined) {
+        opas.setEntryText(entryPane.id, (opas.entryText[entryPane.id] ?? "") + e.key)
+      } else {
+        setText((cur) => cur + e.key)
+      }
+    }
+    document.addEventListener("keydown", onKeyDown)
+    return () => document.removeEventListener("keydown", onKeyDown)
+  }, [opas, opas.isOpen, entryMode, entryPane])
 
   /**
    * ⌘1..9 SETTLES A PICK — and ONLY while the front entry pane has one, by ruling.
@@ -656,7 +880,9 @@ export function OpasHost() {
    *  next one"), and closing the order you came from is the opposite of chaining. */
   const openSalesOrder = useCallback((orderId: string) => {
     opas.openPane({ kind: "sales-order", label: "Sales order", salesOrderId: orderId })
-  }, [opas])
+    // ⚠️ THE BAR GETS THE CURSOR BACK, so the next sentence does not need a click.
+    focusBar()
+  }, [opas, focusBar])
 
   /** "close" in the bar closes the FRONT pane. James's fourth multi-pane rule. */
   const closeFrontPane = useCallback((): boolean => {
@@ -673,8 +899,9 @@ export function OpasHost() {
         void abandonCapture(front.captureSessionId)
       }
     }
+    focusBar()
     return true
-  }, [opas])
+  }, [opas, focusBar])
 
   /**
    * ⚠️ THE CAPTURE CLOSES AND THE ORDER'S PANE OPENS IN ITS PLACE, by James's third
@@ -780,13 +1007,41 @@ export function OpasHost() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entryValue, entryPane, picks])
 
+  /** ⚠️ A REF TO BREAK A REAL CYCLE, not a workaround for a lint rule.
+   *  `settleOrderAnswer` builds the option actions, and each one calls
+   *  `chooseOrderPick`, which asks the server again and hands the answer back to
+   *  `settleOrderAnswer`. The two are mutually recursive by design — narrowing a pick
+   *  can produce another pick — and one of them has to be reached indirectly. */
+  const chooseOrderPickRef = useRef<(pick: OrderPick) => void>(() => {})
+
   const settleOrderAnswer = useCallback((result: OrderListSnapshot, spoken: string | undefined) => {
     if (result.kind === "unrecognized" || result.kind === "total") {
-      setSaid(result.hint ?? ORDER_TRY)
+      // ⚠️ A TOTAL IS AN ANSWER, NOT A MISS. "How much is that?" returns a sentence the
+      // director asked for; calling it a miss would colour it as a failure and fade it
+      // at the same speed as "nothing matched".
+      say(result.kind === "total" ? "ack" : "miss", result.hint ?? ORDER_TRY)
       return
     }
     if (result.kind === "open_order" && result.open_order_id) {
       openSalesOrder(result.open_order_id)
+      return
+    }
+    // ⚠️ THE PICK NO LONGER OPENS A PANE (James's third rule, 2026-10-20: "Choices sit
+    // with the question"). It used to go through `updatePane`/`openPane` as an
+    // `order-list` pane carrying a `picks` snapshot, so answering opened the order and
+    // LEFT THE LIST BEHIND IT — the bug the ruling names. The question and its options
+    // are now one thing above the bar, and answering ends both.
+    if (result.kind === "picks") {
+      const picks = result.picks ?? []
+      const options: ReplyOption[] = picks.map((pick) => ({
+        id: `pick-${pick.n}`,
+        label: pick.label,
+      }))
+      const act: Record<string, () => void> = {}
+      picks.forEach((pick) => {
+        act[`pick-${pick.n}`] = () => chooseOrderPickRef.current(pick)
+      })
+      say("question", result.hint ?? "Which one?", { options, act })
       return
     }
     const existing = opas.panes.find((p) => p.kind === "order-list")
@@ -806,8 +1061,8 @@ export function OpasHost() {
     // pane the director had just opened from the previous one — which made "each pane
     // opens the next one" impossible to walk. Panes close one at a time, by the × or by
     // "close".
-    if (result.hint) setSaid(result.hint)
-  }, [opas, openSalesOrder])
+    if (result.hint) say("ack", result.hint)
+  }, [opas, openSalesOrder, say])
 
   const removeOrderPill = useCallback(async (paneId: string, pillId: string) => {
     const pane = opas.panes.find((p) => p.id === paneId)
@@ -820,9 +1075,9 @@ export function OpasHost() {
       })
       settleOrderAnswer(result, undefined)
     } catch {
-      setSaid(ORDER_TRY)
+      say("miss", ORDER_TRY)
     }
-  }, [opas, settleOrderAnswer])
+  }, [opas, settleOrderAnswer, say])
 
   const chooseOrderPick = useCallback(async (pick: OrderPick) => {
     if (pick.order_id) {
@@ -834,15 +1089,141 @@ export function OpasHost() {
       const result = await askOrderList({ question: pick.question })
       settleOrderAnswer(result, undefined)
     } catch {
-      setSaid(ORDER_TRY)
+      say("miss", ORDER_TRY)
     }
-  }, [openSalesOrder, settleOrderAnswer])
+  }, [openSalesOrder, settleOrderAnswer, say])
+  chooseOrderPickRef.current = (pick: OrderPick) => void chooseOrderPick(pick)
+
+  /**
+   * The order the director is looking at, or `null`.
+   *
+   * ⚠️ STRICTLY THE FRONT PANE, which is the dispatch's own wording ("With a Sales Order
+   * pane in front"). The looser reading — "the most recently raised order pane, whatever
+   * is in front" — was considered and rejected: with two orders open and the catalog in
+   * front, "the total" would have to guess which order, and guessing is the one thing
+   * this slice is built to stop doing. When the front pane is not an order, the host
+   * asks, with the open orders as options.
+   */
+  const frontOrder = useMemo(() => {
+    const front = opas.panes.find((p) => p.id === opas.frontPaneId)
+    if (front?.kind !== "sales-order" || front.salesOrderId === undefined) return null
+    return { paneId: front.id, orderId: front.salesOrderId }
+  }, [opas.panes, opas.frontPaneId])
+
+  /** Every open order pane, for the "Which order?" options. */
+  const openOrderPanes = useMemo(
+    () => opas.panes.filter((p) => p.kind === "sales-order" && p.salesOrderId !== undefined),
+    [opas.panes],
+  )
+
+  /**
+   * Answer or act on the order in front. Returns false when it could not.
+   *
+   * ⚠️ AN ANSWER OPENS NOTHING, by ruling. "when's the service" produces a sentence in
+   * the reply line; a pane would be a worse answer than a sentence, because the director
+   * already has the pane.
+   *
+   * ⚠️ AND AN UNREADABLE ORDER SAYS SO. The facts come from the pane's own read, so a
+   * pane still loading has nothing to answer from — which says "Still reading the
+   * order…" rather than answering with a blank.
+   */
+  const handleContext = useCallback(
+    (intent: ContextIntent, orderId: string): void => {
+      const order = orderFacts.current[orderId]
+      if (order === undefined) {
+        say("miss", "Still reading the order\u2026")
+        return
+      }
+      const rowValue = (label: string): string | undefined =>
+        order.order.find((r) => r.label === label)?.value
+
+      if (intent.kind === "answer") {
+        switch (intent.question) {
+          case "service": {
+            const service = rowValue("Service")
+            say("ack", service !== undefined
+              ? `${order.title} \u00b7 ${service}`
+              : `${order.number} has no service date.`)
+            return
+          }
+          case "total":
+            say("ack", `${order.number} \u00b7 ${order.billing.total ?? rowValue("Total") ?? "no total"}`)
+            return
+          case "who":
+            say("ack", `${order.title} \u00b7 ${order.funeral_home}`)
+            return
+          case "where": {
+            const cemetery = rowValue("Cemetery")
+            say("ack", cemetery !== undefined
+              ? `${order.number} \u00b7 ${cemetery}`
+              : `${order.number} has no cemetery on it.`)
+            return
+          }
+          case "status":
+            // ⚠️ `stands_at` IS THE SERVER'S OWN SENTENCE for where an order stands —
+            // the same string the order list shows. Deriving a second one from `state`
+            // would be two answers to one question.
+            say("ack", `${order.number} \u00b7 ${order.stands_at}`)
+            return
+        }
+      }
+
+      switch (intent.action) {
+        case "vault": {
+          const vault = order.order.find((r) => r.label === "Vault")
+          const variant = vault?.link?.kind === "product" ? vault.link.variant_template_id : undefined
+          if (variant === undefined) {
+            // ⚠️ THE SAME HONESTY AS THE PANE'S OWN ROW. A vault whose name resolves to
+            // several catalog variants has no single product to open, so this says why
+            // rather than opening an arbitrary one.
+            say("miss", vault !== undefined
+              ? `${vault.value} doesn\u2019t match one catalog product.`
+              : "This order has no vault on it.")
+            return
+          }
+          opas.openPane({ kind: "product", label: "Product", variantTemplateId: variant })
+          say("ack", `Opened ${vault?.value ?? "the vault"}`)
+          return
+        }
+        case "customer":
+          // ⚠️ IT SAYS THE NAME RATHER THAN NOTHING. The Customer Pane is the next
+          // slice; a silent no-op would read as a broken phrase.
+          say("miss", `${order.funeral_home} \u00b7 the customer pane isn\u2019t built yet.`)
+          return
+        case "cemetery": {
+          const cemetery = rowValue("Cemetery")
+          say("miss", cemetery !== undefined
+            ? `${cemetery} \u00b7 the cemetery pane isn\u2019t built yet.`
+            : "This order has no cemetery on it.")
+          return
+        }
+        case "undo-confirm":
+          if (!order.can_undo_confirm) {
+            say("miss", `${order.number} is not confirmed.`)
+            return
+          }
+          // ⚠️ IT GOES THROUGH THE PANE'S OWN BUTTON, not a second call to the API. The
+          // refusal message, the re-read and the notice all live there, and a parallel
+          // path here would be a second copy of the rule the server owns.
+          setUndoRequest((prev) => ({ ...prev, [orderId]: (prev[orderId] ?? 0) + 1 }))
+          return
+      }
+    },
+    [opas, say],
+  )
 
   const submit = useCallback(async () => {
     const phrase = text.trim()
     if (phrase === "" || busy) return
     setBusy(true)
-    setSaid(null)
+    // ⚠️ IT CLEARS A SENTENCE, NOT A QUESTION, AND THE DISTINCTION IS A BUG I SHIPPED
+    // AND A TEST CAUGHT. This was a bare `hush()` — inherited from the old
+    // `setSaid(null)`, which could only ever be clearing a hint. `hush()` now also
+    // empties `answerActions.current`, so clearing here wiped the outstanding question's
+    // ACTIONS before the answer check below could use them. The symptom was precise and
+    // silent: typing "hart" matched one option, consumed the phrase, closed the list —
+    // and did nothing, because the action map was empty by then.
+    if (reply !== null && reply.kind !== "question") hush()
     try {
       // ⚠️ BEFORE EVERYTHING, INCLUDING THE CAPTURE ENTRANCE. "close" is a word about
       // the overlay, not about an order, and it must work while an entry pane holds the
@@ -850,8 +1231,44 @@ export function OpasHost() {
       if (isCloseRequest(phrase)) {
         const closed = closeFrontPane()
         setText("")
-        if (!closed) setSaid("Nothing is open.")
+        if (!closed) say("miss", "Nothing is open.")
         return
+      }
+
+      // ⚠️ AN OUTSTANDING QUESTION GETS FIRST REFUSAL ON WHAT WAS TYPED (James's third
+      // rule, 2026-10-20): "typing words that match one option ('smith', 'friday', 'the
+      // confirmed one'). One match -> chosen. Still ambiguous -> the list narrows and
+      // the question stays. ... Typing something unrelated drops the question and
+      // treats it as a new request."
+      //
+      // ⚠️ IT IS BEFORE THE CAPTURE ENTRANCE AND BEFORE EVERY OTHER RULE, because the
+      // director is mid-answer and an answer is not a request. `matchAnswer` returning
+      // `none` is what hands the phrase on — so an unrelated line is never swallowed.
+      const outstanding = reply?.options
+      if (outstanding !== undefined && outstanding.length > 0) {
+        const match = matchAnswer(outstanding, phrase)
+        if (match.kind === "one") {
+          setText("")
+          answerOption(match.index)
+          return
+        }
+        if (match.kind === "many") {
+          // The list narrows and the question stays. The typed text is CLEARED, because
+          // the next word the director types is another narrowing and not an addition
+          // to the one just consumed.
+          const kept = match.indices.map((i) => outstanding[i])
+          const act: Record<string, () => void> = {}
+          for (const option of kept) {
+            const existing = answerActions.current[option.id]
+            if (existing !== undefined) act[option.id] = existing
+          }
+          setText("")
+          say("question", `${reply?.text ?? "Which one?"}`, { options: kept, act })
+          return
+        }
+        // `none` — fall through. The question is dropped by whatever handles the
+        // phrase, because every branch below calls `say` or `hush`.
+        hush()
       }
       // ⚠️ THE CAPTURE ENTRANCE IS CHECKED BEFORE THE CATALOG AND BEFORE THE RESOLVER.
       // "start an order for Hopkins" contains no catalog phrase, but sending it to the
@@ -869,6 +1286,52 @@ export function OpasHost() {
         setText("")
         return
       }
+
+      // ⚠️ CONTEXT, AND IT IS GATED ON THE FRONT PANE BEING AN ORDER (James's fourth
+      // rule, 2026-10-20). That gate is what keeps every existing phrase working: "how
+      // much" and "what's the total" are ALSO order-list phrases, so with a LIST in
+      // front they still total the list, and only with an ORDER in front do they answer
+      // about that order. One phrase, two readings, decided by what is in front rather
+      // than by a mode.
+      const intent = contextIntent(phrase)
+      if (intent !== null && frontOrder !== null) {
+        setText("")
+        handleContext(intent, frontOrder.orderId)
+        return
+      }
+      // ⚠️ AND WITH NO ORDER IN FRONT IT ASKS, rather than falling through to the
+      // resolver — which is what used to happen, matching no product and opening an
+      // unfiltered catalog on "the vault".
+      //
+      // ⚠️ EXCEPT WHERE THE PHRASE HAS ANOTHER MEANING THAT ALREADY WORKS. "how much" is
+      // the order list's own total question; asking "Which order?" instead would break
+      // a shipped behaviour to serve a new one. So a context phrase that is also an
+      // order-list phrase falls through, and the list answers it.
+      if (intent !== null && !isOrderListPhrase(phrase)) {
+        setText("")
+        if (openOrderPanes.length === 0) {
+          say("miss", "No order is open. Try: \u201criverside order\u201d")
+          return
+        }
+        const options: ReplyOption[] = openOrderPanes.map((pane) => {
+          const facts = orderFacts.current[pane.salesOrderId!]
+          return {
+            id: pane.salesOrderId!,
+            label: facts?.title ?? "This order",
+            ...(facts !== undefined ? { detail: facts.number } : {}),
+          }
+        })
+        const act: Record<string, () => void> = {}
+        for (const pane of openOrderPanes) {
+          const orderId = pane.salesOrderId!
+          act[orderId] = () => {
+            opas.raisePane(pane.id)
+            handleContext(intent, orderId)
+          }
+        }
+        say("question", "Which order?", { options, act })
+        return
+      }
       // ⚠️ AFTER CAPTURE AND THE CATALOG, BEFORE THE RESOLVER. An order question
       // is a structured read, not a product name. A refinement ("only Hopkins")
       // only counts while the order list — or the sales order it opened — is in front.
@@ -883,7 +1346,7 @@ export function OpasHost() {
           })
           settleOrderAnswer(result, phrase)
         } catch {
-          setSaid(ORDER_TRY)
+          say("miss", ORDER_TRY)
         }
         setText("")
         return
@@ -900,26 +1363,48 @@ export function OpasHost() {
         // ⚠️ A NUMBERED PICK, not a filtered list and not a guess. The discriminators say
         // what would narrow it, which is the only thing that tells the director WHY they
         // are being asked.
-        opas.setPendingPick(route.candidateIds)
-        opas.openPane({
-          kind: "product-list",
-          label: "Which one?",
-          candidateIds: route.candidateIds,
-        })
-        setSaid(
+        //
+        // ⚠️ AND IT NO LONGER OPENS A PANE. This used to open a `product-list` pane with
+        // `candidateIds`, which rendered the same numbered list inside a floating card
+        // and stayed open after the choice was made. The options now sit with the
+        // question above the bar.
+        const options: ReplyOption[] = route.candidates.map((c) => ({
+          id: c.variant_template_id,
+          label: c.name ?? c.variant_template_id,
+          ...(c.option_label !== undefined ? { detail: c.option_label } : {}),
+        }))
+        const act: Record<string, () => void> = {}
+        for (const c of route.candidates) {
+          act[c.variant_template_id] = () =>
+            opas.openPane({
+              kind: "product",
+              label: "Product",
+              variantTemplateId: c.variant_template_id,
+            })
+        }
+        say(
+          "question",
           route.discriminators.length > 0
-            ? `${route.candidateIds.length} match — differs by ${route.discriminators.join(", ")}`
-            : `${route.candidateIds.length} match`,
+            ? `Which one? They differ by ${route.discriminators.join(", ")}.`
+            : "Which one?",
+          { options, act },
         )
       } else {
         opas.openPane({ kind: "product-list", label: "Catalog", unmatchedPhrase: phrase })
-        setSaid(`no match for “${phrase}”`)
+        say("miss", `Nothing matched \u201c${phrase}\u201d.`)
       }
       setText("")
     } finally {
       setBusy(false)
+      // ⚠️ ONE PLACE, IN THE `finally`, RATHER THAN AT EVERY `return` ABOVE. `submit`
+      // has eleven exits and a focus call on each would be eleven chances to miss one
+      // — which is exactly how the bar lost the cursor in the first place.
+      focusBar()
     }
-  }, [text, busy, opas, settleOrderAnswer, closeFrontPane])
+  }, [
+    text, busy, opas, settleOrderAnswer, closeFrontPane, say, hush,
+    reply, answerOption, frontOrder, openOrderPanes, handleContext, focusBar,
+  ])
 
   /** The panes on the desk. Order-list and sales-order panes move to the mobile track
    *  below `narrow`, so they are not on the desk at all there. */
@@ -1017,6 +1502,19 @@ export function OpasHost() {
               // The prototype's order: raise FIRST, unconditionally, then try to drag.
               opas.raisePane(pane.id)
               dragStart(e, pane.id, placed, i)
+            }}
+            // ⚠️ A CLICK INSIDE A PANE HANDS THE CURSOR BACK TO THE BAR (James, item 1:
+            // "click inside a pane"). ON `click`, NOT `pointerdown`: stealing focus on
+            // pointerdown would move it before the button under the pointer had received
+            // its own click, and a button that never fires is worse than a lost cursor.
+            //
+            // ⚠️ AND NOT WHEN THE CLICK LANDED IN AN EDITABLE FIELD, which is the
+            // ruling's one exception. `closest` rather than a tag test so a
+            // contenteditable's children count.
+            onClick={(e) => {
+              const el = e.target as HTMLElement | null
+              if (el?.closest("input, textarea, select, [contenteditable='true']")) return
+              focusBar()
             }}
             style={{
               ...GLASS,
@@ -1148,11 +1646,13 @@ export function OpasHost() {
             <div style={{ padding: "0 20px 20px" }}>
               {pane.kind === "product-list" ? (
                 <ProductListPane
-                  candidateIds={pane.candidateIds}
                   unmatchedPhrase={pane.unmatchedPhrase}
                   onOpenProduct={(id) => {
-                    opas.setPendingPick(null)
+                    // ⚠️ NO `setPendingPick(null)` ANY MORE. This pane is no longer a
+                    // pick, so there is no pending question for it to cancel — the only
+                    // thing that raises one is `say(…, {options})`, above the bar.
                     opas.openPane({ kind: "product", label: "Product", variantTemplateId: id })
+                    focusBar()
                   }}
                 />
               ) : pane.kind === "capture" ? (
@@ -1185,8 +1685,7 @@ export function OpasHost() {
                   }
                   onOpenOrder={openSalesOrder}
                   onRemovePill={(pillId) => void removeOrderPill(pane.id, pillId)}
-                  onAskHint={() => setSaid(ORDER_CHANGE)}
-                  onChoosePick={(pick) => void chooseOrderPick(pick)}
+                  onAskHint={() => say("ack", ORDER_CHANGE)}
                 />
               ) : pane.kind === "sales-order" && pane.salesOrderId ? (
                 <SalesOrderPane
@@ -1198,6 +1697,10 @@ export function OpasHost() {
                   onOpenProduct={(id) =>
                     opas.openPane({ kind: "product", label: "Product", variantTemplateId: id })
                   }
+                  // ⚠️ THE ORDER IS REPORTED UP so the bar can answer "when's the
+                  // service" from it without opening anything.
+                  onLoaded={(order) => { orderFacts.current[order.id] = order }}
+                  undoRequest={undoRequest[pane.salesOrderId]}
                 />
               ) : pane.kind === "product" ? (
                 <ProductPane variantTemplateId={pane.variantTemplateId!} />
@@ -1263,8 +1766,7 @@ export function OpasHost() {
                       selectedId={opas.panes.find((p) => p.kind === "sales-order")?.salesOrderId}
                       onOpenOrder={openSalesOrder}
                       onRemovePill={(pillId) => void removeOrderPill(pane.id, pillId)}
-                      onAskHint={() => setSaid(ORDER_CHANGE)}
-                      onChoosePick={(pick) => void chooseOrderPick(pick)}
+                      onAskHint={() => say("ack", ORDER_CHANGE)}
                     />
                   ) : pane.kind === "sales-order" && pane.salesOrderId ? (
                     <SalesOrderPane
@@ -1274,6 +1776,8 @@ export function OpasHost() {
                           kind: "product", label: "Product", variantTemplateId: id,
                         })
                       }
+                      onLoaded={(order) => { orderFacts.current[order.id] = order }}
+                      undoRequest={undoRequest[pane.salesOrderId]}
                     />
                   ) : null}
                 </div>
@@ -1418,9 +1922,126 @@ export function OpasHost() {
             />
             </MirrorStack>
           </div>
-          {said !== null && (
-            <div data-testid="opas-said" style={{ padding: "0 0 6px 52px", fontSize: 12, color: "#9a9a9a" }}>
-              {said}
+        </div>
+      )}
+
+      {/* ── OPAS'S VOICE — one place, directly above the bar ─────────────────
+          ⚠️ IT MOVED OUT OF THE BAR ON 2026-10-20. It was a line INSIDE the glass pill,
+          below the input (`padding: "0 0 6px 52px"`), which is where a hint can live and
+          a question cannot: a question needs options under it, and the pill is the thing
+          the options have to sit above.
+
+          ⚠️ THE GEOMETRY IS THE PROTOTYPE'S `placeSaid`, not a new choice:
+            function placeSaid(){const r=line.getBoundingClientRect();
+                                 said.style.bottom=(innerHeight-r.top+10)+'px'}
+          The bar sits at `bottom: 24` and is `barH` tall, so its top edge is
+          `24 + barH` from the bottom and this sits `REPLY_GAP_ABOVE_BAR` above that.
+          Computed rather than measured, because `barH` is already observed by a
+          ResizeObserver for the entry pane and a second measurement of one thing is a
+          second thing to disagree.
+
+          ⚠️ AND `align-items: flex-end`, ALSO THE PROTOTYPE'S, so the sentence and the
+          options hug the bar's right edge rather than stretching across it. */}
+      {opas.isOpen && reply !== null && (
+        <div
+          data-testid="opas-reply"
+          data-reply-kind={reply.kind}
+          style={{
+            position: "fixed",
+            zIndex: 44,
+            right: 24,
+            bottom: 24 + (barH || 46) + REPLY_GAP_ABOVE_BAR,
+            width: BAR_WIDTH,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-end",
+            gap: 6,
+            pointerEvents: "none",
+          }}
+        >
+          {/* ⚠️ THE SENTENCE IS A CHIP, from the prototype's `.chip`, and it is ABOVE the
+              options — `show(chips)` writes the chips and then appends `.pick`. */}
+          <span
+            data-testid="opas-said"
+            role="status"
+            aria-live="polite"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "3px 10px",
+              borderRadius: 999,
+              background: "rgba(40,40,40,.55)",
+              backdropFilter: "blur(16px)",
+              WebkitBackdropFilter: "blur(16px)",
+              border: "1px solid rgba(255,255,255,.12)",
+              fontSize: 12,
+              color: "#f2f2f2",
+              boxShadow: "0 8px 20px rgba(0,0,0,.45)",
+              maxWidth: "100%",
+            }}
+          >
+            {reply.text}
+          </span>
+
+          {reply.options !== undefined && reply.options.length > 0 && (
+            <div
+              data-testid="opas-options"
+              style={{
+                pointerEvents: "auto",
+                ...GLASS,
+                borderRadius: 18,
+                padding: 6,
+                minWidth: "min(340px, 100%)",
+                maxWidth: "100%",
+              }}
+            >
+              {reply.options.map((option, i) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  data-testid={`opas-option-${i + 1}`}
+                  onClick={() => answerOption(i)}
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    alignItems: "baseline",
+                    width: "100%",
+                    textAlign: "left",
+                    background: "none",
+                    border: 0,
+                    borderRadius: 10,
+                    padding: "8px 10px",
+                    cursor: "pointer",
+                    fontSize: 14,
+                    color: "#f2f2f2",
+                  }}
+                >
+                  {/* The prototype's `<kbd>${i+1}</kbd>`. ⌘1-9 and a bare digit reach the
+                      same option; the number is the affordance for all three. */}
+                  <kbd
+                    style={{
+                      flex: "none",
+                      fontFamily: "'IBM Plex Mono', monospace",
+                      fontSize: 11,
+                      padding: "2px 6px",
+                      borderRadius: 4,
+                      border: "1px solid rgba(255,255,255,.14)",
+                      color: "#9a9a9a",
+                    }}
+                  >
+                    {i + 1}
+                  </kbd>
+                  <span>{option.label}</span>
+                  {option.detail !== undefined && (
+                    <span
+                      data-testid={`opas-option-detail-${i + 1}`}
+                      style={{ color: "#9a9a9a", fontSize: 13 }}
+                    >
+                      {option.detail}
+                    </span>
+                  )}
+                </button>
+              ))}
             </div>
           )}
         </div>

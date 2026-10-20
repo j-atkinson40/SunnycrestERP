@@ -22,11 +22,9 @@ const KIND_LABEL: Record<string, string> = {
 }
 
 export function ProductListPane({
-  candidateIds,
   unmatchedPhrase,
   onOpenProduct,
 }: {
-  candidateIds?: readonly string[]
   unmatchedPhrase?: string
   onOpenProduct: (variantTemplateId: string) => void
 }) {
@@ -43,16 +41,20 @@ export function ProductListPane({
     }
   }, [])
 
-  const shown = useMemo(() => {
-    if (rows === null) return null
-    // ⚠️ A NUMBERED PICK filters to the resolver's candidates and NOTHING ELSE. The list is
-    // the pick; the overlay still does not choose.
-    if (candidateIds !== undefined) {
-      const want = new Set(candidateIds)
-      return rows.filter((r) => want.has(r.variant_template_id))
-    }
-    return rows
-  }, [rows, candidateIds])
+  /**
+   * ⚠️ `candidateIds` IS GONE, AND WITH IT THIS PANE'S ROLE AS A PICK (James, 2026-10-20:
+   * "Replace the floating pick pane... Remove the old pick pane and its code; the bug
+   * where it stayed open goes with it.").
+   *
+   * It used to take the resolver's candidate ids, filter the catalog down to them, number
+   * the rows and print "Which one?" at the top. Choosing opened the product and left this
+   * pane standing behind it — the stale list the ruling names. A numbered pick now lives
+   * above the bar (`reply.ts`), where answering it ends the question.
+   *
+   * ⚠️ WHAT THIS PANE STILL IS: the catalog, whole, and the place an unmatched phrase
+   * lands. Both of those are lists to read, not questions to answer.
+   */
+  const shown = rows
 
   // ⚠️ RESOLVED OVER THE WHOLE SHOWN SET, NOT PER GROUP, because a collision is defined
   // within a group and the function keys on kind itself. Computing it per group would work
@@ -99,14 +101,6 @@ export function ProductListPane({
           Nothing matched “{unmatchedPhrase}”. The whole catalog:
         </p>
       )}
-      {candidateIds !== undefined && (
-        <p
-          data-testid="opas-list-pick"
-          style={{ fontSize: 13, color: "#9a9a9a", margin: "0 0 10px" }}
-        >
-          Which one?
-        </p>
-      )}
       {groups.map((g) => (
         <section key={g.kind} data-testid={`opas-list-group-${g.kind}`}>
           <h3
@@ -118,7 +112,7 @@ export function ProductListPane({
             {KIND_LABEL[g.kind] ?? g.kind}
           </h3>
           <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-            {g.items.map((r, i) => (
+            {g.items.map((r) => (
               <li key={r.variant_template_id}>
                 <button
                   type="button"
@@ -131,13 +125,6 @@ export function ProductListPane({
                     cursor: "pointer", color: "#f2f2f2", fontSize: 14,
                   }}
                 >
-                  {/* ⚠️ The number only appears in a pick. A permanent index would read as
-                      a catalog ordering the catalog does not have. */}
-                  {candidateIds !== undefined && (
-                    <span style={{ color: "#5e5e5e", fontFamily: "'IBM Plex Mono', monospace", fontSize: 12 }}>
-                      {i + 1}
-                    </span>
-                  )}
                   <span>{r.name}</span>
                   {/* ⚠️ The label shows only when it ADDS something, and where two rows
                       would otherwise look identical it becomes the LINE NAME. Both rules
