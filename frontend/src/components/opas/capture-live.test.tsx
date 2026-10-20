@@ -325,7 +325,23 @@ describe("stale responses are dropped", () => {
   })
 })
 
-describe("the placeholder says what is happening and is never stale", () => {
+/**
+ * ⚠️ RE-POINTED FROM THE PLACEHOLDER TO THE REPLY LINE ON 2026-10-20, BY RULING, AND ALL
+ * FOUR WERE GREEN WITHOUT BEING EVIDENCE.
+ *
+ * They asserted `toHaveAttribute("placeholder", …)` on the bar — with text typed INTO the
+ * bar, which the second test's own comment explains was necessary to get past
+ * `placeholderFor`'s empty-bar short-circuit. That combination is the defect: a browser
+ * renders a textarea's placeholder ONLY when the field is empty, so every one of these
+ * assertions read an attribute that was present in the DOM and invisible on screen. jsdom
+ * paints nothing, so the attribute check passed.
+ *
+ * ⚠️ THE CLAIMS ARE UNCHANGED AND ARE STILL WORTH HOLDING — what the bar says while a
+ * pick is pending, that it counts the missing SET rather than `needed` rows, that the
+ * pill and the voice agree, and that "nothing needed" waits for an empty set. Only the
+ * surface moved, and now it is one a director can see.
+ */
+describe("Opas's voice says what is happening and is never stale", () => {
   it("asks the question while a pick is pending, naming the keys", async () => {
     vi.mocked(startCapture).mockResolvedValue(
       state({
@@ -339,15 +355,9 @@ describe("the placeholder says what is happening and is never stale", () => {
     )
     await openOrder()
     await waitFor(() =>
-      expect(screen.getByTestId("opas-input")).toHaveAttribute(
-        "placeholder",
-        expect.stringContaining("Which one?"),
-      ),
+      expect(screen.getByTestId("opas-said").textContent).toContain("Which one?"),
     )
-    expect(screen.getByTestId("opas-input")).toHaveAttribute(
-      "placeholder",
-      expect.stringContaining("1–3"),
-    )
+    expect(screen.getByTestId("opas-said").textContent).toContain("1–3")
   })
 
   it("counts the MISSING SET, not rows in the `needed` state", async () => {
@@ -376,10 +386,14 @@ describe("the placeholder says what is happening and is never stale", () => {
         },
       }) as never,
     )
-    // ⚠️ TYPED AND NOT CLEARED. `placeholderFor` short-circuits to "Say what the
-    // director said" on an EMPTY bar, before it ever reaches the missing count — so
-    // `openOrder()`, which clears, makes this unmeasurable. My first version used it
-    // and both of these failed in the control, which is the harness saying so.
+    // ⚠️ TYPED AND NOT CLEARED, AND THIS COMMENT IS THE EVIDENCE THAT THE OLD SURFACE
+    // WAS WRONG. It read: "`placeholderFor` short-circuits to 'Say what the director
+    // said' on an EMPTY bar, before it ever reaches the missing count — so
+    // `openOrder()`, which clears, makes this unmeasurable." True, and the conclusion
+    // drawn from it was to type into the bar — which is the one state where a browser
+    // hides the placeholder entirely. The short-circuit is gone and the voice is its
+    // own element now, so the typing is no longer load-bearing; it is kept because a
+    // half-typed order is the realistic state.
     render(
       <OpasProvider>
         <OpasHost />
@@ -392,13 +406,9 @@ describe("the placeholder says what is happening and is never stale", () => {
     )
 
     await waitFor(() =>
-      expect(screen.getByTestId("opas-input")).toHaveAttribute(
-        "placeholder", expect.stringContaining("3 still needed"),
-      ),
+      expect(screen.getByTestId("opas-said").textContent).toContain("3 still needed"),
     )
-    expect(screen.getByTestId("opas-input")).not.toHaveAttribute(
-      "placeholder", expect.stringContaining("Nothing needed"),
-    )
+    expect(screen.getByTestId("opas-said").textContent).not.toContain("Nothing needed")
   })
 
   it("THE PILL AND THE BAR AGREE — one counts rows, the other NAMES them", async () => {
@@ -448,12 +458,8 @@ describe("the placeholder says what is happening and is never stale", () => {
     // three missing FIELDS across two amber-able ROWS
     expect(screen.getByTestId("capture-needed-pill")).toHaveTextContent("2")
     // and the bar names them rather than printing a third number
-    expect(screen.getByTestId("opas-input")).toHaveAttribute(
-      "placeholder", expect.stringContaining("Still need:"),
-    )
-    expect(screen.getByTestId("opas-input")).toHaveAttribute(
-      "placeholder", expect.stringContaining("service date"),
-    )
+    expect(screen.getByTestId("opas-said").textContent).toContain("Still need:")
+    expect(screen.getByTestId("opas-said").textContent).toContain("service date")
   })
 
 
@@ -473,9 +479,7 @@ describe("the placeholder says what is happening and is never stale", () => {
     )
 
     await waitFor(() =>
-      expect(screen.getByTestId("opas-input")).toHaveAttribute(
-        "placeholder", expect.stringContaining("Nothing needed"),
-      ),
+      expect(screen.getByTestId("opas-said").textContent).toContain("Nothing needed"),
     )
   })
 
@@ -483,7 +487,7 @@ describe("the placeholder says what is happening and is never stale", () => {
     // ⚠️ A DROPPED RESPONSE STILL CLEARS THE IN-FLIGHT FLAG. Gating that on `accept`
     // would leave "Reading what you typed…" on screen forever after one out-of-order
     // delivery — a message outliving its cause, which is the one thing the
-    // placeholder ruling forbids.
+    // placeholder ruling forbade and the 2026-10-20 reply-line ruling still does.
     const bar = await openOrder()
     vi.mocked(setCaptureText).mockResolvedValue(
       withValue("x", { seq: 1 }) as never,
@@ -498,10 +502,7 @@ describe("the placeholder says what is happening and is never stale", () => {
     await settle()
     await sleep(80)
 
-    expect(screen.getByTestId("opas-input")).not.toHaveAttribute(
-      "placeholder",
-      expect.stringContaining("Reading"),
-    )
+    expect(screen.getByTestId("opas-said").textContent).not.toContain("Reading")
   })
 })
 

@@ -28,7 +28,7 @@ export function sameEntryStatus(
   next: EntryPaneStatus,
 ): boolean {
   return (
-    cur.placeholder === next.placeholder &&
+    cur.question === next.question &&
     cur.capturing === next.capturing &&
     cur.ready === next.ready &&
     cur.picks.length === next.picks.length &&

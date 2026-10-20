@@ -63,8 +63,19 @@ import { EXTRACT_DEBOUNCE_MS, createSequencer } from "./capture-sequence"
  * three are facts about the pane; the bar is where they are used.
  */
 export interface EntryPaneStatus {
-  /** ⚠️ DERIVED ON EVERY RENDER, NEVER LATCHED — see `placeholderFor`. */
-  readonly placeholder: string
+  /** What OPAS SAYS about this order — the next question, or what is still needed.
+   *
+   *  ⚠️ IT WAS `placeholder: string` UNTIL 2026-10-20, AND THAT NAME WAS THE BUG. The
+   *  bar renders this string as the textarea's `placeholder`, which a browser shows
+   *  ONLY WHEN THE FIELD IS EMPTY — and `placeholderFor` returned the question only
+   *  when the text was NON-empty. The two conditions are mutually exclusive, so the
+   *  server's `next_question` and every "Still need: …" variant were computed for
+   *  exactly the state in which they could not be seen. Measured 2026-10-20: four of
+   *  the nine strings that function could return were unreachable on screen, including
+   *  the one the 2026-10-15 ruling was written for.
+   *
+   *  ⚠️ DERIVED ON EVERY RENDER, NEVER LATCHED — see `captureVoice`. */
+  readonly question: string
   readonly picks: readonly CapturePick[]
   readonly capturing: boolean
   readonly ready: boolean
@@ -89,7 +100,19 @@ export interface EntryPaneStatus {
  * that needs the director's hand; reporting "reading…" over the top of it would hide a
  * question behind a progress note.
  */
-export function placeholderFor(args: {
+/** The bar's own prompt in entry mode — a plain one, by ruling.
+ *
+ * ⚠️ JAMES, 2026-10-20: "capture's question moves into the reply line above the bar and
+ * stays visible while typing; the placeholder goes back to a plain prompt. One voice
+ * everywhere. Supersedes the 2026-10-15 placeholder ruling."
+ *
+ * ⚠️ IT IS THE SAME STRING THE BAR ALREADY SHOWED. Of everything `placeholderFor` could
+ * return, this is the one a director with an empty bar actually saw, so the bar looks
+ * unchanged while empty and the question now appears above it and stays.
+ */
+export const ENTRY_PLACEHOLDER = "Say what the director said"
+
+export function captureVoice(args: {
   readonly ready: boolean
   readonly inFlight: boolean
   readonly text: string
@@ -126,7 +149,16 @@ export function placeholderFor(args: {
   }
   if (args.reviewing) return "Ready to review"
   if (args.inFlight) return "Reading what you typed…"
-  if (args.text.trim() === "") return "Say what the director said"
+  // ⚠️ THE `text.trim() === ""` BRANCH IS GONE, and it is why the question was invisible.
+  // It read:
+  //
+  //     if (args.text.trim() === "") return "Say what the director said"
+  //
+  // That is a PROMPT, not something Opas says, and it stood in front of every line
+  // below it for the only state in which this string was rendered. The prompt is now
+  // `ENTRY_PLACEHOLDER` on the bar itself and this function answers one question: what
+  // does Opas say about this order right now. With an empty bar that is still the next
+  // question, which is what "stays visible while typing" needs at both ends.
   // ⚠️ ONE QUESTION, FROM THE SERVER, REPLACING "Still need: a, b, c" (James,
   // 2026-10-15). Three gaps named at once is a report; the bar is a conversation and
   // asks for the next thing. The wording and the ORDER are the server's — see
@@ -552,7 +584,7 @@ export function CapturePane({
   const liveMissing = state?.missing.length ?? 0
   const liveReviewing = state?.status === "review"
   const livePicks = state?.pending_picks ?? []
-  const placeholder = placeholderFor({
+  const question = captureVoice({
     ready: state !== null,
     inFlight,
     text,
@@ -564,7 +596,7 @@ export function CapturePane({
   })
   useEffect(() => {
     onStatus?.({
-      placeholder,
+      question,
       picks: livePicks,
       capturing: state !== null && state.status === "capturing",
       ready: state !== null,
@@ -573,7 +605,7 @@ export function CapturePane({
       hoveredFieldIds: hoveredFields,
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [placeholder, livePicks, state?.status, state !== null, state?.spans,
+  }, [question, livePicks, state?.status, state !== null, state?.spans,
       state?.spans_for_text, hoveredFields])
 
   // ⚠️ DECLARED WITH THE OTHER HOOKS, ABOVE THE EARLY RETURNS. Placed after them it

@@ -25,7 +25,7 @@ import { sameEntryStatus } from "./entry-status-guard"
 import type { EntryPaneStatus } from "./CapturePane"
 
 const BASE: EntryPaneStatus = {
-  placeholder: "Which vault?",
+  question: "Which vault?",
   picks: [],
   capturing: true,
   ready: true,
@@ -40,7 +40,7 @@ const BASE: EntryPaneStatus = {
  * makes this a ratchet rather than a snapshot of today's shape.
  */
 const VARIANTS: { [K in keyof EntryPaneStatus]-?: EntryPaneStatus[K] } = {
-  placeholder: "Which cemetery?",
+  question: "Which cemetery?",
   picks: [{ field_id: "vault", phrase: "c", options: [["a", "A"]], discriminator: null }] as never,
   capturing: false,
   ready: false,

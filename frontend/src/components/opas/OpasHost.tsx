@@ -25,7 +25,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useAuth } from "@/contexts/auth-context"
 import { useOpas, type OpasPaneKind } from "@/contexts/opas-context"
 import { abandonCapture, fetchVocabulary } from "@/services/opas-capture-service"
-import { CapturePane, type EntryPaneStatus } from "./CapturePane"
+import { CapturePane, ENTRY_PLACEHOLDER, type EntryPaneStatus } from "./CapturePane"
 import {
   CaptureMirror,
   MIRROR_BOX,
@@ -611,6 +611,58 @@ export function OpasHost() {
     document.addEventListener("keydown", onKeyDown, true)
     return () => document.removeEventListener("keydown", onKeyDown, true)
   }, [opas.isOpen, reply, text, answerOption])
+
+  /**
+   * CAPTURE SPEAKS IN THE SAME VOICE AS EVERYTHING ELSE.
+   *
+   * ⚠️ JAMES, 2026-10-20, SUPERSEDING THE 2026-10-15 PLACEHOLDER RULING: "capture's
+   * question moves into the reply line above the bar and stays visible while typing;
+   * the placeholder goes back to a plain prompt. One voice everywhere."
+   *
+   * ⚠️ IT IS A BUG FIX AND NOT ONLY A MOVE, which is worth stating because the previous
+   * slice declined to make it. The question was rendered as the bar's `placeholder`,
+   * which a browser shows only when the field is EMPTY, and `placeholderFor` returned
+   * the question only when the text was NON-empty. Measured: four of its nine possible
+   * return values could not appear on screen at all — the server's `next_question`,
+   * both "Still need" forms, and "Nothing needed". The 2026-10-15 ruling that asked for
+   * one question at a time had never been visible to anyone.
+   *
+   * ⚠️ `kind: "question"` SO IT DOES NOT FADE, which is what "stays visible while
+   * typing" requires — an acknowledgement at 4200ms would take the question away
+   * mid-sentence.
+   *
+   * ⚠️ AND IT CLEARS ONLY ITS OWN SENTENCE ON THE WAY OUT. `lastCaptureVoice` holds what
+   * capture last said; when the entry pane goes, the reply is cleared only if it is
+   * still that string.
+   *
+   * ⚠️ CORRECTED BEFORE SHIPPING — THAT GUARD IS DEFENSIVE, NOT LOAD-BEARING, AND MY
+   * COMMENT CLAIMED OTHERWISE. It read: "Clearing unconditionally would wipe whatever the
+   * NEXT thing said — and after Approve the next thing is the new order's pane opening."
+   * Measured by break test: replacing the condition with a bare `setReply(null)` turned
+   * NOTHING red. The reason is structural — in entry mode the only speaker IS capture
+   * (`submit` is not reached, the bar is the order's text field), so at the moment
+   * `entryMode` goes false the reply cannot be anyone else's. `openSalesOrder` says
+   * nothing, so the approve path has nothing to wipe either.
+   *
+   * It is kept for independence from that sequencing rather than for a defect it
+   * currently prevents: the first thing to speak during a capture — a background
+   * notification, a second pane's acknowledgement — makes the unconditional version
+   * wrong, and nothing would fail when it does.
+   */
+  const lastCaptureVoice = useRef<string | null>(null)
+  useEffect(() => {
+    if (entryMode) {
+      const voice = status?.question
+      if (voice === undefined || voice === "") return
+      lastCaptureVoice.current = voice
+      say("question", voice)
+      return
+    }
+    if (lastCaptureVoice.current === null) return
+    const stale = lastCaptureVoice.current
+    lastCaptureVoice.current = null
+    setReply((cur) => (cur !== null && cur.text === stale ? null : cur))
+  }, [entryMode, status?.question, say])
 
   /**
    * ESCAPE CANCELS THE QUESTION, AND THE REPLY GOES WITH IT.
@@ -1898,7 +1950,13 @@ export function OpasHost() {
                 }
                 void submit()
               }}
-              placeholder={entryMode ? (status?.placeholder ?? "Starting the order…") : "orders · the catalog"}
+              // ⚠️ A PLAIN PROMPT IN ENTRY MODE SINCE 2026-10-20, BY RULING. It was
+              // `status?.placeholder` — the capture question — and a textarea shows its
+              // placeholder ONLY WHEN EMPTY, while `placeholderFor` returned the
+              // question only when the text was NON-empty. Four of its nine possible
+              // strings were therefore unreachable on screen, the server's
+              // `next_question` among them. The question is in the reply line now.
+              placeholder={entryMode ? ENTRY_PLACEHOLDER : "orders · the catalog"}
               aria-label={entryMode ? "Say what the director said" : "Ask Opas"}
               style={{
                 // ⚠️ EVERY TYPOGRAPHIC PROPERTY COMES FROM `MIRROR_BOX` SINCE 2026-10-16, AND

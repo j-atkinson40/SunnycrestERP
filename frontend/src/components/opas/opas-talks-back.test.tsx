@@ -615,3 +615,100 @@ describe("4 — context from the front pane", () => {
     expect(screen.getByTestId("opas-said").textContent).not.toContain("1,705")
   })
 })
+
+// ───────────────────────────────────────────────────────────────────────────
+// 5 — capture speaks in the same voice (James, 2026-10-20)
+// ───────────────────────────────────────────────────────────────────────────
+
+describe("5 — capture's question is in the reply line and stays while typing", () => {
+  /**
+   * ⚠️ IT WAS NEVER ON SCREEN BEFORE THIS, and that is the finding rather than the
+   * feature. The question was rendered as the bar's textarea `placeholder`, which a
+   * browser shows ONLY when the field is empty, while `placeholderFor` returned the
+   * question only when the text was NON-empty. Four of its nine return values could
+   * not appear at all — the server's `next_question` among them, which is what the
+   * 2026-10-15 ruling was written to put on screen.
+   */
+  async function capturing(next: string) {
+    const svc = await import("@/services/opas-capture-service")
+    // ⚠️ THE FULL SERVER SHAPE, NOT A HAND-PICKED SUBSET. My first version listed only
+    // the keys this test reads and the pane threw `Cannot read properties of undefined
+    // (reading 'trim')` — it consumes several more. A fixture narrower than the
+    // contract tests the fixture.
+    const st = {
+      session_id: "s1",
+      status: "capturing",
+      object_type: "sales_order",
+      typed_lines: [],
+      full_text: null,
+      resolutions: {},
+      conflicts: [],
+      values: {},
+      answered: [],
+      missing: ["cemetery"],
+      missing_labels: ["Cemetery"],
+      next_question: next,
+      unanswered_optional: [],
+      not_applicable: [],
+      indeterminate: [],
+      is_complete: false,
+      unrecognized: [],
+      pending_picks: [],
+      vault_resolution: { resolved: false, candidates: [], discriminators: [] },
+      surface: {
+        id: "capture",
+        rows: [
+          { row_id: "funeral_home", label: "Funeral Home", state: "done",
+            value: "Hopkins Funeral Home", secondary_value: null },
+          { row_id: "cemetery", label: "Cemetery", state: "not_mentioned",
+            value: null, secondary_value: null },
+        ],
+      },
+    }
+    vi.mocked(svc.startCapture).mockResolvedValue(st as never)
+    vi.mocked(svc.setCaptureText).mockResolvedValue(st as never)
+    vi.mocked(svc.readCapture).mockResolvedValue(st as never)
+    await mount()
+    fireEvent.change(bar(), { target: { value: "start an order for hopkins" } })
+    await act(async () => {
+      fireEvent.keyDown(bar(), { key: "Enter" })
+    })
+    await waitFor(() => expect(screen.getByTestId("capture-pane")).toBeTruthy())
+  }
+
+  it("says the server's question above the bar, WITH TEXT IN THE BAR", async () => {
+    await capturing("What day is the service?")
+    await waitFor(() => expect(screen.getByTestId("opas-said").textContent).toBe(
+      "What day is the service?",
+    ))
+    // ⚠️ THE BAR IS NOT EMPTY, which is the state the old surface could not render in.
+    expect(bar().value).not.toBe("")
+    // and the question persists — it is a `question`, which never fades
+    expect(screen.getByTestId("opas-reply").getAttribute("data-reply-kind")).toBe("question")
+  })
+
+  it("and it survives more typing", async () => {
+    await capturing("What day is the service?")
+    await waitFor(() => expect(screen.getByTestId("opas-said")).toBeTruthy())
+    fireEvent.change(bar(), { target: { value: "start an order for hopkins monticello" } })
+    await act(async () => { await Promise.resolve() })
+    expect(screen.getByTestId("opas-said").textContent).toBe("What day is the service?")
+  })
+
+  it("the bar's own placeholder is a PLAIN PROMPT, not the question", async () => {
+    await capturing("What day is the service?")
+    await waitFor(() => expect(screen.getByTestId("opas-said")).toBeTruthy())
+    expect(bar().getAttribute("placeholder")).toBe("Say what the director said")
+    expect(bar().getAttribute("placeholder")).not.toContain("service")
+  })
+
+  it("⚠️ AND THE QUESTION GOES WHEN THE CAPTURE DOES, without wiping what comes next", async () => {
+    await capturing("What day is the service?")
+    await waitFor(() => expect(screen.getByTestId("opas-said")).toBeTruthy())
+    const pane = screen.getByTestId("capture-pane").closest("[data-testid^='opas-pane-']")!
+    await act(async () => {
+      fireEvent.click(pane.querySelector("[data-testid^='opas-pane-close-']") as HTMLElement)
+    })
+    await waitFor(() => expect(screen.queryByTestId("opas-said")).toBeNull())
+  })
+})
