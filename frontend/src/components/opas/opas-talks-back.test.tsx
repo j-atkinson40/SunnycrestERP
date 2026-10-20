@@ -712,3 +712,89 @@ describe("5 — capture's question is in the reply line and stays while typing",
     await waitFor(() => expect(screen.queryByTestId("opas-said")).toBeNull())
   })
 })
+
+const LIST_ANSWER: OrderListSnapshot = {
+  kind: "question", layout: "flat", title: "Hopkins orders", surface: "pane",
+  question: { funeral_home: "Hopkins", title: "Hopkins orders" },
+  orders: [{
+    id: "o4", number: "SO-2026-0004", deceased_name: "Hart", stage: "scheduled",
+    stage_label: "Scheduled", dots_filled: 1, invoiced: false,
+    service_date: "2026-10-28",
+  }],
+  footer: "f",
+} as unknown as OrderListSnapshot
+
+// ───────────────────────────────────────────────────────────────────────────
+// 5 — the decision log's one unreachable fact
+// ───────────────────────────────────────────────────────────────────────────
+
+describe("5 — what was in front travels with the phrase", () => {
+  /**
+   * ⚠️ THE SERVER CANNOT DERIVE THIS, WHICH IS THE WHOLE REASON IT IS SENT. "only
+   * hopkins" is a refinement with a list open and a new request in a cold bar. Both
+   * reach `/order-list/ask`; the request body is the only thing that distinguishes
+   * them, so a decision log without it holds rows with no single right answer — and
+   * that log is the evidence the rulebook is supposed to be built from.
+   *
+   * ⚠️ AND THE VOCABULARY IS THE PANE KIND, NOT A SECOND SET OF NAMES. `surface_for`
+   * reads "sales-order" / "catalog" / anything-else; sending a translated label would
+   * be two spellings of one concept, free to drift.
+   */
+  it("a cold bar sends no front at all", async () => {
+    askOrderList.mockResolvedValue({ kind: "open_order", open_order_id: "o4" })
+    await mount()
+    await ask("riverside order")
+    expect(askOrderList).toHaveBeenCalledTimes(1)
+    // ⚠️ ABSENT, NOT "bar". The server defaults a missing value, so an older bundle
+    // records `bar` rather than refusing the request — and a client that invented the
+    // string would be asserting something it had not observed.
+    expect(askOrderList.mock.calls[0][0].front).toBeUndefined()
+  })
+
+  it("with the order's pane in front it sends sales-order", async () => {
+    askOrderList.mockResolvedValue({ kind: "open_order", open_order_id: "o4" })
+    await mount()
+    await ask("riverside order")
+    await waitFor(() => expect(screen.getByTestId("opas-sales-order-steps")).toBeTruthy())
+
+    // A second phrase, typed with that pane in front.
+    askOrderList.mockResolvedValue({ kind: "unrecognized", hint: "No order for Riverside" })
+    await ask("orders this month")
+    expect(askOrderList.mock.calls[1][0].front).toBe("sales-order")
+  })
+
+  it("⚠️ IT IS THE FRONT PANE, NOT THE FIRST ONE ON THE DESK", async () => {
+    /**
+     * ⚠️ TWO PANES, AND THE FRONT ONE IS NOT FIRST — which is the only arrangement that
+     * can tell the two apart. My first version of this test opened ONE pane and
+     * asserted the sequence `[undefined, undefined, "sales-order"]`; a break test
+     * replacing the lookup with `opas.panes[0]?.kind` left it GREEN, because with a
+     * single pane the first pane IS the front pane and with none both read undefined.
+     * It asserted a true thing about an arrangement that could not discriminate.
+     *
+     * Here the order list opens first and the sales order opens on top of it, so
+     * `panes[0]` is "order-list" while the front is "sales-order". Any implementation
+     * that reads a position rather than `frontPaneId` now records the wrong surface.
+     */
+    askOrderList.mockResolvedValue(LIST_ANSWER)
+    await mount()
+    await ask("hopkins orders")
+    await waitFor(() => expect(screen.getByTestId("opas-order-list")).toBeTruthy())
+
+    askOrderList.mockResolvedValue({ kind: "open_order", open_order_id: "o4" })
+    await ask("riverside order")
+    await waitFor(() => expect(screen.getByTestId("opas-sales-order-steps")).toBeTruthy())
+
+    // ⚠️ THE CONTROL, AND IT ASSERTS THE ARRANGEMENT DIRECTLY RATHER THAN THE KINDS:
+    // two panes, and the FRONT one is the second. Without this the test could pass over
+    // a desk holding one pane, which is exactly the hole the previous version had.
+    const focused = panes().map((p) => p.getAttribute("data-focused"))
+    expect(focused).toEqual(["false", "true"])
+
+    askOrderList.mockResolvedValue({ kind: "unrecognized", hint: "No order for Riverside" })
+    await ask("orders since june")
+    const fronts = askOrderList.mock.calls.map((c) => c[0].front)
+    // THE SEQUENCE IS THE ASSERTION — which phrase saw which pane, not how many did.
+    expect(fronts).toEqual([undefined, "order-list", "sales-order"])
+  })
+})

@@ -25,7 +25,9 @@ for why that is structural rather than a policy.
 """
 from __future__ import annotations
 
+import time
 from datetime import date
+from typing import Callable
 
 from sqlalchemy.orm import Session
 
@@ -43,7 +45,20 @@ def propose(
     today: date,
     db: Session | None = None,
     company_id: str | None = None,
+    *,
+    observer: Callable[[dict], None] | None = None,
 ) -> Interpretation | None:
+    """Ask the model. `None` means the rules' answer stands.
+
+    ⚠️ `observer` IS HOW THE DECISION LOG LEARNS WHAT HAPPENED, and it is a callback
+    rather than a richer return value because `ask` calls this positionally and must not
+    have to know about logging. The route binds it with `functools.partial`.
+
+    ⚠️ IT IS CALLED ON EVERY EXIT THAT INVOLVED A CALL, including the refusals. A log
+    that only recorded accepted answers could not tell "the model is never consulted"
+    from "the model is consulted and always refused" — which are opposite problems with
+    the same symptom.
+    """
     if db is None or not phrase.strip():
         return None
     from app.config import settings
@@ -54,6 +69,8 @@ def propose(
     # round trip, and no stack trace in the log for a tenant that simply has no key
     # configured. The test asserts that, rather than the return value both paths share.
     if not settings.ANTHROPIC_API_KEY:
+        if observer is not None:
+            observer({"called": False, "reason": "no_api_key"})
         return None
     try:
         from app.services.intelligence.intelligence_service import execute
@@ -61,6 +78,7 @@ def propose(
         from app.services.order_list import model_context
 
         context = model_context.build(db, company_id or "", phrase, today)
+        t0 = time.perf_counter()
         result = execute(
             db,
             prompt_key=PROMPT_KEY,
@@ -89,6 +107,8 @@ def propose(
             persist=False,
         )
     except Exception:
+        if observer is not None:
+            observer({"called": True, "accepted": False, "reason": "provider_error"})
         return None
 
     # ⚠️ THE PARSED FIELD, NOT THE RAW TEXT, AND READING THE WRONG ONE COST A CORRECT
@@ -101,5 +121,18 @@ def propose(
     # edited in the admin playground could have `force_json` turned off, and then
     # `response_parsed` is None and the text is all there is.
     if result.response_parsed is not None:
-        return accept_model_payload(result.response_parsed)
-    return accept_model_text(result.response_text or "")
+        got = accept_model_payload(result.response_parsed)
+    else:
+        got = accept_model_text(result.response_text or "")
+    if observer is not None:
+        observer({
+            "called": True,
+            "accepted": got is not None,
+            "reason": None if got is not None else "refused_by_engine",
+            # ⚠️ THE LAYER'S OWN NUMBER WHERE IT HAS ONE. `persist=False` means there is
+            # no `intelligence_executions` row, so this is the only place the latency of
+            # this path is ever recorded.
+            "latency_ms": getattr(result, "latency_ms", None)
+            or int((time.perf_counter() - t0) * 1000),
+        })
+    return got

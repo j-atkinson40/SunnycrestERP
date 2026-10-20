@@ -182,6 +182,13 @@ export async function askOrderList(body: {
   question?: OrderQuestion
   remove_pill?: string
   teach_phrase?: string
+  /** The kind of the pane in front, for the decision log.
+   *
+   *  ⚠️ THE ONE THING THE SERVER CANNOT DERIVE, which is why it travels. "only hopkins"
+   *  is a refinement with a list open and nothing at all in a cold bar, so a log that
+   *  did not record which it was would hold cases with no single right answer. Pane
+   *  kinds are already the vocabulary `surface_for` reads — do not invent a second one. */
+  front?: string
 }): Promise<OrderListSnapshot> {
   const r = await apiClient.post<OrderListSnapshot>("/order-list/ask", body)
   return r.data

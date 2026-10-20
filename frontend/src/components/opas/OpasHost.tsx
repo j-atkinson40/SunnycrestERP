@@ -1124,6 +1124,7 @@ export function OpasHost() {
         question: pane.orderQuestion,
         remove_pill: pillId,
         ...(pane.orderPhrase ? { teach_phrase: pane.orderPhrase } : {}),
+        front: pane.kind,
       })
       settleOrderAnswer(result, undefined)
     } catch {
@@ -1395,6 +1396,8 @@ export function OpasHost() {
           const result = await askOrderList({
             phrase,
             question: talking ? list?.orderQuestion : undefined,
+            // The decision log's only unreachable-from-the-server fact.
+            ...(front ? { front: front.kind } : {}),
           })
           settleOrderAnswer(result, phrase)
         } catch {

@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, get_db
 from app.models.user import User
 from app.services import catalog_pane_service
+from app.services.order_list import decision_log
 
 router = APIRouter()
 
@@ -79,6 +80,18 @@ def resolve_phrase(
     from app.services.product_name_resolver import build_index, resolve
 
     resolution = resolve(build_index(db), body.phrase)
+
+    # ⚠️ LOGGED BECAUSE THE MISSES ARE THE POINT. A phrase that reaches no catalog
+    # variant is the typo surface — "monticelo" was one of the three misses the
+    # 2026-10-20 scoring found — and nothing else records it. Swallows its own failures;
+    # a resolve must not fail because a log row did.
+    decision_log.record_resolve(
+        db,
+        company_id=current_user.company_id,
+        user_id=current_user.id,
+        phrase=body.phrase,
+        candidate_count=len(resolution.candidates),
+    )
     return {
         "phrase": resolution.phrase,
         "normalized": resolution.normalized,

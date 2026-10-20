@@ -592,3 +592,9 @@ tests/test_sales_order_pane.py
 # "Send the model the least it needs" (James, 2026-10-20) and the model door's own
 # guarantees. Rolls back; creates no tenant that survives the test.
 tests/test_opas_model_door.py
+# The decision log — one row per bar interpretation. Covers what a row records, what is
+# NOT recorded (a phrase-less re-ask), the surface derivation, the four CHECK
+# constraints, and the rule that a logging failure never costs an answer. Includes the
+# route's own None-vs-False mapping, which was added after a break test found that 33
+# service-level tests could not see it.
+tests/test_opas_decision_log.py

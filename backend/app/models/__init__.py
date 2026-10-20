@@ -320,6 +320,7 @@ from app.models.kb_chunk import KBChunk
 from app.models.kb_pricing_entry import KBPricingEntry
 from app.models.kb_extension_notification import KBExtensionNotification
 from app.models.order_personalization_photo import OrderPersonalizationPhoto
+from app.models.opas_decision import OpasDecision
 from app.models.order_personalization_task import OrderPersonalizationTask
 from app.models.production_mold_config import ProductionMoldConfig
 from app.models.training_progress import TrainingProgress
@@ -929,4 +930,5 @@ __all__ = [
     "IntelligencePrompt",
     "IntelligencePromptAuditLog",
     "IntelligencePromptVersion",
+    "OpasDecision",
 ]
