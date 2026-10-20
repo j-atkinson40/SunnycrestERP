@@ -558,6 +558,14 @@ def accept_model_text(raw: str) -> Interpretation | None:
 
     Returns None when the reply is not JSON, carries a banned key (SQL, a
     total, a count), or fails `OrderQuestion`. None means the rules stand.
+
+    ⚠️ `_banned` AND `OrderQuestion`'s `extra="forbid"` OVERLAP, AND THE PART THAT DOES
+    NOT OVERLAP IS WHY `_banned` EXISTS. Measured by break test 2026-10-20: removing the
+    top-level `_banned(payload)` call left every banned key INSIDE a question object
+    still refused, because pydantic rejects the extra field by itself. What only
+    `_banned` catches is a banned key OUTSIDE the question object —
+    `{"sql": "…", "question": {…valid…}}` — or inside a pick's label, where pydantic
+    never looks. Both are asserted in `test_opas_model_door.py`.
     """
     try:
         payload = json.loads(raw)
