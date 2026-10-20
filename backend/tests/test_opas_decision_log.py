@@ -321,3 +321,82 @@ def test_the_route_records_NEVER_ASKED_as_null_not_as_refused(monkeypatch):
     src = inspect.getsource(route.ask_orders)
     assert 'seen.get("accepted") if seen.get("called") else None' in src
     assert '"model" if seen.get("accepted") else "rules"' in src
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# ⚠️ THE ROUTE, OVER THE WIRE, WRITING A REAL ROW
+# ───────────────────────────────────────────────────────────────────────────
+
+def test_A_REAL_POST_TO_ask_LEAVES_A_ROW(db, tenant):
+    """⚠️ EVERY TEST ABOVE CALLS `record_ask` DIRECTLY. None of them proves the route
+    calls it at all.
+
+    That is the gap that matters before handing James a walk: a decision log wired
+    nowhere looks exactly like a decision log nobody has typed into yet — both are an
+    empty table — and `record_ask` swallows its own failures, so a miswiring would be
+    silent in both directions. This drives the real FastAPI route and then reads the
+    table.
+
+    ⚠️ IT ALSO PINS THE SURFACE DERIVATION AT THE BOUNDARY, which is the one fact the
+    client supplies and the server could get wrong on its own.
+    """
+    from fastapi.testclient import TestClient
+
+    from app.api.deps import get_current_user, get_db
+    from app.main import app
+    from app.models.role import Role
+    from app.models.user import User
+
+    # ⚠️ `users.role_id` IS NOT NULL, and the bare tenant fixture seeds no roles — so the
+    # role is created here rather than looked up with a `if role else None` fallback that
+    # would have passed None into a non-null column.
+    role = Role(
+        id=str(uuid.uuid4()), company_id=tenant.id, name="Office", slug="office",
+        is_active=True,
+    )
+    db.add(role)
+    db.flush()
+    user = User(
+        id=str(uuid.uuid4()), company_id=tenant.id,
+        email=f"dlog-{uuid.uuid4().hex[:8]}@example.com",
+        hashed_password="x", first_name="Log", last_name="Walker",
+        is_active=True, role_id=role.id,
+    )
+    db.add(user)
+    db.commit()
+
+    app.dependency_overrides[get_db] = lambda: db
+    app.dependency_overrides[get_current_user] = lambda: user
+    try:
+        client = TestClient(app)
+        r = client.post("/api/v1/order-list/ask", json={"phrase": "orders this month"})
+        assert r.status_code == 200, r.text
+        r2 = client.post(
+            "/api/v1/order-list/ask",
+            json={"phrase": "only hopkins", "front": "sales-order"},
+        )
+        assert r2.status_code == 200, r2.text
+
+        rows = _rows(db, tenant.id)
+        assert len(rows) == 2, "the route did not write a row per phrase"
+        first, second = rows
+        assert first.input_text == "orders this month"
+        assert first.surface == "bar"
+        assert first.actor_user_id == user.id, "the actor is recorded"
+        # ⚠️ `None`, NOT `False` — the model was never consulted on a rules hit, and
+        # that is a different fact from consulted-and-refused.
+        assert first.model_accepted is None
+        assert first.proposed_by == "rules"
+        assert first.outcome in ("executed", "asked", "refused")
+
+        assert second.input_text == "only hopkins"
+        # ⚠️ THE CLIENT'S `front` REACHED THE DERIVATION. Without the wiring this reads
+        # "bar" and the two phrases become indistinguishable in the evidence.
+        assert second.surface == "bar_with_order"
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(get_current_user, None)
+        db.execute(sql_text("DELETE FROM opas_decisions WHERE company_id = :c"), {"c": tenant.id})
+        db.execute(sql_text("DELETE FROM users WHERE id = :u"), {"u": user.id})
+        db.execute(sql_text("DELETE FROM roles WHERE id = :r"), {"r": role.id})
+        db.commit()
