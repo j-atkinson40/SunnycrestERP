@@ -50,7 +50,34 @@ them only after the tests they exposed were fixed, which is the third finding ab
    **open Opas, type "hopkins order", answer the question, then keep talking without
    touching the mouse.**
 2. **The capture-question-line question above**, if moving it was the intent.
-3. ⚠️ **NOT PUSHED AT THE TIME OF WRITING.**
+3. ⚠️ **CORRECTED 2026-10-20 — the original line is kept because it was true when
+   written:** *"⚠️ NOT PUSHED AT THE TIME OF WRITING."* Pushed as `e4be9662` and
+   **deployed**; the verification is below.
+
+### The deploy, verified from outside — and the marker check is TWO-SIDED
+
+⚠️ **NOT FROM DEPLOY LOGS**, which CLAUDE.md forbids reading (`seed_sunnycrest.py` prints
+a generated password).
+
+| half | result |
+|---|---|
+| backend | `/api/health` `commit` = **`e4be9662`**, `db: connected` |
+| frontend | served bundle **`index-CBegk0ww.js`**, 6,758,850 bytes |
+
+⚠️ **THE GREP IS DISCRIMINATING BECAUSE IT WAS RUN ON BOTH BUNDLES AND THE RESULT
+INVERTED.** A marker grep on a new bundle alone is a one-sided check — everything present
+proves nothing about whether the grep could ever have said otherwise. Measured before and
+after:
+
+| | old `index-N1lMfw1i.js` | new `index-CBegk0ww.js` |
+|---|---|---|
+| `opas-reply`, `opas-options`, `opas-option-detail-`, `Which order?`, `No order is open`, `make it a draft`, `the cemetery pane isn` | **0 each** | **1 each** |
+| `opas-list-pick`, `opas-order-picks` — the two **retired** pick surfaces | **1 each** | **0 each** |
+| `opas-sales-order-steps` — the control | 1 | 1 |
+
+Exactly inverted in both directions, with a control that holds either way. The two zeros
+on the bottom row are the removal of both floating pick surfaces, observed on production
+rather than asserted.
 
 Full write-up in `docs/investigations/2026-10-20-opas-talks-back.md`.
 

@@ -260,7 +260,29 @@ them only after the tests they exposed were fixed, which is §5.2 and §5.3.
 
 ---
 
-## 8. Not verified: the real-Chrome walk
+## 8. The deploy, verified from outside — and the marker check is two-sided
+
+Commit `e4be9662`. Backend `/api/health` reports `e4be9662`, `db: connected`. Frontend
+serves `index-CBegk0ww.js`, 6,758,850 bytes.
+
+⚠️ **A MARKER GREP ON THE NEW BUNDLE ALONE PROVES NOTHING** — everything present is also
+what a grep that cannot fail returns. Run on both bundles, the result inverts:
+
+| | old `index-N1lMfw1i.js` | new `index-CBegk0ww.js` |
+|---|---|---|
+| the seven new markers | **0 each** | **1 each** |
+| `opas-list-pick`, `opas-order-picks` — the two **retired** pick surfaces | **1 each** | **0 each** |
+| `opas-sales-order-steps` — the control | 1 | 1 |
+
+The two zeros on the bottom row are the removal of both floating pick surfaces, observed
+on production.
+
+Not from deploy logs: CLAUDE.md forbids reading them, because `seed_sunnycrest.py` prints
+a generated password.
+
+---
+
+## 9. Not verified: the real-Chrome walk
 
 The dispatch asks for it typed character by character. **The Claude browser extension is
 not connected in this environment** — checked at the start and again at the end of this
