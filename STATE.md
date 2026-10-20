@@ -2,6 +2,58 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 2026-10-20 — Opas talks back: one voice, choices with the question, context
+
+Commit `93fc63f8`. Frontend-only; no migration, no backend change. Measured from
+`docs/prototypes/2026-10-01-opas-overlay.html` (md5 `a52a1e95…`), which already carried
+the shape — `placeSaid`, `show`'s chips-then-`.pick` order, the 4200ms `saidTimer`, and
+`choose` ending in `input.focus()`.
+
+- **2026-10-20** — **The bar keeps focus.** `focusBar()` per action, and in `submit`'s `finally` rather than at each of its eleven exits. ⚠️ **The printable-key redirect APPENDS the character rather than only focusing**, which is the whole difficulty: `focus()` during a keydown does not deliver that keydown to the newly focused element, so a handler that only focused would swallow the first letter of every sentence typed after a click.
+- **2026-10-20** — **One voice, and it moved OUT of the glass pill.** `said: string | null` became `reply: Reply | null` with a kind, a sentence and — on a question — its options. The old line was a child of `opas-command-line`; a question needs its options underneath and the pill is what they sit above. A miss and an acknowledgement fade at 4200ms; **a question never fades**, because the director is mid-answer.
+- **2026-10-20** — ⚠️ **CAPTURE'S QUESTION LINE IS NOT MOVED, and this is the one place the dispatch was read narrowly.** Item 2 says "Capture's question line becomes one user of it, with no change in behaviour". Capture's question is the bar's PLACEHOLDER (`placeholderFor`), under its own ruling of 2026-10-15 with four tests — moving it would make the question persistent rather than vanishing on the first keystroke, which is arguably better and is not what "no change in behaviour" asks for. **Flagged to James rather than taken; it is a one-line change if that was the intent.**
+- **2026-10-20** — **BOTH floating pick surfaces are gone, not one.** The order-list pane's `picks` body (`opas-order-picks`) and the `product-list` pane's `candidateIds` filter with its "Which one?" line. Both had the bug James named: choosing opened the thing and **left the list standing behind it**. Deleted: `OpasPane.candidateIds`, `ProductListPane`'s prop and filter, `OrderListPane`'s whole picks body and its `onChoosePick`.
+- **2026-10-20** — `routeResolution` now carries the whole candidates and not just their ids, because **a list of opaque uuids is not a list of choices** — a row has to say the product's name. `candidateIds` survives beside it **derived**, so the two cannot disagree about membership or order.
+- **2026-10-20** — ⚠️ **`FILLER` IS DELIBERATELY NOT WIDENED WITH PREPOSITIONS**, which was the obvious improvement and the wrong direction. Dropping "in" would make "the smith one on friday" answerable — a real nuisance — at the price of making **"orders in october"**, a LIST question, reduce to `["october"]`, hit both options and be **eaten as an answer**. Measured both ways. The asymmetry decides it: a question mis-read as a request costs a retype; a request mis-read as an answer opens the wrong order, silently.
+- **2026-10-20** — **A bare digit answers here and not in capture.** In capture the bar holds an order's text, where "3" may be a grave depth or a vault size (the 2026-10-13 ruling `pick-digit.ts` implements). Here the bar holds a request, and a request that is only "2" is a choice. The guard is that the bar must be **empty** — mid-phrase, "monticello 2" is the start of a size.
+- **2026-10-20** — **Context: 35 phrasings, 9 intents, one exact table.** Not a keyword scan, which would swallow "monticello vault" and "order for hopkins monticello vault". **Gated on the front pane being an order**, which is what keeps "how much" totalling the LIST when a list is in front. With no order in front the same phrases **ask**, with the open orders as options. "undo confirm" routes through the pane's own button, so the server's refusal, the re-read and the notice stay in one place.
+- **2026-10-20** — ⚠️ **ONE CONTEXT EDGE TURNS ON AN APOSTROPHE.** With no order in front, `"what's the total"` matches `isOrderListPhrase` and goes to the list; `"whats the total"` does not match that regex and gets "No order is open" from the context branch instead. Two spellings, two messages. Left alone — the alternative was editing a shipped rule with its own tests to improve a sentence in a state where neither answer is wrong.
+
+### Three defects found by building it, none in the dispatch
+
+- **2026-10-20** — ⚠️ **`hush()` AT THE TOP OF `submit` WIPED THE ANSWER BEFORE IT COULD BE USED.** It was a bare `hush()`, inherited from the old `setSaid(null)` — which could only ever be clearing a hint. `hush()` now also empties `answerActions.current`, so clearing there destroyed the outstanding question's ACTIONS before the answer check below could reach them. **The symptom was precise and silent:** typing "hart" matched one option, consumed the phrase, closed the list — and did nothing. Found by the test asserting the order opened, not by reading.
+- **2026-10-20** — ⚠️ **THE EDITABLE-FIELD EXCEPTION HAS TWO ENFORCEMENT POINTS AND HAD ONE TEST.** It is enforced in the pane's `onClick` and in the document `keydown`; the test exercised only the click. A break test removing the keydown guard left **everything green** — a keystroke typed into a pane's own field would have been redirected into the bar, and nothing would have said so.
+- **2026-10-20** — ⚠️ **FOUR OF MY OWN TESTS WERE NOT DISCRIMINATING, and break tests found all four.** A focus test where focus had never left, so neutering `focusBar` changed nothing. A mid-phrase digit test pressing **"8"** against a 2-option question, which the range check refuses anyway. A "how much with a list in front" test with **no order pane open at all**, so a rule ignoring the front pane had nothing to act on. And a "someone else's modifier" test pressing **⌘K** — which is Opas's own toggle — and tucking the overlay. Three of the four were green for a reason unrelated to what they named.
+
+### Gates, with denominators
+
+| gate | result | of what |
+|---|---|---|
+| frontend vitest | **4928 passed, 5 skipped, 1 todo, 0 failed** | **368 of 368** test files |
+| `tsc -b --noEmit` | exit 0 | whole frontend |
+| `npm run build` | exit 0 | — |
+| backend pytest, `tests/ci_gate.txt` | **3639 passed, 4 skipped, 0 failed** | **234 of 512** (45.7%) — unchanged, as expected for a frontend-only slice |
+
+Bundle, same instrument and machine as the previous slice: `index.js` 6,750.25 →
+**6,758.63 kB** (+8.38 kB, **+0.12%**); gzip 1,633.49 → 1,635.79 kB; CSS unchanged.
+
+**75 new tests** — 30 host (`opas-talks-back.test.tsx`), 18 matcher (`reply.test.ts`), 27
+phrase-table (`context-phrases.test.ts`). **4 re-pointed** rather than deleted.
+**19 break tests, each naming the assertion it had to turn red, all 19 caught** — five of
+them only after the tests they exposed were fixed, which is the third finding above.
+
+### Owed
+
+1. **The real-Chrome walk, typed character by character.** The browser extension is not
+   connected in this environment — checked at both ends of this slice — and Opas is
+   admin-only behind a login, which a password cannot cross (CLAUDE.md §7). James's walk:
+   **open Opas, type "hopkins order", answer the question, then keep talking without
+   touching the mouse.**
+2. **The capture-question-line question above**, if moving it was the intent.
+3. ⚠️ **NOT PUSHED AT THE TIME OF WRITING.**
+
+Full write-up in `docs/investigations/2026-10-20-opas-talks-back.md`.
+
 ## 2026-10-19 — Sales Order Pane, slice 1, and the four multi-pane rules
 
 Commits `03ca5089` (the prototype, with digests), `05532e38` (the build) and `e9f43c20`
