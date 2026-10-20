@@ -2,6 +2,50 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 2026-10-20 (later) — the reply-line ruling, and the model-behind-the-bar investigation
+
+Commits `6fbc88df` (the ruling) and `7b7ea248` (the investigation, read-only).
+
+### The ruling — and the question was never on screen
+
+- **2026-10-20** — James: *"capture's question moves into the reply line above the bar and stays visible while typing; the placeholder goes back to a plain prompt. One voice everywhere. Supersedes the 2026-10-15 placeholder ruling."*
+- **2026-10-20** — ⚠️ **IT IS A BUG FIX, NOT ONLY A MOVE, AND THE PREVIOUS SLICE DECLINED TO MAKE IT ON THE GROUNDS THAT MOVING IT WOULD BE A VISIBLE CHANGE.** There was nothing to change: the question was never visible. The bar rendered it as a textarea `placeholder`, which a browser shows ONLY when the field is EMPTY, and `placeholderFor` opened with `if (args.text.trim() === "") return "Say what the director said"` — so the question was returned only when the text was NON-empty. The two conditions are mutually exclusive. **Four of that function's nine return values were unreachable on screen:** the server's `next_question`, both "Still need" forms, and "Nothing needed". The 2026-10-15 ruling that asked for one question at a time had never been seen by anyone.
+- **2026-10-20** — ⚠️ **AND FOUR TESTS ASSERTED IT FROM THE DAY THEY WERE WRITTEN.** `capture-live.test.tsx` used `toHaveAttribute("placeholder", …)` with text typed INTO the bar — and its own comment explained the typing was necessary to get past the empty-bar short-circuit. That combination is the defect: the attribute is in the DOM and invisible on screen, jsdom paints nothing, and the check passed with full contact on the wrong thing.
+- **2026-10-20** — `placeholderFor` → `captureVoice` with the prompt branch deleted; `ENTRY_PLACEHOLDER` is the bar's own prompt; `EntryPaneStatus.placeholder` → `.question`, because the old name was the bug. Said with `kind: "question"`, which never fades. Four `question-line` tests re-pointed plus three new ones pinning that every question state is now reachable with an EMPTY bar; four `capture-live` assertions moved to `opas-said`, claims unchanged; four new host tests. **5 break tests, all 5 caught.** Gates: vitest 4935/368 files, tsc clean, build clean.
+- **2026-10-20** — ⚠️ **AND A BREAK TEST CORRECTED ONE OF MY OWN COMMENTS.** I wrote that clearing the reply unconditionally on capture exit "would wipe whatever the NEXT thing said". A bare `setReply(null)` turned **nothing** red: in entry mode the only speaker IS capture, so the reply cannot be anyone else's at that moment. The guard is kept for independence from that sequencing and now says so instead of claiming a defect it does not prevent.
+
+### The investigation — read-only, no code, no migration
+
+Full report: `docs/investigations/2026-10-20-a-model-behind-the-bar.md`. Test set and
+score shipped as data in `docs/investigations/data/`.
+
+- **2026-10-20** — ⚠️ **THE OCT 10 PLAN IS NOT IN THE REPOSITORY.** Searched every `*.md` for "rulebook", "decision log", "engine decides", "model behind", "promptfoo", "Duckling", "Grok"; every file for the last three; `docs/design`, `docs/specs`, `docs/design-archive`; and `git log --since=2026-10-08 --until=2026-10-12 -- '*.md'`, which touched only STATE.md and two unrelated investigations. The dispatch's RULES block is self-contained so the work was done, but Parts 2 and 4 could not be checked against that plan. **Fourth instance of the CLAUDE.md §11 unreachable-source class.**
+- **2026-10-20** — **Nothing on the Opas path calls a model**, confirmed by grep: zero non-test hits for `anthropic|ai_service|claude` in `frontend/src/components/opas`, zero in `order_list_pane.py` and `catalog_pane.py`.
+- **2026-10-20** — ⚠️ **AND A MODEL DOOR ALREADY EXISTS, CORRECT AND UNREACHABLE.** `order_list/proposal.py` is complete — rules-first, Haiku, `persist=False`, `None` on no-key and on any exception — with `question.accept_model_text` as the engine-decides gate (rejects non-JSON, eight banned keys at any depth, anything failing `OrderQuestion`, and re-derives the computed fields itself). **Measured on production: `intelligence_prompts` has ZERO rows for `opas.order_list.interpret`, and `order_list.proposal` appears zero times in 5,565 `intelligence_executions`.** Complete machinery behind an unprovisioned entrance.
+- **2026-10-20** — ⚠️ **THERE IS NO RESPONSE CACHE.** `intelligence_service` computes `input_hash` and uses it **only** for experiment variant assignment; nothing reads a prior execution to reuse a response. Caching is work to add, not a thing to lean on.
+- **2026-10-20** — ⚠️ **`settings_json` ALREADY HOLDS A PROTO-RULEBOOK AND IT IS EMPTY.** `order_list.remember` writes `opas_order_list_phrases` (cap 40). All four tenants: **zero taught phrases**. The mechanism works and has never been used.
+- **2026-10-20** — **TODAY'S RULES SCORE 56/59 = 95%** on 59 phrasings drawn from the alias tables, the rule constants, the test suites, the STATE walks and production `capture_sessions.full_text` — measured by running the shipped predicates (frontend gates bundled with esbuild; server rules against production, read-only). By source: production 8/8, the repo's own rules/tests 37/38, a dispatch or a walk 11/13. The three misses map one-to-one onto the model, pg_trgm, and a one-line rules fix.
+- **2026-10-20** — ⚠️ **MY FIRST SCORE WAS 61%, AND THE WHOLE GAP WAS MY OWN TEST SET.** Three errors: four phrases I expected to reach ONE product reach two (`monticello` → burial vault / urn vault — asking is correct); the eight context phrases scored with no order in front; and three capture-mode phrases scored down the `submit` chain, which capture never reaches. ⚠️ **A 61% would have justified the model far more comfortably than 95% does, which is exactly why it needed checking** — an expected value derived from the hypothesis rather than from the world.
+- **2026-10-20** — ⚠️ **ONE REAL GAP IN A LIVE FEATURE, AND IT IS THE DISPATCH'S OWN EXAMPLE.** `order hopk monti thursday 10 st marys` does **not** open a capture. `startsCaptureWithParty` needs the whole remainder after "order" to prefix a funeral home, so `order hopk` works and the full sentence does not — it contains "order", so `isOrderListPhrase` claims it and the list reports it understood nothing. A director typing the whole order in one breath gets a dead end. Also measured on the same phrase: `monti` reaches **0** catalog candidates. **Not fixed — the investigation writes no code.**
+- **2026-10-20** — **pg_trgm is already installed on production, version 1.6**, with the six GIN indexes from `r31`. The typo surface is the **56 confirmed `platform_product_aliases` rows** plus 29 `product_templates` names.
+- **2026-10-20** — ⚠️ **I CANNOT VERIFY ANY PROVIDER'S DATA TERMS FROM THIS REPOSITORY.** What is stateable: Anthropic already processes Sunnycrest's data (5,565 executions since 2026-05-15), so it adds no new data question; xAI appears nowhere in the codebase, so it is a new processor relationship. And the context block carries a deceased person's name, their funeral home, their cemetery and their service date — **fetch the current terms, put the two relevant paragraphs in `docs/` with a date, and decide against those bytes.** A structural mitigation is available now: routing needs a surname at most, and nothing at all for a front-pane answer.
+
+### Recommended order, and why
+
+1. **Fix `startsCaptureWithParty`** — one line, no model, a live dead end on James's own phrase.
+2. **Seed `opas.order_list.interpret`** — the door, the validator and both down-paths already exist and are tested; the prompt is the only missing piece.
+3. **The decision log BEFORE the rulebook** — the log needs no new surface (the reply line can already ask "Why?"), it is how the test set grows, and a rulebook built first is a table of rules nobody has evidence for.
+4. **pg_trgm under the resolver** — extension and indexes present, no provider, no model.
+5. **Duckling last** — a service to run; the dates the rules already parse are the dates people actually type (all three production capture phrases extracted correctly).
+
+⚠️ **Not the provider bake-off first.** It is the most interesting question and the least urgent: the rules score 95%, and the model is for three phrasings, one of which is a one-line rules fix.
+
+### Owed
+
+1. **The Oct 10 plan, in the repo**, so Parts 2 and 4 can be reconciled against it.
+2. **The real-Chrome walk** from the previous slice, still outstanding — the browser extension is not connected in this environment.
+3. ⚠️ **NOT PUSHED AT THE TIME OF WRITING** — the ruling (`6fbc88df`) is pushed; the investigation (`7b7ea248`) is not.
+
 ## 2026-10-20 — Opas talks back: one voice, choices with the question, context
 
 Commit `93fc63f8`. Frontend-only; no migration, no backend change. Measured from
