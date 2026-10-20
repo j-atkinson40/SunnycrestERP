@@ -366,3 +366,130 @@ def test_the_prompt_forbids_in_words_what_the_validator_refuses_in_code():
         assert word in _BANNED_KEYS
         assert word in lowered, f"the prompt never mentions {word!r}"
     assert "decedent names" in lowered
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# the fence, and reading the field the layer already parsed
+# ───────────────────────────────────────────────────────────────────────────
+
+def test_a_fenced_answer_is_still_refused_by_the_TEXT_gate():
+    """⚠️ `accept_model_text` IS NOT LOOSENED, AND THAT IS DELIBERATE. A caller holding
+    only a raw string has no layer above it to have stripped anything, so the strict
+    parse is the right behaviour there. The fence is handled where it arises.
+    """
+    fenced = '```json\n{"question": {"funeral_home": "Hopkins Funeral Home"}}\n```'
+    assert accept_model_text(fenced) is None
+
+
+def test_the_SAME_answer_is_accepted_once_the_layer_has_parsed_it():
+    """⚠️ THE DEFECT THIS PAIR PINS, MEASURED ON PRODUCTION 2026-10-20. Minutes after the
+    prompt was first seeded, Haiku answered
+
+        ```json
+        {"question": {"cemetery": "St. Mary's Cemetery", "service_from": "2026-10-20",
+         "service_to": "2026-10-26", "when_label": "this week", "going_out": true}}
+        ```
+
+    — the right question, the cemetery copied verbatim from the list it was given,
+    absolute dates — and the door refused it, because `proposal` was re-parsing
+    `response_text` instead of reading `response_parsed`, which
+    `intelligence_service._strip_code_fences` had already produced.
+    """
+    from app.services.order_list.question import accept_model_payload
+
+    payload = {
+        "question": {
+            "cemetery": "St. Mary's Cemetery",
+            "service_from": "2026-10-20",
+            "service_to": "2026-10-26",
+            "when_label": "this week",
+            "going_out": True,
+            "title": "Orders going to St. Mary's Cemetery this week",
+        }
+    }
+    got = accept_model_payload(payload)
+    assert got is not None and got.kind == "question"
+    assert got.question.cemetery == "St. Mary's Cemetery"
+    assert got.question.going_out is True
+    assert got.question.is_default is False
+
+
+def test_the_payload_gate_refuses_everything_the_text_gate_does():
+    """⚠️ TWO ENTRY POINTS, ONE SET OF RULES. A payload path that validated less than the
+    text path would be a way around the gate, which is the opposite of the point.
+    """
+    from app.services.order_list.question import accept_model_payload
+
+    assert accept_model_payload("not a dict") is None
+    assert accept_model_payload({"question": {"total": "1705.00"}}) is None
+    assert accept_model_payload({"sql": "SELECT 1", "question": {}}) is None
+    assert accept_model_payload({"unsure": True, "picks": []}) is None
+    assert accept_model_payload({"question": {"nope": 1}}) is None
+    # the control
+    assert accept_model_payload({"question": {"funeral_home": "Hopkins Funeral Home"}}) is not None
+
+
+def test_propose_prefers_the_parsed_field_over_the_raw_text(db, tenant, monkeypatch):
+    """⚠️ AND IT PREFERS IT EVEN WHEN BOTH ARE PRESENT, which is the only arrangement
+    that fixes the fence: the text is the fenced string and the parsed object is the
+    answer.
+    """
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "sk-test-not-real", raising=False)
+
+    import app.services.intelligence.intelligence_service as svc
+
+    class Result:
+        response_text = '```json\n{"question": {"funeral_home": "Hopkins Funeral Home"}}\n```'
+        response_parsed = {"question": {"funeral_home": "Hopkins Funeral Home"}}
+
+    monkeypatch.setattr(svc, "execute", lambda *a, **k: Result())
+    got = propose("which hopkins orders are waiting", date(2026, 10, 20), db, tenant.id)
+    assert got is not None, "the parsed answer was refused"
+    assert got.question.funeral_home == "Hopkins Funeral Home"
+
+
+def test_propose_falls_back_to_the_text_when_there_is_no_parsed_field(db, tenant, monkeypatch):
+    """⚠️ THE FALLBACK IS REACHABLE, not defensive padding: a prompt version edited in the
+    admin playground can have `force_json` turned off, and then `response_parsed` is None
+    and the text is all there is.
+    """
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "sk-test-not-real", raising=False)
+
+    import app.services.intelligence.intelligence_service as svc
+
+    class Result:
+        response_text = '{"question": {"funeral_home": "Hopkins Funeral Home"}}'
+        response_parsed = None
+
+    monkeypatch.setattr(svc, "execute", lambda *a, **k: Result())
+    got = propose("which hopkins orders are waiting", date(2026, 10, 20), db, tenant.id)
+    assert got is not None and got.question.funeral_home == "Hopkins Funeral Home"
+
+
+def test_the_door_does_not_pin_a_model_id(db, tenant):
+    """⚠️ MEASURED ON PRODUCTION: the pinned id was a 404.
+
+    `override_model="claude-haiku-4-5-20250514"` returned
+    `404 not_found_error: model: claude-haiku-4-5-20250514` — that id does not exist —
+    so the door's first real call failed on a stale literal rather than on anything to
+    do with the door. The prompt version's `model_preference` and
+    `intelligence_model_routes` are the one place a model is named; a second place is
+    how a name goes stale without anyone noticing.
+    """
+    import inspect
+
+    from app.services.order_list import proposal
+
+    src = inspect.getsource(proposal.propose)
+    # ⚠️ COMMENTS STRIPPED FIRST. The note explaining why the override is gone contains
+    # the words, which is the defect CLAUDE.md §11 records and which caught one of these
+    # tests already.
+    code = "\n".join(
+        line for line in src.splitlines() if not line.strip().startswith("#")
+    )
+    assert "override_model" not in code
+    assert "claude-" not in code

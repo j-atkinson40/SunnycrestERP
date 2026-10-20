@@ -29,7 +29,11 @@ from datetime import date
 
 from sqlalchemy.orm import Session
 
-from app.services.order_list.question import Interpretation, accept_model_text
+from app.services.order_list.question import (
+    Interpretation,
+    accept_model_payload,
+    accept_model_text,
+)
 
 PROMPT_KEY = "opas.order_list.interpret"
 
@@ -63,11 +67,39 @@ def propose(
             variables=context.as_variables(),
             company_id=company_id,
             caller_module="order_list.proposal",
-            override_model="claude-haiku-4-5-20250514",
+            # ⚠️ NO `override_model`, AND REMOVING IT IS A BUG FIX FOUND ON PRODUCTION.
+            # It read `override_model="claude-haiku-4-5-20250514"`, which the API answers
+            # with `404 not_found_error: model: claude-haiku-4-5-20250514` — that id does
+            # not exist. So the first end-to-end run of this door, minutes after its
+            # prompt was finally seeded, failed on a stale model name rather than on
+            # anything to do with the door.
+            #
+            # ⚠️ IT ALSO REMOVES THE SECOND PLACE THAT NAMED A MODEL, which is why the
+            # drift was possible. The prompt version carries `model_preference="simple"`
+            # and `intelligence_model_routes` resolves that to the current Haiku
+            # (`claude-haiku-4-5-20251001`, measured on production 2026-10-20) with a
+            # fallback. One place names the model; a route is updatable without a deploy
+            # and a literal here is not.
+            #
+            # ⚠️ AND THE FAILURE WAS CLEAN, WHICH IS THE ONE GOOD THING ABOUT IT. The
+            # 404 was logged, `response_text` came back empty, `accept_model_text("")`
+            # returned None, and the rules' own answer stood. The model-down path was
+            # verified by accident before it was verified on purpose.
             # Asking is a read. An audit row would commit the caller's session.
             persist=False,
         )
-        raw = result.response_text or ""
     except Exception:
         return None
-    return accept_model_text(raw)
+
+    # ⚠️ THE PARSED FIELD, NOT THE RAW TEXT, AND READING THE WRONG ONE COST A CORRECT
+    # ANSWER. `intelligence_service` strips markdown code fences and fills
+    # `response_parsed` whenever `force_json` is set — which this prompt does. Reading
+    # `response_text` meant re-parsing a string the layer had already parsed, and Haiku
+    # fences its JSON: measured on production, the door refused its own right answer.
+    #
+    # ⚠️ THE TEXT PATH IS KEPT AS THE FALLBACK rather than removed. A prompt version
+    # edited in the admin playground could have `force_json` turned off, and then
+    # `response_parsed` is None and the text is all there is.
+    if result.response_parsed is not None:
+        return accept_model_payload(result.response_parsed)
+    return accept_model_text(result.response_text or "")

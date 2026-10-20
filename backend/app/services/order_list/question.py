@@ -571,6 +571,33 @@ def accept_model_text(raw: str) -> Interpretation | None:
         payload = json.loads(raw)
     except (json.JSONDecodeError, TypeError):
         return None
+    return accept_model_payload(payload)
+
+
+def accept_model_payload(payload: object) -> Interpretation | None:
+    """The same gate, for a caller that already has the parsed object.
+
+    ⚠️ IT EXISTS BECAUSE `order_list/proposal.py` WAS RE-PARSING TEXT THE INTELLIGENCE
+    LAYER HAD ALREADY PARSED, AND THAT COST A CORRECT ANSWER. Measured on production
+    2026-10-20, minutes after the prompt was first seeded: Haiku returned
+
+        ```json
+        {"question": {"cemetery": "St. Mary's Cemetery", "service_from": "2026-10-20",
+         "service_to": "2026-10-26", "when_label": "this week", "going_out": true, …}}
+        ```
+
+    — the right question, the cemetery copied verbatim from the list it was given,
+    absolute dates — wrapped in a markdown code fence. `json.loads` on that raises, so
+    the door refused its own correct answer and the rules' "Try: Hopkins orders this
+    month" stood.
+
+    ⚠️ AND THE FENCE WAS ALREADY HANDLED ONE LAYER UP. `intelligence_service` has
+    `_strip_code_fences` and fills `response_parsed` whenever `force_json` is set, which
+    this prompt sets. `proposal` was reading `response_text` — the raw string — and
+    doing its own stricter parse. The fix is to read the parsed field, not to loosen
+    this gate: `accept_model_text` stays exactly as strict as it was, because a caller
+    with only text has no layer above it to trust.
+    """
     if not isinstance(payload, dict) or _banned(payload):
         return None
     if payload.get("unsure") is True:
