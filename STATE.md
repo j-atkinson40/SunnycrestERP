@@ -44,7 +44,7 @@ score shipped as data in `docs/investigations/data/`.
 
 1. **The Oct 10 plan, in the repo**, so Parts 2 and 4 can be reconciled against it.
 2. **The real-Chrome walk** from the previous slice, still outstanding — the browser extension is not connected in this environment.
-3. ⚠️ **NOT PUSHED AT THE TIME OF WRITING** — the ruling (`6fbc88df`) is pushed; the investigation (`7b7ea248`) is not.
+3. ⚠️ **CORRECTED — the original line is kept because it was true when written:** *"⚠️ NOT PUSHED AT THE TIME OF WRITING — the ruling (`6fbc88df`) is pushed; the investigation (`7b7ea248`) is not."* Both are pushed, as `2ec7b201`.
 
 ## 2026-10-20 — Opas talks back: one voice, choices with the question, context
 
