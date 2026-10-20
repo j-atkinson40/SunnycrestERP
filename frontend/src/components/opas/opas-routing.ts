@@ -44,6 +44,15 @@ export const CAPTURE_START =
  * Requiring the next words to PREFIX a known funeral home is both narrower and
  * exactly what James asked for: "plus a funeral-home prefix".
  */
+/** The shortest head that may name a funeral home.
+ *
+ * ⚠️ TWO CHARACTERS, WHICH IS THE OLD GUARD'S VALUE AND NOT A NEW CHOICE. The previous
+ * version refused `rest.length < 2`, so `"order h"` was already a non-starter; keeping
+ * the floor on the HEAD preserves that exactly. One letter would match any home
+ * beginning with it, and `"order t"` is a slip rather than a request.
+ */
+const MIN_HEAD_CHARS = 2
+
 export function startsCaptureWithParty(
   phrase: string,
   funeralHomes: readonly string[],
@@ -52,14 +61,33 @@ export function startsCaptureWithParty(
     .exec(phrase)
   if (!m) return false
   const rest = m[1].trim().toLowerCase()
-  if (rest.length < 2) return false
-  return funeralHomes.some((name) => {
-    const n = name.toLowerCase()
-    // ⚠️ EITHER DIRECTION: the typed text may be a prefix of the name ("hopk"), or
-    // the name may be a prefix of a longer typed line ("hopkins funeral home
-    // monticello"), which is what an opening line usually is.
-    return n.startsWith(rest) || rest.startsWith(n.split(/\s+/)[0])
-  })
+  if (rest.length < MIN_HEAD_CHARS) return false
+  if (funeralHomes.length === 0) return false
+
+  // ⚠️ THE FIRST WORDS, NOT THE WHOLE REMAINDER, AND THAT WAS THE BUG (James,
+  // 2026-10-20). The old test asked whether `rest` — everything after "order" — matched
+  // a home either way round. So `"order hopk"` worked and
+  // `"order hopk monti thursday 10 st marys"` did NOT: "hopkins funeral home" does not
+  // start with that whole sentence, and that sentence does not start with "hopkins".
+  // A director typing the entire order in one breath got a dead end, and because the
+  // phrase contains the word "order" the LIST then claimed it and reported that it
+  // understood nothing.
+  //
+  // ⚠️ THE FIRST WORD DECIDES, AND IT IS ONE TEST RATHER THAN A SCAN — WHICH IS A
+  // CORRECTION TO MY OWN FIRST VERSION OF THIS FIX. That version looped k = 1..n over
+  // the first k words, asking whether any home name began with that head, and a break
+  // test found the loop was DEAD: hardcoding its bound to `maxWords = 1` turned nothing
+  // red. **Prefix matching is monotone** — if "hopkins funeral" is a prefix of a name
+  // then "hopkins" is too — so k = 1 matches whenever any larger k does and the other
+  // iterations can never add a result. One test, no bound to justify, same behaviour.
+  //
+  // ⚠️ IT ALSO SUBSUMES BOTH OF THE OLD DIRECTIONS rather than adding a third. `"hopk"`
+  // is a prefix of "hopkins funeral home"; `"hopkins funeral home monticello"` has
+  // "hopkins" as its first word. So the old `rest.startsWith(firstWord)` branch is gone
+  // with the loop.
+  const head = rest.split(/\s+/).filter((w) => w !== "")[0] ?? ""
+  if (head.length < MIN_HEAD_CHARS) return false
+  return funeralHomes.some((name) => name.toLowerCase().startsWith(head))
 }
 
 /** Phrases that open the Product List. Lower-cased, trimmed, punctuation-stripped. */
