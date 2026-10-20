@@ -35,6 +35,10 @@ from typing import Protocol
 
 from sqlalchemy.orm import Session
 
+from app.services.capture.prefix_resolve import (
+    KINDS_FUNERAL_HOME,
+    KINDS_VAULT,
+)
 from app.services.capture.schema import (
     SERVICE_LOCATION_GRAVESIDE,
     NAMEPLATE_DATE_FORMATS,
@@ -295,6 +299,11 @@ _DATE_FORMAT_WORDS: tuple[tuple[str, str], ...] = (
     (r"written\s+out|spelled\s+out|written", "written"),
 )
 
+#: `gating` key: is the last word of this line also the last word the director has
+#: typed? True unless the caller knows a later segment follows. See the abbreviation
+#: pass for why the final word is left alone.
+GATING_TAIL_OPEN = "tail_open"
+
 #: Words that carry no field and must not be reported as unrecognized.
 _NOISE_WORDS: frozenset = frozenset({
     "a", "an", "the", "and", "for", "with", "to", "at", "on", "in", "of", "is",
@@ -376,6 +385,39 @@ def _mark(
 ) -> bool:
     """`_claim` for a regex match. Returns False when the span is already taken."""
     return _claim(spans, m.start(), m.end(), field)
+
+
+def _evidence(
+    frag: str, frag_start: int, parsed: dict, field: str = ""
+) -> tuple[int, int]:
+    """Where in the LINE the parser actually read its value from.
+
+    ⚠️ THIS EXISTS BECAUSE CLAIMING THE WHOLE FRAGMENT WAS A LIVE DEFECT, MEASURED ON
+    PRODUCTION FROM JAMES'S OWN SENTENCE (2026-10-20). `order hopk monti thursday 10
+    am st. mary's` left `hopk monti thursday` as one leftover; `parse_date` read
+    "thursday" out of it and the caller then claimed all nineteen characters for
+    `service_date`. That did two separate harms at once:
+
+      1. It told the director that "hopk" and "monti" fed a date. They fed nothing.
+      2. `_claim` refuses an overlapping span, so the funeral home and the vault
+         became UNCLAIMABLE — the span that lied is also the span that blocked.
+
+    So the two symptoms James reported were one cause, and narrowing the claim is
+    what fixes both. The parsers now return `span`; see `_date_result`.
+
+    ⚠️ IT FALLS BACK TO THE WHOLE FRAGMENT WHEN NO SPAN CAME BACK, which is the old
+    behaviour: wide, but never wrong about position. A parser that cannot say where it
+    read from must not have a position invented for it.
+    """
+    span = parsed.get("span")
+    if (
+        isinstance(span, (tuple, list))
+        and len(span) == 2
+        and all(isinstance(x, int) for x in span)
+        and 0 <= span[0] < span[1] <= len(frag)
+    ):
+        return (frag_start + span[0], frag_start + span[1])
+    return (frag_start, frag_start + len(frag))
 
 
 def _leftovers(line: str, spans: list[tuple[int, int]]) -> tuple[str, ...]:
@@ -493,15 +535,23 @@ def _describe_spans(line: str, spans) -> tuple["TextSpan", ...]:
     for (a, b), field_ids in attributed.items():
         out.append(TextSpan(start=a, end=b, state="captured", field_ids=tuple(field_ids)))
 
+    # ⚠️ ONE SPAN PER WORD, NOT ONE PER SLICE, BY RULING (James, walk 2026-10-20):
+    # "unrecognized spans are word-level". His screenshot showed a single dotted block
+    # covering three words, which reads as one unknown phrase and says nothing about
+    # which word the engine could not place. A slice is whatever happened to be left
+    # between two claims; it is not a unit of meaning.
+    #
+    # ⚠️ AND IT IS WHY THE NOISE WORDS STOP BEING UNDERLINED AT ALL. The old code
+    # tested the slice for ANY non-noise word and then marked the WHOLE slice — so
+    # "order hopk" put a dotted line under "order" too, a word the engine deliberately
+    # ignores. Per word, the test and the mark are the same unit, and "order" is
+    # simply never marked.
     for start, slice_ in _unclaimed_slices(line, spans):
-        words = [w for w in re.split(r"[^A-Za-z0-9'&\-]+", slice_) if w]
-        if not any(w.casefold() not in _NOISE_WORDS for w in words):
-            continue
-        lead = len(slice_) - len(slice_.lstrip())
-        text = slice_.strip()
-        if text:
+        for m in re.finditer(r"[A-Za-z0-9'&\-]+", slice_):
+            if m.group(0).casefold() in _NOISE_WORDS:
+                continue
             out.append(
-                TextSpan(start=start + lead, end=start + lead + len(text),
+                TextSpan(start=start + m.start(), end=start + m.end(),
                          state="unrecognized")
             )
     return tuple(sorted(out, key=lambda s: (s.start, s.end)))
@@ -1794,6 +1844,198 @@ class DeterministicExtractor:
                     # has already claimed the word; setting it twice would be two
                     # writers for one field and the second would be unreachable.
 
+        # ── abbreviations: an unambiguous prefix of a known term IS that term ──
+        #
+        # ⚠️ RULED BY JAMES ON HIS 2026-10-20 WALK. He typed "order hopk monti thursday
+        # 10 am st. mary's". The ghost had been offering "ins Funeral Home" a keystroke
+        # earlier, but he typed a space and kept going instead of pressing Tab — and the
+        # extractor, which only ever matched whole names, reported the funeral home and
+        # the vault as not understood. The bar knew and the engine did not.
+        #
+        # ⚠️ IT RUNS AFTER THE EXACT SCANS AND BEFORE THE DATE, AND BOTH HALVES OF THAT
+        # ARE LOAD-BEARING. After, because a fully typed name must never be read as an
+        # abbreviation of something else — the exact scans own their spans and
+        # `_claim` then refuses this pass. Before, because the date's leftover loop
+        # claims whatever is left around its evidence, and an abbreviation sitting
+        # beside a weekday would be inside that claim before this pass could ask.
+        #
+        # ⚠️ IT EXPANDS AND HANDS THE FULL NAME TO THE ORDINARY RESOLVER. Nothing is
+        # resolved here; see `prefix_resolve`'s docstring. The span claimed is the
+        # ABBREVIATION the director typed, never the expansion — the expansion is not
+        # in the text, and a span has to point at characters that exist.
+        #
+        # ⚠️ THE FINAL WORD OF THE WHOLE TEXT IS STILL BEING TYPED, AND IT BELONGS TO
+        # THE GHOST, NOT TO THIS PASS. This is the one judgement in the abbreviation
+        # ruling, and it reconciles two rulings that look opposed:
+        #
+        #   2026-10-13  "a half-typed word resolves to nothing" — every keystroke
+        #               re-reads the text, so "Contin" is seen on almost every pass and
+        #               guessing Continental fills in an answer not yet given.
+        #   2026-10-20  "if hopk can only mean Hopkins, it's Hopkins."
+        #
+        # They are one rule over different words. James's own description says which:
+        # "once you type a SPACE AND KEEP GOING without pressing Tab". A word the
+        # director has MOVED PAST is a committed abbreviation; the word under the caret
+        # is a work in progress, and `ghost.ts` already draws exactly that line —
+        # `completionFor` completes only when "the caret must be at the END".
+        #
+        # ⚠️ SO THE FOUR `test_a_partial_word_resolves_to_nothing` CASES ARE NOT
+        # SUPERSEDED, AND I CHECKED RATHER THAN ASSUMED: "Contin", "Continenta", "34
+        # inch Contin" and "Hopk" every one sit at the END of their text.
+        tail_open = bool((gating or {}).get(GATING_TAIL_OPEN, True))
+        _tail_at = len(line.rstrip())
+
+        _vocab_cache: list | None = None
+
+        def _vocab() -> tuple:
+            """⚠️ FETCHED AT MOST ONCE PER LINE, AND ONLY IF AN ABBREVIATION IS
+            PLAUSIBLE. `build_vocabulary` runs five queries; paying that on every line
+            that happens to have a leftover word would put it on the hot path for
+            orders containing no abbreviation at all."""
+            nonlocal _vocab_cache
+            if _vocab_cache is None:
+                from app.services.capture.vocabulary import build_vocabulary
+
+                _vocab_cache = list(build_vocabulary(db, tenant_id))
+            return tuple(_vocab_cache)
+
+        def _prefix_pass(field: str, kinds: tuple[str, ...], finish) -> None:
+            """Try each unclaimed word run as an abbreviation. Longest run first.
+
+            `finish(res, a, b, frag)` does the field-specific work with the resolution,
+            the span of what was actually typed, and the unclaimed slice it sat in —
+            which the vault needs, because the "urn" rule is bounded to the slice.
+            """
+            from app.services.capture.prefix_resolve import MIN_PREFIX, resolve_prefix
+
+            for frag_start, frag in _unclaimed_slices(line, spans):
+                wordm = [
+                    m for m in re.finditer(r"[A-Za-z0-9][A-Za-z0-9'&.\-]*", frag)
+                    if m.group(0).casefold() not in _NOISE_WORDS
+                ]
+                if not wordm:
+                    continue
+                # ⚠️ LONGEST RUN FIRST, SO "st m" BEATS "st". A two-word abbreviation
+                # is more specific than its first word, and the ghost tries them in
+                # the same order for the same reason.
+                for size in range(min(4, len(wordm)), 0, -1):
+                    for i0 in range(0, len(wordm) - size + 1):
+                        run = wordm[i0:i0 + size]
+                        a, b = run[0].start(), run[-1].end()
+                        typed = frag[a:b]
+                        if len(typed) < MIN_PREFIX:
+                            continue
+                        # the run still under the caret
+                        if tail_open and frag_start + b >= _tail_at:
+                            continue
+                        res = resolve_prefix(typed, _vocab(), kinds)
+                        if res is None:
+                            continue
+                        if finish(res, frag_start + a, frag_start + b, frag):
+                            return
+
+        if once("funeral_home"):
+
+            def _finish_fh(res, A, B, frag) -> bool:
+                # ⚠️ THE EXPANSION GOES BACK THROUGH `resolve_funeral_home`, so a
+                # tenant with two records under one name still asks, exactly as it
+                # does for a fully typed name. One resolver, one answer.
+                if res.chosen is not None:
+                    fr = resolve_funeral_home(db, tenant_id, res.chosen.text)
+                    if fr.party_id and _claim(spans, A, B, "funeral_home"):
+                        values["funeral_home"] = fr.candidates[0].name
+                        return True
+                    # ⚠️ AMBIGUITY FOUND ONE LAYER DOWN STILL ASKS. An abbreviation can
+                    # narrow to ONE name and that name still match two RECORDS; dropping
+                    # it there would report "not understood" about a word the engine
+                    # understood well enough to narrow, which is the complaint this
+                    # whole slice answers.
+                    if len(fr.candidates) > 1 and _claim(spans, A, B, "funeral_home"):
+                        picks.append(Pick(
+                            "funeral_home", res.prefix,
+                            tuple((c.name, c.label) for c in fr.candidates),
+                            fr.discriminators[0].value if fr.discriminators else "name",
+                        ))
+                        return True
+                    return False
+                # ⚠️ AN AMBIGUOUS ABBREVIATION IS THE ORDINARY CHOICE LIST, NEVER A
+                # GUESS. The options are the FULL NAMES, because the row has to show
+                # the director what the abbreviation would become.
+                if len(res.matches) > 1 and _claim(spans, A, B, "funeral_home"):
+                    picks.append(Pick(
+                        "funeral_home", res.prefix,
+                        tuple((m.text, m.note or m.text) for m in res.matches),
+                        "name",
+                    ))
+                    return True
+                return False
+
+            _prefix_pass("funeral_home", KINDS_FUNERAL_HOME, _finish_fh)
+
+        if once("vault"):
+            from app.services.product_name_resolver import build_index
+            from app.services.product_name_resolver import resolve as _rv
+
+            _pidx = build_index(db)
+
+            def _finish_vault(res, A, B, frag) -> bool:
+                if res.chosen is not None:
+                    vr = _rv(_pidx, res.chosen.text)
+                    if vr.variant_template_id and _claim(spans, A, B, "vault"):
+                        values["vault"] = vr.candidates[0].display_name
+                        return True
+                    # ⚠️ AMBIGUITY FOUND ONE LAYER DOWN STILL ASKS, AND IT IS NOT A
+                    # HYPOTHETICAL — IT IS WHAT PRODUCTION DOES. Measured 2026-10-20,
+                    # read-only, on James's own second phrase: "conti" narrows to the
+                    # ONE term sunnycrest carries, `Continental Burial Vault`, and that
+                    # NAME then matches two variants differing by SIZE. My first version
+                    # returned False here and "conti" came back as not understood — on
+                    # production only, because testco carries neither Continental and
+                    # the carried filter never narrowed it to one. Local was green.
+                    #
+                    # ⚠️ THIS MIRRORS THE N-GRAM SCAN'S DECISION ABOVE RATHER THAN
+                    # RE-DECIDING: form-only takes the form the slice implies and offers
+                    # the other as a Switch; anything else asks, labelled by SKU.
+                    # `test_both_vault_paths_settle_the_same_way` holds the two together.
+                    if len(vr.candidates) > 1:
+                        discs = tuple(d.value for d in vr.discriminators)
+                        if discs == ("form",):
+                            want = "urn_vault" if "urn" in frag.casefold() else "burial_vault"
+                            mine = next(
+                                (c for c in vr.candidates if c.form == want), None)
+                            other = next(
+                                (c for c in vr.candidates if c.form != want), None)
+                            if mine is not None and _claim(spans, A, B, "vault"):
+                                values["vault"] = mine.display_name
+                                if other is not None:
+                                    switches.append(Switch(
+                                        field_id="vault",
+                                        from_label=mine.display_name,
+                                        to_value=other.display_name,
+                                        to_label=f"Switch to {other.display_name}",
+                                    ))
+                                return True
+                        if _claim(spans, A, B, "vault"):
+                            picks.append(Pick(
+                                "vault", res.prefix,
+                                tuple((c.display_name, f"{c.sku} — {c.display_name}")
+                                      for c in vr.candidates),
+                                vr.discriminators[0].value
+                                if vr.discriminators else None,
+                            ))
+                            return True
+                    return False
+                if len(res.matches) > 1 and _claim(spans, A, B, "vault"):
+                    picks.append(Pick(
+                        "vault", res.prefix,
+                        tuple((m.text, m.note or m.text) for m in res.matches),
+                        "name",
+                    ))
+                    return True
+                return False
+
+            _prefix_pass("vault", KINDS_VAULT, _finish_vault)
+
         # ── the service TIME, claimed before the date can swallow it ────
         # ⚠️ A TIME TOKEN IS NARROW AND A DATE IS NOT. `parse_date` on the fragment
         # "Thursday 10am" consumed the whole thing, so the time was lost. The time is
@@ -1815,14 +2057,16 @@ class DeterministicExtractor:
                 pd = parse_date(frag)
                 if pd and pd.get("value"):
                     i = low.find(frag.casefold())
-                    if i >= 0 and _claim(spans, i, i + len(frag), "service_date"):
+                    a, b = _evidence(frag, i, pd)
+                    if i >= 0 and _claim(spans, a, b, "service_date"):
                         values["service_date"] = pd["value"]
                         continue
             if once("service_time"):
                 pt = parse_time(frag)
                 if pt and pt.get("value"):
                     i = low.find(frag.casefold())
-                    if i >= 0 and _claim(spans, i, i + len(frag), "service_time"):
+                    a, b = _evidence(frag, i, pt)
+                    if i >= 0 and _claim(spans, a, b, "service_time"):
                         values["service_time"] = pt["value"]
 
         # ⚠️ A DISJOINTNESS ASSERTION STOOD HERE AND WAS DELETED, BECAUSE A BREAK
@@ -2354,8 +2598,13 @@ def extract_text(
     segs = segments(text)
 
     # ── pass 1: each segment in isolation, which is what makes LAST_WINS possible ──
-    for segment in segs:
-        ex = EXTRACTOR.extract_line(db, tenant_id=tenant_id, line=segment, answers={})
+    for _i, segment in enumerate(segs):
+        # ⚠️ ONLY THE LAST SEGMENT HAS AN OPEN TAIL. "hopk, thursday" has moved past
+        # "hopk" even though it ends that segment.
+        ex = EXTRACTOR.extract_line(
+            db, tenant_id=tenant_id, line=segment, answers={},
+            gating={GATING_TAIL_OPEN: _i == len(segs) - 1},
+        )
         for field_id, value in ex.values.items():
             last[field_id] = ("value", value)
         for pick in ex.picks:
@@ -2401,9 +2650,11 @@ def extract_text(
     # very word the response captures — "nameplate and vinyl, cross" would underline
     # `cross` while filling the symbol row.
     text_spans: list[TextSpan] = []
-    for offset, segment in segments_with_offsets(text):
+    _segs_off = list(segments_with_offsets(text))
+    for _i, (offset, segment) in enumerate(_segs_off):
         ex = EXTRACTOR.extract_line(
-            db, tenant_id=tenant_id, line=segment, answers={}, gating=gating
+            db, tenant_id=tenant_id, line=segment, answers={},
+            gating={**gating, GATING_TAIL_OPEN: _i == len(_segs_off) - 1},
         )
         # ⚠️ SHIFTED INTO WHOLE-TEXT COORDINATES HERE, where the segment's own offset
         # is still in hand. The pane renders over the text the director can see.

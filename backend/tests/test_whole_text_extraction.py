@@ -78,15 +78,84 @@ def _vals(db, tenant, t, **kw):
 def test_only_the_typed_path_imports_the_extractor():
     """⚠️ THE E6 GUARANTEE, MEASURED NOT READ. If a second module ever imports this,
     the mention policy stops being isolated to the typed path and this test says so
-    before anyone discovers it from a changed call-overlay result."""
+    before anyone discovers it from a changed call-overlay result.
+
+    ⚠️ IT COUNTS IMPORTS, NOT OCCURRENCES OF THE WORD, AND IT DID NOT UNTIL 2026-10-20.
+    The old version read each file as TEXT and asked whether "typed_extraction" appeared
+    anywhere in it — so a module that merely NAMED this one in a docstring was reported
+    as an importer. Two did: `prefix_resolve` and `structured_parsers`, both explaining
+    a defect whose whole point is which module it lived in, neither importing anything.
+
+    The scan now parses. Same defect class as the `asdict` source check corrected
+    earlier the same day, and as CLAUDE.md §11's "a count that measured the wrong unit":
+    the instrument answered a question ADJACENT to the one asked, and its answer was
+    well-formed. ⚠️ Naming a module in prose is how this codebase documents coupling;
+    an instrument that punishes that would be read as a reason to stop writing it down.
+    """
+    import ast
+
     app_dir = pathlib.Path(__file__).resolve().parent.parent / "app"
-    importers = sorted(
-        str(p.relative_to(app_dir))
-        for p in app_dir.rglob("*.py")
-        if "typed_extraction" in p.read_text(encoding="utf-8")
-        and p.name != "typed_extraction.py"
-    )
-    assert importers == ["services/capture/session_service.py"], importers
+    importers: list[str] = []
+    for path in app_dir.rglob("*.py"):
+        if path.name == "typed_extraction.py":
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:  # pragma: no cover - a broken file is a different failure
+            continue
+        for node in ast.walk(tree):
+            mods: list[str] = []
+            if isinstance(node, ast.Import):
+                mods = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                mods = [node.module or ""] + [
+                    f"{node.module or ''}.{a.name}" for a in node.names
+                ]
+            if any("typed_extraction" in m for m in mods):
+                importers.append(str(path.relative_to(app_dir)))
+                break
+    assert sorted(importers) == ["services/capture/session_service.py"], sorted(importers)
+
+
+def test_the_importer_ratchet_can_actually_SEE_an_import():
+    """⚠️ THE POSITIVE CONTROL, WITHOUT WHICH THE TEST ABOVE PASSES TRIVIALLY.
+
+    An `ast` walk that matched nothing would satisfy `sorted([]) == [...]`? No — but an
+    `ast` walk whose module-name test were subtly wrong would return `[]`, and `[] ==
+    ["services/capture/session_service.py"]` is False, so that much is self-checking.
+    What is NOT self-checking is the shape of the import it looks for: a scan that only
+    understood `import x` and not `from x import y` would miss the real one and still
+    have something to compare. So this asserts the known importer's own statement
+    parses to a hit, and that a file naming the module in prose alone does not.
+
+    CLAUDE.md §11: "require the control to be NON-ZERO, and read that number before the
+    result it is vouching for."
+    """
+    import ast
+
+    hits = []
+    for src, label in (
+        ("from app.services.capture.typed_extraction import extract_text", "from-import"),
+        ("import app.services.capture.typed_extraction", "plain import"),
+        ('"""typed_extraction has no way to know."""', "prose only"),
+        ("# see typed_extraction for why", "comment only"),
+    ):
+        found = False
+        for node in ast.walk(ast.parse(src)):
+            mods = []
+            if isinstance(node, ast.Import):
+                mods = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                mods = [node.module or ""] + [
+                    f"{node.module or ''}.{a.name}" for a in node.names
+                ]
+            if any("typed_extraction" in m for m in mods):
+                found = True
+        hits.append((label, found))
+    assert hits == [
+        ("from-import", True), ("plain import", True),
+        ("prose only", False), ("comment only", False),
+    ], hits
 
 
 def test_the_two_policies_are_named_and_distinct():

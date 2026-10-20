@@ -68,13 +68,18 @@ function norm(s: string): string {
  * `St. Mary's Cemetery`. A plain `startsWith` on the lowercased strings fails on the
  * PERIOD, so the ruling's own example offered nothing. Measured 2026-10-16.
  *
+ * ⚠️ EXPORTED SO THE GENERATED CORPUS CAN HOLD THE PYTHON PORT TO IT. The walk is
+ * corpus'd SEPARATELY from the resolutions, because a port can agree on every final
+ * answer and still differ on the walk — and the walk is what produces the visible
+ * suffix, so a divergence draws "ry's Cemetery" where it meant "ary's Cemetery".
+ *
  * ⚠️ IT RETURNS AN INDEX INTO THE ORIGINAL TERM, NOT INTO A NORMALISED COPY, which is
  * the whole reason this is a walk rather than a `normalize().startsWith()`. The
  * completion is `term.slice(index)` — computed on a stripped copy it would be off by
  * one character per punctuation mark skipped, and the ghost would show "ry's
  * Cemetery" where it meant "ary's Cemetery".
  */
-function consumeLoose(term: string, prefix: string): number {
+export function consumeLoose(term: string, prefix: string): number {
   const skippable = (ch: string) => /[^a-z0-9]/i.test(ch)
   let ti = 0
   let pi = 0
@@ -127,6 +132,73 @@ function consumeLoose(term: string, prefix: string): number {
  * which can never insert a word the terms disagree about. Where one term IS a strict
  * extension of all the others the two rules give the same answer.
  */
+/** What a prefix MEANS, before any decision about how much to draw. */
+export interface PrefixResolution {
+  readonly prefix: string
+  /** Every term still in play after the tie-breaks. */
+  readonly matches: readonly VocabTerm[]
+  /** The single term this prefix means, or null when it is a question. */
+  readonly chosen: VocabTerm | null
+}
+
+/**
+ * Steps 4-6a of the rule above, as their own function.
+ *
+ * ⚠️ EXTRACTED SO THE SERVER CAN BE HELD TO IT. James ruled on 2026-10-20 that the
+ * extractor must accept abbreviations "using exactly the ghost's vocabulary and
+ * tie-break rules (one source of truth, not a copy)". The vocabulary genuinely is one
+ * source — `build_vocabulary` makes it and `/capture/vocabulary` serves these very rows.
+ * The RULE cannot be one implementation: this must stay client-side (James, 2026-10-16:
+ * "keystroke latency must not depend on the network") and the extractor runs on the
+ * server, so neither can call the other.
+ *
+ * ⚠️ SO THE PAIR IS HELD BY A GENERATED CORPUS, NOT BY CARE.
+ * `backend/tests/data/opas_prefix_corpus.json` is produced FROM the Python rule and
+ * replayed through this function by `ghost-agrees.test.ts`. Change one side only and
+ * that suite goes red. Same device as the canvas validators.
+ *
+ * ⚠️ WHAT THIS DOES *NOT* DECIDE IS HOW MUCH TO DRAW. On several matches it reports a
+ * question; `completionFor` then offers their longest common prefix, because a ghost
+ * can usefully complete as far as the vocabulary AGREES. The extractor has no
+ * equivalent of that and does not need one — it resolves or it asks. The corpus
+ * therefore compares MEANING, not suffixes, and that boundary is the reason the two
+ * can be compared at all.
+ */
+export function resolvePrefix(
+  prefix: string,
+  vocab: readonly VocabTerm[],
+  kinds?: readonly string[],
+): PrefixResolution | null {
+  const p = norm(prefix)
+  if (p.length < MIN_PREFIX) return null
+
+  const pool = kinds ? vocab.filter((t) => kinds.includes(t.kind)) : vocab
+  let matches = pool.filter((t) => {
+    const at = consumeLoose(t.text, prefix)
+    return at > 0 && at < t.text.length
+  })
+  if (matches.length === 0) return null
+
+  const carried = matches.filter((t) => t.carried)
+  if (carried.length > 0) matches = carried
+
+  if (matches.length === 1) return { prefix, matches, chosen: matches[0] }
+
+  if (differOnlyByForm(matches)) {
+    const burial = matches.find((m) => m.form === BURIAL)
+    if (burial) return { prefix, matches, chosen: burial }
+  }
+
+  // ⚠️ SEVERAL TERMS WITH THE SAME TEXT ARE ONE ANSWER, NOT A QUESTION. The vocabulary
+  // is keyed on (kind, text), so one name carried as both a variant and a confirmed
+  // alias appears twice, and "did you mean X or X?" is unanswerable.
+  if (new Set(matches.map((m) => norm(m.text))).size === 1) {
+    return { prefix, matches, chosen: matches[0] }
+  }
+
+  return { prefix, matches, chosen: null }
+}
+
 export function completionFor(
   text: string,
   caret: number | null,
@@ -145,30 +217,18 @@ export function completionFor(
     const p = norm(prefix)
     if (!p) continue
 
-    let matches = vocab.filter((t) => {
-      const at = consumeLoose(t.text, prefix)
-      return at > 0 && at < t.text.length
-    })
-    if (matches.length === 0) continue
+    // ⚠️ THE MATCHING AND THE TIE-BREAKS NOW LIVE IN `resolvePrefix`, which the server
+    // is held to by a generated corpus. Only the DRAWING decision stays here.
+    const res = resolvePrefix(prefix, vocab)
+    if (res === null) continue
+    const matches = res.matches
 
-    const carried = matches.filter((t) => t.carried)
-    if (carried.length > 0) matches = carried
-
-    if (matches.length === 1) {
-      const at = consumeLoose(matches[0].text, prefix)
-      return { suffix: matches[0].text.slice(at), term: matches[0] }
-    }
-
-    // ⚠️ STEP 6a, RULED 2026-10-16: when the ONLY thing separating the matches is the
-    // form, offer the burial vault. Tenant scoping (step 5) happens to resolve this
-    // today because sunnycrest stocks one Monticello — but the day it stocks the urn
-    // vault too, "monti" would go back to offering nothing. This covers it either way.
-    if (differOnlyByForm(matches)) {
-      const burial = matches.find((m) => m.form === BURIAL)
-      if (burial) {
-        const at = consumeLoose(burial.text, prefix)
-        return { suffix: burial.text.slice(at), term: burial }
-      }
+    if (res.chosen !== null) {
+      // ⚠️ STEP 6a, RULED 2026-10-16: a vault ambiguous ONLY by form offers the burial
+      // vault. Tenant scoping happens to resolve that today because sunnycrest stocks
+      // one Monticello — the day it stocks the urn vault too, this is what covers it.
+      const at = consumeLoose(res.chosen.text, prefix)
+      return { suffix: res.chosen.text.slice(at), term: res.chosen }
     }
 
     // several: complete as far as they agree

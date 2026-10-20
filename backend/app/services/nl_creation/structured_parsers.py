@@ -71,6 +71,24 @@ def _today(today_override: date | None) -> date:
     return today_override or date.today()
 
 
+def _span_in_source(source: str, lowered: str, lead: int,
+                    m_span: tuple[int, int]) -> tuple[int, int] | None:
+    """Map a match on the stripped-and-lowered copy back onto `source`.
+
+    ⚠️ IT RETURNS None RATHER THAN A GUESS WHEN THE MAPPING CANNOT BE TRUSTED.
+    `str.lower()` is not length-preserving for every input — 'İ' lowers to two
+    characters — and a span off by one would underline the wrong word, which is
+    exactly the class of bug this span exists to fix. One length check decides it, and
+    a caller with no span keeps its previous behaviour.
+    """
+    if len(lowered) != len(source) - lead - (len(source) - len(source.rstrip())):
+        return None
+    a, b = m_span
+    if a < 0 or b > len(lowered) or b <= a:
+        return None
+    return (a + lead, b + lead)
+
+
 def parse_date(text: str, *, today: date | None = None) -> dict[str, Any] | None:
     """Parse a date reference from text.
 
@@ -90,13 +108,19 @@ def parse_date(text: str, *, today: date | None = None) -> dict[str, Any] | None
         return None
     t = text.strip().lower()
     ref = _today(today)
+    #: How far `strip()` moved the start, so every span below can be mapped back onto
+    #: the caller's own string rather than onto this lowercased copy.
+    lead = len(text) - len(text.lstrip())
+
+    def sp(m) -> tuple[int, int] | None:
+        return _span_in_source(text, t, lead, m.span())
 
     # 1. ISO
     m = _ISO_DATE_RX.search(t)
     if m:
         try:
             d = date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
-            return _date_result(d, 0.99, ref)
+            return _date_result(d, 0.99, ref, span=sp(m))
         except ValueError:
             pass
 
@@ -111,7 +135,7 @@ def parse_date(text: str, *, today: date | None = None) -> dict[str, Any] | None
             yr += 2000
         try:
             d = date(yr, mo, dy)
-            return _date_result(d, 0.92, ref)
+            return _date_result(d, 0.92, ref, span=sp(m))
         except ValueError:
             pass
 
@@ -129,25 +153,29 @@ def parse_date(text: str, *, today: date | None = None) -> dict[str, Any] | None
                 # kinds of expressions).
                 if not m.group(3) and d < ref - timedelta(days=180):
                     d = date(yr + 1, mo, dy)
-                return _date_result(d, 0.9, ref)
+                return _date_result(d, 0.9, ref, span=sp(m))
             except ValueError:
                 pass
 
     # 4. Relative words (tonight / tomorrow / yesterday / today)
     for word, delta in _RELATIVE_WORDS.items():
-        if re.search(rf"\b{word}\b", t):
+        mw = re.search(rf"\b{word}\b", t)
+        if mw:
             d = ref + timedelta(days=delta)
-            return _date_result(d, 0.95, ref, force_display=word.capitalize())
+            return _date_result(d, 0.95, ref, force_display=word.capitalize(),
+                                span=sp(mw))
 
     # 5. "next week"
-    if re.search(r"\bnext week\b", t):
+    mnw = re.search(r"\bnext week\b", t)
+    if mnw:
         d = ref + timedelta(days=7)
-        return _date_result(d, 0.7, ref, force_display="Next week")
+        return _date_result(d, 0.7, ref, force_display="Next week", span=sp(mnw))
 
     # 6. Weekday name — return the NEXT occurrence of that weekday
     #    (including today if today matches).
     for wd_name, wd_index in _WEEKDAY_NAMES.items():
-        if re.search(rf"\b{wd_name}\b", t):
+        mwd = re.search(rf"\b{wd_name}\b", t)
+        if mwd:
             delta = (wd_index - ref.weekday()) % 7
             # "Friday" when today is Friday typically means "today"
             # if the speaker's tone is near-term, but next week if
@@ -157,7 +185,7 @@ def parse_date(text: str, *, today: date | None = None) -> dict[str, Any] | None
             if delta == 0:
                 delta = 0  # keep as today — ambiguous; confidence reflects
             d = ref + timedelta(days=delta)
-            return _date_result(d, 0.85, ref)
+            return _date_result(d, 0.85, ref, span=sp(mwd))
 
     return None
 
@@ -167,7 +195,22 @@ def _date_result(
     confidence: float,
     ref: date,
     force_display: str | None = None,
+    span: tuple[int, int] | None = None,
 ) -> dict[str, Any]:
+    """The parse result, now carrying WHERE the date was read from.
+
+    ⚠️ `span` IS WHY A CALLER CAN MARK THE RIGHT WORDS, AND ITS ABSENCE WAS A LIVE
+    DEFECT. `typed_extraction` had no way to know which characters of a fragment fed
+    the date, so it claimed the WHOLE fragment: "hopk monti thursday" came back as one
+    `service_date` span, which both told the director that "hopk" fed a date and left
+    the funeral home and vault unclaimable, because `_claim` refuses an overlap.
+    Measured on production 2026-10-20 from James's own sentence.
+
+    ⚠️ IT IS OFFSETS INTO THE CALLER'S OWN STRING, NOT INTO THE LOWERCASED COPY, and
+    it is OMITTED rather than guessed when the two cannot be aligned — see
+    `_span_in_source`. A caller that receives no span falls back to its old behaviour,
+    which is wide but never wrong about position.
+    """
     if force_display:
         display = f"{force_display} ({d.isoformat()})"
     elif d == ref:
@@ -180,11 +223,14 @@ def _date_result(
         display = f"{d.strftime('%A')} ({d.isoformat()})"
     else:
         display = d.strftime("%B %-d, %Y")
-    return {
+    out: dict[str, Any] = {
         "value": d.isoformat(),
         "display": display,
         "confidence": confidence,
     }
+    if span is not None:
+        out["span"] = span
+    return out
 
 
 # ── Time parser ──────────────────────────────────────────────────────
@@ -197,10 +243,23 @@ _TIME_24H_RX = re.compile(r"\b([01]?\d|2[0-3]):([0-5]\d)(?![ap]m)\b", re.IGNOREC
 
 
 def parse_time(text: str) -> dict[str, Any] | None:
-    """Parse a time of day."""
+    """Parse a time of day.
+
+    ⚠️ IT CARRIES A `span` FOR THE SAME REASON `parse_date` DOES — see `_date_result`.
+    `typed_extraction`'s leftover loop claims a whole fragment for whichever field
+    parsed it, so a time read out of "smith friday 11" would mark all three words as
+    the service time. The sibling defect, fixed in the same pass rather than left to
+    be rediscovered: CLAUDE.md §11, "the siblings are often in the same file".
+
+    ⚠️ NO `strip()` HERE, so the lead offset is zero — unlike `parse_date`. Stated
+    because the two functions look alike and the offsets do not.
+    """
     if not text:
         return None
     t = text.lower()
+
+    def sp(m) -> tuple[int, int] | None:
+        return _span_in_source(text, t, 0, m.span())
 
     # 12-hour with AM/PM
     m = _TIME_AMPM_RX.search(t)
@@ -213,25 +272,30 @@ def parse_time(text: str) -> dict[str, Any] | None:
         elif period == "am" and hh == 12:
             hh = 0
         if 0 <= hh <= 23 and 0 <= mm <= 59:
-            return _time_result(time(hh, mm), 0.95)
+            return _time_result(time(hh, mm), 0.95, span=sp(m))
 
     # 24-hour
     m = _TIME_24H_RX.search(t)
     if m:
         hh, mm = int(m.group(1)), int(m.group(2))
-        return _time_result(time(hh, mm), 0.92)
+        return _time_result(time(hh, mm), 0.92, span=sp(m))
 
     # Named times
-    if re.search(r"\bnoon\b", t):
-        return _time_result(time(12, 0), 0.95, "Noon")
-    if re.search(r"\bmidnight\b", t):
-        return _time_result(time(0, 0), 0.95, "Midnight")
-    if re.search(r"\bmorning\b", t):
-        return _time_result(time(9, 0), 0.5, "Morning (9:00)")
-    if re.search(r"\bafternoon\b", t):
-        return _time_result(time(14, 0), 0.5, "Afternoon (14:00)")
-    if re.search(r"\bevening\b", t):
-        return _time_result(time(18, 0), 0.5, "Evening (18:00)")
+    mn = re.search(r"\bnoon\b", t)
+    if mn:
+        return _time_result(time(12, 0), 0.95, "Noon", span=sp(mn))
+    mn = re.search(r"\bmidnight\b", t)
+    if mn:
+        return _time_result(time(0, 0), 0.95, "Midnight", span=sp(mn))
+    mn = re.search(r"\bmorning\b", t)
+    if mn:
+        return _time_result(time(9, 0), 0.5, "Morning (9:00)", span=sp(mn))
+    mn = re.search(r"\bafternoon\b", t)
+    if mn:
+        return _time_result(time(14, 0), 0.5, "Afternoon (14:00)", span=sp(mn))
+    mn = re.search(r"\bevening\b", t)
+    if mn:
+        return _time_result(time(18, 0), 0.5, "Evening (18:00)", span=sp(mn))
 
     return None
 
@@ -240,18 +304,24 @@ def _time_result(
     t: time,
     confidence: float,
     force_display: str | None = None,
+    span: tuple[int, int] | None = None,
 ) -> dict[str, Any]:
+    """⚠️ `span` IS WHERE THE TIME WAS READ FROM. See `_date_result` for why, and
+    `_span_in_source` for why it is sometimes absent rather than approximate."""
     hh_12 = t.hour % 12 or 12
     period = "AM" if t.hour < 12 else "PM"
     display = (
         force_display
         or f"{hh_12}:{t.minute:02d} {period}"
     )
-    return {
+    out: dict[str, Any] = {
         "value": t.strftime("%H:%M"),
         "display": display,
         "confidence": confidence,
     }
+    if span is not None:
+        out["span"] = span
+    return out
 
 
 # ── Datetime parser ──────────────────────────────────────────────────

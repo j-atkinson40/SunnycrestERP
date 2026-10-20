@@ -598,3 +598,9 @@ tests/test_opas_model_door.py
 # route's own None-vs-False mapping, which was added after a break test found that 33
 # service-level tests could not see it.
 tests/test_opas_decision_log.py
+# Abbreviations in capture, and the span that said the opposite of what happened
+# (James, walk 2026-10-20). Covers the parsers' new evidence spans, the narrowed claim,
+# word-level unrecognized spans, the prefix rule and its tie-breaks, the open-tail rule
+# that reconciles the 2026-10-13 and 2026-10-20 rulings, and the Python half of the
+# cross-language drift guard that holds `ghost.ts` to the same rule.
+tests/test_capture_abbreviations.py
