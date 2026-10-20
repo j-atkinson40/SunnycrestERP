@@ -13,7 +13,7 @@
  */
 import { describe, expect, it } from "vitest"
 
-import rawSet from "../../../../backend/tests/data/opas_requests.jsonl?raw"
+import rawSet from "./__fixtures__/opas_requests.jsonl?raw"
 import { CAPTURE_START, startsCaptureWithParty } from "./opas-routing"
 
 interface Row {

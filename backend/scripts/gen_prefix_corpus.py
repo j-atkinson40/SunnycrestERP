@@ -38,10 +38,22 @@ from app.services.capture.prefix_resolve import (  # noqa: E402
 )
 from app.services.capture.vocabulary import Term  # noqa: E402
 
-OUT = (
-    pathlib.Path(__file__).resolve().parent.parent
-    / "tests" / "data" / "opas_prefix_corpus.json"
-)
+_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
+OUT = _ROOT / "backend/tests/data/opas_prefix_corpus.json"
+
+#: ⚠️ A SECOND COPY, INSIDE THE FRONTEND, AND IT IS NOT A SECOND SOURCE.
+#: My first version had the TypeScript suite import the backend path directly
+#: (`../../../../backend/tests/data/...`). It typechecked and built locally and FROZE THE
+#: FRONTEND DEPLOY: the Docker build copies only `frontend/`, `tsconfig.app.json`
+#: includes `src`, so `tsc -b` resolved an import to a file that does not exist in the
+#: container — and `npm run build` is `tsc -b && vite build`, so vite never ran and no
+#: new bundle was ever emitted. Exactly the class CLAUDE.md records under
+#: "Two failures that look unrelated can be one".
+#:
+#: ⚠️ THE GENERATOR WRITES BOTH, AND A TEST ASSERTS THEY ARE BYTE-IDENTICAL, so this is
+#: one artefact at two paths rather than two artefacts free to drift. Without that
+#: assertion it would be the two-lists defect wearing a new hat.
+OUT_FE = _ROOT / "frontend/src/components/opas/__fixtures__/opas_prefix_corpus.json"
 
 #: (text, kind, carried, form)
 VOCAB_SPEC = [
@@ -120,7 +132,8 @@ def main() -> int:
     ]
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps({
+    OUT_FE.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps({
         "generated_by": "backend/scripts/gen_prefix_corpus.py",
         "rule_source": "backend/app/services/capture/prefix_resolve.py",
         "min_prefix": MIN_PREFIX,
@@ -129,12 +142,14 @@ def main() -> int:
         ],
         "cases": cases,
         "walks": walks,
-    }, indent=2) + "\n", encoding="utf-8")
+    }, indent=2) + "\n"
+    OUT.write_text(payload, encoding="utf-8")
+    OUT_FE.write_text(payload, encoding="utf-8")
     chosen = sum(1 for c in cases if c["outcome"] == "chosen")
     amb = sum(1 for c in cases if c["outcome"] == "ambiguous")
     none = sum(1 for c in cases if c["outcome"] == "none")
-    print(f"{OUT.relative_to(OUT.parent.parent.parent)}: {len(cases)} cases "
-          f"({chosen} chosen / {amb} ambiguous / {none} none), {len(walks)} walks")
+    print(f"{len(cases)} cases ({chosen} chosen / {amb} ambiguous / {none} none), "
+          f"{len(walks)} walks -> {OUT.relative_to(_ROOT)} + {OUT_FE.relative_to(_ROOT)}")
     # ⚠️ A CORPUS OF ALL-ONE-OUTCOME WOULD BE SATISFIED BY A RULE THAT ALWAYS RETURNS
     # THAT OUTCOME. Every branch must be represented or the corpus is not discriminating.
     assert chosen and amb and none, "the corpus does not exercise all three outcomes"

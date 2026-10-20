@@ -29,7 +29,7 @@
  */
 import { describe, expect, it } from "vitest"
 
-import corpus from "../../../../backend/tests/data/opas_prefix_corpus.json"
+import corpus from "./__fixtures__/opas_prefix_corpus.json"
 import { MIN_PREFIX, consumeLoose, resolvePrefix, type VocabTerm } from "./ghost"
 
 interface Case {

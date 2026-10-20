@@ -771,3 +771,80 @@ def test_the_resolver_itself_refuses_to_pick_between_two_records():
     assert fr.party_id is None, "two records must not resolve to one"
     assert len(fr.candidates) == 2
     assert fr.discriminators, "the resolver must say what would narrow it"
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# 9 — two paths, one artefact
+# ───────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize(
+    "backend_rel,frontend_rel",
+    [
+        ("data/opas_prefix_corpus.json",
+         "src/components/opas/__fixtures__/opas_prefix_corpus.json"),
+        ("data/opas_requests.jsonl",
+         "src/components/opas/__fixtures__/opas_requests.jsonl"),
+    ],
+)
+def test_the_frontend_copy_is_BYTE_IDENTICAL(backend_rel, frontend_rel):
+    """⚠️ THESE FILES EXIST TWICE AND THAT IS A DEPLOY CONSTRAINT, NOT A DESIGN CHOICE.
+
+    My first version had the TypeScript suites import the backend paths directly
+    (`../../../../backend/tests/data/...`). It typechecked, it built, every suite was
+    green — and it FROZE THE FRONTEND DEPLOY. The Docker build copies only `frontend/`,
+    `tsconfig.app.json` includes `src`, and `npm run build` is `tsc -b && vite build`:
+    so `tsc` could not resolve a path outside the container, vite never ran, and no new
+    bundle was ever emitted. The symptom was a deploy sitting at the previous commit
+    with nothing failing anywhere I had looked.
+
+    ⚠️ SO THE COPIES ARE HELD BYTE-IDENTICAL RATHER THAN TRUSTED. Without this
+    assertion, two paths holding the same data is the two-lists defect: the frontend
+    would keep scoring against a stale recording and report green while the rule moved.
+    The corpus is written to both paths by one generator; the request set is curated and
+    copied. Either way, this is what says so when they diverge.
+    """
+    import pathlib
+
+    be = pathlib.Path(__file__).resolve().parent / backend_rel
+    fe = pathlib.Path(__file__).resolve().parents[2] / "frontend" / frontend_rel
+    assert be.exists(), be
+    assert fe.exists(), (
+        f"{fe} is missing — re-run scripts/gen_prefix_corpus.py, or copy the set"
+    )
+    # ⚠️ BYTES, NOT PARSED CONTENT. A JSON comparison would pass over a file the
+    # frontend's `?raw` import reads differently (line endings, trailing newline).
+    assert be.read_bytes() == fe.read_bytes(), (
+        f"{backend_rel} and {frontend_rel} have diverged"
+    )
+    # the control: the files are not both empty
+    assert len(be.read_bytes()) > 500
+
+
+def test_no_frontend_source_file_imports_across_the_repo_boundary():
+    """⚠️ THE RATCHET FOR THE DEFECT ABOVE, because the assertion above only catches a
+    DIVERGENCE and the deploy freeze was caused by an IMPORT PATH.
+
+    Anything under `frontend/src` that reaches into `backend/` typechecks locally and
+    cannot resolve inside the frontend build container. One failing import takes the
+    whole bundle down, silently, because `tsc -b` runs before `vite build` and a deploy
+    that emits no bundle looks exactly like a deploy that has not happened yet.
+    """
+    import pathlib
+    import re
+
+    src = pathlib.Path(__file__).resolve().parents[2] / "frontend" / "src"
+    offenders = []
+    for path in src.rglob("*.ts*"):
+        text = path.read_text(encoding="utf-8")
+        for m in re.finditer(r"""from\s+["']([^"']+)["']|import\s+["']([^"']+)["']""", text):
+            spec = m.group(1) or m.group(2) or ""
+            if "backend/" in spec or re.match(r"^(\.\./){3,}", spec):
+                offenders.append(f"{path.relative_to(src)}: {spec}")
+    assert offenders == [], offenders
+
+    # ⚠️ THE POSITIVE CONTROL: the scan really does walk files and really would match.
+    # An empty `offenders` is satisfied by a glob that found nothing at all.
+    assert sum(1 for _ in src.rglob("*.ts*")) > 100
+    probe = 'import x from "../../../../backend/tests/data/thing.json"'
+    assert re.search(r"""from\s+["']([^"']+)["']""", probe)
+    assert "backend/" in re.search(r"""from\s+["']([^"']+)["']""", probe).group(1)
