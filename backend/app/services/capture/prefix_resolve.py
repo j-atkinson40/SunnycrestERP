@@ -69,11 +69,136 @@ KINDS_VAULT = ("vault", "vault_alias", "product")
 _VARIANT_KINDS = frozenset({"vault", "vault_alias"})
 
 
+#: ⚠️ THE GENERIC WORDS, IN ONE PLACE, BY RULING (James, 2026-10-21): "Generic words
+#: never count as a match point: burial, vault, urn, funeral, home, cemetery, memorial,
+#: chapel, st, the, of, and (list them in one place)."
+#:
+#: His reason, and it is the whole reason the list exists: "people name vaults by their
+#: distinctive word, not the first one" — but without a stoplist "bur" would match every
+#: burial vault in the catalog, which is a choice list nobody can use.
+#:
+#: ⚠️ MIRRORED IN `ghost.ts` AND COMPARED BY THE GENERATED CORPUS, which carries this
+#: set so a word added to one side and not the other turns the other side red. A
+#: stoplist that drifted would make the two disagree about which names are reachable.
+GENERIC_WORDS = frozenset({
+    "burial", "vault", "urn", "funeral", "home", "cemetery",
+    "memorial", "chapel", "st", "the", "of", "and",
+})
+
+#: ⚠️ POSITION 0 IS ALWAYS A MATCH POINT, EVEN WHEN THE FIRST WORD IS GENERIC, AND THAT
+#: IS A READING OF THE RULING RATHER THAN A LITERAL TRANSCRIPTION OF IT. Flagged here
+#: because flipping this one name is how it gets reversed.
+#:
+#: The ruling says a prefix may match "at the start of any word inside a known name, not
+#: only the first word" — additive language — and separately that generic words never
+#: count as a match point. Read as excluding position 0 too, measured on testco:
+#:
+#:     8 terms begin with a generic word and stop being reachable from it, including
+#:     "St. Mary's Cemetery" (st) and "Memorial Chapel", whose EVERY word is generic
+#:     and which would have no match point at all.
+#:
+#: That is a loss of reach the ruling did not ask for, and the stoplist's stated purpose
+#: — stopping "bur" from matching the whole catalog — is about INTERIOR matches: nothing
+#: in either catalogue begins with "Burial", so allowing position 0 does not reinstate
+#: it. So the generic list governs the NEW interior match points and today's behaviour
+#: is preserved exactly.
+FIRST_WORD_ALWAYS_MATCHES = True
+
+#: ⚠️ ONLY CATALOG NAMES GET INTERIOR MATCH POINTS, AND A TEST FOUND THIS THE HARD WAY.
+#: `test_a_LOWERCASE_DECEDENT_is_still_not_recognised` went red the moment word-initial
+#: matching landed: "mary smith" came back with only "smith" unplaced, because **"mary"
+#: reached `St. Mary's Cemetery` at its interior word** and was claimed as a party.
+#:
+#: ⚠️ THE DECEDENT IS THE ONE FIELD WHERE HUMAN GIVEN NAMES APPEAR, AND PLACE NAMES ARE
+#: FULL OF THEM — St. Mary's, St. Joseph's, Mount Olivet. Interior matching on party
+#: names turns every such first name into a cemetery, and the decedent pass works BY
+#: ELIMINATION over what nothing else claimed, so the name does not merely compete — it
+#: is consumed before the decedent pass can see it.
+#:
+#: Both of James's examples are catalog names ("venetian" for White Venetian, "salute"
+#: for Veteran Salute), and the reason he gave is about how people name VAULTS. Parties
+#: keep matching from position 0, exactly as before.
+INTERIOR_KINDS = frozenset({"vault", "vault_alias", "product"})
+
+
 def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", s.lower()).strip()
 
 
-def consume_loose(term: str, prefix: str) -> int:
+def _word_key(word: str) -> str:
+    """A term word reduced to the thing the stoplist is written in.
+
+    ⚠️ PUNCTUATION IS STRIPPED FROM BOTH ENDS BECAUSE THE CATALOGUE CARRIES IT. "St."
+    must match the stoplist entry "st", and `(Cream` — a real word in `Universal Urn
+    Vault (Cream & Gold)` — must reduce to "cream" or the bracketed variants would be
+    unreachable by their own distinctive word.
+    """
+    return word.strip("().,'\"-&\u2019").lower()
+
+
+def match_points(term: str, *, interior: bool = True) -> tuple[int, ...]:
+    """Every character position in `term` at which a typed prefix may begin.
+
+    ⚠️ RULED 2026-10-21. Before this, a prefix had to match from character 0, so
+    `White Venetian Burial Vault` was unreachable by "venet" — and a director names a
+    vault by its distinctive word, not by the colour that happens to come first.
+
+    Position 0, plus the start of every later word that is not generic AND begins with a
+    letter — a bare number is not a distinctive word. Returned in
+    ascending order so a caller preferring the earliest match gets the one that matches
+    from the start of the name.
+    """
+    points: list[int] = [0] if FIRST_WORD_ALWAYS_MATCHES else []
+    if not interior:
+        # ⚠️ PARTY NAMES MATCH FROM THE START ONLY. See `INTERIOR_KINDS`.
+        return tuple(points)
+    for m in re.finditer(r"\S+", term):
+        if m.start() == 0:
+            if not FIRST_WORD_ALWAYS_MATCHES and _word_key(m.group(0)) not in GENERIC_WORDS:
+                points.append(0)
+            continue
+        key = _word_key(m.group(0))
+        if key in GENERIC_WORDS:
+            continue
+        # ⚠️ AN INTERIOR MATCH POINT MUST BEGIN WITH A LETTER, AND A TEST FOUND THIS THE
+        # HARD WAY. The ruling says "any DISTINCTIVE WORD"; a bare number is not one.
+        # Measured 2026-10-21 the moment word-initial matching landed:
+        #
+        #     "34" reached 'Continental 34"'          "24" reached 'Loved & Cherished 24"'
+        #     "30" reached 'Late Arrival per 30 min'
+        #
+        # So `34 inch Contin` resolved a vault from the SIZE alone — and an order
+        # sentence is full of bare numbers: a time, a date, a quantity. A director
+        # typing "thursday 10 am" must not have "10" read as a product. It also drops
+        # `&` and other symbol-only tokens, which are not words either.
+        if not key[:1].isalpha():
+            continue
+        points.append(m.start())
+    return tuple(dict.fromkeys(points))
+
+
+def reaches(term: str, prefix: str, *, interior: bool = True) -> int | None:
+    """How far into `term` this prefix reaches from its best match point, or None.
+
+    ⚠️ THE EARLIEST VALID MATCH POINT WINS, so a prefix that matches from the start of
+    the name is read that way rather than as an interior match.
+
+    ⚠️ AND A WHOLE TERM IS STILL NOT AN ABBREVIATION OF ITSELF — but only from position
+    0. "salute" consumes the LAST word of `Veteran Salute` and reaches the end of the
+    term, which is a perfectly good abbreviation of it; the exact scans own only the
+    case where the director typed the whole name from its first character.
+    """
+    for p in match_points(term, interior=interior):
+        at = consume_loose(term, prefix, p)
+        if at <= p:
+            continue
+        if p == 0 and at >= len(term):
+            continue
+        return at
+    return None
+
+
+def consume_loose(term: str, prefix: str, start: int = 0) -> int:
     """How far into `term` the typed `prefix` reaches, or -1.
 
     ⚠️ A CHARACTER-WALK, NOT `startswith`, AND PUNCTUATION IS WHY. A director types
@@ -84,7 +209,7 @@ def consume_loose(term: str, prefix: str) -> int:
     "stm..." inside a single word.
     """
     skippable = lambda ch: re.match(r"[^a-z0-9]", ch, re.I) is not None
-    ti = pi = 0
+    ti, pi = start, 0
     while pi < len(prefix):
         if skippable(prefix[pi]):
             if prefix[pi].isspace():
@@ -185,9 +310,10 @@ def resolve_prefix(
     caret handling, which is a property of a text box and not of a vocabulary:
 
       1. shorter than `MIN_PREFIX` -> nothing.
-      2. matches are terms this prefix reaches and is SHORTER than. A prefix equal to
-         the whole term is not an abbreviation; the exact scans already own that, and
-         claiming it here would put two writers on one span.
+      2. matches are terms this prefix REACHES — from position 0, or from the start of
+         any later non-generic word (ruled 2026-10-21, see `match_points`). A prefix
+         equal to the whole term FROM POSITION 0 is not an abbreviation; the exact scans
+         already own that, and claiming it here would put two writers on one span.
       3. restricted to `kinds`, so a prefix resolving for the vault cannot fill the
          funeral home. ⚠️ MEASURED ON PRODUCTION: a `company_entities` row is named
          "St. Mary's Cemetery", so "st m" reaches a funeral home AND a cemetery. Kind
@@ -209,7 +335,7 @@ def resolve_prefix(
     pool = [t for t in vocab if kinds is None or t.kind in kinds]
     matches = tuple(
         t for t in pool
-        if 0 < consume_loose(t.text, prefix) < len(t.text)
+        if reaches(t.text, prefix, interior=t.kind in INTERIOR_KINDS) is not None
     )
     if not matches:
         return None

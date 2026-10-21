@@ -37,6 +37,9 @@ from sqlalchemy import text as sql
 
 from app.database import SessionLocal
 from app.services.capture.prefix_resolve import (
+    FIRST_WORD_ALWAYS_MATCHES,
+    GENERIC_WORDS,
+    INTERIOR_KINDS,
     KINDS_FUNERAL_HOME,
     KINDS_VAULT,
     MIN_PREFIX,
@@ -667,12 +670,34 @@ def test_THE_CORPUS_MATCHES_THE_LIVE_RULE():
 
     # ⚠️ AND THE WALKS, which the resolutions cannot cover: a port can agree on every
     # answer while differing on the walk, and the walk is what draws the suffix.
+    #
+    # ⚠️ IT RECORDS `reaches`, NOT `consume_loose`, SINCE THE 2026-10-21 RULING — the
+    # MATCH POINT is now part of the answer, and a port agreeing on every consumed
+    # length while choosing a different match point would draw the suffix from the
+    # wrong place.
+    from app.services.capture.prefix_resolve import match_points, reaches
+
+    terms = sorted({x[0] for x in VOCAB_SPEC})
     live_walks = [
-        {"term": t, "prefix": p, "at": consume_loose(t, p)}
-        for t in sorted({x[0] for x in VOCAB_SPEC})
+        {"term": t, "prefix": p, "interior": inter,
+         "at": reaches(t, p, interior=inter)}
+        for t in terms
         for p in PREFIXES
+        for inter in (True, False)
     ]
     assert live_walks == corpus["walks"]
+
+    # ⚠️ AND THE MATCH POINTS PER TERM, WHICH IS HOW THE STOPLIST IS COMPARED AT THE
+    # POINT IT ACTS. Two ports can agree on every case over THIS vocabulary while
+    # disagreeing about a word neither corpus contains — the disagreement would first
+    # appear on a real tenant's catalogue.
+    assert [
+        {"term": t, "interior": inter, "points": list(match_points(t, interior=inter))}
+        for t in terms for inter in (True, False)
+    ] == corpus["match_points"]
+    assert corpus["interior_kinds"] == sorted(INTERIOR_KINDS)
+    assert corpus["generic_words"] == sorted(GENERIC_WORDS)
+    assert corpus["first_word_always_matches"] is FIRST_WORD_ALWAYS_MATCHES
 
 
 def test_the_corpus_is_non_empty_and_exercises_every_outcome():
@@ -691,8 +716,16 @@ def test_the_corpus_is_non_empty_and_exercises_every_outcome():
     assert len(corpus["cases"]) > 50
     assert len(corpus["walks"]) > 50
     assert {c["outcome"] for c in corpus["cases"]} == {"none", "chosen", "ambiguous"}
-    assert any(w["at"] > 0 for w in corpus["walks"])
-    assert any(w["at"] == -1 for w in corpus["walks"])
+    assert any(w["at"] is not None and w["at"] > 0 for w in corpus["walks"])
+    assert any(w["at"] is None for w in corpus["walks"])
+    # ⚠️ AN INTERIOR MATCH POINT MUST ACTUALLY OCCUR, or the 2026-10-21 ruling is
+    # untested and both ports agree trivially under the OLD rule.
+    assert sum(1 for r in corpus["match_points"]
+               if r["interior"] and len(r["points"]) > 1) >= 3
+    # ⚠️ AND A TERM REACHABLE ONLY FROM POSITION 0 WHILE BEING ALL-GENERIC, which is the
+    # reading this slice committed to rather than transcribed.
+    assert any(r["term"] == "Memorial Chapel" and r["interior"] and r["points"] == [0]
+               for r in corpus["match_points"])
 
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -1044,3 +1077,155 @@ def test_the_equipment_row_still_owns_tent_only(db, tenant):
         assert ex.values.get("cemetery_equipment") == "tent_only", (t, dict(ex.values))
         assert "vault" not in ex.values, (t, dict(ex.values))
         assert not [p for p in ex.picks if p.field_id == "vault"], (t, ex.picks)
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# 11 — a prefix may match at the start of any distinctive word
+# ───────────────────────────────────────────────────────────────────────────
+
+def test_a_prefix_reaches_a_DISTINCTIVE_word_inside_a_name():
+    """⚠️ RULED 2026-10-21: "people name vaults by their distinctive word, not the first
+    one" — "venetian" for White Venetian, "salute" for Veteran Salute.
+
+    Before this a prefix had to match from character 0, so every Venetian variant was
+    unreachable by the only word a director says.
+    """
+    from app.services.capture.prefix_resolve import reaches
+
+    assert reaches("White Venetian Burial Vault", "venet") == 11
+    assert reaches("Gold Venetian Urn Vault", "venetian") == 13
+    # ⚠️ THE LAST WORD COUNTS, AND REACHING THE TERM'S END IS LEGAL FROM AN INTERIOR
+    # POINT. "salute" is a good abbreviation of `Veteran Salute`; only a match from
+    # character 0 that consumes the whole name is excluded, because the exact scans own
+    # that case.
+    assert reaches("Veteran Salute", "salute") == 14
+    assert reaches("Veteran Salute", "Veteran Salute") is None
+
+
+@pytest.mark.parametrize("word", sorted(GENERIC_WORDS))
+def test_a_generic_word_is_never_an_interior_match_point(word):
+    """⚠️ THE STOPLIST, OVER EVERY ENTRY RATHER THAN A SAMPLE. James's reason is the
+    test: without it "bur" would match every burial vault in the catalog, which is a
+    choice list nobody can use.
+
+    ⚠️ AND IT IS PARAMETRIZED SO AN ENTRY DELETED FROM THE LIST STOPS BEING CHECKED
+    LOUDLY — a hardcoded subset would keep passing while the list shrank underneath it.
+    """
+    from app.services.capture.prefix_resolve import match_points
+
+    term = f"Monticello {word.capitalize()} Thing"
+    pts = match_points(term)
+    # the generic word sits at index 11; it must not be offered as a match point
+    assert 11 not in pts, (term, pts)
+    # the control: a DISTINCTIVE word in the same position IS offered
+    assert 11 in match_points("Monticello Zephyr Thing")
+
+
+def test_bur_matches_NO_burial_vault():
+    """James's own counter-example, stated as the test it is."""
+    from app.services.capture.prefix_resolve import reaches
+
+    for term in ("Monticello Burial Vault", "Continental Burial Vault",
+                 "White Venetian Burial Vault", "Veteran Salute Burial Vault"):
+        assert reaches(term, "bur") is None, term
+    # ⚠️ THE CONTROL: "bur" is not simply unmatchable — a name that STARTS with it is
+    # still reached, because position 0 remains a match point.
+    assert reaches("Burlington Vault", "bur") is not None
+
+
+def test_POSITION_ZERO_STAYS_A_MATCH_POINT_even_when_the_first_word_is_generic():
+    """⚠️ THE ONE READING IN THIS RULING, FLAGGED RATHER THAN BURIED.
+
+    The ruling says a prefix may match "at the start of any word inside a known name,
+    not only the first word" — additive — and separately that generic words never count
+    as a match point. Read as excluding position 0 as well, measured on testco:
+
+        8 terms begin with a generic word and lose reach from it, including
+        "St. Mary's Cemetery" (st) and "Memorial Chapel", whose EVERY word is generic
+        and which would then have no match point at all.
+
+    That is reach the ruling never asked to remove, and the stoplist's stated purpose —
+    stopping "bur" matching the whole catalog — concerns INTERIOR matches: nothing in
+    either catalogue begins with "Burial", so position 0 does not reinstate it.
+    `FIRST_WORD_ALWAYS_MATCHES` is the single name that reverses this if James meant the
+    stricter reading.
+    """
+    from app.services.capture.prefix_resolve import (
+        FIRST_WORD_ALWAYS_MATCHES,
+        match_points,
+        reaches,
+    )
+
+    assert FIRST_WORD_ALWAYS_MATCHES is True
+    assert match_points("Memorial Chapel") == (0,)
+    assert reaches("Memorial Chapel", "memor") is not None
+    assert reaches("St. Mary's Cemetery", "st m") is not None
+    # and the interior generic words are still refused in the same terms
+    assert 9 not in match_points("Memorial Chapel")
+
+
+def test_several_word_initial_matches_ASK(db, tenant):
+    """"Several matches -> the choice list." "venet" reaches four Venetian variants and
+    must not pick one."""
+    v = tuple(build_vocabulary(db, tenant))
+    r = resolve_prefix("venetian", v, KINDS_VAULT)
+    assert r is not None
+    names = sorted(m.text for m in r.matches)
+    assert len(names) > 1, names
+    assert all("Venetian" in n for n in names), names
+
+
+def test_the_whole_walk_phrase_still_fills_everything(db, tenant):
+    """⚠️ THE RETEST LINE, RUN AS A TEST. Word-initial matching widens what a prefix can
+    reach, which is exactly the change most likely to turn a resolved field into a
+    question. This is the phrase James retests, asserted end to end.
+    """
+    ex = extract_text(db, tenant_id=tenant, text=WALK)
+    assert ex.values.get("funeral_home") == "Hopkins Funeral Home"
+    assert ex.values.get("vault") == "Monticello Burial Vault"
+    assert ex.values.get("service_date") == "2026-10-22"
+    assert ex.values.get("service_time") == "10:00"
+    assert ex.values.get("cemetery") == "St. Mary's Cemetery"
+    assert ex.unrecognized == (), ex.unrecognized
+    assert not any(s.state == "unrecognized" for s in ex.spans), _spans(ex, WALK)
+
+
+def test_INTERIOR_MATCHING_IS_FOR_CATALOG_NAMES_ONLY(db, tenant):
+    """⚠️ FOUND BY A TEST GOING RED, NOT BY FORESIGHT, AND IT IS THE SHARPEST FINDING IN
+    THIS SLICE.
+
+    `test_a_LOWERCASE_DECEDENT_is_still_not_recognised` broke the moment word-initial
+    matching landed: "mary smith" came back with only "smith" unplaced, because **"mary"
+    reached `St. Mary's Cemetery` at its interior word** and was claimed as a party.
+
+    ⚠️ THE DECEDENT IS THE ONE FIELD WHERE HUMAN GIVEN NAMES APPEAR, AND PLACE NAMES ARE
+    FULL OF THEM — St. Mary's, St. Joseph's, Mount Olivet. Worse, the decedent pass runs
+    BY ELIMINATION over what nothing else claimed, so an interior party match does not
+    merely compete with the name: it consumes it before the decedent pass can see it.
+
+    Both of James's examples are catalog names and his stated reason is about how people
+    name VAULTS, so interior matching is scoped to the catalog kinds and parties keep
+    matching from position 0.
+    """
+    from app.services.capture.prefix_resolve import INTERIOR_KINDS, reaches
+
+    assert INTERIOR_KINDS == frozenset({"vault", "vault_alias", "product"})
+    # the same term, the two settings
+    assert reaches("St. Mary's Cemetery", "mary", interior=False) is None
+    assert reaches("St. Mary's Cemetery", "mary", interior=True) is not None
+
+    # ⚠️ AND END TO END: a lowercase decedent is still reported whole. This is the
+    # assertion that went red, restated here so the scoping has a red of its own in the
+    # file that owns the rule.
+    # ⚠️ MY FIRST VERSION OF THE LAST ASSERTION HERE WAS A NO-OP — a generator that
+    # yielded the literal "x" and could never contain "mary". Replaced with the span
+    # check it was pretending to be: no captured span may cover the decedent's first
+    # name, which is the thing the interior match was consuming.
+    t = "order for hopkins mary smith thursday"
+    ex = extract_text(db, tenant_id=tenant, text=t)
+    assert ex.values.get("funeral_home") == "Hopkins Funeral Home"
+    assert "cemetery" not in ex.values, dict(ex.values)
+    claimed = [t[sp.start:sp.end] for sp in ex.spans if sp.state == "captured"]
+    assert not any("mary" in c.lower() for c in claimed), claimed
+    # the control: something WAS claimed, so this is not a run where nothing happened
+    assert claimed, [(t[sp.start:sp.end], sp.state) for sp in ex.spans]

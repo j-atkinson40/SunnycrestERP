@@ -61,6 +61,95 @@ function norm(s: string): string {
 }
 
 /**
+ * ⚠️ THE GENERIC WORDS, IN ONE PLACE, BY RULING (James, 2026-10-21): "Generic words
+ * never count as a match point." Without a stoplist "bur" would match every burial
+ * vault in the catalog, which is a choice list nobody can use.
+ *
+ * ⚠️ MIRRORED FROM `prefix_resolve.py::GENERIC_WORDS` AND COMPARED BY THE GENERATED
+ * CORPUS, which carries the set itself — so a word added on one side and not the other
+ * turns this suite red rather than quietly changing which names are reachable.
+ */
+export const GENERIC_WORDS: ReadonlySet<string> = new Set([
+  "burial", "vault", "urn", "funeral", "home", "cemetery",
+  "memorial", "chapel", "st", "the", "of", "and",
+])
+
+/**
+ * ⚠️ POSITION 0 IS ALWAYS A MATCH POINT, EVEN WHEN THE FIRST WORD IS GENERIC. A reading
+ * of the ruling rather than a transcription of it — see
+ * `prefix_resolve.py::FIRST_WORD_ALWAYS_MATCHES`, which carries the measurement: read
+ * the other way, 8 terms including "St. Mary's Cemetery" and "Memorial Chapel" lose
+ * reach the ruling never asked to remove.
+ */
+const FIRST_WORD_ALWAYS_MATCHES = true
+
+/**
+ * ⚠️ ONLY CATALOG NAMES GET INTERIOR MATCH POINTS. A backend test found this the hard
+ * way: "mary smith" came back with only "smith" unplaced, because **"mary" reached
+ * `St. Mary's Cemetery` at its interior word** and was claimed as a party. The decedent
+ * is the one field where human given names appear and place names are full of them —
+ * St. Mary's, St. Joseph's, Mount Olivet.
+ *
+ * Both of James's examples are catalog names, and his reason is about how people name
+ * VAULTS. Mirrors `prefix_resolve.py::INTERIOR_KINDS`.
+ */
+const INTERIOR_KINDS = new Set(["vault", "vault_alias", "product"])
+
+function wordKey(word: string): string {
+  // Punctuation stripped from both ends: "St." must match the stoplist entry "st", and
+  // "(Cream" — a real word in `Universal Urn Vault (Cream & Gold)` — must reduce to
+  // "cream" or the bracketed variants are unreachable by their own distinctive word.
+  return word.replace(/^[().,'"\-&\u2019]+|[().,'"\-&\u2019]+$/g, "").toLowerCase()
+}
+
+/**
+ * Every character position in `term` at which a typed prefix may begin.
+ *
+ * ⚠️ RULED 2026-10-21. Before this a prefix had to match from character 0, so
+ * `White Venetian Burial Vault` was unreachable by "venet" — and a director names a
+ * vault by its distinctive word, not by the colour that happens to come first.
+ */
+export function matchPoints(term: string, interior = true): readonly number[] {
+  const points: number[] = FIRST_WORD_ALWAYS_MATCHES ? [0] : []
+  // ⚠️ PARTY NAMES MATCH FROM THE START ONLY. See `INTERIOR_KINDS`.
+  if (!interior) return points
+  const rx = /\S+/g
+  let m: RegExpExecArray | null
+  while ((m = rx.exec(term)) !== null) {
+    if (m.index === 0) {
+      if (!FIRST_WORD_ALWAYS_MATCHES && !GENERIC_WORDS.has(wordKey(m[0]))) points.push(0)
+      continue
+    }
+    const key = wordKey(m[0])
+    if (GENERIC_WORDS.has(key)) continue
+    // ⚠️ AN INTERIOR MATCH POINT MUST BEGIN WITH A LETTER. The ruling says "any
+    // DISTINCTIVE WORD", and a bare number is not one — measured, "34" reached
+    // `Continental 34"` and "30" reached `Late Arrival per 30 min`, so a typed time or
+    // date would have resolved a product. Mirrors `prefix_resolve.py::match_points`.
+    if (!/^[a-z]/i.test(key)) continue
+    points.push(m.index)
+  }
+  return [...new Set(points)]
+}
+
+/**
+ * How far into `term` this prefix reaches from its best match point, or null.
+ *
+ * ⚠️ THE EARLIEST VALID MATCH POINT WINS, and a whole term is still not an abbreviation
+ * of itself — but only from position 0. "salute" consumes the LAST word of
+ * `Veteran Salute` and reaches the term's end, which is a good abbreviation of it.
+ */
+export function reaches(term: string, prefix: string, interior = true): number | null {
+  for (const p of matchPoints(term, interior)) {
+    const at = consumeLoose(term, prefix, p)
+    if (at <= p) continue
+    if (p === 0 && at >= term.length) continue
+    return at
+  }
+  return null
+}
+
+/**
  * How far into `term` the typed `prefix` reaches, ignoring punctuation and spacing,
  * or -1 if it does not.
  *
@@ -79,9 +168,9 @@ function norm(s: string): string {
  * one character per punctuation mark skipped, and the ghost would show "ry's
  * Cemetery" where it meant "ary's Cemetery".
  */
-export function consumeLoose(term: string, prefix: string): number {
+export function consumeLoose(term: string, prefix: string, start = 0): number {
   const skippable = (ch: string) => /[^a-z0-9]/i.test(ch)
-  let ti = 0
+  let ti = start
   let pi = 0
   while (pi < prefix.length) {
     // skip characters in the PREFIX that carry no identity
@@ -151,8 +240,14 @@ const VARIANT_KINDS = new Set(["vault", "vault_alias"])
 export function rankDownProducts(
   matches: readonly VocabTerm[],
 ): readonly VocabTerm[] {
-  const variants = matches.filter((t) => VARIANT_KINDS.has(t.kind))
-  return variants.length > 0 ? variants : matches
+  // ⚠️ IT DROPS PRODUCTS, IT DOES NOT KEEP ONLY VARIANTS, AND THE CORPUS CAUGHT ME
+  // SHIPPING THE WRONG ONE HERE. The Python side was fixed and this port was not: a
+  // keep-only-variants filter also discards every funeral home and cemetery, and
+  // `completionFor` calls this with NO `kinds` — so the ghost would have stopped
+  // offering parties the moment any vault matched the same prefix. Found by
+  // `ghost-agrees.test.ts` on the prefix "st", not by review.
+  if (!matches.some((t) => VARIANT_KINDS.has(t.kind))) return matches
+  return matches.filter((t) => t.kind !== "product")
 }
 
 /** What a prefix MEANS, before any decision about how much to draw. */
@@ -199,10 +294,9 @@ export function resolvePrefix(
   // ⚠️ `readonly`, BECAUSE `rankDownProducts` RETURNS ONE. Typed as `VocabTerm[]` this
   // failed `tsc -b` with TS4104 — which is the error class that froze the deploy on
   // 2026-10-20, so it is worth the annotation rather than a cast.
-  let matches: readonly VocabTerm[] = pool.filter((t) => {
-    const at = consumeLoose(t.text, prefix)
-    return at > 0 && at < t.text.length
-  })
+  let matches: readonly VocabTerm[] = pool.filter(
+    (t) => reaches(t.text, prefix, INTERIOR_KINDS.has(t.kind)) !== null,
+  )
   if (matches.length === 0) return null
 
   const carried = matches.filter((t) => t.carried)
@@ -255,13 +349,36 @@ export function completionFor(
       // ⚠️ STEP 6a, RULED 2026-10-16: a vault ambiguous ONLY by form offers the burial
       // vault. Tenant scoping happens to resolve that today because sunnycrest stocks
       // one Monticello — the day it stocks the urn vault too, this is what covers it.
-      const at = consumeLoose(res.chosen.text, prefix)
+      //
+      // ⚠️ THE SUFFIX IS MEASURED FROM THE MATCH POINT, NOT FROM 0, SINCE 2026-10-21.
+      // "venet" reaches `White Venetian Burial Vault` at its SECOND word, so the
+      // completion is "ian Burial Vault" — accepting it types "venetian Burial Vault",
+      // a phrase the resolver then answers. Measured from 0 the slice would have
+      // started mid-"White" and the ghost would have drawn nonsense.
+      const at = reaches(res.chosen.text, prefix, INTERIOR_KINDS.has(res.chosen.kind))
+      if (at === null) continue
       return { suffix: res.chosen.text.slice(at), term: res.chosen }
     }
 
     // several: complete as far as they agree
+    const at = reaches(matches[0].text, prefix, INTERIOR_KINDS.has(matches[0].kind))
+    if (at === null) continue
+    // ⚠️ THE AGREEMENT IS MEASURED FROM EACH TERM'S OWN MATCH POINT. `White Venetian…`
+    // and `Gold Venetian…` share nothing at character 0, so a common prefix over the
+    // whole strings is empty and the ghost would offer nothing for "venet" — while
+    // from their match points they agree on "Venetian ". The tails are what the
+    // director is completing.
+    const tails = matches
+      .map((t) => {
+        const a = reaches(t.text, prefix, INTERIOR_KINDS.has(t.kind))
+        return a === null ? null : t.text.slice(a)
+      })
+      .filter((x): x is string => x !== null)
+    const sharedTail = tails.length === matches.length ? commonPrefix(tails) : ""
+    if (sharedTail.length > 0) {
+      return { suffix: sharedTail, term: matches[0] }
+    }
     const shared = commonPrefix(matches.map((t) => t.text))
-    const at = consumeLoose(matches[0].text, prefix)
     if (at > 0 && shared.length > at) {
       return { suffix: shared.slice(at), term: matches[0] }
     }

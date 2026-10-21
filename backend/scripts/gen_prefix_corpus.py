@@ -32,8 +32,12 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from app.services.capture.prefix_resolve import (  # noqa: E402
+    FIRST_WORD_ALWAYS_MATCHES,
+    GENERIC_WORDS,
+    INTERIOR_KINDS,
     MIN_PREFIX,
-    consume_loose,
+    match_points,
+    reaches,
     resolve_prefix,
 )
 from app.services.capture.vocabulary import Term  # noqa: E402
@@ -90,6 +94,14 @@ VOCAB_SPEC = [
     # never win": two products, no variant, must still ask.
     ("Tent Only (with)", "product", True, None),
     ("Tent Only (without)", "product", True, None),
+    # ── word-initial matching, ruled 2026-10-21 ──
+    # ⚠️ THE SALUTE SHAPE: the distinctive word is LAST, so the prefix reaches the end
+    # of the term — legal from an interior match point, illegal from position 0.
+    ("Veteran Salute Burial Vault", "vault", True, "burial_vault"),
+    # ⚠️ EVERY WORD GENERIC: reachable only because position 0 stays a match point.
+    ("Memorial Chapel", "funeral_home", True, None),
+    # ⚠️ A GENERIC FIRST WORD WITH A DISTINCTIVE INTERIOR ONE.
+    ("Urn Vault Standard", "vault", True, "urn_vault"),
 ]
 
 PREFIXES = [
@@ -101,6 +113,9 @@ PREFIXES = [
     "conti", "cont", "continental", 'continental 34"',
     "grav", "graveliner",
     "venet", "venetian", "white venet", "tent", "tent only",
+    # the ruling's own examples, plus the generic words it forbids as match points
+    "salute", "salu", "vet", "veteran", "standard", "stand",
+    "bur", "buri", "burial", "vaul", "chapel", "memorial", "urn",
     "blargle", "zzz", "", " ",
 ]
 
@@ -138,13 +153,31 @@ def main() -> int:
                 "matches": sorted(m.text for m in r.matches) if r else [],
             })
 
-    # ⚠️ `consume_loose` IS CORPUS'D SEPARATELY FROM THE RESOLUTION, because a port can
-    # agree on every final answer while differing on the walk — and the walk is what
-    # produces the ghost's visible SUFFIX. "stm" vs "st m" is exactly that case.
+    # ⚠️ THE WALK IS CORPUS'D SEPARATELY FROM THE RESOLUTION, because a port can agree
+    # on every final answer while differing on the walk — and the walk is what produces
+    # the ghost's visible SUFFIX. "stm" vs "st m" is exactly that case.
+    #
+    # ⚠️ IT RECORDS `reaches`, NOT `consume_loose`, SINCE 2026-10-21: the match point is
+    # now part of the answer, and a port that agreed on every consumed length while
+    # choosing a different match point would draw a suffix from the wrong place.
+    # ⚠️ KEYED ON THE KIND'S INTERIOR SETTING, since 2026-10-21: a party name matches
+    # from position 0 only, so the same (term, prefix) pair has two right answers and a
+    # corpus recording one would hold the ports to the wrong one for half the vocabulary.
+    terms = sorted({x[0] for x in VOCAB_SPEC})
     walks = [
-        {"term": t, "prefix": p, "at": consume_loose(t, p)}
-        for t in sorted({x[0] for x in VOCAB_SPEC})
+        {"term": t, "prefix": p, "interior": inter, "at": reaches(t, p, interior=inter)}
+        for t in terms
         for p in PREFIXES
+        for inter in (True, False)
+    ]
+
+    # ⚠️ THE MATCH POINTS THEMSELVES, SO THE STOPLIST CANNOT DRIFT. Two ports can agree
+    # on every resolution over THIS vocabulary while disagreeing about which words are
+    # generic — the disagreement would only surface on a name neither corpus contains.
+    # Comparing the points per term compares the stoplist directly.
+    points = [
+        {"term": t, "interior": inter, "points": list(match_points(t, interior=inter))}
+        for t in terms for inter in (True, False)
     ]
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
@@ -156,8 +189,12 @@ def main() -> int:
         "vocab": [
             {"text": t, "kind": k, "carried": c, "form": f} for t, k, c, f in VOCAB_SPEC
         ],
+        "generic_words": sorted(GENERIC_WORDS),
+        "interior_kinds": sorted(INTERIOR_KINDS),
+        "first_word_always_matches": FIRST_WORD_ALWAYS_MATCHES,
         "cases": cases,
         "walks": walks,
+        "match_points": points,
     }, indent=2) + "\n"
     OUT.write_text(payload, encoding="utf-8")
     OUT_FE.write_text(payload, encoding="utf-8")
@@ -165,7 +202,12 @@ def main() -> int:
     amb = sum(1 for c in cases if c["outcome"] == "ambiguous")
     none = sum(1 for c in cases if c["outcome"] == "none")
     print(f"{len(cases)} cases ({chosen} chosen / {amb} ambiguous / {none} none), "
-          f"{len(walks)} walks -> {OUT.relative_to(_ROOT)} + {OUT_FE.relative_to(_ROOT)}")
+          f"{len(walks)} walks, {len(points)} match-point rows "
+          f"-> {OUT.relative_to(_ROOT)} + {OUT_FE.relative_to(_ROOT)}")
+    # ⚠️ AN INTERIOR MATCH MUST ACTUALLY OCCUR IN THE CORPUS, or the ruling it encodes
+    # is untested and every port agrees trivially.
+    interior = sum(1 for r in points if r["interior"] and len(r["points"]) > 1)
+    assert interior >= 3, f"only {interior} terms have an interior match point"
     # ⚠️ A CORPUS OF ALL-ONE-OUTCOME WOULD BE SATISFIED BY A RULE THAT ALWAYS RETURNS
     # THAT OUTCOME. Every branch must be represented or the corpus is not discriminating.
     assert chosen and amb and none, "the corpus does not exercise all three outcomes"

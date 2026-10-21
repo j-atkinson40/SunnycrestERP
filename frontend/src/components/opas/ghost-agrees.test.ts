@@ -30,7 +30,14 @@
 import { describe, expect, it } from "vitest"
 
 import corpus from "./__fixtures__/opas_prefix_corpus.json"
-import { MIN_PREFIX, consumeLoose, resolvePrefix, type VocabTerm } from "./ghost"
+import {
+  GENERIC_WORDS,
+  MIN_PREFIX,
+  matchPoints,
+  reaches,
+  resolvePrefix,
+  type VocabTerm,
+} from "./ghost"
 
 interface Case {
   prefix: string
@@ -50,7 +57,10 @@ const VOCAB: VocabTerm[] = corpus.vocab.map((t) => ({
 }))
 
 const CASES = corpus.cases as Case[]
-const WALKS = corpus.walks as { term: string; prefix: string; at: number }[]
+const WALKS = corpus.walks as
+  { term: string; prefix: string; interior: boolean; at: number | null }[]
+const POINTS = corpus.match_points as
+  { term: string; interior: boolean; points: number[] }[]
 
 describe("the corpus itself", () => {
   it("⚠️ IS NON-EMPTY AND EXERCISES ALL THREE OUTCOMES", () => {
@@ -70,6 +80,19 @@ describe("the corpus itself", () => {
     // ⚠️ A FLOOR THAT DIFFERED WOULD MAKE THE TWO SIDES DISAGREE ON ONE-CHARACTER
     // INPUT ONLY — the narrowest possible divergence, and the easiest to never notice.
     expect(corpus.min_prefix).toBe(MIN_PREFIX)
+  })
+
+  it("⚠️ AGREES ABOUT WHICH WORDS ARE GENERIC", () => {
+    // ⚠️ THE STOPLIST IS COMPARED DIRECTLY, NOT INFERRED FROM THE RESOLUTIONS. Two
+    // ports can agree on every case over this vocabulary while disagreeing about a word
+    // neither corpus happens to contain — and the disagreement would first surface on a
+    // real tenant's catalogue. James ruled the list lives "in one place"; this is what
+    // makes two places behave as one.
+    expect([...GENERIC_WORDS].sort()).toEqual(corpus.generic_words)
+    expect(corpus.first_word_always_matches).toBe(true)
+    // ⚠️ AND WHICH KINDS GET INTERIOR MATCHING, for the same reason: the two ports must
+    // agree about it, and no resolution over this vocabulary would reveal a difference.
+    expect(corpus.interior_kinds).toEqual(["product", "vault", "vault_alias"])
   })
 
   it("names the rule it was generated from, so a reader can find the other side", () => {
@@ -105,6 +128,42 @@ describe("every case resolves the same on both sides", () => {
   )
 })
 
+describe("the match points agree", () => {
+  it("⚠️ PER TERM, WHICH IS HOW THE STOPLIST IS HELD AT THE POINT IT ACTS", () => {
+    const bad: string[] = []
+    for (const row of POINTS) {
+      const got = [...matchPoints(row.term, row.interior)]
+      if (JSON.stringify(got) !== JSON.stringify(row.points)) {
+        bad.push(
+          `${row.term} interior=${row.interior}: ` +
+            `ts=${JSON.stringify(got)} py=${JSON.stringify(row.points)}`,
+        )
+      }
+    }
+    expect(bad).toEqual([])
+  })
+
+  it("⚠️ AND AN INTERIOR MATCH POINT ACTUALLY OCCURS, or the ruling is untested", () => {
+    // A corpus whose every term has only `[0]` is satisfied by the OLD rule, so this
+    // is the control that makes the comparison above mean something.
+    expect(
+      POINTS.filter((r) => r.interior && r.points.length > 1).length,
+    ).toBeGreaterThanOrEqual(3)
+    // and at least one term is reachable ONLY from position 0 while being all-generic,
+    // which is the reading this slice committed to
+    expect(
+      POINTS.some(
+        (r) => r.term === "Memorial Chapel" && r.interior && r.points.length === 1,
+      ),
+    ).toBe(true)
+    // ⚠️ AND A PARTY-STYLE TERM HAS INTERIOR POINTS ONLY WHEN INTERIOR MATCHING IS ON,
+    // which is what the kind scoping buys: "mary" must not reach St. Mary's as a party.
+    const smarys = POINTS.filter((r) => r.term === "St. Mary's Cemetery")
+    expect(smarys.find((r) => r.interior)!.points.length).toBeGreaterThan(1)
+    expect(smarys.find((r) => !r.interior)!.points).toEqual([0])
+  })
+})
+
 describe("the character walk agrees too", () => {
   it("⚠️ EVERY TERM x EVERY PREFIX, because a port can agree on answers and differ on the walk", () => {
     // The walk produces the ghost's visible SUFFIX, so an off-by-one here draws "ry's
@@ -113,16 +172,25 @@ describe("the character walk agrees too", () => {
     // boundary, and only the walk distinguishes them.
     const bad: string[] = []
     for (const w of WALKS) {
-      const at = consumeLoose(w.term, w.prefix)
+      const at = reaches(w.term, w.prefix, w.interior)
       if (at !== w.at) bad.push(`${w.term} / ${JSON.stringify(w.prefix)}: ts=${at} py=${w.at}`)
     }
     expect(bad).toEqual([])
   })
 
   it("⚠️ AND THE WALK CORPUS CONTAINS BOTH HITS AND MISSES", () => {
-    // Without this, a walk corpus of all -1 would be satisfied by a function that
-    // always returns -1.
-    expect(WALKS.some((w) => w.at > 0)).toBe(true)
-    expect(WALKS.some((w) => w.at === -1)).toBe(true)
+    // Without this, a walk corpus of all-null would be satisfied by a function that
+    // always returns null.
+    expect(WALKS.some((w) => w.at !== null && w.at > 0)).toBe(true)
+    expect(WALKS.some((w) => w.at === null)).toBe(true)
+    // ⚠️ AND AT LEAST ONE HIT THAT COULD ONLY COME FROM AN INTERIOR MATCH POINT: a
+    // prefix reaching a term whose first word it does not begin.
+    expect(
+      WALKS.some(
+        (w) =>
+          w.at !== null &&
+          !w.term.toLowerCase().startsWith(w.prefix.toLowerCase().slice(0, 2)),
+      ),
+    ).toBe(true)
   })
 })
