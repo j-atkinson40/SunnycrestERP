@@ -156,6 +156,32 @@ seed_failures=$(grep -oE "^\[seed-runner\] Done\. [0-9]+ seeds attempted, [0-9]+
 
 echo "[seed-dev] done (runner rc=${rc}); full output in ${LOG}"
 
+# ⚠️ AFTER THE RUNNER, EXPLICITLY, AND NOT THROUGH IT. This gives the canonical
+# sunnycrest the demo catalogue four tests are written against. Backend CI was red
+# from 2026-10-16 to 2026-10-21 for exactly this missing data.
+#
+# ⚠️ IT IS HERE RATHER THAN IN THE RUNNER FOR TWO INDEPENDENT REASONS, AND EITHER
+# ALONE WOULD BE ENOUGH:
+#
+#   ORDER.  `run_canonical_seeds.sh` walks `find | sort -z`, which collates ignoring
+#           punctuation — so `seed_sunnycrest_demo_catalog` sorted BEFORE
+#           `seed_sunnycrest`, found no tenant, and logged "nothing to do". Measured:
+#           54 seeds attempted, 54 succeeded, and sunnycrest still had 0 rows.
+#
+#   BLAST RADIUS. The runner is what `railway-start.sh` calls on EVERY production
+#           deploy, and production's sunnycrest holds the real company's real
+#           catalogue. Demo products must never reach it. This script is called by
+#           local dev and by CI, and by no deploy.
+echo "[seed-dev] sunnycrest demo catalogue (local/CI only)"
+"${PY}" "${BACKEND_DIR}/scripts/seed_sunnycrest_demo_catalog.py" >> "${LOG}" 2>&1
+demo_rc=$?
+if [ "${demo_rc}" -ne 0 ]; then
+    echo "[seed-dev] FAILED: seed_sunnycrest_demo_catalog rc=${demo_rc}" >&2
+    tail -20 "${LOG}" >&2
+    exit 1
+fi
+grep -E "^\[seed_sunnycrest_demo_catalog\]" "${LOG}" | tail -2
+
 # EXIT NON-ZERO WHEN SEEDING DID NOT WORK. Until 2026-09-23 this script printed
 # "INCOMPLETE - read the log" and exited 0, so a broken database and a working
 # one were the same result to anything downstream: a human skimming the last

@@ -212,3 +212,63 @@ jobs:
         run: npm run build
         env:
           VITE_API_URL: https://api.example.com
+
+      # ⚠️ THE BUILD ABOVE CANNOT CATCH THE ERROR CLASS THAT FROZE THE DEPLOY, BECAUSE
+      # IT RUNS IN THE WRONG CONTEXT. Measured 2026-10-20: two test files imported
+      # their data as `../../../../backend/tests/data/...`. CI checks out the WHOLE
+      # repo, so the path resolved, `tsc -b` passed and the bundle built — green here,
+      # and dead on Railway, whose Dockerfile is `COPY . .` over a context holding only
+      # `frontend/`. `npm run build` is `tsc -b && vite build`, so tsc exited 2, vite
+      # never ran, NO BUNDLE WAS EMITTED, and the symptom was a deploy sitting at the
+      # previous commit with nothing failing anywhere anyone looked.
+      #
+      # ⚠️ SO THIS STEP BUILDS FROM A COPY CONTAINING ONLY `frontend/`, which is the
+      # deploy's own context. `node_modules` is symlinked rather than reinstalled —
+      # module RESOLUTION of a path outside the copy does not depend on it, and a
+      # second `npm ci` would add minutes for nothing.
+      #
+      # ⚠️ AND IT CARRIES ITS OWN POSITIVE CONTROL, because a probe that passes for the
+      # wrong reason is how this class survives. The control re-introduces a
+      # cross-boundary import into the throwaway copy and requires the build to FAIL;
+      # a probe that cannot fail would report green over a broken context forever.
+      - name: Build in the deploy's own context (frontend only)
+        run: |
+          set -u
+          PROBE="$RUNNER_TEMP/fe-only"
+          rm -rf "$PROBE" && mkdir -p "$PROBE"
+          cd "$GITHUB_WORKSPACE"
+          tar --exclude node_modules --exclude dist -cf - frontend | (cd "$PROBE" && tar -xf -)
+          ln -s "$GITHUB_WORKSPACE/frontend/node_modules" "$PROBE/frontend/node_modules"
+          test ! -d "$PROBE/backend" || { echo "probe context is not frontend-only" >&2; exit 1; }
+
+          echo "::group::build, frontend-only context"
+          ( cd "$PROBE/frontend" && npm run build )
+          rc=$?
+          echo "::endgroup::"
+          if [ "$rc" -ne 0 ]; then
+            echo "The bundle does not build in Railway's context. A deploy would emit" >&2
+            echo "no bundle and sit at the previous commit. Look for an import that" >&2
+            echo "reaches outside frontend/." >&2
+            exit 1
+          fi
+
+          echo "::group::positive control — the probe must be able to fail"
+          CTL="$PROBE/frontend/src/__ci_probe_control.ts"
+          # ⚠️ A `.json` IMPORT, NOT `?raw`, AND THE DIFFERENCE IS THE WHOLE CONTROL.
+          # My first version poisoned the copy with `...opas_requests.jsonl?raw` and the
+          # build SUCCEEDED — vite's ambient `declare module '*?raw'` types any such
+          # specifier whether the file exists or not, so tsc never resolves the path. A
+          # `.json` import goes through `resolveJsonModule` and needs the real file,
+          # which is why the deploy-freezing error was `TS2307` on the corpus JSON.
+          echo 'import x from "../../backend/tests/data/opas_prefix_corpus.json"' > "$CTL"
+          echo 'export default x' >> "$CTL"
+          if ( cd "$PROBE/frontend" && npm run build >/dev/null 2>&1 ); then
+            echo "::endgroup::"
+            echo "CONTROL FAILED: the probe built with a cross-boundary import present," >&2
+            echo "so its green result proves nothing. Do not read it as clean." >&2
+            exit 1
+          fi
+          echo "::endgroup::"
+          echo "probe discriminates: clean context builds, poisoned context fails"
+        env:
+          VITE_API_URL: https://api.example.com

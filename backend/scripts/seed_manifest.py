@@ -24,6 +24,22 @@ import sys
 
 # name -> (tier, one-line justification)
 TIERS: dict[str, tuple[str, str]] = {
+    "seed_sunnycrest_demo_catalog": (
+        "manual",
+        "gives the canonical dev/CI sunnycrest the demo catalogue four tests are "
+        "written against. local-only because `run_canonical_seeds.sh` runs on every "
+        "production deploy and production's sunnycrest holds the REAL company's real "
+        "catalogue — writing demo products there would be a production write nobody "
+        "asked for. Backend CI was red from 2026-10-16 to 2026-10-21 for want of this "
+        "data; see the seed's own docstring for the reproduction. ⚠️ `manual` RATHER "
+        "THAN `local-only` BECAUSE THE RUNNER'S ORDER CANNOT BE RELIED ON: `find | "
+        "sort -z` collates ignoring punctuation, so seed_sunnycrest_demo_catalog "
+        "sorted BEFORE seed_sunnycrest and found no tenant to attach to — measured, "
+        "the seed logged 'nothing to do' and CI stayed red. It is invoked explicitly "
+        "at the END of scripts/seed_dev.sh, which local dev and CI both run and no "
+        "deploy ever calls.",
+    ),
+
     "seed_full_year_e2e": (
         "local-only",
         "a full 2025 calendar of accounting E2E fixtures (cleanup + rebuild "
