@@ -4862,3 +4862,37 @@ the other.
   ⚠️ **AND THAT WAS NOT THE CAUSE OF THE CURRENT FREEZE — I ATTRIBUTED IT TO A CAUSE I THEN DISPROVED** (2026-10-20). The import defect is real and would have frozen the frontend build once a deploy ran. But `railway deployment list` shows both services last deploying at **12:21:22**, matching the 12:21:19 push of `24c5edc9`; the pushes at **13:46** (`a23bf4f3`) and **14:09** (`a4752c3a`) created **no deployment on either service**. Railway's GitHub integration has stopped firing. The code imports cleanly under production's own environment, both gates are green, and **the bundle check for this slice is owed** — James's dashboard, not a build failure. CLAUDE.md: a remembered "X is broken" is a hypothesis; this one was mine and was wrong.
 
   **Gates, with denominators** (2026-10-20): backend **3722 passed, 4 skipped, 0 failed — 237 of 515 test files (46.0%)**; frontend tsc 0 errors, **370 of 370 files, 5105 passed, 5 skipped, 1 todo**, build clean; **20 of 20 break tests fire** on the assertion each names.
+
+- **2026-10-21 — spell check off in the bar; tenant product names in the vocabulary. No migration.** Pushed `1f607cb8`. ⚠️ **STILL NOT DEPLOYED — four pushes now with no deployment created. See the deploy finding below.**
+
+  **The red underline was almost certainly macOS spell check, not Opas** (2026-10-21, James's diagnosis). It explains why I could not reproduce it: measured on production, that span came back `captured` for `service_date` with `unrecognized` empty, and the mirror's unrecognized mark is a **grey** dotted underline, never red. macOS flags `hopk`, `monti` and a lowercase `thursday`. ⚠️ **The prototype had it off and we never copied that** — `2026-10-01-opas-overlay.html` carries `spellcheck="false"` and `autocomplete="off"`. The bar now sets all four attributes.
+
+  **Tenant product names join the shared vocabulary** as a `product` kind, read from the same `products` query that already computed `carried` and discarded the names. ⚠️ **It needed a third tie-break or it would have regressed the phrase James had just confirmed** (2026-10-21): sunnycrest's `products` also holds `Monticello Burial Vault`, so a second term enters play for `monti` and two differing texts ask. Step 4a — a product name drops out whenever a catalog variant matches.
+
+  ⚠️ **THE RULING IS INERT ON PRODUCTION TODAY AND JAMES'S SECOND RETEST WILL NOT PASS THERE** (measured read-only 2026-10-21). Sunnycrest has **10 products, all spelled as full display names**; there is **no `Venetian` row**, so `venet` still reaches nothing. The Venetian product belongs to testco, where the ruling works exactly as described. Two ways to close it, both James's: add a `Venetian` product row for sunnycrest, or let a prefix match at a **word boundary inside** a term — the second changes the ghost's rule everywhere and is a ruling, not a fix.
+
+  ⚠️ **MY FIRST RANKING WAS WRONG IN A WAY ONLY AN UNSCOPED RESOLVE SHOWS** (2026-10-21). It kept *only* variants, which also discarded every funeral home and cemetery when `kinds=None`. Caught by an existing test. It now drops `product` and nothing else.
+
+  ⚠️ **AND THE RANKING STEP WAS UNPINNED BY ANY BEHAVIOURAL TEST** (2026-10-21). Removing it reddened only the corpus-freshness check — on testco the carried filter already removes the uncarried variants, and on sunnycrest the product row is spelled identically to the variant so the same-text rule collapses it. A `both` fixture (a tenant carrying "Monticello" **and** "Monticello Burial Vault" — ordinary price-list data) makes it bite.
+
+  ⚠️ **I REINTRODUCED THE DEPLOY-FREEZING ERROR CLASS AND CAUGHT IT BEFORE PUSHING** (2026-10-21). `rankDownProducts` returns `readonly`, so the assignment failed `tsc -b` with TS4104 — and **vitest is green on that file either way, because it does not typecheck.** Verified again in a context holding only `frontend/`.
+
+- **2026-10-21 — ⚠️ THE DEPLOY FINDING: "Wait for CI" IS DISPROVED BY MEASUREMENT, AND THE GITHUB CONNECTION IS WHAT IS LEFT.**
+
+  James's hypothesis was that Railway's "Wait for CI" skipped the pushes because the bad import failed the frontend build in CI. Measured, and it does not hold:
+
+  | commit | Backend CI | Frontend CI | deployed |
+  |---|---|---|---|
+  | `9df1c1dc` | failure | — | **yes** |
+  | `f452231b` | failure | — | **yes** |
+  | `24c5edc9` | failure | success | **yes** |
+  | `a23bf4f3` | failure | **success** | no |
+  | `a4752c3a` | failure | failure | no |
+  | `2a18eefb` | failure | — | no |
+  | `1f607cb8` | — | — | no |
+
+  ⚠️ **`a23bf4f3` CARRIED THE SAME CI RESULT AS `24c5edc9`, WHICH DEPLOYED** — frontend green, backend red. So no reading of "Wait for CI", whole-run or per-job, separates the deployed set from the skipped one. **CI has been red on every commit for weeks** (CLAUDE.md records it last passing 2026-09-23), and deploys flowed through it until 12:21:22.
+
+  ⚠️ **AND THE CROSS-BOUNDARY IMPORT DID NOT FAIL CI EITHER** — CI checks out the whole repo, so `../../../../backend/…` resolves there. It was only ever broken in Railway's Docker context, which copies `frontend/` alone. The defect was real; it was not this.
+
+  **What the measurement leaves:** both services last created a deployment at **12:21:22**, the same second, matching the 12:21:19 push — a shared-trigger signature, not a per-service build failure. Four later pushes created **no deployment on either service**. The Railway CLI does not expose the source or Wait-for-CI settings, so **Settings → Source and Redeploy are James's dashboard steps.** The four pre-existing backend CI failures (`test_the_vocabulary.py`, `test_declining_is_never_a_conflict.py` ×3) are identical across deployed and skipped commits and sit **outside `ci_gate.txt`**, which is why the local gate cannot see them — CLAUDE.md's "a manifest maintained by adding what passes".
