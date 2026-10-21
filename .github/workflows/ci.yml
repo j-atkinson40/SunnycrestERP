@@ -190,8 +190,52 @@ jobs:
       # this directory (seed-idempotency.yml, playwright-staging.yml) already
       # described vitest as part of the check — the coverage was documented
       # before it existed.
+      # ⚠️ REDIRECTED, NOT PRINTED, BECAUSE THE RESULT WAS BEING PUSHED OUT OF THE LOG.
+      # Measured 2026-10-21 on run 39621238493: the job log is 9,702 lines and 6,624 of
+      # them (68%) are React `act(...)` and Base UI `nativeButton` warnings. GitHub
+      # truncates from the END, so vitest's summary — the one part anybody needs —
+      # never appeared, and a red run was unreadable. Two separate occasions were spent
+      # unable to say WHY the frontend job failed.
+      #
+      # ⚠️ THIS IS NOT FILTERING THE WARNINGS, AND THE DIFFERENCE MATTERS. Dropping them
+      # would hide output somebody may want and would still leave the verdict buried on
+      # a long run. The verdict is re-printed, below, at the end, where truncation
+      # cannot reach it.
       - name: Run frontend tests
-        run: npm run test:ci
+        run: npm run test:ci > "$RUNNER_TEMP/vitest.log" 2>&1
+
+      # ⚠️ `if: always()` IS THE WHOLE POINT — this step exists for the failing run.
+      - name: Report the frontend test verdict
+        if: always()
+        run: |
+          LOG="$RUNNER_TEMP/vitest.log"
+          test -f "$LOG" || { echo "no vitest log — the test step did not start"; exit 0; }
+          echo "log lines: $(wc -l < "$LOG")"
+          echo "::group::vitest summary (last 60 lines)"
+          tail -60 "$LOG"
+          echo "::endgroup::"
+          node -e '
+            const fs = require("fs");
+            let s;
+            try { s = JSON.parse(fs.readFileSync(".vitest-summary.json", "utf8")); }
+            catch (e) { console.log("no machine-readable summary: " + e.message); process.exit(0); }
+            const failed = (s.testResults || []).flatMap((f) =>
+              (f.assertionResults || [])
+                .filter((a) => a.status === "failed")
+                .map((a) => `${f.name}  ::  ${a.fullName}`));
+            console.log(`files ${(s.testResults||[]).length}  tests ${s.numTotalTests}  failed ${s.numFailedTests}`);
+            if (failed.length) { console.log("FAILING TESTS:"); failed.forEach((x) => console.log("  " + x)); }
+            else {
+              // ⚠️ ZERO FAILING TESTS AND A NON-ZERO EXIT IS ITSELF THE DIAGNOSIS, and
+              // it is the state this repo has hit twice: vitest exits 1 on an UNHANDLED
+              // error regardless of how many tests passed. Saying so turns a mystery
+              // into a named condition.
+              console.log("no failing test — a non-zero exit here means an UNHANDLED");
+              console.log("error (worker teardown, pool timeout, stray rejection).");
+              console.log("The tail above is where it is named.");
+            }
+          '
+
 
       # ⚠️ A RUN CAN BE GREEN AND HAVE TESTED LESS THAN IT CLAIMS. Measured
       # 2026-10-07: vitest printed `Test Files 338 passed (338)` while SIX FILES
