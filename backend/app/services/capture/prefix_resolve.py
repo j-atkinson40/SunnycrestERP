@@ -61,7 +61,12 @@ BURIAL = "burial_vault"
 #: Which vocabulary kinds can fill which field. Vault aliases are included because
 #: `build_vocabulary` says in terms that they are the only route to some variants.
 KINDS_FUNERAL_HOME = ("funeral_home",)
-KINDS_VAULT = ("vault", "vault_alias")
+
+#: ⚠️ `product` IS IN HERE AND IS RANKED BELOW THE OTHER TWO. See `_rank_down_products`.
+KINDS_VAULT = ("vault", "vault_alias", "product")
+
+#: Vocabulary kinds that name a catalog VARIANT rather than a tenant's own product.
+_VARIANT_KINDS = frozenset({"vault", "vault_alias"})
 
 
 def _norm(s: str) -> str:
@@ -123,6 +128,37 @@ def differ_only_by_form(matches: tuple[Term, ...]) -> bool:
     return len(stems) == 1
 
 
+def _rank_down_products(matches: tuple[Term, ...]) -> tuple[Term, ...]:
+    """Drop tenant product names when a catalog VARIANT already matches.
+
+    ⚠️ THIS IS WHAT LETS PRODUCT NAMES BE ADDED WITHOUT A REGRESSION, AND THE
+    REGRESSION IS MEASURED RATHER THAN IMAGINED. James ruled on 2026-10-21 that
+    product names join the vocabulary so "venet" can reach Venetian. On sunnycrest the
+    `products` table also holds `Monticello Burial Vault` and `Continental Burial
+    Vault` — so without this step "monti" would match a variant AND a product, two
+    terms, and a prefix that RESOLVED today would start ASKING. That is the phrasing
+    James had just confirmed working.
+
+    ⚠️ A PRODUCT NAME IS A ROUTE OF LAST RESORT, NOT A COMPETITOR. It adds reach where
+    the variants' own spellings cannot be prefixed — which is exactly the Venetian
+    case, where every variant begins with a colour the director does not say. Where a
+    variant is already reachable, the tenant's name for it says nothing new.
+
+    ⚠️ AND IT IS THE SAME SHAPE `build_vocabulary` ALREADY USES FOR TENANT-VS-PLATFORM
+    terms ("PLATFORM TERMS ARE STILL INCLUDED, RANKED BELOW"), one layer along: include
+    everything, let the more specific kind win a tie.
+    """
+    # ⚠️ IT DROPS PRODUCTS, IT DOES NOT KEEP ONLY VARIANTS, AND A TEST CAUGHT ME
+    # GETTING THAT WRONG. My first version returned `[t for t in matches if t.kind in
+    # _VARIANT_KINDS]` whenever any variant matched — which on an UNSCOPED resolve
+    # (`kinds=None`) also discarded every funeral home and cemetery, because they are
+    # not variants either. The step is about ranking products below variants, not about
+    # preferring variants over the rest of the vocabulary.
+    if not any(t.kind in _VARIANT_KINDS for t in matches):
+        return matches
+    return tuple(t for t in matches if t.kind != "product")
+
+
 @dataclass(frozen=True)
 class PrefixResolution:
     """What a prefix reached."""
@@ -157,6 +193,10 @@ def resolve_prefix(
          "St. Mary's Cemetery", so "st m" reaches a funeral home AND a cemetery. Kind
          scoping is what keeps that from being an ambiguity it is not.
       4. if ANY match is carried by this tenant, only carried matches count.
+      4a. if any match is a catalog VARIANT, tenant product names drop out. A product
+         name reaches a family the variants' own spellings cannot be prefixed to
+         ("venet" -> Venetian); where a variant is already reachable it adds nothing,
+         and letting it compete would turn today's answers into questions.
       5. exactly one -> that is what it means.
       6. several differing only by form -> the burial vault.
       7. otherwise -> a question. ⚠️ IT DOES NOT FALL BACK TO A SHORTER PREFIX.
@@ -177,6 +217,8 @@ def resolve_prefix(
     carried = tuple(t for t in matches if t.carried)
     if carried:
         matches = carried
+
+    matches = _rank_down_products(matches)
 
     if len(matches) == 1:
         return PrefixResolution(prefix, matches, matches[0])

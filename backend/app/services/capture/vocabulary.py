@@ -16,6 +16,13 @@ actually carries, only the burial vault remains and the completion is unambiguou
 sell produces an order that Approve then refuses with "has no product on this tenant"
 — the bar would be suggesting the thing the next screen rejects.
 
+⚠️ KINDS, AND TWO OF THEM FILL THE VAULT ROW. `vault` and `vault_alias` are catalog
+VARIANTS; `product` is what the TENANT calls the thing it stocks, which is usually the
+family rather than the variant ("Venetian", not "White Venetian Burial Vault"). A
+product name resolves through the ordinary product resolver like any other name, so a
+family that maps to several variants ASKS. Ranked below the variants — see
+`prefix_resolve` — so a prefix that already reaches a variant is unaffected.
+
 ⚠️ PLATFORM TERMS ARE STILL INCLUDED, RANKED BELOW. A director may legitimately name a
 vault the tenant has not stocked; the capture allows it and Approve says so clearly.
 What the tenant carries simply wins a tie.
@@ -102,6 +109,32 @@ def build_vocabulary(db: Session, tenant_id: str) -> list[Term]:
     ):
         add(r.display_name, "vault",
             carried=r.display_name.casefold() in carried_names, form=r.form)
+
+    # ── the tenant's own product names ─────────────────────────────────
+    # ⚠️ RULED BY JAMES 2026-10-21: "People say 'a Venetian', not 'a White Venetian
+    # Burial Vault'." The catalog spells those variants `White Venetian Burial Vault`
+    # and `Gold Venetian Burial Vault`, so "venet" is a prefix of NEITHER and reached
+    # nothing — in the ghost as well as the extractor. A tenant's `products` row is
+    # named the way the office talks, so it is the route to the family.
+    #
+    # ⚠️ IT WAS ALREADY READ HERE AND THROWN AWAY. `carried_names` above reads the same
+    # table purely to decide a boolean; the NAMES went nowhere. One query, one extra
+    # loop.
+    #
+    # ⚠️ RANKED BELOW THE VARIANTS, AND THAT RANKING IS WHAT KEEPS "monti" WORKING.
+    # See `prefix_resolve`: a product-name match is dropped whenever a variant or alias
+    # match exists. Without it, "monti" on sunnycrest would match the carried variant
+    # `Monticello Burial Vault` AND the product `Monticello Burial Vault`-family stem,
+    # two different texts, and go from resolving to ASKING — a regression on the
+    # phrasing James had just confirmed working. Measured both ways.
+    for r in db.execute(
+        text(
+            "SELECT name FROM products WHERE company_id = :t AND is_active "
+            "AND name IS NOT NULL"
+        ),
+        {"t": tenant_id},
+    ):
+        add(r.name, "product", carried=True)
 
     # ⚠️ ALIASES ARE INCLUDED BECAUSE THEY ARE THE ONLY ROUTE TO SOME VARIANTS —
     # `product_name_resolver.build_index` says so in terms, naming `Veteran`, `SST`

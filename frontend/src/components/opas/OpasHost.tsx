@@ -1898,6 +1898,30 @@ export function OpasHost() {
               ref={inputRef}
               rows={1}
               data-testid="opas-input"
+              // ⚠️ THE OS MUST NOT MARK UP WHAT THE DIRECTOR TYPES HERE. James's
+              // 2026-10-20 screenshot showed a red dotted underline beneath "hopk
+              // monti thursday", and the engine could not have drawn it: measured on
+              // production, that span came back `captured` for `service_date` and
+              // `unrecognized` was empty — and the mirror's unrecognized mark is a
+              // GREY dotted underline, never red. macOS spell check is what it was:
+              // "hopk" and "monti" are not words, and a lowercase "thursday" is
+              // flagged too. So the bar said "not a word" about an abbreviation Opas
+              // had just understood, in the same visual language Opas uses for "not
+              // understood" — two different claims, one underline.
+              //
+              // ⚠️ THE PROTOTYPE HAD IT OFF AND WE DID NOT COPY THAT.
+              // `2026-10-01-opas-overlay.html` carries `spellcheck="false"` and
+              // `autocomplete="off"` on its own input; measured rather than assumed.
+              //
+              // ⚠️ ALL FOUR, BECAUSE ONE IS NOT ENOUGH ON A TOUCH KEYBOARD.
+              // `spellCheck` stops the underline; autocorrect would REWRITE "monti"
+              // to a real word mid-sentence, and autocapitalize would send "Hopk" to
+              // an engine whose vocabulary match is case-insensitive but whose
+              // decedent-name rule looks for capitalised words.
+              spellCheck={false}
+              autoCorrect="off"
+              autoCapitalize="off"
+              autoComplete="off"
               data-entry-mode={entryMode ? "true" : "false"}
               value={entryMode ? entryValue : text}
               onChange={(e) => {

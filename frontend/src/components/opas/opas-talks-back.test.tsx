@@ -798,3 +798,64 @@ describe("5 — what was in front travels with the phrase", () => {
     expect(fronts).toEqual([undefined, "order-list", "sales-order"])
   })
 })
+
+// ───────────────────────────────────────────────────────────────────────────
+// 6 — the OS does not mark up what the director types
+// ───────────────────────────────────────────────────────────────────────────
+
+describe("6 — spell check is off in the bar", () => {
+  /**
+   * ⚠️ RULED 2026-10-21 AFTER A SCREENSHOT WAS MISREAD — MINE AS MUCH AS ANYONE'S.
+   * James saw a red dotted underline under "hopk monti thursday" and reported it as
+   * Opas marking those words not-understood. Measured on production, the engine could
+   * not have drawn it: that span came back `captured` for `service_date` with
+   * `unrecognized` empty, and the mirror's unrecognized mark is a GREY dotted
+   * underline, never red. It was macOS spell check — "hopk" and "monti" are not words
+   * and a lowercase "thursday" is flagged too.
+   *
+   * ⚠️ WHICH MAKES IT WORSE THAN COSMETIC, AND IS WHY IT IS A RULING RATHER THAN A
+   * TIDY-UP: the OS was saying "not a word" in almost exactly the visual language Opas
+   * uses for "not understood", about an abbreviation Opas had just understood. Two
+   * different claims, one underline, and no way for the director to tell them apart.
+   *
+   * ⚠️ THE PROTOTYPE HAD IT OFF AND WE DID NOT COPY THAT. Measured:
+   * `2026-10-01-opas-overlay.html` carries `spellcheck="false"` and
+   * `autocomplete="off"`.
+   */
+  it("the bar carries spellCheck=false and the three keyboard attributes", async () => {
+    await mount()
+    const input = bar()
+    // ⚠️ THE RENDERED ATTRIBUTE, NOT THE JSX PROP. React maps `spellCheck={false}` to
+    // the attribute `spellcheck="false"`; asserting the prop I wrote would assert my
+    // own source back to me.
+    //
+    // ⚠️ AND IT IS THE ATTRIBUTE RATHER THAN `input.spellcheck` BECAUSE JSDOM DOES NOT
+    // IMPLEMENT THAT PROPERTY — my first version read it and got `undefined`, which is
+    // falsy and would have passed a `toBeFalsy()`. An absent property and a disabled
+    // spell checker are the same value to a loose assertion, and only one of them is
+    // what the browser acts on.
+    expect(input.getAttribute("spellcheck")).toBe("false")
+    expect(input.getAttribute("autocorrect")).toBe("off")
+    expect(input.getAttribute("autocapitalize")).toBe("off")
+    expect(input.getAttribute("autocomplete")).toBe("off")
+  })
+
+  it("⚠️ AND IT IS STILL OFF IN CAPTURE MODE, which is where the abbreviations go", async () => {
+    // The same element serves both modes, but a future split into two inputs would
+    // land the attribute on one of them — and capture is the mode where a director
+    // types "hopk monti" and the OS has the most to complain about.
+    await mount()
+    const input = bar()
+    // ⚠️ "order for hopk", NOT "order hopk". The forgiving opener needs the tenant's
+    // funeral-home names, which this suite does not stub — so the bare form routes to
+    // the order list and the pane never opens. `CAPTURE_START` matches "order for"
+    // with no vocabulary at all, which is the form that works here.
+    fireEvent.change(input, { target: { value: "order for hopk monti thursday" } })
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" })
+    })
+    const after = bar()
+    expect(after.getAttribute("data-entry-mode")).toBe("true")
+    expect(after.getAttribute("spellcheck")).toBe("false")
+  })
+})

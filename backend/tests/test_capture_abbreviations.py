@@ -189,30 +189,77 @@ def test_a_parser_that_cannot_say_where_keeps_the_OLD_wide_behaviour(db, tenant)
 # 2 — the prefix rule, which is the ghost's rule
 # ───────────────────────────────────────────────────────────────────────────
 
-def test_an_unambiguous_abbreviation_is_the_term(vocab):
+def test_an_unambiguous_abbreviation_is_the_term(db, tenant, vocab):
+    """⚠️ RE-POINTED 2026-10-21 AT THE VALUE RATHER THAN THE INTERMEDIATE TERM.
+
+    It used to assert `resolve_prefix("monti", ...).chosen.text == "Monticello Burial
+    Vault"`. Once tenant product names joined the vocabulary that became
+    data-dependent: on testco the two Monticello VARIANTS are not carried while the
+    product `Monticello` is, so the carried filter (step 4) leaves the product and the
+    chosen TERM is now "Monticello" — which then resolves through the ordinary product
+    resolver to the same vault.
+
+    ⚠️ THE INTERMEDIATE IS NOT THE CONTRACT; THE FIELD VALUE IS. Asserting the term
+    pinned a path, and the path legitimately changes with what a tenant stocks. So the
+    rule is tested over an explicit vocabulary below, and the VALUE is tested end to
+    end, which is what James retests.
+    """
     assert resolve_prefix("hopk", vocab, KINDS_FUNERAL_HOME).chosen.text == \
         "Hopkins Funeral Home"
-    assert resolve_prefix("monti", vocab, KINDS_VAULT).chosen.text == \
+
+    # the rule, over a vocabulary this test owns
+    v = (
+        Term(text="Monticello Burial Vault", kind="vault", carried=True,
+             form="burial_vault"),
+        Term(text="Monticello Urn Vault", kind="vault", carried=True, form="urn_vault"),
+    )
+    assert resolve_prefix("monti", v, KINDS_VAULT).chosen.text == \
         "Monticello Burial Vault"
 
+    # the value, over whatever this tenant actually carries
+    ex = extract_text(db, tenant_id=tenant, text="order hopk monti thursday")
+    assert ex.values.get("vault") == "Monticello Burial Vault"
 
-def test_a_vault_ambiguous_ONLY_by_form_takes_the_burial_vault(vocab):
+
+def test_a_vault_ambiguous_ONLY_by_form_takes_the_burial_vault():
     """The office means a burial vault nine times in ten — ruled 2026-10-13 for the
-    capture, extended to the ghost 2026-10-16, and now to the extractor."""
-    r = resolve_prefix("monti", vocab, KINDS_VAULT)
+    capture, extended to the ghost 2026-10-16, and now to the extractor.
+
+    ⚠️ OVER AN OWNED VOCABULARY SINCE 2026-10-21, for the reason given in
+    `test_an_unambiguous_abbreviation_is_the_term`: which TERMS survive the carried
+    filter depends on what a tenant stocks, and this test is about the form rule.
+    """
+    v = (
+        Term(text="Monticello Burial Vault", kind="vault", carried=True,
+             form="burial_vault"),
+        Term(text="Monticello Urn Vault", kind="vault", carried=True, form="urn_vault"),
+    )
+    r = resolve_prefix("monti", v, KINDS_VAULT)
     assert {m.form for m in r.matches} == {"burial_vault", "urn_vault"}
     assert r.chosen.form == "burial_vault"
     assert not r.ambiguous
 
 
-def test_a_vault_ambiguous_by_ANYTHING_ELSE_asks(vocab):
+def test_a_vault_ambiguous_by_ANYTHING_ELSE_asks(db, tenant):
     """⚠️ `discriminators == ("form",)` EXACTLY, MEASURED NOT INFERRED. "Continental"
     matches two BURIAL vaults of different sizes; a check for "form is among the
     discriminators" would silently pick one."""
-    r = resolve_prefix("conti", vocab, KINDS_VAULT)
+    v = (
+        Term(text='Continental 34"', kind="vault", carried=True, form="burial_vault"),
+        Term(text="Continental Burial Vault", kind="vault", carried=True,
+             form="burial_vault"),
+    )
+    r = resolve_prefix("conti", v, KINDS_VAULT)
     assert r.chosen is None and r.ambiguous
     assert len(r.matches) > 1
     assert not differ_only_by_form(r.matches)
+
+    # ⚠️ AND END TO END IT STILL ASKS, whichever route the tenant's data takes it
+    # through — on testco via the product name, on sunnycrest via the carried variant.
+    # Both arrive at a question, which is the contract.
+    ex = extract_text(db, tenant_id=tenant, text="order riv conti fri 11 graveside")
+    assert [p.field_id for p in ex.picks] == ["vault"], (ex.values, ex.picks)
+    assert "vault" not in ex.values
 
 
 def test_the_form_test_is_ONLY_BY_FORM_and_not_FORM_IS_AMONG(vocab):
@@ -536,18 +583,30 @@ def test_a_FULLY_TYPED_name_is_still_read_by_the_exact_scan(db, tenant):
     assert ex.values.get("vault") == "Monticello Burial Vault"
 
 
-def test_an_abbreviation_the_catalog_cannot_reach_is_reported_not_invented(db, tenant):
-    """⚠️ "venet" IS A HONEST MISS AND THE REASON IS THE VOCABULARY, NOT THE RULE.
-    The catalog spells them `White Venetian Burial Vault` and `Gold Venetian Burial
-    Vault`; "venet" is a prefix of neither, so the GHOST offers nothing there either.
-    Accepting it would be a DIFFERENT rule from the ghost's, which is the one thing the
-    ruling forbids. Recorded so the next reader does not take it for a defect here.
+def test_a_word_reaching_nothing_is_reported_not_invented(db, tenant):
+    """⚠️ THIS TEST USED TO BE ABOUT "venet" AND IS SUPERSEDED THERE BY JAMES'S RULING
+    OF 2026-10-21. Its original wording is kept in the paragraph below because the
+    reasoning was right and only the DATA changed.
+
+        "venet IS AN HONEST MISS AND THE REASON IS THE VOCABULARY, NOT THE RULE. The
+        catalog spells them `White Venetian Burial Vault` and `Gold Venetian Burial
+        Vault`; "venet" is a prefix of neither, so the GHOST offers nothing there
+        either. Accepting it would be a DIFFERENT rule from the ghost's."
+
+    That was accurate and it was the finding James then ruled on: he added tenant
+    product names to the vocabulary rather than loosening the matching rule — so the
+    ghost and the extractor still agree, and "venet" now reaches the `Venetian` product
+    on a tenant that carries one. See `test_a_product_family_mapping_to_SEVERAL_variants_asks`.
+
+    ⚠️ WHAT SURVIVES UNCHANGED IS THE PROPERTY, so it keeps a test: a word that reaches
+    nothing is REPORTED, never invented.
     """
-    t = "order hop venet sat"
+    t = "order hop zzzqqq sat"
     ex = extract_text(db, tenant_id=tenant, text=t)
     assert ex.values.get("funeral_home") == "Hopkins Funeral Home"
     assert ex.values.get("service_date") == "2026-10-24"
-    assert any("venet" in u for u in ex.unrecognized), ex.unrecognized
+    assert any("zzzqqq" in u for u in ex.unrecognized), ex.unrecognized
+    assert "vault" not in ex.values
 
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -848,3 +907,140 @@ def test_no_frontend_source_file_imports_across_the_repo_boundary():
     probe = 'import x from "../../../../backend/tests/data/thing.json"'
     assert re.search(r"""from\s+["']([^"']+)["']""", probe)
     assert "backend/" in re.search(r"""from\s+["']([^"']+)["']""", probe).group(1)
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# 10 — tenant product names (James, 2026-10-21)
+# ───────────────────────────────────────────────────────────────────────────
+
+def test_a_product_name_is_the_route_to_a_family_the_variants_cannot_spell(db, tenant):
+    """⚠️ RULED 2026-10-21: "People say 'a Venetian', not 'a White Venetian Burial
+    Vault'."
+
+    The catalog spells them `White Venetian Burial Vault` and `Gold Venetian Burial
+    Vault`, so "venet" is a prefix of NEITHER — the ghost offered nothing there either,
+    which is why the previous slice reported it as an honest miss rather than fixing it
+    unilaterally. A tenant's `products` row is named the way the office talks.
+    """
+    v = tuple(build_vocabulary(db, tenant))
+    assert any(t.kind == "product" for t in v), "no product terms in the vocabulary"
+    r = resolve_prefix("venet", v, KINDS_VAULT)
+    assert r is not None and r.chosen is not None
+    assert r.chosen.text == "Venetian"
+    assert r.chosen.kind == "product"
+
+
+def test_a_product_family_mapping_to_SEVERAL_variants_asks(db, tenant):
+    """"it never guesses" — the family resolves, then the ordinary product resolver
+    finds several variants and the choice list appears. End to end, through the bar."""
+    t = "order hop venet sat"
+    ex = extract_text(db, tenant_id=tenant, text=t)
+    vault_picks = [p for p in ex.picks if p.field_id == "vault"]
+    assert len(vault_picks) == 1, (ex.values, ex.picks)
+    labels = [o[0] for o in vault_picks[0].options]
+    assert len(labels) > 1
+    assert all("Venetian" in label for label in labels), labels
+    assert "vault" not in ex.values
+    # the funeral home and the date are unaffected, and nothing is left dotted
+    assert ex.values.get("funeral_home") == "Hopkins Funeral Home"
+    assert ex.values.get("service_date")
+    assert ex.unrecognized == (), ex.unrecognized
+
+
+def test_A_PRODUCT_NAME_NEVER_OUTRANKS_A_REACHABLE_VARIANT(db, tenant):
+    """⚠️ THE REGRESSION THIS RULING COULD HAVE CAUSED, AND THE REASON FOR STEP 4a.
+
+    sunnycrest's `products` table holds `Monticello Burial Vault` and `Continental
+    Burial Vault` — so adding product names to the vocabulary puts a second term in
+    play for "monti", and two terms with different texts ASK. That would have turned
+    the phrasing James had just confirmed working back into a question.
+
+    A product name is a route of LAST RESORT: it adds reach where the variants' own
+    spellings cannot be prefixed, and says nothing new where they can.
+    """
+    v = tuple(build_vocabulary(db, tenant))
+    r = resolve_prefix("monti", v, KINDS_VAULT)
+    assert r is not None and r.chosen is not None
+    assert not r.ambiguous, [m.text for m in r.matches]
+    # ⚠️ AND IT IS STILL THE RIGHT VAULT END TO END, which is what James retests.
+    ex = extract_text(db, tenant_id=tenant, text=WALK)
+    assert ex.values.get("vault") == "Monticello Burial Vault"
+    assert ex.unrecognized == (), ex.unrecognized
+
+
+@pytest.fixture
+def both(db):
+    """A tenant carrying BOTH a family name and a specific variant.
+
+    ⚠️ THIS FIXTURE EXISTS BECAUSE A BREAK TEST FOUND THE RANKING STEP UNPINNED.
+    Removing `_rank_down_products` turned only the corpus-freshness check red — no
+    behavioural test moved — because on testco the carried filter already removes the
+    uncarried variants before the ranking can see them, and on sunnycrest the product
+    row is spelled IDENTICALLY to the variant so the same-text rule collapses it.
+
+    The step bites exactly when a tenant carries a variant AND a differently-spelled
+    family name, which is ordinary data: a price list naming both "Monticello" and
+    "Monticello Burial Vault". Without the ranking, "monti" matches two different texts
+    and ASKS — the regression James's own retest would have caught.
+    """
+    from app.models.company import Company
+    from app.models.product import Product
+
+    cid = str(uuid.uuid4())
+    db.add(Company(id=cid, name="Both Co", slug=f"both-{cid[:8]}",
+                   is_active=True, vertical="manufacturing"))
+    db.flush()
+    for name in ("Monticello", "Monticello Burial Vault"):
+        db.add(Product(id=str(uuid.uuid4()), company_id=cid, name=name, is_active=True))
+    db.commit()
+    try:
+        yield cid
+    finally:
+        db.rollback()
+        db.execute(sql("DELETE FROM products WHERE company_id = :c"), {"c": cid})
+        db.execute(sql("DELETE FROM companies WHERE id = :c"), {"c": cid})
+        db.commit()
+
+
+def test_the_ranking_is_what_keeps_monti_AN_ANSWER_not_a_question(db, both):
+    """⚠️ THE BEHAVIOURAL RED FOR STEP 4a. Both a carried variant and a carried family
+    name match "monti"; the variant must win and the value must still be the vault.
+    """
+    v = tuple(build_vocabulary(db, both))
+    kinds = {t.kind for t in v if t.text.lower().startswith("monti")}
+    assert "product" in kinds and "vault" in kinds, kinds
+
+    r = resolve_prefix("monti", v, KINDS_VAULT)
+    assert r is not None and r.chosen is not None
+    assert not r.ambiguous, [(m.text, m.kind) for m in r.matches]
+    assert r.chosen.kind != "product", (r.chosen.text, r.chosen.kind)
+
+    ex = extract_text(db, tenant_id=both, text="order monti thursday")
+    assert ex.values.get("vault") == "Monticello Burial Vault", dict(ex.values)
+    assert not [p for p in ex.picks if p.field_id == "vault"], ex.picks
+
+
+def test_products_still_ask_when_NO_variant_is_reachable(db, tenant):
+    """⚠️ THE OTHER SIDE OF STEP 4a, so it cannot be read as "products never win".
+    Two product names and no variant must still produce a question.
+    """
+    v = (
+        Term(text="Tent Only (with)", kind="product", carried=True),
+        Term(text="Tent Only (without)", kind="product", carried=True),
+    )
+    r = resolve_prefix("tent", v, KINDS_VAULT)
+    assert r is not None and r.chosen is None and r.ambiguous
+
+
+def test_the_equipment_row_still_owns_tent_only(db, tenant):
+    """⚠️ A PRODUCT NAMED "Tent Only" IS NOW IN THE VAULT VOCABULARY, AND THE EQUIPMENT
+    PASS MUST STILL WIN. Measured rather than assumed: "tent only" is
+    `cemetery_equipment`, and a vault pass that claimed it would turn a correction to
+    the equipment into an ambiguous question about a product — which is the exact
+    defect `once()`'s docstring records from 2026-10-13.
+    """
+    for t in ("tent only", "order hopk tent only thursday"):
+        ex = extract_text(db, tenant_id=tenant, text=t)
+        assert ex.values.get("cemetery_equipment") == "tent_only", (t, dict(ex.values))
+        assert "vault" not in ex.values, (t, dict(ex.values))
+        assert not [p for p in ex.picks if p.field_id == "vault"], (t, ex.picks)

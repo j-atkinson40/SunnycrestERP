@@ -76,6 +76,20 @@ VOCAB_SPEC = [
     # one name present as both a variant and a confirmed alias
     ("Graveliner 38\"", "vault", True, "burial_vault"),
     ("Graveliner 38\"", "vault_alias", True, None),
+    # ── tenant product names, ruled in 2026-10-21 ──
+    # ⚠️ THE VENETIAN SHAPE: every variant begins with a colour the director does not
+    # say, so the PRODUCT name is the only reachable route for "venet".
+    ("White Venetian Burial Vault", "vault", True, "burial_vault"),
+    ("Gold Venetian Burial Vault", "vault", True, "burial_vault"),
+    ("Venetian", "product", True, None),
+    # ⚠️ THE MONTICELLO SHAPE: a product name that COMPETES with a reachable variant and
+    # must therefore lose. Without `_rank_down_products` this pair turns "monti" from an
+    # answer into a question.
+    ("Monticello", "product", True, None),
+    # ⚠️ AND A PRODUCT-ONLY AMBIGUITY, so the step cannot be mistaken for "products
+    # never win": two products, no variant, must still ask.
+    ("Tent Only (with)", "product", True, None),
+    ("Tent Only (without)", "product", True, None),
 ]
 
 PREFIXES = [
@@ -86,13 +100,15 @@ PREFIXES = [
     "cam", "cameo", "cameo rose",
     "conti", "cont", "continental", 'continental 34"',
     "grav", "graveliner",
+    "venet", "venetian", "white venet", "tent", "tent only",
     "blargle", "zzz", "", " ",
 ]
 
 KIND_SETS = {
     "funeral_home": ("funeral_home",),
     "cemetery": ("cemetery",),
-    "vault": ("vault", "vault_alias"),
+    "vault": ("vault", "vault_alias", "product"),
+    "variants_only": ("vault", "vault_alias"),
     "any": None,
 }
 

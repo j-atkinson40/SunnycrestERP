@@ -132,6 +132,29 @@ export function consumeLoose(term: string, prefix: string): number {
  * which can never insert a word the terms disagree about. Where one term IS a strict
  * extension of all the others the two rules give the same answer.
  */
+/** Vocabulary kinds naming a catalog VARIANT rather than a tenant's own product. */
+const VARIANT_KINDS = new Set(["vault", "vault_alias"])
+
+/**
+ * Drop tenant product names when a catalog VARIANT already matches.
+ *
+ * ⚠️ RULED 2026-10-21, AND THIS STEP IS WHAT MAKES THAT RULING SAFE. Product names
+ * joined the vocabulary so "venet" can reach Venetian — the variants are spelled
+ * `White Venetian Burial Vault` and `Gold Venetian Burial Vault`, so "venet" prefixes
+ * neither. But sunnycrest's `products` table also holds `Monticello Burial Vault`, so
+ * without this a prefix that RESOLVES today would start ASKING.
+ *
+ * ⚠️ A PRODUCT NAME IS A ROUTE OF LAST RESORT, NOT A COMPETITOR: it adds reach where
+ * the variants' own spellings cannot be prefixed, and says nothing new where they can.
+ * Mirrored from `prefix_resolve.py::_rank_down_products` and held to it by the corpus.
+ */
+export function rankDownProducts(
+  matches: readonly VocabTerm[],
+): readonly VocabTerm[] {
+  const variants = matches.filter((t) => VARIANT_KINDS.has(t.kind))
+  return variants.length > 0 ? variants : matches
+}
+
 /** What a prefix MEANS, before any decision about how much to draw. */
 export interface PrefixResolution {
   readonly prefix: string
@@ -173,7 +196,10 @@ export function resolvePrefix(
   if (p.length < MIN_PREFIX) return null
 
   const pool = kinds ? vocab.filter((t) => kinds.includes(t.kind)) : vocab
-  let matches = pool.filter((t) => {
+  // ⚠️ `readonly`, BECAUSE `rankDownProducts` RETURNS ONE. Typed as `VocabTerm[]` this
+  // failed `tsc -b` with TS4104 — which is the error class that froze the deploy on
+  // 2026-10-20, so it is worth the annotation rather than a cast.
+  let matches: readonly VocabTerm[] = pool.filter((t) => {
     const at = consumeLoose(t.text, prefix)
     return at > 0 && at < t.text.length
   })
@@ -181,6 +207,8 @@ export function resolvePrefix(
 
   const carried = matches.filter((t) => t.carried)
   if (carried.length > 0) matches = carried
+
+  matches = rankDownProducts(matches)
 
   if (matches.length === 1) return { prefix, matches, chosen: matches[0] }
 
