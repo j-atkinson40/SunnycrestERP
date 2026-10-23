@@ -726,8 +726,11 @@ def test_matches_still_refuses_a_cancelled_order_by_default():
         status="cancelled",
     )
     question = OrderQuestion(decedent="smith", title="t")
-    assert matches(facts, question) is False
-    assert matches(facts, question, include_cancelled=True) is True
+    # `today` is required since 2026-10-23 (the going_out fix) and is not load-bearing
+    # here — this order has no service date, and the cancelled refusal is the first
+    # clause in `matches`, before any date is read.
+    assert matches(facts, question, TODAY) is False
+    assert matches(facts, question, TODAY, include_cancelled=True) is True
 
 
 # ───────────────────────────────────────────────────────────────────────────

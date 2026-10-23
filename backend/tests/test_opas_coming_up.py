@@ -169,6 +169,25 @@ def test_matches_has_no_default_today_so_a_caller_cannot_use_the_container_clock
     assert today_param.default is inspect.Parameter.empty
 
 
+def test_matches_still_refuses_a_cancelled_order_by_default():
+    """⚠️ A DUPLICATE OF AN ASSERTION IN `test_sales_order_pane.py`, ON PURPOSE.
+
+    That file skips at module level when `DATABASE_URL` is unset, so all 44 of its
+    tests — including this pure one, which touches no database — did not run on my
+    machine while I read the gate as green. CI sets `DATABASE_URL`, ran them, and the
+    `today` parameter added above broke this call. A gate whose environment cannot hold
+    the defect is not evidence about it (CLAUDE.md §11).
+
+    `matches` is a pure function and its default must be checked somewhere unguarded.
+    This file has no skip. The copy in the pane's file stays — it is read there beside
+    the pane behaviour that depends on it.
+    """
+    cancelled = _order(status="cancelled", service_date=SOON)
+    question = OrderQuestion(decedent="smith", title="t")
+    assert matches(cancelled, question, TODAY) is False
+    assert matches(cancelled, question, TODAY, include_cancelled=True) is True
+
+
 # ── bug 2: a label is the order's real status ─────────────────────────────────
 
 
