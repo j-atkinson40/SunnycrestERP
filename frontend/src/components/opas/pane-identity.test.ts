@@ -65,7 +65,13 @@ describe("what has an identity and what does not", () => {
     // ⚠️ IT CARRIED THREE UNTIL 2026-10-20: the third was a numbered pick, filtered to
     // the resolver's candidates. That surface is retired — the pick is above the bar
     // now — and `candidateIds` is gone from `OpasPane` with it.
-    expect(paneIdentity(pane("product-list", { unmatchedPhrase: "zzz" }))).toBeNull()
+    //
+    // ⚠️ AND TWO BECAME ONE ON 2026-10-23. The other was an UNMATCHED-PHRASE catalog,
+    // asserted here as `pane("product-list", { unmatchedPhrase: "zzz" })`. James ruled
+    // the whole-catalog fallback out, so `unmatchedPhrase` is gone from `OpasPane` and
+    // a product-list pane has exactly one shape. The surviving claim is the one that
+    // still has two cases to tell apart: a product-list pane never dedupes by kind.
+    expect(paneIdentity(pane("product-list"))).toBeNull()
   })
 })
 

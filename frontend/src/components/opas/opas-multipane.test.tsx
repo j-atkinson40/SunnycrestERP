@@ -316,22 +316,34 @@ describe('rule 4 — "close" closes the front pane, Esc still tucks', () => {
     await mount()
     await ask("hopkins orders")
     await waitFor(() => expect(screen.getByTestId("opas-order-list")).toBeTruthy())
+    // the server does not place it either — which is the case this test is about
+    askOrderList.mockResolvedValue({ kind: "unrecognized", hint: "Try: …" } as never)
     await ask("close it out")
     // the list is still there — nothing was closed
     expect(screen.getByTestId("opas-order-list")).toBeTruthy()
 
-    // ⚠️ WHERE IT ACTUALLY GOES, MEASURED RATHER THAN ASSUMED, AND IT IS NOT NOWHERE.
-    // "close it out" is not a close phrase and contains no order word, so it falls
-    // through to the catalog resolver, matches nothing, and OPENS AN UNFILTERED CATALOG
-    // with "no match for …" on the said line. That is pre-existing behaviour for any
-    // unmatched phrase and is not changed here — "Close it out" is a BUTTON on an order
-    // row, not something anyone types. Recorded because the first version of this test
-    // asserted the pane COUNT was unchanged and went red: a pane did arrive, just not
-    // by closing anything.
+    // ⚠️ WHERE IT GOES CHANGED ON 2026-10-23, AND THE OLD ANSWER IS KEPT HERE BECAUSE
+    // IT IS THE DEFECT JAMES HIT. This test used to read:
+    //
+    //     "close it out" is not a close phrase and contains no order word, so it falls
+    //     through to the catalog resolver, matches nothing, and OPENS AN UNFILTERED
+    //     CATALOG with "no match for …" on the said line. That is pre-existing
+    //     behaviour for any unmatched phrase and is not changed here.
+    //
+    // Accurate, and it describes exactly what he got for "anything going to st. marys
+    // coming up?". The fallback is gone: an unplaceable phrase now goes to the server
+    // once — rules, then the model door — and on `unrecognized` says one line and opens
+    // nothing.
     expect(resolvePhrase).toHaveBeenCalledWith("close it out")
+    // ⚠️ THE SERVER IS ASKED, which is the routing half of the ruling.
+    expect(askOrderList).toHaveBeenCalledWith(
+      expect.objectContaining({ phrase: "close it out" }),
+    )
     await waitFor(() => expect(screen.getByTestId("opas-said").textContent).toContain(
-      "Nothing matched",
+      "not sure what you're asking",
     ))
+    // ⚠️ AND NO CATALOG AROSE. The said line alone is the whole response.
+    expect(screen.queryByTestId("opas-product-list")).toBeNull()
   })
 })
 

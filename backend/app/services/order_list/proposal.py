@@ -124,11 +124,29 @@ def propose(
         got = accept_model_payload(result.response_parsed)
     else:
         got = accept_model_text(result.response_text or "")
+    # ⚠️ A PROVIDER FAILURE IS NOT THE ENGINE REFUSING AN ANSWER, AND REPORTING IT AS ONE
+    # WAS A DEFECT IN THIS FILE. Measured on production 2026-10-23: the ANTHROPIC key is
+    # invalid, every call returns `401 invalid x-api-key`, and the 401 does NOT raise —
+    # `intelligence_service` catches it, sets `status="api_error"`, and returns a result
+    # with no parsed response. So control fell through to the line below and the decision
+    # log recorded `refused_by_engine` for all four phrases I probed.
+    #
+    # ⚠️ THAT IS THE WORST POSSIBLE MISLABEL FOR THIS TABLE. The log exists to answer
+    # "does the door work", and it was blaming the MODEL for a dead CREDENTIAL — a
+    # refusal rate of 100% that would read as "the model proposes things the engine
+    # rejects" when nothing was ever proposed. The status field has said which all along.
+    status = getattr(result, "status", None)
+    transport_failed = status not in (None, "success", "fallback_used")
     if observer is not None:
         observer({
             "called": True,
             "accepted": got is not None,
-            "reason": None if got is not None else "refused_by_engine",
+            "reason": (
+                None if got is not None
+                # the provider's own word for it — api_error, rate_limited, parse_error
+                else str(status) if transport_failed
+                else "refused_by_engine"
+            ),
             # ⚠️ THE LAYER'S OWN NUMBER WHERE IT HAS ONE. `persist=False` means there is
             # no `intelligence_executions` row, so this is the only place the latency of
             # this path is ever recorded.

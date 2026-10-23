@@ -150,13 +150,24 @@ describe("ProductListPane", () => {
     expect(screen.getByTestId("opas-list-row-c")).toBeTruthy()
   })
 
-  it("an unmatched phrase is SAID, over the whole catalog", async () => {
+  it("⚠️ THE UNMATCHED-PHRASE HEADING IS GONE, by ruling", async () => {
+    /**
+     * ⚠️ SUPERSEDED BY JAMES 2026-10-23. This test read "an unmatched phrase is SAID,
+     * over the whole catalog" and asserted `opas-list-unmatched` carried the phrase
+     * while every row stayed on screen. Its original body is preserved in the commit.
+     *
+     * He typed "anything going to st. marys coming up?" and got that pane: "Nothing
+     * matched … The whole catalog:" over every vault the platform sells. The ruling:
+     * "A miss should be one honest line above the bar … not a pane full of every vault."
+     *
+     * ⚠️ THE PROP IS DELETED, NOT LEFT UNSET, so what survives here is that the pane
+     * cannot be asked to head itself that way at all. An optional prop with no producer
+     * reads as a live feature to the next reader.
+     */
     listVariants.mockResolvedValue(ROWS)
-    render(<ProductListPane unmatchedPhrase="zzz" onOpenProduct={() => {}} />)
-    await waitFor(() => expect(screen.getByTestId("opas-list-unmatched")).toBeTruthy())
-    expect(screen.getByTestId("opas-list-unmatched").textContent).toContain("zzz")
-    // the whole list is still there
-    expect(screen.getByTestId("opas-list-row-b")).toBeTruthy()
+    render(<ProductListPane onOpenProduct={() => {}} />)
+    await waitFor(() => expect(screen.getByTestId("opas-list-row-b")).toBeTruthy())
+    expect(screen.queryByTestId("opas-list-unmatched")).toBeNull()
   })
 })
 

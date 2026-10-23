@@ -58,7 +58,11 @@ export interface OpasPane {
   /** For `kind: "product"`. */
   readonly variantTemplateId?: string
   /** The phrase that did not match, shown on an unfiltered list. */
-  readonly unmatchedPhrase?: string
+  // ⚠️ `unmatchedPhrase` WAS HERE AND IS GONE (James, 2026-10-23). It carried the
+  // phrase that matched nothing so the Product List pane could head itself "Nothing
+  // matched … The whole catalog:". That fallback is removed: a miss is one line above
+  // the bar and opens nothing. The field is deleted rather than left unset, because an
+  // optional prop with no producer reads as a live feature to the next reader.
   /** For `kind: "capture"` — fed through extraction on start (prototype `:568`). */
   readonly openingLine?: string
   /** For `kind: "capture"` — ⚠️ SET AFTER THE SERVER REPLIES, so a tucked and reopened

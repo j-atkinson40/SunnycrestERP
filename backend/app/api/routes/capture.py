@@ -33,6 +33,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, get_db
 from app.models.user import User
 from app.services.capture import session_service
+from app.services.order_list import decision_log
 
 router = APIRouter()
 
@@ -132,6 +133,32 @@ def set_text(
     db: Session = Depends(get_db),
 ):
     """Re-read the whole typed text. The hot path — one call per pause."""
+    # ⚠️ READ BEFORE THE WRITE, because "was this the session's first text" is only
+    # answerable beforehand. One row per capture opening, not one per pause.
+    #
+    # ⚠️ A DIRECT SCOPED QUERY, BECAUSE `session_service.read` DOES NOT EXIST — my first
+    # version called it, the AttributeError landed in the `except` below, `first_text`
+    # stayed False forever and capture logging SILENTLY NEVER FIRED. Caught by checking
+    # the service's exports rather than by any test: a feature that logs nothing and a
+    # feature that is switched off look identical from here.
+    first_text = False
+    try:
+        from app.models.capture_session import CaptureSession
+
+        existing = (
+            db.query(CaptureSession)
+            .filter(
+                CaptureSession.id == session_id,
+                CaptureSession.company_id == current_user.company_id,
+            )
+            .first()
+        )
+        first_text = existing is not None and not (existing.full_text or "").strip()
+    except Exception:
+        # ⚠️ NOT FATAL AND NOT ASSUMED TRUE. If the pre-read fails we log nothing rather
+        # than guess it was the first — a duplicate opening row is worse than a missing
+        # one, because it would double-count the phrase in any set built from this table.
+        first_text = False
     try:
         row = session_service.set_text(
             db, session_id,
@@ -149,6 +176,13 @@ def set_text(
     # ⚠️ ECHOED, NOT ACTED ON. See `TextRequest.seq` — the client drops stale
     # responses because the client is the only party that knows what is in the bar.
     state["seq"] = body.seq
+    if first_text:
+        decision_log.record_capture_open(
+            db,
+            company_id=current_user.company_id,
+            user_id=current_user.id,
+            phrase=body.text,
+        )
     return state
 
 

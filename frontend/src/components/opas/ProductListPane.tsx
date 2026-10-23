@@ -22,10 +22,8 @@ const KIND_LABEL: Record<string, string> = {
 }
 
 export function ProductListPane({
-  unmatchedPhrase,
   onOpenProduct,
 }: {
-  unmatchedPhrase?: string
   onOpenProduct: (variantTemplateId: string) => void
 }) {
   const [rows, setRows] = useState<CatalogVariant[] | null>(null)
@@ -93,14 +91,6 @@ export function ProductListPane({
     <div data-testid="opas-product-list">
       {/* ⚠️ The unmatched phrase is SAID, not silently swallowed. A list that simply
           appeared would leave the director thinking their phrase had matched everything. */}
-      {unmatchedPhrase !== undefined && (
-        <p
-          data-testid="opas-list-unmatched"
-          style={{ fontSize: 13, color: "#cc7452", margin: "0 0 10px" }}
-        >
-          Nothing matched “{unmatchedPhrase}”. The whole catalog:
-        </p>
-      )}
       {groups.map((g) => (
         <section key={g.kind} data-testid={`opas-list-group-${g.kind}`}>
           <h3

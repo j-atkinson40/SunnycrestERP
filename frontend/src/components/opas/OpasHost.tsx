@@ -142,6 +142,18 @@ function useStageWidth(): number {
 }
 
 const ORDER_TRY = "Try: Hopkins orders this month · going out Friday"
+
+/** What Opas says when neither the rules nor the model could place a phrase.
+ *
+ * ⚠️ ONE LINE, AND NOTHING OPENS, BY RULING (James, 2026-10-23): "A miss should be one
+ * honest line above the bar, something like 'I'm not sure what you're asking yet', not a
+ * pane full of every vault."
+ *
+ * ⚠️ IT DOES NOT QUOTE THE PHRASE BACK. The old copy was `Nothing matched “…”.` beside a
+ * pane of the whole catalogue — the quotation read as "that is not a thing", which is a
+ * claim about the words rather than about Opas. The director can see what they typed; it
+ * is still in the bar. */
+const NOT_SURE = "I'm not sure what you're asking yet."
 const ORDER_CHANGE = 'Say it: "only Hopkins", "last month", "not invoiced"'
 
 function useNarrowScreen(): boolean {
@@ -1471,8 +1483,37 @@ export function OpasHost() {
           { options, act },
         )
       } else {
-        opas.openPane({ kind: "product-list", label: "Catalog", unmatchedPhrase: phrase })
-        say("miss", `Nothing matched \u201c${phrase}\u201d.`)
+        // ⚠️ THE "WHOLE CATALOG" FALLBACK IS GONE, BY RULING (James, 2026-10-23). It
+        // opened a `product-list` pane carrying `unmatchedPhrase`, which rendered every
+        // vault the platform sells under the heading "Nothing matched … The whole
+        // catalog:". He typed "anything going to st. marys coming up?" and got the
+        // catalogue. A miss is one honest line above the bar and nothing opened.
+        //
+        // ⚠️ AND BEFORE GIVING UP, THE SERVER GETS THE PHRASE — which is the other half
+        // of the same ruling: "choosing where a request goes is exactly the job the
+        // model should do, so it has to sit at the front, not behind one pane." The
+        // rules had already decided this was not an order phrase (no "order" word), so
+        // the door was never consulted. Now the last resort before a miss is
+        // `/order-list/ask`, where the engine tries its own rules and then the model
+        // door, validates whatever comes back, and returns `unrecognized` on any
+        // failure. One door, one validator, no second model path.
+        const front = opas.panes.find((p) => p.id === opas.frontPaneId)
+        let routed = false
+        try {
+          const result = await askOrderList({
+            phrase,
+            ...(front ? { front: front.kind } : {}),
+          })
+          // ⚠️ `unrecognized` IS NOT ROUTING — it is the server agreeing it does not
+          // know, which is the miss. Anything else opened or asked something.
+          if (result.kind !== "unrecognized") {
+            settleOrderAnswer(result, phrase)
+            routed = true
+          }
+        } catch {
+          // a transport failure is not an answer; fall through to the honest miss
+        }
+        if (!routed) say("miss", NOT_SURE)
       }
       setText("")
     } finally {
@@ -1727,7 +1768,6 @@ export function OpasHost() {
             <div style={{ padding: "0 20px 20px" }}>
               {pane.kind === "product-list" ? (
                 <ProductListPane
-                  unmatchedPhrase={pane.unmatchedPhrase}
                   onOpenProduct={(id) => {
                     // ⚠️ NO `setPendingPick(null)` ANY MORE. This pane is no longer a
                     // pick, so there is no pending question for it to cancel — the only

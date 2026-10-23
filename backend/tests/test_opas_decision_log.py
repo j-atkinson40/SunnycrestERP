@@ -95,7 +95,14 @@ def test_a_rules_hit_is_recorded_verbatim(db, tenant):
     assert row.model_accepted is None
 
 
-def test_a_miss_is_recorded_as_refused_with_no_request(db, tenant):
+def test_a_miss_is_recorded_with_no_request(db, tenant):
+    """⚠️ RENAMED AND RE-POINTED 2026-10-23. It was
+    `test_a_miss_is_recorded_as_refused_with_no_request` and asserted
+    `outcome == "refused"`. James ruled the spelling: a miss is `unresolved`, because
+    `refused` says the RULES declined it and `unresolved` says nothing placed it at all.
+    See `test_a_miss_is_recorded_as_UNRESOLVED_not_refused` for the ruling's own case;
+    what survives here is the other half — a miss carries NO proposed request.
+    """
     rid = decision_log.record_ask(
         db, company_id=tenant.id, user_id=None,
         phrase="anything going to st marys this week",
@@ -103,7 +110,7 @@ def test_a_miss_is_recorded_as_refused_with_no_request(db, tenant):
     )
     assert rid is not None
     row = _rows(db, tenant.id)[0]
-    assert row.outcome == "refused"
+    assert row.outcome == "unresolved"
     assert row.proposed_request is None
 
 
@@ -267,7 +274,10 @@ def test_a_BAD_ROW_also_leaves_the_session_usable(db, tenant):
 
 
 def test_the_catalog_resolve_outcome_follows_the_candidate_count(db, tenant):
-    for n, expected in ((1, "executed"), (3, "asked"), (0, "refused")):
+    # ⚠️ `unresolved` SINCE 2026-10-23, where this read `(0, "refused")`. One concept,
+    # one spelling: a product phrase matching nothing is a miss for the same reason a bar
+    # phrase matching nothing is, and the bar's word is the one James ruled.
+    for n, expected in ((1, "executed"), (3, "asked"), (0, "unresolved")):
         rid = decision_log.record_resolve(
             db, company_id=tenant.id, user_id=None, phrase=f"phrase-{n}",
             candidate_count=n,
@@ -397,6 +407,156 @@ def test_A_REAL_POST_TO_ask_LEAVES_A_ROW(db, tenant):
         app.dependency_overrides.pop(get_db, None)
         app.dependency_overrides.pop(get_current_user, None)
         db.execute(sql_text("DELETE FROM opas_decisions WHERE company_id = :c"), {"c": tenant.id})
+        db.execute(sql_text("DELETE FROM users WHERE id = :u"), {"u": user.id})
+        db.execute(sql_text("DELETE FROM roles WHERE id = :r"), {"r": role.id})
+        db.commit()
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# 10 — a miss is kept, and it is called `unresolved` (James, 2026-10-23)
+# ───────────────────────────────────────────────────────────────────────────
+
+def test_a_miss_is_recorded_as_UNRESOLVED_not_refused(db, tenant):
+    """⚠️ RULED 2026-10-23: "Log both: a routed-by-model row (with latency and verdict)
+    and a miss row (outcome = unresolved). Misses are the most valuable test cases, so
+    make sure they're kept."
+
+    `refused` said the RULES declined a phrase. `unresolved` says NOTHING placed it —
+    rules and the model both. That is the row worth keeping, because it IS the test case,
+    and the two claims are different enough that one word cannot carry both.
+    """
+    rid = decision_log.record_ask(
+        db, company_id=tenant.id, user_id=None,
+        phrase="anything going to st. marys coming up?",
+        body={"kind": "unrecognized", "hint": "Try: …"}, surface="bar",
+    )
+    assert rid is not None
+    row = _rows(db, tenant.id)[0]
+    assert row.outcome == "unresolved"
+    assert row.proposed_request is None
+    # ⚠️ AND THE PHRASE IS KEPT VERBATIM, punctuation and all — it is the test case.
+    assert row.input_text == "anything going to st. marys coming up?"
+
+
+def test_a_catalog_miss_uses_THE_SAME_WORD(db, tenant):
+    """One concept, one spelling. A product phrase matching nothing is a miss for
+    exactly the reason a bar phrase matching nothing is."""
+    rid = decision_log.record_resolve(
+        db, company_id=tenant.id, user_id=None, phrase="zzzqqq", candidate_count=0,
+    )
+    assert rid is not None
+    assert db.query(OpasDecision).filter(OpasDecision.id == rid).one().outcome == \
+        "unresolved"
+
+
+def test_the_DATABASE_accepts_unresolved_and_still_refuses_nonsense(db, tenant):
+    """⚠️ r215 IS EXPAND-ONLY, so `refused` must STILL be accepted — rows written before
+    2026-10-23 carry it and are not re-spelled. Both, and nothing else."""
+    for outcome in ("executed", "asked", "refused", "unresolved"):
+        db.add(OpasDecision(company_id=tenant.id, input_text="x", surface="bar",
+                            proposed_by="rules", outcome=outcome))
+        db.flush()
+        db.rollback()
+    db.add(OpasDecision(company_id=tenant.id, input_text="x", surface="bar",
+                        proposed_by="rules", outcome="shrugged"))
+    with pytest.raises(IntegrityError):
+        db.flush()
+    db.rollback()
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# 11 — the phrase that opens a capture is logged too
+# ───────────────────────────────────────────────────────────────────────────
+
+def test_a_capture_opening_IS_a_bar_interpretation(db, tenant):
+    """⚠️ IT WAS NOT LOGGED AT ALL UNTIL 2026-10-23, AND FOUR OF SIX WALK STEPS WERE THAT
+    SHAPE. James's walk produced two rows where six were expected; the four missing ones
+    all opened a capture. The module's own coverage note said capture was "already
+    recorded: the whole typed sentence is `capture_sessions.full_text`" — true, and
+    beside the point. The SENTENCE was recorded; the fact that the bar ROUTED it to a
+    capture was not, and that routing decision is what the log exists to collect.
+    """
+    rid = decision_log.record_capture_open(
+        db, company_id=tenant.id, user_id=None,
+        phrase="order hopk monti thursday 10 am st. mary's",
+    )
+    assert rid is not None
+    row = _rows(db, tenant.id)[0]
+    assert row.surface == "capture"
+    assert row.outcome == "executed"
+    assert row.proposed_by == "rules"
+    assert row.proposed_request == {"opened": "capture"}
+    assert row.input_text == "order hopk monti thursday 10 am st. mary's"
+    assert row.model_accepted is None
+
+
+def test_a_phrase_less_capture_open_is_not_logged(db, tenant):
+    for phrase in (None, "", "   "):
+        assert decision_log.record_capture_open(
+            db, company_id=tenant.id, user_id=None, phrase=phrase,
+        ) is None
+    assert _rows(db, tenant.id) == []
+    # the control
+    assert decision_log.record_capture_open(
+        db, company_id=tenant.id, user_id=None, phrase="order hopk",
+    ) is not None
+
+
+def test_THE_ROUTE_LOGS_A_CAPTURE_OPENING_ONCE_NOT_PER_PAUSE(db, tenant):
+    """⚠️ THE HOT PATH IS ONE CALL PER PAUSE, so the route must log the FIRST text only.
+    A row per pause would bury the opening sentence in fifty near-duplicates and make the
+    set useless as test cases — which is the only reason it is collected.
+
+    ⚠️ AND IT DRIVES THE REAL ROUTE, because the guard is in the route and my first
+    version of it called a `session_service.read` THAT DOES NOT EXIST — the AttributeError
+    landed in its own `except`, the flag stayed False, and capture logging silently never
+    fired. A service-level test would not have noticed.
+    """
+    import uuid as _uuid
+
+    from fastapi.testclient import TestClient
+
+    from app.api.deps import get_current_user, get_db
+    from app.main import app
+    from app.models.role import Role
+    from app.models.user import User
+
+    role = Role(id=str(_uuid.uuid4()), company_id=tenant.id, name="Office",
+                slug="office", is_active=True)
+    db.add(role)
+    db.flush()
+    user = User(id=str(_uuid.uuid4()), company_id=tenant.id,
+                email=f"cap-{_uuid.uuid4().hex[:8]}@example.com",
+                hashed_password="x", first_name="Cap", last_name="Walker",
+                is_active=True, role_id=role.id)
+    db.add(user)
+    db.commit()
+
+    app.dependency_overrides[get_db] = lambda: db
+    app.dependency_overrides[get_current_user] = lambda: user
+    try:
+        c = TestClient(app)
+        sid = c.post("/api/v1/capture/sessions", json={}).json()["session_id"]
+        first = "order hopk monti thursday"
+        assert c.put(f"/api/v1/capture/sessions/{sid}/text",
+                     json={"text": first, "seq": 1}).status_code == 200
+        # three more pauses, as the director keeps typing
+        for i, t in enumerate((first + " 10", first + " 10 am",
+                               first + " 10 am st. mary's"), start=2):
+            assert c.put(f"/api/v1/capture/sessions/{sid}/text",
+                         json={"text": t, "seq": i}).status_code == 200
+
+        caps = [r for r in _rows(db, tenant.id) if r.surface == "capture"]
+        assert len(caps) == 1, [r.input_text for r in caps]
+        assert caps[0].input_text == first
+        assert caps[0].actor_user_id == user.id
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(get_current_user, None)
+        db.execute(sql_text("DELETE FROM opas_decisions WHERE company_id = :c"),
+                   {"c": tenant.id})
+        db.execute(sql_text("DELETE FROM capture_sessions WHERE company_id = :c"),
+                   {"c": tenant.id})
         db.execute(sql_text("DELETE FROM users WHERE id = :u"), {"u": user.id})
         db.execute(sql_text("DELETE FROM roles WHERE id = :r"), {"r": role.id})
         db.commit()

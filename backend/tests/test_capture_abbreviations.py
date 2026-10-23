@@ -120,6 +120,32 @@ def carrier(db):
         db.commit()
 
 
+def _next_weekday(name: str) -> str:
+    """The date `parse_date` will give for a bare weekday, computed from TODAY.
+
+    ⚠️ A TIME BOMB I SHIPPED AND THE CLOCK SET OFF. Two tests asserted
+    `service_date == "2026-10-22"` for the word "thursday" — correct when written on
+    2026-10-21 and wrong from 2026-10-23, when the next Thursday became the 29th. The
+    full gate went red two days later on a change that had nothing to do with dates.
+
+    ⚠️ IT IS THE SAME CLASS CLAUDE.md RECORDS UNDER A MECHANICAL TRANSFORM AND A
+    MEANINGFUL VALUE: a literal date in a test is either a FACT about the calendar or a
+    stand-in for "whatever the parser derives", and the two look identical. These are
+    the second kind, so they are derived — the assertion is that the extractor agrees
+    with `parse_date`, which is what it was always about.
+
+    ⚠️ AND IT MIRRORS `parse_date`'s RULE RATHER THAN GUESSING IT: the NEXT occurrence,
+    including today when today matches. The weekday-arithmetic tests above keep their
+    absolute dates on purpose — those ARE claims about the calendar.
+    """
+    from datetime import date, timedelta
+
+    names = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    want = names.index(name.lower())
+    today = date.today()
+    return (today + timedelta(days=(want - today.weekday()) % 7)).isoformat()
+
+
 def _spans(ex, text):
     return [(text[s.start:s.end], s.state, tuple(s.field_ids)) for s in ex.spans]
 
@@ -408,7 +434,7 @@ def test_JAMESS_SENTENCE_IS_UNDERSTOOD_WHOLE(db, tenant):
     ex = extract_text(db, tenant_id=tenant, text=WALK)
     assert ex.values.get("funeral_home") == "Hopkins Funeral Home"
     assert ex.values.get("vault") == "Monticello Burial Vault"
-    assert ex.values.get("service_date") == "2026-10-22"
+    assert ex.values.get("service_date") == _next_weekday("thursday")
     assert ex.values.get("service_time") == "10:00"
     assert ex.values.get("cemetery") == "St. Mary's Cemetery"
     assert ex.unrecognized == (), ex.unrecognized
@@ -607,7 +633,7 @@ def test_a_word_reaching_nothing_is_reported_not_invented(db, tenant):
     t = "order hop zzzqqq sat"
     ex = extract_text(db, tenant_id=tenant, text=t)
     assert ex.values.get("funeral_home") == "Hopkins Funeral Home"
-    assert ex.values.get("service_date") == "2026-10-24"
+    assert ex.values.get("service_date") == _next_weekday("saturday")
     assert any("zzzqqq" in u for u in ex.unrecognized), ex.unrecognized
     assert "vault" not in ex.values
 
@@ -1183,7 +1209,7 @@ def test_the_whole_walk_phrase_still_fills_everything(db, tenant):
     ex = extract_text(db, tenant_id=tenant, text=WALK)
     assert ex.values.get("funeral_home") == "Hopkins Funeral Home"
     assert ex.values.get("vault") == "Monticello Burial Vault"
-    assert ex.values.get("service_date") == "2026-10-22"
+    assert ex.values.get("service_date") == _next_weekday("thursday")
     assert ex.values.get("service_time") == "10:00"
     assert ex.values.get("cemetery") == "St. Mary's Cemetery"
     assert ex.unrecognized == (), ex.unrecognized

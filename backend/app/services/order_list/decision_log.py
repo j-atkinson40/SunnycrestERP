@@ -21,9 +21,13 @@ total and this is two endpoints:
                           number, and every phrase the rules decline
     /catalog-pane/resolve covered — every product phrase, including the ones that match
                           nothing, which is the typo surface
-    capture               NOT covered here, and already recorded: the whole typed
-                          sentence is `capture_sessions.full_text`, which is where the
-                          8 production phrasings in the test set came from
+    capture               COVERED SINCE 2026-10-23, and the line below is what it used
+                          to say: "NOT covered here, and already recorded: the whole
+                          typed sentence is `capture_sessions.full_text`". That was true
+                          and it missed the point — the SENTENCE was recorded, the fact
+                          that the bar ROUTED it to a capture was not, and four of the
+                          six steps in James's 2026-10-23 walk were that shape and left
+                          no row. One row per session, on its first text.
     context phrases       NOT covered. `context-phrases.ts` is an exact 35-entry table;
                           a hit teaches nothing and a miss never reaches the server
     "close"               NOT covered. An exact phrase list with nothing to learn
@@ -38,8 +42,21 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
+#: ⚠️ `unresolved` IS NOT `refused`, AND THE DISTINCTION IS JAMES'S (2026-10-23).
+#: `refused` said the RULES declined a phrase. `unresolved` says NOTHING resolved it —
+#: rules and the model both — which is the row worth keeping, because it is the test
+#: case. Added by `r215`; `refused` stays accepted for the rows written before today,
+#: which are not re-spelled.
+OUTCOME_UNRESOLVED = "unresolved"
+
 #: What the bar was showing. See `OpasDecision.surface`.
 SURFACE_BAR = "bar"
+#: ⚠️ A PHRASE THAT OPENS A CAPTURE IS A BAR INTERPRETATION TOO, which this module did
+#: not record until 2026-10-23. Four of the six steps in James's walk were that shape and
+#: produced no row at all — so the log was missing the richest source of the very
+#: evidence it exists to collect. Recorded once per session, on the first text the client
+#: sends, which is the sentence that opened it.
+SURFACE_CAPTURE = "capture"
 SURFACE_WITH_LIST = "bar_with_list"
 SURFACE_WITH_ORDER = "bar_with_order"
 SURFACE_CATALOG = "catalog"
@@ -65,7 +82,7 @@ def _outcome_for(body: dict) -> tuple[str, dict | None]:
     """`(outcome, proposed_request)` from what `ask` returned."""
     kind = body.get("kind")
     if kind == "unrecognized":
-        return "refused", None
+        return OUTCOME_UNRESOLVED, None
     if kind == "picks":
         return "asked", {"picks": [p.get("label") for p in (body.get("picks") or [])]}
     if kind == "open_order":
@@ -133,6 +150,50 @@ def record_ask(
         return None
 
 
+def record_capture_open(
+    db: Session,
+    *,
+    company_id: str,
+    user_id: str | None,
+    phrase: str,
+) -> str | None:
+    """One row for the sentence that opened a capture.
+
+    ⚠️ ONCE PER SESSION, NOT PER KEYSTROKE. `PUT /sessions/{id}/text` is the hot path —
+    one call per pause — so the caller records only the FIRST text a session receives.
+    A row per pause would bury the opening sentence in fifty near-duplicates of itself
+    and make the set unusable as test cases, which is the whole reason it is collected.
+
+    ⚠️ AND IT IS `executed`, NOT `asked`. The bar DID something: the capture opened. What
+    the extractor then makes of the sentence is recorded in `capture_sessions.full_text`
+    and in the spans, and is a different question from whether the bar routed it right.
+    """
+    if not phrase or not phrase.strip():
+        return None
+    try:
+        from app.models.opas_decision import OpasDecision
+
+        row = OpasDecision(
+            company_id=company_id,
+            actor_user_id=user_id,
+            input_text=phrase,
+            surface=SURFACE_CAPTURE,
+            proposed_by="rules",
+            proposed_request={"opened": "capture"},
+            outcome="executed",
+        )
+        db.add(row)
+        db.commit()
+        return row.id
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        logger.warning("opas capture-open log failed for %r", phrase[:60], exc_info=True)
+        return None
+
+
 def record_resolve(
     db: Session,
     *,
@@ -155,7 +216,10 @@ def record_resolve(
         outcome = (
             "executed" if candidate_count == 1
             else "asked" if candidate_count > 1
-            else "refused"
+            # ⚠️ THE SAME WORD AS THE BAR'S MISS, so one concept has one spelling. A
+            # product phrase matching nothing is a miss for exactly the reason a bar
+            # phrase matching nothing is.
+            else OUTCOME_UNRESOLVED
         )
         row = OpasDecision(
             company_id=company_id,

@@ -493,3 +493,125 @@ def test_the_door_does_not_pin_a_model_id(db, tenant):
     )
     assert "override_model" not in code
     assert "claude-" not in code
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# Top-level routing, and honest misses (James, walk 2026-10-23)
+# ───────────────────────────────────────────────────────────────────────────
+
+class TestTheDoorIsConsultedForUNROUTABLEPhrases:
+    """James typed "anything going to st. marys coming up?" and got the whole catalog.
+
+    ⚠️ THE MODEL WAS NEVER ASKED, AND THAT WAS THE DESIGN RATHER THAN A BUG IN IT. The
+    door sat behind the order list, so it was consulted only once the RULES had already
+    decided the phrase was about orders. That phrase has no "order" word in it, so the
+    rules sent it to the catalog resolver, which matched nothing, which dumped every
+    vault. His ruling: "choosing where a request goes is exactly the job the model
+    should do, so it has to sit at the front, not behind one pane."
+
+    ⚠️ THE ROUTING LIVES IN THE CLIENT AND THE DECISION LIVES HERE. The client's last
+    resort before a miss is `/order-list/ask`; these tests pin the server half — that
+    `ask` reaches the door for a phrase the rules decline, and returns `unrecognized`
+    rather than anything else when nothing places it.
+    """
+
+    PHRASES = [
+        "anything going to st. marys coming up?",
+        "what's going to st marys",
+        "anything for hopkins next week",
+    ]
+
+    @pytest.mark.parametrize("phrase", PHRASES)
+    def test_the_rules_decline_these_so_the_door_must_see_them(self, phrase):
+        """⚠️ THE PRECONDITION, ASSERTED RATHER THAN ASSUMED. If a rule started matching
+        one of these the door would never be reached and the test below would pass for
+        the wrong reason — green because the rules handled it, not because the door did.
+        """
+        from app.services.order_list.question import interpret
+
+        got = interpret(phrase, today=date(2026, 10, 23))
+        assert got.question is None, (phrase, got)
+        assert got.kind == "unrecognized", (phrase, got.kind)
+
+    def test_a_phrase_the_rules_DO_place_never_reaches_the_door(self):
+        """The other side of the same boundary: "monticellos this month" IS an order
+        phrase, so the door must not be consulted at all. Measured on production
+        2026-10-23 — the rules resolve it."""
+        from app.services.order_list.question import interpret
+
+        got = interpret("monticellos this month", today=date(2026, 10, 23))
+        assert got.question is not None, got
+
+    def test_the_door_is_offered_the_phrase_and_the_engine_decides(self, monkeypatch):
+        """⚠️ WHAT THE DOOR DOES WITH IT IS NOT ASSERTED HERE, because that depends on a
+        live provider. What IS asserted is that the phrase is offered and the engine, not
+        the model, decides — a model answer naming a cemetery and a date window is
+        accepted, and the same answer carrying a total is refused.
+        """
+        from app.services.order_list.question import accept_model_payload
+
+        q = {"cemetery": "St. Mary's Cemetery", "service_from": "2026-10-23",
+             "service_to": "2026-10-31", "title": "Going to St. Mary's"}
+        assert accept_model_payload({"question": q}) is not None
+        # ⚠️ THE REFUSAL SIDE, so "accepted" is not a rubber stamp. A model that tries to
+        # produce a NUMBER is refused — the engine answers from records, never the model.
+        assert accept_model_payload({"question": q, "total": "4"}) is None
+        assert accept_model_payload({"sql": "select 1", "question": q}) is None
+
+
+class _FakeCtx:
+    """The minimal shape `propose` asks of a built context: `as_variables()`."""
+
+    def as_variables(self) -> dict:
+        return {"phrase": "x", "today": "2026-10-23"}
+
+
+class TestAProviderFailureIsNotTheEngineRefusing:
+    """⚠️ A DEFECT IN THIS FILE'S OWN SUBJECT, FOUND BY PROBING PRODUCTION 2026-10-23.
+
+    Production's ANTHROPIC key is invalid — every call returns `401 invalid x-api-key`.
+    The 401 does NOT raise: `intelligence_service` catches it, sets `status="api_error"`
+    and returns a result with no parsed response. So `propose` fell through to its
+    accept-or-refuse branch and the observer reported **`refused_by_engine`** for all
+    four phrases probed.
+
+    ⚠️ THAT IS THE WORST POSSIBLE MISLABEL FOR THE DECISION LOG, which exists to answer
+    "does the door work". It was blaming the MODEL for a dead CREDENTIAL — a 100%
+    refusal rate reading as "the model proposes things the engine rejects" when nothing
+    was ever proposed.
+    """
+
+    def _result(self, status, parsed=None):
+        class R:
+            response_parsed = parsed
+            response_text = None
+        R.status = status
+        return R()
+
+    @pytest.mark.parametrize(
+        "status,expected",
+        [("api_error", "api_error"), ("rate_limited", "rate_limited"),
+         ("parse_error", "parse_error"), ("success", "refused_by_engine")],
+    )
+    def test_the_reason_names_the_actual_failure(self, status, expected, monkeypatch):
+        # ⚠️ PATCHED AT ITS SOURCE MODULE, because `propose` does
+        # `from app.services.intelligence.intelligence_service import execute` INSIDE the
+        # function — setting an attribute on `proposal` would patch nothing and the test
+        # would exercise the real provider.
+        import app.services.intelligence.intelligence_service as layer
+        import app.services.order_list.proposal as prop
+        from app.config import settings
+        from app.services.order_list import model_context
+
+        monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-key", raising=False)
+        monkeypatch.setattr(layer, "execute",
+                            lambda *a, **k: self._result(status), raising=False)
+        monkeypatch.setattr(model_context, "build",
+                            lambda *a, **k: _FakeCtx(), raising=False)
+        seen: dict = {}
+        out = prop.propose("anything going to st marys", date(2026, 10, 23),
+                           db=object(), company_id="c1", observer=seen.update)
+        assert out is None
+        assert seen.get("called") is True
+        assert seen.get("accepted") is False
+        assert seen.get("reason") == expected, seen
