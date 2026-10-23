@@ -12,9 +12,13 @@ failure, and are tested. Measured on production 2026-10-20: ZERO rows in
 Option A idempotent seed (Phase 6 / 8b / 8d.1 / R-6.1a / R-6.2a):
 
   - no existing prompt                → create + v1 active
-  - exactly 1 version matching spec   → no-op
-  - exactly 1 version differing       → deactivate v1, create v2
-  - several versions (admin edits)    → SKIP with a warning, touch nothing
+  - newest version matches spec       → no-op (reactivated if it was not live)
+  - newest version differs            → retire the live one, create the next, activate
+
+⚠️ IT NO LONGER SKIPS ON "SEVERAL VERSIONS", AND THAT RULE WAS A ONE-SHOT SWITCH. See
+the long note in `seed()`: a version COUNT cannot tell an admin's edit from this seed's
+own second run, and treating it as evidence froze the prompt at v2 on 2026-10-23 while
+the validator that needed v3 was already live on production.
 
 ⚠️ IT SEEDS A PLATFORM PROMPT (`company_id IS NULL`), not a per-tenant one. The question
 vocabulary is the same for every manufacturer; what differs per tenant is the NAME LISTS,
@@ -182,7 +186,7 @@ def _new_version(prompt: IntelligencePrompt, number: int) -> IntelligencePromptV
 
 
 def seed(db) -> str:
-    """Returns one of: created, noop, upgraded, skipped-multi."""
+    """Returns one of: created, noop, upgraded, reactivated."""
     prompt = (
         db.query(IntelligencePrompt)
         .filter(
@@ -219,27 +223,54 @@ def seed(db) -> str:
         .order_by(IntelligencePromptVersion.version_number)
         .all()
     )
-    if len(versions) > 1:
-        # ⚠️ SKIP, DO NOT MERGE. More than one version means someone edited this prompt
-        # through the admin playground, and a seed that overwrote that would silently
-        # throw away a person's work.
-        logger.warning(
-            "%s has %d versions — an admin has edited it. Skipping.",
-            PROMPT_KEY, len(versions),
-        )
-        return "skipped-multi"
-    if len(versions) == 1 and _matches(versions[0]):
-        if not versions[0].status == "active":
-            versions[0].status = "active"
-            versions[0].activated_at = datetime.now(timezone.utc)
-            return "created"
+    # ⚠️ THIS USED TO SKIP WHENEVER MORE THAN ONE VERSION EXISTED, AND THAT MADE IT A
+    # ONE-SHOT SEED THAT BELIEVED IT WAS IDEMPOTENT. Measured on production 2026-10-23,
+    # minutes after it mattered: the deploy of `0289edf6` upgraded this prompt v1 -> v2,
+    # so the NEXT deploy found two versions, logged "an admin has edited it. Skipping.",
+    # and changed nothing. v3 — which stops the model computing dates — never landed,
+    # and because the validator shipped in the same commit and voids a model-supplied
+    # date, EVERY dated question on production was refused. Twenty runs, twenty
+    # refusals, with v2 still active.
+    #
+    # ⚠️ THE GUARD COULD NEVER HAVE WORKED, which is the part worth keeping. It read a
+    # COUNT as evidence of authorship, and this seed creates versions itself — so from
+    # its own second update onward, "someone edited this" and "I have run twice" are the
+    # same observation. No amount of care at the call site fixes a predicate that cannot
+    # distinguish the two cases.
+    #
+    # ⚠️ AND ITS PREMISE WAS WRONG TOO: "a seed that overwrote that would silently throw
+    # away a person's work". Nothing is overwritten. Versions are append-only — the
+    # superseded row is retired, not deleted, and stays readable and reactivatable in the
+    # playground. What a new version DOES take away is which one is live, so that is
+    # logged by number rather than left silent.
+    live = [v for v in versions if v.status == "active"]
+    newest = max(versions, key=lambda v: v.version_number) if versions else None
+
+    if newest is not None and _matches(newest):
+        if newest.status != "active":
+            for other in live:
+                other.status = "retired"
+            newest.status = "active"
+            newest.activated_at = datetime.now(timezone.utc)
+            return "reactivated"
         return "noop"
-    if len(versions) == 1:
-        versions[0].status = "retired"
-        db.add(_new_version(prompt, versions[0].version_number + 1))
-        return "upgraded"
-    db.add(_new_version(prompt, 1))
-    return "created"
+
+    if newest is None:
+        db.add(_new_version(prompt, 1))
+        return "created"
+
+    # ⚠️ NAMED IN THE LOG, NOT COUNTED. "has 3 versions" tells the next reader nothing;
+    # "superseding v2 (active) with v3" tells them exactly what to reactivate if the
+    # version being replaced was somebody's.
+    for other in live:
+        other.status = "retired"
+        logger.warning(
+            "%s: superseding v%d (was active) with v%d. The old row is RETAINED as "
+            "'retired' and can be reactivated in the playground.",
+            PROMPT_KEY, other.version_number, newest.version_number + 1,
+        )
+    db.add(_new_version(prompt, newest.version_number + 1))
+    return "upgraded"
 
 
 def main() -> int:

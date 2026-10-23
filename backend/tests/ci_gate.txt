@@ -623,3 +623,10 @@ tests/test_opas_coming_up.py
 # now returns the date WORDS and `order_list/when.py` resolves them against the
 # tenant's local today; a payload carrying service_from/service_to/when_label is void.
 tests/test_opas_model_dates.py
+# The door's prompt seed was a ONE-SHOT that reported itself idempotent: its last rule
+# skipped whenever more than one version existed, and the seed creates versions itself,
+# so from its own second update onward "an admin edited this" and "I have run twice" were
+# the same observation. v3 never landed on production while the validator needing it was
+# already live — twenty dated questions, twenty refusals. The third invocation is the one
+# that froze, so the test runs four rounds.
+tests/test_seed_prompt_is_not_one_shot.py
