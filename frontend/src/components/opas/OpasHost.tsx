@@ -466,7 +466,33 @@ export function OpasHost() {
       // ⚠️ THE EXCLUSION IS WHAT MAKES WHOLE-PANE DRAGGING SAFE. Without it, clicking a
       // catalog row would start a drag instead of opening the product — the row is a
       // <button>, and `closest` catches a click on anything inside it too.
-      if ((e.target as HTMLElement).closest("button,textarea,input,a") !== null) return
+      //
+      // ⚠️ IT MATCHES INTERACTIVE ROLES AS WELL AS TAGS SINCE 2026-10-23, AND THAT IS
+      // JAMES'S WALK BUG. The selector listed TAGS only, and the order-list row is a
+      // `div role="button"` — the ONLY such element in Opas, measured. So pointerdown on
+      // a row fell through this guard, `setPointerCapture` below captured the pointer on
+      // the PANE, and the browser then dispatched the `click` to the capturing element
+      // instead of the row. `onOpen(row.id)` never ran. Nothing threw, which is why he
+      // saw no error — the click simply went somewhere else.
+      //
+      // ⚠️ AND EVERY JSDOM TEST PASSED THROUGH IT, WHICH IS WHY IT REACHED HIM. jsdom
+      // does not implement `setPointerCapture` — that is why the call below is optional
+      // — so no capture happens, the click dispatches to the row, and the pane opens.
+      // Measured four ways before the fix (bare click, full pointerdown/up/click, with a
+      // 2px move, and after a refinement): all four opened the pane in jsdom. The gap is
+      // structural, not an oversight in any one test.
+      //
+      // ⚠️ ROLES, NOT JUST THIS ONE ROLE, because the next `div role="link"` or
+      // `role="option"` would land in the same hole. The question this asks is "did the
+      // pointer go down on something interactive?", and a role is how a non-native
+      // element answers it.
+      const INTERACTIVE = [
+        "button", "textarea", "input", "select", "a",
+        '[role="button"]', '[role="link"]', '[role="option"]',
+        '[role="tab"]', '[role="checkbox"]', '[role="switch"]',
+        '[contenteditable="true"]',
+      ].join(",")
+      if ((e.target as HTMLElement).closest(INTERACTIVE) !== null) return
       const handle = e.currentTarget
       // ⚠️ OPTIONAL CALL, WHERE THE PROTOTYPE CALLS IT OUTRIGHT. A raw
       // `handle.setPointerCapture(...)` threw `TypeError: not a function` the moment a

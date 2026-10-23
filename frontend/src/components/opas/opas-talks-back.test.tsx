@@ -859,3 +859,136 @@ describe("6 — spell check is off in the bar", () => {
     expect(after.getAttribute("spellcheck")).toBe("false")
   })
 })
+
+// ───────────────────────────────────────────────────────────────────────────
+// 7 — a click on a row reaches the row (James's walk, 2026-10-23)
+// ───────────────────────────────────────────────────────────────────────────
+
+describe("7 — clicking an order row opens its pane", () => {
+  const LIST = {
+    kind: "question", layout: "flat", title: "Hopkins orders", surface: "pane",
+    question: { funeral_home: "Hopkins", title: "Hopkins orders" },
+    orders: [{
+      id: "o4", number: "SO-2026-0004", deceased_name: "Hart", stage: "scheduled",
+      stage_label: "Scheduled", dots_filled: 1, invoiced: false,
+      service_date: "2026-10-28",
+    }],
+    footer: "f",
+  } as unknown as OrderListSnapshot
+
+  /**
+   * ⚠️ IT ASSERTS THE POINTER IS NEVER CAPTURED, NOT THAT THE PANE OPENS, AND THAT IS
+   * THE WHOLE REASON THIS TEST IS WORTH ANYTHING.
+   *
+   * James's row click did nothing in Chrome on 2026-10-23. `dragStart`'s guard excluded
+   * the TAGS `button,textarea,input,a`; the order row is a `div role="button"` — the only
+   * such element in Opas, measured — so pointerdown fell through, `setPointerCapture`
+   * captured the pointer on the PANE, and the browser dispatched the `click` to the
+   * capturing element instead of the row.
+   *
+   * ⚠️ AND THE OBVIOUS TEST CANNOT FAIL. jsdom does not implement `setPointerCapture`
+   * (hence the optional call in `dragStart`), so no capture happens and the click lands
+   * on the row regardless. Measured four ways against the BROKEN code — bare click, full
+   * pointerdown/up/click, with a 2px move, and after a refinement — and all four opened
+   * the pane. An "assert the pane opens" test is green before and after the fix: it is
+   * documentation, not coverage (CLAUDE.md §11).
+   *
+   * So the capture itself is stubbed and watched. That IS discriminating: with the old
+   * tag-only selector the row's pointerdown captures, with the fix it does not.
+   */
+  async function openListAndWatchCapture() {
+    askOrderList.mockResolvedValue(LIST)
+    await mount()
+    await ask("hopkins orders")
+    const row = await waitFor(() => screen.getByTestId("opas-order-row-o4"))
+    const captured: number[] = []
+    // ⚠️ STUBBED ON THE PROTOTYPE, so every element in the tree has it — the capture
+    // happens on `e.currentTarget`, which is the pane, not the row.
+    const proto = window.Element.prototype as unknown as Record<string, unknown>
+    const had = Object.prototype.hasOwnProperty.call(proto, "setPointerCapture")
+    const prev = proto.setPointerCapture
+    proto.setPointerCapture = function (id: number) { captured.push(id) }
+    const restore = () => {
+      if (had) proto.setPointerCapture = prev
+      else delete proto.setPointerCapture
+    }
+    return { row, captured, restore }
+  }
+
+  it("⚠️ POINTERDOWN ON A ROW DOES NOT CAPTURE THE POINTER", async () => {
+    const { row, captured, restore } = await openListAndWatchCapture()
+    try {
+      await act(async () => {
+        fireEvent.pointerDown(row, { clientX: 120, clientY: 200, button: 0, pointerId: 7 })
+      })
+      expect(captured).toEqual([])
+    } finally {
+      restore()
+    }
+  })
+
+  it("⚠️ THE CONTROL: pointerdown on the pane's own chrome DOES capture", async () => {
+    // Without this the test above is satisfied by a stub that is never reached at all —
+    // a `dragStart` that returned on its first line, or a pane that stopped handling
+    // pointerdown, would also produce an empty list. CLAUDE.md §11: require the control
+    // to be NON-ZERO and read it before the result it vouches for.
+    const { captured, restore } = await openListAndWatchCapture()
+    try {
+      const pane = screen.getByTestId("opas-order-list").closest("[data-pane-width]")
+      expect(pane).toBeTruthy()
+      await act(async () => {
+        fireEvent.pointerDown(pane as Element, {
+          clientX: 300, clientY: 120, button: 0, pointerId: 9,
+        })
+      })
+      expect(captured).toEqual([9])
+    } finally {
+      restore()
+    }
+  })
+
+  it("and the click opens the order's pane, with focus back on the bar", async () => {
+    // ⚠️ GREEN BEFORE THE FIX TOO — kept because it is the BEHAVIOUR, and the two tests
+    // above are what pin the mechanism. Labelled so nobody reads it as the regression
+    // test it cannot be.
+    askOrderList.mockResolvedValue(LIST)
+    await mount()
+    await ask("hopkins orders")
+    const row = await waitFor(() => screen.getByTestId("opas-order-row-o4"))
+    ;(document.activeElement as HTMLElement).blur()
+    await act(async () => {
+      fireEvent.pointerDown(row, { clientX: 120, clientY: 200, button: 0, pointerId: 1 })
+      fireEvent.pointerUp(row, { clientX: 120, clientY: 200, button: 0, pointerId: 1 })
+      fireEvent.click(row, { clientX: 120, clientY: 200, button: 0 })
+    })
+    await waitFor(() => expect(screen.getByTestId("opas-sales-order")).toBeTruthy())
+    expect(document.activeElement).toBe(bar())
+  })
+
+  it("⚠️ AND A REFINEMENT DOES NOT CHANGE IT — filtering was not the variable", async () => {
+    // James asked whether the refinement mattered. Measured: it does not. The cause is
+    // the row's SHAPE, not the list's state, so the same assertion holds after
+    // "only hopkins".
+    askOrderList.mockResolvedValue(LIST)
+    await mount()
+    await ask("hopkins orders")
+    await waitFor(() => screen.getByTestId("opas-order-row-o4"))
+    askOrderList.mockResolvedValue(LIST)
+    await ask("only hopkins")
+    const row = await waitFor(() => screen.getByTestId("opas-order-row-o4"))
+    const proto = window.Element.prototype as unknown as Record<string, unknown>
+    const had = Object.prototype.hasOwnProperty.call(proto, "setPointerCapture")
+    const prev = proto.setPointerCapture
+    const captured: number[] = []
+    proto.setPointerCapture = function (id: number) { captured.push(id) }
+    try {
+      await act(async () => {
+        fireEvent.pointerDown(row, { clientX: 120, clientY: 200, button: 0, pointerId: 3 })
+      })
+      expect(captured).toEqual([])
+    } finally {
+      if (had) proto.setPointerCapture = prev
+      else delete proto.setPointerCapture
+    }
+  })
+})
