@@ -79,13 +79,13 @@ const LIST: OrderListSnapshot = {
   question: { funeral_home: "Hopkins", title: "Hopkins orders" },
   orders: [
     {
-      id: "o1", number: "SO-2026-0003", deceased_name: "Smith", stage: "scheduled",
-      stage_label: "Scheduled", dots_filled: 1, invoiced: false,
+      id: "o1", number: "SO-2026-0003", deceased_name: "Smith", stage: "confirmed",
+      status: "confirmed", stage_label: "Confirmed", dots_filled: 1, invoiced: false,
       service_date: "2026-10-23",
     },
     {
-      id: "o2", number: "SO-2026-0004", deceased_name: "Hart", stage: "scheduled",
-      stage_label: "Scheduled", dots_filled: 1, invoiced: false,
+      id: "o2", number: "SO-2026-0004", deceased_name: "Hart", stage: "confirmed",
+      status: "confirmed", stage_label: "Confirmed", dots_filled: 1, invoiced: false,
       service_date: "2026-10-24",
     },
   ],

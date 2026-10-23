@@ -395,7 +395,7 @@ def _pack(
             body["hint"] = hint
         return body
 
-    chosen = select_flat(facts, question)
+    chosen = select_flat(facts, question, today)
     totals = sum_totals(chosen, question)
     body = {
         "kind": "question",
@@ -524,7 +524,7 @@ def _open_one(facts: list[OrderFacts], query: str, today: date) -> dict:
             question = OrderQuestion(title="Open orders", **{field: query})
             found = [
                 item for item in facts
-                if matches(item, question, include_cancelled=include_cancelled)
+                if matches(item, question, today, include_cancelled=include_cancelled)
             ]
             if found:
                 return _pick_or_open(found, today)
@@ -639,7 +639,7 @@ def ask(
             grouped = select_default(facts, today)
             chosen = [item for rows in grouped.values() for item in rows]
         else:
-            chosen = select_flat(facts, current)
+            chosen = select_flat(facts, current, today)
         return {
             "kind": "total",
             "hint": total_sentence(chosen),

@@ -184,7 +184,7 @@ describe("1 — the bar keeps focus", () => {
       question: { funeral_home: "Hopkins", title: "Hopkins orders" },
       orders: [{
         id: "o4", number: "SO-2026-0004", deceased_name: "Hart", stage: "scheduled",
-        stage_label: "Scheduled", dots_filled: 1, invoiced: false,
+        stage_label: "Confirmed", dots_filled: 1, invoiced: false,
         service_date: "2026-10-28",
       }],
       footer: "f",
@@ -718,7 +718,7 @@ const LIST_ANSWER: OrderListSnapshot = {
   question: { funeral_home: "Hopkins", title: "Hopkins orders" },
   orders: [{
     id: "o4", number: "SO-2026-0004", deceased_name: "Hart", stage: "scheduled",
-    stage_label: "Scheduled", dots_filled: 1, invoiced: false,
+    stage_label: "Confirmed", dots_filled: 1, invoiced: false,
     service_date: "2026-10-28",
   }],
   footer: "f",
@@ -870,7 +870,7 @@ describe("7 — clicking an order row opens its pane", () => {
     question: { funeral_home: "Hopkins", title: "Hopkins orders" },
     orders: [{
       id: "o4", number: "SO-2026-0004", deceased_name: "Hart", stage: "scheduled",
-      stage_label: "Scheduled", dots_filled: 1, invoiced: false,
+      stage_label: "Confirmed", dots_filled: 1, invoiced: false,
       service_date: "2026-10-28",
     }],
     footer: "f",

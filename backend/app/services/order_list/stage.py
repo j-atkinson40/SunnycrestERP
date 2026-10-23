@@ -16,21 +16,36 @@ from app.services.order_list.question import OrderQuestion
 # out is hidden from the default view, which is what the footer says.
 DRIVER_HORIZON_DAYS = 14
 
-StageName = Literal["proof", "scheduled", "delivered", "invoiced"]
+#: ⚠️ THE DOT LADDER AND THE LABEL ARE TWO DIFFERENT THINGS, SEPARATED 2026-10-23.
+#: They used to be one: `STAGE_LABEL[stage_of(facts)]` was the row text, the reply line,
+#: and the lens bit. So a DRAFT with a service date read "Scheduled" — the rung `stage_of`
+#: returns for anything dated or driver-assigned — on the model door's first real answer.
+#: A draft is not on anybody's schedule, and the office reading that word would have
+#: believed it was. James's ruling: labels come from the order's real status.
+StageName = Literal["proof", "confirmed", "delivered", "invoiced"]
 FlagName = Literal["change", "proof", "nodriver", "close"]
 GroupId = Literal["needs_something", "going_out_this_week", "delivered_not_invoiced"]
 
 # The prototype's fill counts: the current step is empty, and Invoiced fills all four.
 DOTS_FILLED: dict[StageName, int] = {
     "proof": 0,
-    "scheduled": 1,
+    "confirmed": 1,
     "delivered": 2,
     "invoiced": 4,
 }
 
-STAGE_LABEL: dict[StageName, str] = {
-    "proof": "Proof",
-    "scheduled": "Scheduled",
+#: ⚠️ THERE IS NO "SCHEDULED" HERE AND THERE IS NOT MEANT TO BE. "Scheduled only if
+#: something actually schedules it (nothing does yet, so probably never)" — James,
+#: 2026-10-23. Nothing in this platform puts an order on a schedule as a state: a
+#: delivery row gets a driver and a requested date, which is what `has_driver` and
+#: `service_date` report, and neither is a status. The word is deleted rather than
+#: fixed in place so no surface can reach for it again.
+StatusName = Literal["draft", "cancelled", "confirmed", "delivered", "invoiced"]
+
+STATUS_LABEL: dict[StatusName, str] = {
+    "draft": "Draft",
+    "cancelled": "Cancelled",
+    "confirmed": "Confirmed",
     "delivered": "Delivered",
     "invoiced": "Invoiced",
 }
@@ -128,6 +143,17 @@ class OrderFacts:
         return (self.status or "").lower() in _CANCELLED
 
     @property
+    def draft(self) -> bool:
+        """⚠️ `detail.steps_for` SPELT THIS INLINE AND THE ROW DID NOT SPELL IT AT ALL.
+
+        That asymmetry is the whole of the 2026-10-23 bug: the Sales Order Pane already
+        refused to render a draft as a step ("Draft and cancelled show as such, not as
+        steps"), while the list row and the reply line had no notion of a draft and
+        called it Scheduled. One property, read by both.
+        """
+        return (self.status or "").strip().casefold() == "draft"
+
+    @property
     def invoiced(self) -> bool:
         return any(status not in _INVOICED_SKIP for status in self.invoice_statuses)
 
@@ -215,12 +241,58 @@ def stage_of(facts: OrderFacts) -> StageName:
         return "delivered"
     # An open proof with nobody assigned is still the proof step. Once a driver
     # is assigned, or there is a service date and nothing is owed on the proof,
-    # the step is scheduled — a missing driver is the flag, not the step.
+    # the order is past the proof step — a missing driver is the flag, not the step.
+    #
+    # ⚠️ THIS RUNG IS A LADDER POSITION, NOT A STATUS, which is why it is no longer
+    # called "scheduled". It answers "how far along the four dots", and the dots are
+    # the prototype's. What the row SAYS comes from `status_of`.
     if facts.proof in {"pending", "change_requested"} and not facts.has_driver:
         return "proof"
     if facts.has_driver or facts.service_date is not None:
-        return "scheduled"
+        return "confirmed"
     return "proof"
+
+
+def status_of(facts: OrderFacts) -> StatusName:
+    """What this order IS, read off the row rather than inferred from a schedule.
+
+    ⚠️ ORDER MATTERS AND CANCELLED COMES FIRST. A cancelled order that had been
+    delivered is cancelled; reporting "Delivered" because a delivery row completed
+    would describe the history rather than the order.
+
+    ⚠️ AND DRAFT COMES BEFORE INVOICED AND DELIVERED FOR THE SAME REASON — a draft is
+    not somewhere on the ladder, it is not on the ladder. `steps_for` has said so since
+    2026-10-19; this is the same ruling reaching the list row.
+    """
+    if facts.cancelled:
+        return "cancelled"
+    if facts.draft:
+        return "draft"
+    if facts.invoiced:
+        return "invoiced"
+    if facts.delivered:
+        return "delivered"
+    # Past draft is confirmed, by the transition graph: nothing reaches any later
+    # status without passing through `confirmed`. Same reasoning as `steps_for`.
+    return "confirmed"
+
+
+def status_label(facts: OrderFacts) -> str:
+    """The ONE place a status becomes words. Every surface reads this."""
+    return STATUS_LABEL[status_of(facts)]
+
+
+def dots_for(facts: OrderFacts) -> int:
+    """How many of the four dots are filled.
+
+    ⚠️ A DRAFT AND A CANCELLED ORDER FILL NONE, and that is not a cosmetic choice: the
+    dots carry `aria-label={row.stage_label}`, so the ladder is the status's accessible
+    name. A draft showing one filled dot next to the word "Draft" would say two
+    different things to two different readers of the same row.
+    """
+    if status_of(facts) in ("draft", "cancelled"):
+        return 0
+    return DOTS_FILLED[stage_of(facts)]
 
 
 def flag_of(facts: OrderFacts, today: date) -> FlagName | None:
@@ -234,6 +306,22 @@ def flag_of(facts: OrderFacts, today: date) -> FlagName | None:
         return "proof"
     if (
         not facts.delivered
+        # ⚠️ NOT ON A DRAFT, AND THIS IS MY CALL RATHER THAN JAMES'S WORDS — flagged in
+        # the report of 2026-10-23 so he can reverse it in one line.
+        #
+        # The flag wins over the status label on both the row (`flag_label ?? stage_label`)
+        # and the reply line, so without this the draft SO-2026-0001 reads "No driver yet"
+        # — which is the SAME defect in different words. "If the office reads that, they'll
+        # think it's on the schedule" was the complaint, and an order that merely needs a
+        # driver reads as real and nearly ready. Nobody assigns a driver to a draft.
+        #
+        # ⚠️ ONLY THIS FLAG IS SUPPRESSED. A legacy proof can genuinely be in progress on
+        # a draft, so `change` and `proof` above still fire and still carry the order into
+        # "Needs something"; `close` cannot apply, since a draft is not delivered. The
+        # cost is that a dated draft with no proof work leaves the default view unless its
+        # service date falls in this week — which is the same rule every unflagged order
+        # has always been under, not a new way to hide one.
+        and not facts.draft
         and not facts.has_driver
         and facts.service_date is not None
         and facts.service_date <= today + timedelta(days=DRIVER_HORIZON_DAYS)
@@ -278,9 +366,19 @@ def is_driver(role_slug: str | None) -> bool:
 
 
 def matches(
-    facts: OrderFacts, question: OrderQuestion, *, include_cancelled: bool = False,
+    facts: OrderFacts,
+    question: OrderQuestion,
+    today: date,
+    *,
+    include_cancelled: bool = False,
 ) -> bool:
     """True when this order is inside the question. Default-view membership is separate.
+
+    ⚠️ `today` IS REQUIRED AND HAS NO DEFAULT, deliberately, added 2026-10-23. It is
+    only read by the `going_out` clause, so a default of `date.today()` would have been
+    the obvious kindness to the two call sites — and it would have put the CONTAINER's
+    UTC date inside a tenant-local filter, which is the bug `today_for` exists to
+    prevent. A caller that cannot say what day it is for this tenant fails loudly.
 
     ⚠️ `include_cancelled` IS A PARAMETER RATHER THAN A SECOND MATCHER, added 2026-10-19.
     The Sales Order Pane opens one named order and must be able to reach a cancelled one
@@ -316,8 +414,27 @@ def matches(
         return False
     if question.invoiced is False and facts.invoiced:
         return False
-    if question.going_out and facts.delivered:
-        return False
+    if question.going_out:
+        # ⚠️ "COMING UP" IS A DATE, NOT A DELIVERY STATE. James's ruling, 2026-10-23:
+        # "going_out means service date today or later in the tenant's local time, not
+        # 'not yet delivered'. Past-dated orders never appear in a 'coming up' answer,
+        # whatever their status."
+        #
+        # This clause used to read `if question.going_out and facts.delivered`. On the
+        # door's first real answer — "anything going to st marys coming up?" — that
+        # returned SO-2026-0001, dated 2026-10-16, a week gone, because it is a draft
+        # and a draft has never been delivered. The model had read the phrase correctly;
+        # the filter was answering a different question.
+        #
+        # ⚠️ AND IT NO LONGER EXCLUDES DELIVERED ORDERS AT ALL, which is a real change
+        # and is the ruling as written ("not 'not yet delivered'"). Nothing is lost on
+        # the rules path: `_going` sets `delivered=False` alongside `going_out=True`, so
+        # every "going out Friday" phrase still refuses a delivered order through the
+        # `question.delivered` clause above. The door may set `going_out` without
+        # `delivered`, and for a date in the future the two can only disagree about an
+        # order delivered early — which is coming up, and is the office's business.
+        if facts.service_date is None or facts.service_date < today:
+            return False
     return True
 
 
@@ -356,8 +473,10 @@ def select_default(facts: list[OrderFacts], today: date) -> dict[GroupId, list[O
     return grouped
 
 
-def select_flat(facts: list[OrderFacts], question: OrderQuestion) -> list[OrderFacts]:
-    chosen = [item for item in facts if matches(item, question)]
+def select_flat(
+    facts: list[OrderFacts], question: OrderQuestion, today: date,
+) -> list[OrderFacts]:
+    chosen = [item for item in facts if matches(item, question, today)]
     chosen.sort(key=sort_key)
     return chosen
 
@@ -443,8 +562,9 @@ def row_dict(facts: OrderFacts, today: date) -> dict:
         "deceased_name": facts.deceased_name or "Unnamed",
         "meta": meta_line(facts),
         "stage": stage,
-        "stage_label": STAGE_LABEL[stage],
-        "dots_filled": DOTS_FILLED[stage],
+        "status": status_of(facts),
+        "stage_label": status_label(facts),
+        "dots_filled": dots_for(facts),
         "invoiced": facts.invoiced,
         "service_date": facts.service_date.isoformat() if facts.service_date else None,
     }
@@ -466,14 +586,14 @@ def stands_at(facts: OrderFacts, today: date) -> str:
     flag = flag_of(facts, today)
     if flag is not None:
         return FLAG_COPY[flag][0]
-    return STAGE_LABEL[stage_of(facts)]
+    return status_label(facts)
 
 
 def _lens_bit(facts: OrderFacts, today: date, *, flagged: bool) -> str:
     name = (facts.deceased_name or "Unnamed").split()[-1]
     if flagged:
         flag = flag_of(facts, today)
-        text = FLAG_COPY[flag][0] if flag is not None else STAGE_LABEL[stage_of(facts)]
+        text = FLAG_COPY[flag][0] if flag is not None else status_label(facts)
         return f"{name}: {text.casefold()}"
     when = format_when(facts.service_date, facts.service_time, today)
     clock = when.get("time_label")

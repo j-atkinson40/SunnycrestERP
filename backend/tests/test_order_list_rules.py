@@ -240,11 +240,14 @@ def test_model_unsure_is_numbered_picks_and_not_a_guess():
 
 def test_dots_match_the_four_steps():
     pending = _facts(proofs=[ProofFact(status="draft")])
-    scheduled = _facts(service_date=date(2026, 10, 9), deliveries=[DeliveryFact(primary_assignee_id="u")])
+    confirmed = _facts(service_date=date(2026, 10, 9), deliveries=[DeliveryFact(primary_assignee_id="u")])
     delivered = _facts(delivered_at=datetime(2026, 10, 2, tzinfo=timezone.utc), completed_at=datetime(2026, 10, 2, tzinfo=timezone.utc))
     invoiced = _facts(invoice_statuses=["sent"], delivered_at=datetime(2026, 10, 2, tzinfo=timezone.utc))
     assert stage_of(pending) == "proof" and DOTS_FILLED["proof"] == 0
-    assert stage_of(scheduled) == "scheduled" and DOTS_FILLED["scheduled"] == 1
+    # ⚠️ THE RUNG IS `confirmed`, NOT `scheduled`, SINCE 2026-10-23. Nothing in this
+    # platform schedules an order as a state, so the ladder may not claim it did.
+    assert stage_of(confirmed) == "confirmed" and DOTS_FILLED["confirmed"] == 1
+    assert "scheduled" not in DOTS_FILLED
     assert stage_of(delivered) == "delivered" and DOTS_FILLED["delivered"] == 2
     assert stage_of(invoiced) == "invoiced" and DOTS_FILLED["invoiced"] == 4
     assert 3 not in DOTS_FILLED.values()
@@ -304,7 +307,7 @@ def test_every_delivered_not_invoiced_order_is_in_the_default_group():
     assert [item.id for item in grouped["delivered_not_invoiced"]] == [old.id]
     question = interpret("delivered, not invoiced", today=TODAY).question
     assert question is not None
-    assert select_flat([old], question) == [old]
+    assert select_flat([old], question, TODAY) == [old]
     waiting = _facts(
         id="waiting",
         delivered_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
@@ -391,11 +394,11 @@ def test_a_draft_invoice_is_not_invoiced_and_a_cancelled_order_is_not_listed():
     cancelled = _facts(status="cancelled", service_date=date(2026, 10, 9))
     question = interpret("going out friday", today=TODAY).question
     assert question is not None
-    assert select_flat([cancelled], question) == []
+    assert select_flat([cancelled], question, TODAY) == []
 
 
 def test_no_legacy_work_is_not_a_proof_flag():
     plain = _facts(service_date=date(2026, 10, 9), deliveries=[DeliveryFact(primary_assignee_id="d")])
     assert plain.proof == "none"
     assert flag_of(plain, TODAY) is None
-    assert stage_of(plain) == "scheduled"
+    assert stage_of(plain) == "confirmed"

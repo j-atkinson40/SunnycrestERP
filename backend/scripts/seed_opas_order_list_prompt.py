@@ -69,7 +69,9 @@ SYSTEM_PROMPT = (
     "  when_label     string — how a person would say that span, e.g. 'this week'\n"
     "  delivered      true | false\n"
     "  invoiced       true | false\n"
-    "  going_out      true — the person means orders not yet delivered\n"
+    "  going_out      true — the person means orders still COMING UP: service date "
+    "today or later. Not 'not yet delivered'. An order whose service date has passed "
+    "is never coming up, whatever its status.\n"
     "  title          string — a short heading for the answer\n"
     "\n"
     "HARD RULES. Breaking any of these means your answer is thrown away:\n"
@@ -117,6 +119,13 @@ RESPONSE_SCHEMA = {
 }
 
 CHANGELOG = (
+    "v2 — `going_out` is a DATE, not a delivery state (James, 2026-10-23). v1 told the "
+    "model it meant 'orders not yet delivered', which is what the matcher in stage.py "
+    "also believed. The door's first real answer on production — 'anything going to st "
+    "marys coming up?' — was read correctly and then filtered wrongly: it returned "
+    "SO-2026-0001, dated a week earlier, because a draft has never been delivered. The "
+    "matcher is fixed in the same commit; this line is the other half, so the prompt "
+    "and the code describe the same filter.\n"
     "v1 — first seeding of the Opas order-list model door (James, 2026-10-20). The door "
     "in order_list/proposal.py and the validator in question.accept_model_text shipped "
     "earlier and had never been reachable: zero rows for this key on production. "

@@ -613,3 +613,8 @@ tests/test_health_checks.py
 # A short briefing says why it is short — the fallback was factual in every word and
 # misled by omission.
 tests/test_briefing_degraded.py
+# The model door's first real answer, and the two engine bugs underneath it: "coming up"
+# meant "not yet delivered" (so a draft a week past its service date came back), and the
+# row label was a ladder rung (so a draft read "Scheduled"). Pins the three-row walk
+# James was shown, the tenant-local date boundary, and the deletion of the word.
+tests/test_opas_coming_up.py

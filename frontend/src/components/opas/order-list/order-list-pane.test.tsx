@@ -12,8 +12,15 @@ const ROW: OrderRow = {
   number: "SO-2026-0412",
   deceased_name: "John R. Albright",
   meta: "Hopkins · St. Mary's, Skaneateles · Monticello",
+  // ⚠️ THE LADDER RUNG AND THE STATUS ARE SEPARATE SINCE 2026-10-23, and this row is
+  // the shape the backend actually emits for the two together: `stage: "proof"` (no
+  // driver, a change requested on the legacy proof) fills none of the four dots, while
+  // the order IS confirmed and says so. `stage_label: "Proof"` is no longer producible
+  // by any server — a rung is not a status — so a fixture saying it would be testing an
+  // input the system cannot make. CLAUDE.md §11.
   stage: "proof",
-  stage_label: "Proof",
+  status: "confirmed",
+  stage_label: "Confirmed",
   dots_filled: 0,
   invoiced: false,
   service_date: "2026-10-09",
@@ -47,6 +54,7 @@ const GROUPED: OrderListSnapshot = {
         id: "so-2",
         deceased_name: "Harold Brandt",
         stage: "delivered",
+        status: "delivered",
         stage_label: "Delivered",
         dots_filled: 2,
         flag: "close",
@@ -112,7 +120,9 @@ describe("OrderListPane", () => {
     expect(groups[1].getAttribute("data-testid")).toBe("opas-order-group-delivered_not_invoiced")
     const dots = screen.getAllByTestId("opas-order-dots")
     expect(dots[0].getAttribute("data-filled")).toBe("0")
-    expect(dots[0].getAttribute("aria-label")).toBe("Proof")
+    // The dots' accessible name is the STATUS, not the rung — so a reader using a
+    // screen reader and a reader looking at the row are told the same thing.
+    expect(dots[0].getAttribute("aria-label")).toBe("Confirmed")
     expect(dots[1].getAttribute("data-filled")).toBe("2")
     expect(screen.getByTestId("opas-order-footer").textContent).toContain("Hopkins orders this month")
   })

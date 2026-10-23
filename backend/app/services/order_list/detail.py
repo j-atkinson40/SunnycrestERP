@@ -60,6 +60,7 @@ from sqlalchemy.orm import Session
 
 from app.services.capture.schema import EQUIPMENT_PACKAGES
 from app.services.order_list.stage import (
+    STATUS_LABEL,
     OrderFacts,
     format_money,
     stage_of,
@@ -231,9 +232,13 @@ def steps_for(facts: OrderFacts) -> dict:
     somewhere, and a cancelled one as an order that merely has not got there yet.
     """
     if facts.cancelled:
-        return {"kind": "cancelled", "label": "Cancelled"}
-    if (facts.status or "").strip().casefold() == "draft":
-        return {"kind": "draft", "label": "Draft"}
+        return {"kind": "cancelled", "label": STATUS_LABEL["cancelled"]}
+    if facts.draft:
+        # ⚠️ READ OFF `OrderFacts.draft` SINCE 2026-10-23 rather than spelt here. This
+        # function was the only place in the codebase that knew what a draft was, and
+        # the list row's label did not — so the pane said "Draft" and the row beside it
+        # said "Scheduled" about the same order. One property, one answer.
+        return {"kind": "draft", "label": STATUS_LABEL["draft"]}
     return {
         "kind": "steps",
         "steps": [

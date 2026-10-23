@@ -27,7 +27,13 @@ export interface OrderRow {
   number: string
   deceased_name: string
   meta?: string
-  stage: "proof" | "scheduled" | "delivered" | "invoiced"
+  /** Position on the four-dot ladder. NOT a status — see `status`. */
+  stage: "proof" | "confirmed" | "delivered" | "invoiced"
+  /** ⚠️ WHAT THE ORDER IS. There is deliberately no "scheduled": nothing in the
+   *  platform schedules an order as a state, so nothing may say that it did
+   *  (James, 2026-10-23). A draft reads "Draft", not one rung up the ladder. */
+  status: "draft" | "cancelled" | "confirmed" | "delivered" | "invoiced"
+  /** The words for `status`. The row shows `flag_label ?? stage_label`. */
   stage_label: string
   dots_filled: number
   invoiced: boolean
