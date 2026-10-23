@@ -10,9 +10,15 @@ export interface OrderQuestion {
   decedent?: string
   unresolved_subject?: string
   subject_hint?: "vault" | "either"
+  /** Resolved by the SERVER from `when_phrase`, never by the model (James,
+   *  2026-10-23). Read-only as far as the client is concerned. */
   service_from?: string
   service_to?: string
   when_label?: string
+  /** The person's own date words ("next week", "thursday"). The model returns these;
+   *  `order_list/when.resolve_when` turns them into the window above against the
+   *  tenant's local today. A model payload carrying the three fields above is void. */
+  when_phrase?: string
   delivered?: boolean | null
   invoiced?: boolean | null
   going_out?: boolean

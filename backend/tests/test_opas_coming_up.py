@@ -378,3 +378,67 @@ def test_the_door_prompt_does_not_teach_the_meaning_the_code_rejects():
     )
     assert "today or later" in going_out_line
     assert "Not 'not yet delivered'" in seed.SYSTEM_PROMPT
+
+
+# ── the fourth group: a passed service day is named, not hidden ───────────────
+
+
+def test_an_overdue_order_is_named_rather_than_hidden_or_mislabelled():
+    """⚠️ JAMES ACCEPTED THE PROBLEM AND RULED THE FIX: "a fourth group for 'Going out'
+    instead of hiding rows" (2026-10-23).
+
+    "Going out this week" bucketed by calendar week, so the SAME stale order read
+    "Going out this week" on a Friday (its Monday service date is inside this week) and
+    vanished on the following Monday (the date is now last week, and nothing else
+    claimed it). Two wrong answers from one rule. The row now has a group of its own.
+    """
+    from app.services.order_list.stage import GROUP_LABEL, OFFICE_GROUP_ORDER, group_of
+
+    # Monday of this week, driver assigned so no flag claims it first, not delivered.
+    monday = date(2026, 10, 19)
+    stale = _order(
+        status="confirmed", service_date=monday,
+        deliveries=[DeliveryFact(primary_assignee_id="driver-1")],
+    )
+    assert flag_of(stale, TODAY) is None, "a flag would hide which group is being tested"
+    assert group_of(stale, TODAY) == "overdue"
+    assert GROUP_LABEL["overdue"] == "Service day passed, not delivered"
+
+    # ⚠️ AND THE SAME ORDER A WEEK LATER IS STILL VISIBLE, which is the half that was
+    # broken in the other direction. Before the fourth group this returned None.
+    next_monday = date(2026, 10, 26)
+    assert group_of(stale, next_monday) == "overdue"
+
+    # Second in the office's reading order — more urgent than this week's schedule.
+    assert OFFICE_GROUP_ORDER.index("overdue") == 1
+    assert OFFICE_GROUP_ORDER.index("overdue") < OFFICE_GROUP_ORDER.index("going_out_this_week")
+
+
+def test_going_out_this_week_no_longer_holds_a_passed_date():
+    """The positive control for the test above: the group still works for its own rows."""
+    from app.services.order_list.stage import group_of
+
+    coming = _order(
+        status="confirmed", service_date=date(2026, 10, 25),
+        deliveries=[DeliveryFact(primary_assignee_id="driver-1")],
+    )
+    assert group_of(coming, TODAY) == "going_out_this_week"
+    today_row = _order(
+        status="confirmed", service_date=TODAY,
+        deliveries=[DeliveryFact(primary_assignee_id="driver-1")],
+    )
+    assert group_of(today_row, TODAY) == "going_out_this_week"
+
+
+def test_every_group_has_a_label_and_appears_in_both_reading_orders():
+    """A new GroupId with no label raises a KeyError in `_pack`; one missing from an
+    order tuple is silently never rendered. Both are easy to half-do.
+    """
+    from app.services.order_list.stage import (
+        ACCOUNTING_GROUP_ORDER,
+        GROUP_LABEL,
+        OFFICE_GROUP_ORDER,
+    )
+
+    assert set(GROUP_LABEL) == set(OFFICE_GROUP_ORDER) == set(ACCOUNTING_GROUP_ORDER)
+    assert len(OFFICE_GROUP_ORDER) == len(ACCOUNTING_GROUP_ORDER) == len(GROUP_LABEL) == 4

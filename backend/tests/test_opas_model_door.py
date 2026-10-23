@@ -37,6 +37,11 @@ from app.services.order_list.question import accept_model_text
 DECEASED = "Hildegard Mortensen"
 
 
+
+#: The validators take the tenant's local today since 2026-10-23 — a model
+#: payload's date words are resolved in code, never by the model.
+DOOR_TODAY = date(2026, 10, 23)
+
 @pytest.fixture
 def db():
     s = SessionLocal()
@@ -294,33 +299,31 @@ def test_the_engine_refuses_every_shape_the_prompt_forbids():
     """⚠️ THE PROMPT ASKS AND THE VALIDATOR DECIDES, and these are the same rules stated
     twice on purpose. A prompt is a request; sometimes the model will not comply.
     """
-    assert accept_model_text("not json") is None
-    assert accept_model_text('{"unsure": true, "picks": []}') is None
-    assert accept_model_text('{"question": {"funeral_home": {"bad": "shape"}}}') is None
+    assert accept_model_text("not json", DOOR_TODAY) is None
+    assert accept_model_text('{"unsure": true, "picks": []}', DOOR_TODAY) is None
+    assert accept_model_text('{"question": {"funeral_home": {"bad": "shape"}}}', DOOR_TODAY) is None
 
     # ⚠️ THESE THREE ARE REFUSED TWICE OVER, AND A BREAK TEST SHOWED IT. Removing the
     # top-level `_banned(payload)` call left them all green: `OrderQuestion` carries
     # `extra="forbid"`, so a banned key INSIDE a question object is rejected by pydantic
     # whether or not `_banned` ran. Two independent guards, which is worth having and is
     # not what this test was claiming to measure.
-    assert accept_model_text('{"question": {"total": "1705.00"}}') is None
-    assert accept_model_text('{"question": {"sql": "SELECT 1"}}') is None
-    assert accept_model_text('{"question": {"nested": {"count": 3}}}') is None
+    assert accept_model_text('{"question": {"total": "1705.00"}}', DOOR_TODAY) is None
+    assert accept_model_text('{"question": {"sql": "SELECT 1"}}', DOOR_TODAY) is None
+    assert accept_model_text('{"question": {"nested": {"count": 3}}}', DOOR_TODAY) is None
 
     # ⚠️ AND THIS IS WHAT ONLY `_banned` CATCHES: a banned key OUTSIDE the question
     # object, beside a question that is perfectly valid. Pydantic never looks here, so
     # without the recursive check the answer would be ACCEPTED and the `sql` string
     # would travel on an otherwise legal request.
     assert accept_model_text(
-        '{"sql": "SELECT 1", "question": {"funeral_home": "Hopkins Funeral Home"}}'
-    ) is None
+        '{"sql": "SELECT 1", "question": {"funeral_home": "Hopkins Funeral Home"}}', DOOR_TODAY) is None
     assert accept_model_text(
         '{"unsure": true, "picks": [{"label": "x", "count": 3, '
-        '"question": {"funeral_home": "Hopkins Funeral Home"}}]}'
-    ) is None
+        '"question": {"funeral_home": "Hopkins Funeral Home"}}]}', DOOR_TODAY) is None
     # ⚠️ THE CONTROL: a legal answer is accepted, so the six Nones above are about the
     # guards rather than about a validator that refuses everything.
-    got = accept_model_text('{"question": {"funeral_home": "Hopkins Funeral Home"}}')
+    got = accept_model_text('{"question": {"funeral_home": "Hopkins Funeral Home"}}', DOOR_TODAY)
     assert got is not None and got.kind == "question"
     assert got.question.funeral_home == "Hopkins Funeral Home"
 
@@ -378,7 +381,7 @@ def test_a_fenced_answer_is_still_refused_by_the_TEXT_gate():
     parse is the right behaviour there. The fence is handled where it arises.
     """
     fenced = '```json\n{"question": {"funeral_home": "Hopkins Funeral Home"}}\n```'
-    assert accept_model_text(fenced) is None
+    assert accept_model_text(fenced, DOOR_TODAY) is None
 
 
 def test_the_SAME_answer_is_accepted_once_the_layer_has_parsed_it():
@@ -397,21 +400,29 @@ def test_the_SAME_answer_is_accepted_once_the_layer_has_parsed_it():
     """
     from app.services.order_list.question import accept_model_payload
 
+    # ⚠️ THE DATES CAME OUT OF THIS PAYLOAD ON 2026-10-23 AND THE PHRASE WENT IN. The
+    # shape recorded here was the real production answer, `service_from`/`service_to`/
+    # `when_label` included, and all three are now REFUSED in a model payload — James's
+    # ruling, after the same question returned windows a week apart on two runs. The
+    # test's own point is unchanged: a payload the LAYER has already parsed is accepted,
+    # where the same thing as fenced text is not.
     payload = {
         "question": {
             "cemetery": "St. Mary's Cemetery",
-            "service_from": "2026-10-20",
-            "service_to": "2026-10-26",
-            "when_label": "this week",
+            "when_phrase": "this week",
             "going_out": True,
             "title": "Orders going to St. Mary's Cemetery this week",
         }
     }
-    got = accept_model_payload(payload)
+    got = accept_model_payload(payload, DOOR_TODAY)
     assert got is not None and got.kind == "question"
     assert got.question.cemetery == "St. Mary's Cemetery"
     assert got.question.going_out is True
     assert got.question.is_default is False
+    # And the window is now CODE's, computed from DOOR_TODAY (Fri 2026-10-23).
+    assert got.question.service_from == date(2026, 10, 19)
+    assert got.question.service_to == date(2026, 10, 25)
+    assert got.question.when_label == "This week"
 
 
 def test_the_payload_gate_refuses_everything_the_text_gate_does():
@@ -420,13 +431,13 @@ def test_the_payload_gate_refuses_everything_the_text_gate_does():
     """
     from app.services.order_list.question import accept_model_payload
 
-    assert accept_model_payload("not a dict") is None
-    assert accept_model_payload({"question": {"total": "1705.00"}}) is None
-    assert accept_model_payload({"sql": "SELECT 1", "question": {}}) is None
-    assert accept_model_payload({"unsure": True, "picks": []}) is None
-    assert accept_model_payload({"question": {"nope": 1}}) is None
+    assert accept_model_payload("not a dict", DOOR_TODAY) is None
+    assert accept_model_payload({"question": {"total": "1705.00"}}, DOOR_TODAY) is None
+    assert accept_model_payload({"sql": "SELECT 1", "question": {}}, DOOR_TODAY) is None
+    assert accept_model_payload({"unsure": True, "picks": []}, DOOR_TODAY) is None
+    assert accept_model_payload({"question": {"nope": 1}}, DOOR_TODAY) is None
     # the control
-    assert accept_model_payload({"question": {"funeral_home": "Hopkins Funeral Home"}}) is not None
+    assert accept_model_payload({"question": {"funeral_home": "Hopkins Funeral Home"}}, DOOR_TODAY) is not None
 
 
 def test_propose_prefers_the_parsed_field_over_the_raw_text(db, tenant, monkeypatch):
@@ -550,13 +561,15 @@ class TestTheDoorIsConsultedForUNROUTABLEPhrases:
         """
         from app.services.order_list.question import accept_model_payload
 
-        q = {"cemetery": "St. Mary's Cemetery", "service_from": "2026-10-23",
-             "service_to": "2026-10-31", "title": "Going to St. Mary's"}
-        assert accept_model_payload({"question": q}) is not None
+        # The window arrives as WORDS since 2026-10-23; code resolves it. A payload
+        # carrying `service_from` is refused, which the test below this one pins.
+        q = {"cemetery": "St. Mary's Cemetery", "when_phrase": "next week",
+             "title": "Going to St. Mary's"}
+        assert accept_model_payload({"question": q}, DOOR_TODAY) is not None
         # ⚠️ THE REFUSAL SIDE, so "accepted" is not a rubber stamp. A model that tries to
         # produce a NUMBER is refused — the engine answers from records, never the model.
-        assert accept_model_payload({"question": q, "total": "4"}) is None
-        assert accept_model_payload({"sql": "select 1", "question": q}) is None
+        assert accept_model_payload({"question": q, "total": "4"}, DOOR_TODAY) is None
+        assert accept_model_payload({"sql": "select 1", "question": q}, DOOR_TODAY) is None
 
 
 class _FakeCtx:
@@ -642,23 +655,22 @@ class TestTheEngineRefusesAQuestionThatSelectsNOTHING:
     def test_an_empty_question_is_refused(self):
         from app.services.order_list.question import accept_model_payload
 
-        assert accept_model_payload({"question": {}}) is None
-        assert accept_model_payload({}) is None
+        assert accept_model_payload({"question": {}}, DOOR_TODAY) is None
+        assert accept_model_payload({}, DOOR_TODAY) is None
         # ⚠️ A QUESTION CARRYING ONLY DERIVED/PRESENTATION FIELDS IS STILL EMPTY — and
         # this assertion is NOT what keeps `about_money` out of `_SELECTORS`. A break
         # test adding it there left all 41 tests green, because `money_for` overwrites
         # the model's value back to False a line before the guard runs. The exclusion is
         # defensive, it is labelled as such at `_SELECTORS`, and this line pins the
         # BEHAVIOUR (such a payload is refused) rather than the reason.
-        assert accept_model_payload({"question": {"about_money": True}}) is None
+        assert accept_model_payload({"question": {"about_money": True}}, DOOR_TODAY) is None
         assert accept_model_payload(
-            {"question": {"title": "Open orders", "surface": "pane"}}
-        ) is None
+            {"question": {"title": "Open orders", "surface": "pane"}}, DOOR_TODAY) is None
 
     @pytest.mark.parametrize(
         "field,value",
         [("cemetery", "St. Mary's Cemetery"), ("funeral_home", "Hopkins Funeral Home"),
-         ("vault", "Monticello Burial Vault"), ("when_label", "next week"),
+         ("vault", "Monticello Burial Vault"), ("when_phrase", "next week"),
          ("going_out", True), ("invoiced", False), ("decedent", "hart")],
     )
     def test_ONE_REAL_SELECTOR_IS_ENOUGH(self, field, value):
@@ -667,7 +679,7 @@ class TestTheEngineRefusesAQuestionThatSelectsNOTHING:
         falsy and would be dropped by a naive truthiness check."""
         from app.services.order_list.question import accept_model_payload
 
-        got = accept_model_payload({"question": {field: value}})
+        got = accept_model_payload({"question": {field: value}}, DOOR_TODAY)
         assert got is not None, (field, value)
         assert got.question is not None
 
@@ -679,7 +691,7 @@ class TestTheEngineRefusesAQuestionThatSelectsNOTHING:
             "picks": [{"label": "I don't recognize this phrase",
                        "question": {"cemetery": "St. Mary's Cemetery"}}],
         }
-        assert accept_model_payload(one) is None
+        assert accept_model_payload(one, DOOR_TODAY) is None
 
     def test_two_options_are_accepted(self):
         """The control for the rule above: a genuine choice list still works. Measured on
@@ -695,7 +707,7 @@ class TestTheEngineRefusesAQuestionThatSelectsNOTHING:
                  "question": {"cemetery": "St. Mary's Cemetery"}},
             ],
         }
-        got = accept_model_payload(two)
+        got = accept_model_payload(two, DOOR_TODAY)
         assert got is not None
         assert got.kind == "picks"
         assert len(got.picks) == 2
@@ -715,4 +727,4 @@ class TestTheEngineRefusesAQuestionThatSelectsNOTHING:
                 {"label": "Everything", "question": {}},
             ],
         }
-        assert accept_model_payload(mixed) is None
+        assert accept_model_payload(mixed, DOOR_TODAY) is None

@@ -121,9 +121,9 @@ def propose(
     # edited in the admin playground could have `force_json` turned off, and then
     # `response_parsed` is None and the text is all there is.
     if result.response_parsed is not None:
-        got = accept_model_payload(result.response_parsed)
+        got = accept_model_payload(result.response_parsed, today)
     else:
-        got = accept_model_text(result.response_text or "")
+        got = accept_model_text(result.response_text or "", today)
     # ⚠️ A PROVIDER FAILURE IS NOT THE ENGINE REFUSING AN ANSWER, AND REPORTING IT AS ONE
     # WAS A DEFECT IN THIS FILE. Measured on production 2026-10-23: the ANTHROPIC key is
     # invalid, every call returns `401 invalid x-api-key`, and the 401 does NOT raise —

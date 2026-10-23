@@ -24,7 +24,9 @@ DRIVER_HORIZON_DAYS = 14
 #: believed it was. James's ruling: labels come from the order's real status.
 StageName = Literal["proof", "confirmed", "delivered", "invoiced"]
 FlagName = Literal["change", "proof", "nodriver", "close"]
-GroupId = Literal["needs_something", "going_out_this_week", "delivered_not_invoiced"]
+GroupId = Literal[
+    "needs_something", "going_out_this_week", "overdue", "delivered_not_invoiced",
+]
 
 # The prototype's fill counts: the current step is empty, and Invoiced fills all four.
 DOTS_FILLED: dict[StageName, int] = {
@@ -61,11 +63,24 @@ FLAG_COPY: dict[FlagName, tuple[str, str, str]] = {
 GROUP_LABEL: dict[GroupId, str] = {
     "needs_something": "Needs something",
     "going_out_this_week": "Going out this week",
+    #: ⚠️ THE FOURTH GROUP, AND IT EXISTS SO A ROW IS NAMED RATHER THAN HIDDEN.
+    #: James, 2026-10-23: "a fourth group for 'Going out' instead of hiding rows".
+    #:
+    #: "Going out this week" buckets by calendar week, so on a Friday it was still
+    #: offering an order whose service date was Monday — the same lie the label fix had
+    #: just deleted, in the group heading instead of the row. Clamping the week to
+    #: today-or-later would have made that row disappear from the default view
+    #: entirely, which is worse: an order whose service day has passed and which has
+    #: not gone out is the one somebody needs to look at.
+    "overdue": "Service day passed, not delivered",
     "delivered_not_invoiced": "Delivered, not invoiced yet",
 }
 
 OFFICE_GROUP_ORDER: tuple[GroupId, ...] = (
     "needs_something",
+    # Second, not last. A passed service day is more urgent than this week's schedule
+    # and than an unbilled delivery, and the office reads top-down.
+    "overdue",
     "going_out_this_week",
     "delivered_not_invoiced",
 )
@@ -74,6 +89,7 @@ OFFICE_GROUP_ORDER: tuple[GroupId, ...] = (
 ACCOUNTING_GROUP_ORDER: tuple[GroupId, ...] = (
     "delivered_not_invoiced",
     "needs_something",
+    "overdue",
     "going_out_this_week",
 )
 
@@ -338,9 +354,11 @@ def week_bounds(today: date) -> tuple[date, date]:
 def group_of(facts: OrderFacts, today: date) -> GroupId | None:
     """Which default-view group this order belongs in. None means it stays hidden.
 
-    The three groups are mutually exclusive. A flag wins over "going out", and
-    a close-out flag wins over "delivered, not invoiced" — that row is waiting
-    on a person, not on an invoice.
+    The FOUR groups are mutually exclusive, and the order of the tests below is the
+    precedence. A flag wins over everything (that row is waiting on a person, not on a
+    date); a close-out flag wins over "delivered, not invoiced" for the same reason; and
+    a passed service day is read BEFORE the calendar week, which is what `overdue`
+    changed on 2026-10-23.
     """
     if facts.cancelled or facts.invoiced:
         return None
@@ -349,8 +367,18 @@ def group_of(facts: OrderFacts, today: date) -> GroupId | None:
         return "needs_something"
     if facts.delivered:
         return "delivered_not_invoiced"
-    start, end = week_bounds(today)
-    if facts.service_date is not None and start <= facts.service_date <= end:
+    if facts.service_date is not None and facts.service_date < today:
+        # ⚠️ READ BEFORE THE WEEK, which is the whole point. This row used to fall into
+        # "Going out this week" whenever its passed service date happened to sit in the
+        # current calendar week, and vanish when it did not — so the same stale order
+        # was mislabelled on Friday and invisible on Monday.
+        return "overdue"
+    if facts.service_date is None:
+        return None
+    # Past the `overdue` branch, the service date is today or later, so the only
+    # question left is whether it falls inside this calendar week.
+    _, end = week_bounds(today)
+    if facts.service_date <= end:
         return "going_out_this_week"
     return None
 

@@ -14,6 +14,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from app.services.order_list.when import resolve_when
+
 Surface = Literal["pane", "lens"]
 SubjectHint = Literal["vault", "either"]
 
@@ -128,6 +130,13 @@ class OrderQuestion(BaseModel):
     service_from: date | None = None
     service_to: date | None = None
     when_label: str | None = None
+    #: ⚠️ THE MODEL SETS THIS AND NEVER THE DATES. James's ruling, 2026-10-23: the
+    #: model returns the date phrase the person used ("next week", "thursday") as text,
+    #: and `when.resolve_when` turns it into `service_from`/`service_to`/`when_label`
+    #: against the tenant's local today. The same phrase came back a week apart on two
+    #: production runs, which is the whole reason this field exists; a date is a
+    #: computed value and the prompt's own first rule already forbade those.
+    when_phrase: str | None = None
     delivered: bool | None = None
     invoiced: bool | None = None
     going_out: bool = False
@@ -320,7 +329,8 @@ def _blank(question: OrderQuestion) -> bool:
     return not any((
         question.funeral_home, question.cemetery, question.vault, question.decedent,
         question.unresolved_subject, question.service_from, question.service_to,
-        question.when_label, question.delivered is not None, question.invoiced is not None,
+        question.when_label, question.when_phrase,
+        question.delivered is not None, question.invoiced is not None,
         question.going_out,
     ))
 
@@ -341,6 +351,9 @@ def without_pill(question: OrderQuestion, pill_id: str) -> OrderQuestion:
         data["service_from"] = None
         data["service_to"] = None
         data["when_label"] = None
+        # The phrase goes with the pill. Leaving it would let a later re-resolve put
+        # the window back after the director removed it.
+        data["when_phrase"] = None
     elif pill_id == "going_out":
         data["going_out"] = False
     elif pill_id == "delivered":
@@ -553,7 +566,53 @@ def _banned(payload: object) -> bool:
     return False
 
 
-def accept_model_text(raw: str) -> Interpretation | None:
+#: ⚠️ A MODEL PAYLOAD CARRYING ANY OF THESE IS VOID, AND THAT IS JAMES'S RULING OF
+#: 2026-10-23 made enforceable. "Dates never come from the model." These are not merely
+#: ignored: the whole answer is refused, because a resolved date is a computed value and
+#: the prompt's first hard rule already said the model returns none of those. An answer
+#: that breaks the contract is thrown away, exactly as an answer carrying `sql` is.
+#:
+#: ⚠️ `when_label` IS IN HERE AND IT IS NOT A DATE. It is the WORDS for a window, and
+#: the words must agree with the window — so whichever code computes the span writes the
+#: label for it. A model-supplied label over a code-computed span is how "This week"
+#: ends up printed on next week's rows.
+#:
+#: ⚠️ AND REFUSING RATHER THAN DROPPING COSTS ANSWERS WHEN THE MODEL DISOBEYS. That is
+#: the deliberate half. A dropped field is silent; a refusal says "I'm not sure what
+#: you're asking yet", opens nothing, and lands in the decision log as `unresolved` with
+#: this reason — which is how we find out the prompt needs work. See
+#: `test_opas_model_dates.py::test_a_model_that_sends_dates_is_refused_not_trusted`.
+_MODEL_FORBIDDEN_FIELDS = frozenset({"service_from", "service_to", "when_label"})
+
+
+def _sent_a_date(body: object) -> bool:
+    """True when a model's question object carries a field only code may set."""
+    return isinstance(body, dict) and bool(
+        _MODEL_FORBIDDEN_FIELDS & {str(key) for key in body}
+    )
+
+
+def _resolve_dates(question: OrderQuestion, today: date) -> bool:
+    """Turn `when_phrase` into a window. False means the phrase is unknown — refuse.
+
+    ⚠️ AN UNKNOWN PHRASE MUST NOT BECOME AN UNBOUNDED QUESTION. Returning True and
+    leaving the dates None would turn "anything for hopkins in the second week of
+    advent" into "every Hopkins order ever", which is the shape of guess this whole
+    change exists to delete. No window, no answer.
+    """
+    if question.when_phrase is None:
+        return True
+    span = resolve_when(question.when_phrase, today)
+    if span is None:
+        return False
+    question.service_from = span.start
+    question.service_to = span.end
+    # An open-ended phrase ("coming up") names no window; `going_out` carries it.
+    question.when_label = span.label
+    return True
+
+
+def accept_model_text(raw: str, today: date) -> Interpretation | None:
     """The only way a model's reply becomes a question.
 
     Returns None when the reply is not JSON, carries a banned key (SQL, a
@@ -571,7 +630,7 @@ def accept_model_text(raw: str) -> Interpretation | None:
         payload = json.loads(raw)
     except (json.JSONDecodeError, TypeError):
         return None
-    return accept_model_payload(payload)
+    return accept_model_payload(payload, today)
 
 
 #: The fields that make a question a QUESTION rather than "show me everything".
@@ -590,7 +649,16 @@ def accept_model_text(raw: str) -> Interpretation | None:
 #: named as defensive so the next reader does not trust a test that is not watching it.
 _SELECTORS = (
     "funeral_home", "cemetery", "vault", "decedent", "unresolved_subject",
-    "subject_hint", "service_from", "service_to", "when_label",
+    # ⚠️ `when_phrase` IS DEFENSIVE HERE, NOT LOAD-BEARING, AND A BREAK TEST SAID SO.
+    # Removing it turns NOTHING red across 102 tests: `_resolve_dates` runs BEFORE this
+    # guard and writes `service_from`/`service_to`/`when_label`, all three of which are
+    # already selectors — so a phrase-only question is admitted by its resolved window,
+    # not by the phrase. It stays because that argument depends on the ORDER of two
+    # calls in `accept_model_payload`, which nothing asserts; if a later edit resolves
+    # dates after this guard, the phrase still counts. CLAUDE.md §11, a guard whose
+    # protection is supplied by a layer beneath it — named so the next reader does not
+    # trust a test that is not watching it.
+    "subject_hint", "service_from", "service_to", "when_label", "when_phrase",
     "delivered", "invoiced", "going_out",
 )
 
@@ -631,7 +699,7 @@ def _selects_something(question) -> bool:  # noqa: D401
     return False
 
 
-def accept_model_payload(payload: object) -> Interpretation | None:
+def accept_model_payload(payload: object, today: date) -> Interpretation | None:
     """The same gate, for a caller that already has the parsed object.
 
     ⚠️ IT EXISTS BECAUSE `order_list/proposal.py` WAS RE-PARSING TEXT THE INTELLIGENCE
@@ -669,11 +737,15 @@ def accept_model_payload(payload: object) -> Interpretation | None:
             body = item.get("question")
             if not isinstance(label, str) or not isinstance(body, dict):
                 return None
+            if _sent_a_date(body):
+                return None
             try:
                 question = OrderQuestion.model_validate(body)
             except ValidationError:
                 return None
             question.is_default = False
+            if not _resolve_dates(question, today):
+                return None
             question.about_money = money_for(question)
             if not _selects_something(question):
                 return None
@@ -689,11 +761,15 @@ def accept_model_payload(payload: object) -> Interpretation | None:
     body = payload.get("question", payload)
     if not isinstance(body, dict):
         return None
+    if _sent_a_date(body):
+        return None
     try:
         question = OrderQuestion.model_validate(body)
     except ValidationError:
         return None
     question.is_default = False
+    if not _resolve_dates(question, today):
+        return None
     question.about_money = money_for(question)
     # ⚠️ THE SAME HOLE WAS ON THIS PATH TOO. `{"question": {}}` validates into an
     # OrderQuestion with every field None, and `is_default` is forced False just above —

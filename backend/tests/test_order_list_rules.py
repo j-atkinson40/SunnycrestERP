@@ -205,15 +205,14 @@ def test_trailing_punctuation_does_not_miss():
 
 
 def test_model_json_with_sql_or_a_total_is_refused():
-    assert accept_model_text('{"sql": "select 1", "funeral_home": "hopkins"}') is None
-    assert accept_model_text('{"question": {"funeral_home": "hopkins", "total": "10"}}') is None
-    assert accept_model_text("not json") is None
+    assert accept_model_text('{"sql": "select 1", "funeral_home": "hopkins"}', TODAY) is None
+    assert accept_model_text('{"question": {"funeral_home": "hopkins", "total": "10"}}', TODAY) is None
+    assert accept_model_text("not json", TODAY) is None
 
 
 def test_model_json_cannot_set_about_money_on_a_schedule_question():
     parsed = accept_model_text(
-        '{"question": {"going_out": true, "title": "Going out Friday", "about_money": true}}'
-    )
+        '{"question": {"going_out": true, "title": "Going out Friday", "about_money": true}}', TODAY)
     assert parsed is not None and parsed.question is not None
     assert parsed.question.about_money is False
 
@@ -227,8 +226,7 @@ def test_model_unsure_is_numbered_picks_and_not_a_guess():
         '{"unsure": true, "picks": ['
         '{"label": "Monticello, the vault", "question": {"vault": "monticello"}},'
         '{"label": "Monticello, the cemetery", "question": {"cemetery": "monticello"}}'
-        "]}"
-    )
+        "]}", TODAY)
     assert parsed is not None and parsed.kind == "picks"
     assert len(parsed.picks) == 2
     assert parsed.picks[0].question is not None

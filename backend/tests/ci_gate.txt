@@ -618,3 +618,8 @@ tests/test_briefing_degraded.py
 # row label was a ladder rung (so a draft read "Scheduled"). Pins the three-row walk
 # James was shown, the tenant-local date boundary, and the deletion of the word.
 tests/test_opas_coming_up.py
+# Dates never come from the model (James, 2026-10-23). The same phrase, "anything for
+# hopkins next week", returned windows a week apart on two production runs. The model
+# now returns the date WORDS and `order_list/when.py` resolves them against the
+# tenant's local today; a payload carrying service_from/service_to/when_label is void.
+tests/test_opas_model_dates.py
