@@ -615,3 +615,104 @@ class TestAProviderFailureIsNotTheEngineRefusing:
         assert seen.get("called") is True
         assert seen.get("accepted") is False
         assert seen.get("reason") == expected, seen
+
+
+class TestTheEngineRefusesAQuestionThatSelectsNOTHING:
+    """⚠️ FOUND BY PROBING PRODUCTION ON THE DAY THE DOOR FIRST WORKED (2026-10-23).
+
+    Asked `zzzqqq wobble flimflam`, the model returned a single "pick" labelled
+    *"I don't recognize this phrase"* carrying an OrderQuestion with every field None —
+    and the engine ACCEPTED it. A director typing nonsense would have been offered one
+    fake choice that opened the default order list.
+
+    ⚠️ TWO SEPARATE DEFECTS IN ONE ANSWER, and each needed its own guard:
+
+      a one-option "choice"      a pick list with one entry is not a choice, and a
+                                 refusal dressed as an option is worse than a refusal
+      a criteria-less question   "show me everything" is not an interpretation of
+                                 anything, and it is the one answer a model can always
+                                 produce — so it is exactly what the engine must refuse
+
+    ⚠️ AND THE SECOND WAS ON THE SINGLE-QUESTION PATH TOO, not only in picks.
+    `{"question": {}}` validates into an empty OrderQuestion and `is_default` is forced
+    False a line earlier, so by the time anything looked, the question claimed not to be
+    the default. Probing found it in the picks branch; reading found its twin.
+    """
+
+    def test_an_empty_question_is_refused(self):
+        from app.services.order_list.question import accept_model_payload
+
+        assert accept_model_payload({"question": {}}) is None
+        assert accept_model_payload({}) is None
+        # ⚠️ A QUESTION CARRYING ONLY DERIVED/PRESENTATION FIELDS IS STILL EMPTY — and
+        # this assertion is NOT what keeps `about_money` out of `_SELECTORS`. A break
+        # test adding it there left all 41 tests green, because `money_for` overwrites
+        # the model's value back to False a line before the guard runs. The exclusion is
+        # defensive, it is labelled as such at `_SELECTORS`, and this line pins the
+        # BEHAVIOUR (such a payload is refused) rather than the reason.
+        assert accept_model_payload({"question": {"about_money": True}}) is None
+        assert accept_model_payload(
+            {"question": {"title": "Open orders", "surface": "pane"}}
+        ) is None
+
+    @pytest.mark.parametrize(
+        "field,value",
+        [("cemetery", "St. Mary's Cemetery"), ("funeral_home", "Hopkins Funeral Home"),
+         ("vault", "Monticello Burial Vault"), ("when_label", "next week"),
+         ("going_out", True), ("invoiced", False), ("decedent", "hart")],
+    )
+    def test_ONE_REAL_SELECTOR_IS_ENOUGH(self, field, value):
+        """⚠️ THE CONTROL, AND WITHOUT IT THE GUARD COULD REFUSE EVERYTHING. Each of
+        these narrows the list, so each must pass — including `invoiced=False`, which is
+        falsy and would be dropped by a naive truthiness check."""
+        from app.services.order_list.question import accept_model_payload
+
+        got = accept_model_payload({"question": {field: value}})
+        assert got is not None, (field, value)
+        assert got.question is not None
+
+    def test_a_ONE_OPTION_pick_list_is_refused(self):
+        from app.services.order_list.question import accept_model_payload
+
+        one = {
+            "unsure": True,
+            "picks": [{"label": "I don't recognize this phrase",
+                       "question": {"cemetery": "St. Mary's Cemetery"}}],
+        }
+        assert accept_model_payload(one) is None
+
+    def test_two_options_are_accepted(self):
+        """The control for the rule above: a genuine choice list still works. Measured on
+        production — `what's going to st marys` returns exactly this shape."""
+        from app.services.order_list.question import accept_model_payload
+
+        two = {
+            "unsure": True,
+            "picks": [
+                {"label": "Orders going to St. Mary's",
+                 "question": {"cemetery": "St. Mary's Cemetery", "going_out": True}},
+                {"label": "Orders going to St. Mary's (any status)",
+                 "question": {"cemetery": "St. Mary's Cemetery"}},
+            ],
+        }
+        got = accept_model_payload(two)
+        assert got is not None
+        assert got.kind == "picks"
+        assert len(got.picks) == 2
+
+    def test_an_empty_question_inside_an_otherwise_valid_pick_list_is_refused(self):
+        """⚠️ ONE BAD OPTION POISONS THE LIST, DELIBERATELY. Accepting the good options
+        and dropping the empty one would silently change the question the director is
+        asked, and the engine's job is to refuse what it cannot vouch for — not to edit
+        it into something it can."""
+        from app.services.order_list.question import accept_model_payload
+
+        mixed = {
+            "unsure": True,
+            "picks": [
+                {"label": "Orders going to St. Mary's",
+                 "question": {"cemetery": "St. Mary's Cemetery"}},
+                {"label": "Everything", "question": {}},
+            ],
+        }
+        assert accept_model_payload(mixed) is None

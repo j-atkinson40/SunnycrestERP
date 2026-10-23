@@ -574,6 +574,63 @@ def accept_model_text(raw: str) -> Interpretation | None:
     return accept_model_payload(payload)
 
 
+#: The fields that make a question a QUESTION rather than "show me everything".
+#:
+#: ⚠️ `about_money` IS NOT HERE, AND THE EXCLUSION IS DEFENSIVE RATHER THAN
+#: LOAD-BEARING — A BREAK TEST SAID SO. Adding it to this tuple turns nothing red,
+#: because `question.about_money = money_for(question)` runs a line BEFORE the guard and
+#: `money_for` returns False for a criteria-less question, so the value is overwritten
+#: back to its default either way.
+#:
+#: It is still excluded, and the reason is the measurement rather than in spite of it:
+#: with `about_money` in the list, this guard's correctness would depend on `money_for`
+#: continuing to return False for an empty question — a property of a different function
+#: that nothing here asserts. A derived field is not evidence that the model selected
+#: anything. CLAUDE.md §11, a guard whose protection is supplied by a layer beneath it:
+#: named as defensive so the next reader does not trust a test that is not watching it.
+_SELECTORS = (
+    "funeral_home", "cemetery", "vault", "decedent", "unresolved_subject",
+    "subject_hint", "service_from", "service_to", "when_label",
+    "delivered", "invoiced", "going_out",
+)
+
+
+def _selects_something(question) -> bool:  # noqa: D401
+    """Does this question narrow the list at all?
+
+    ⚠️ FOUND BY PROBING PRODUCTION 2026-10-23, THE DAY THE DOOR FIRST WORKED. Asked
+    `zzzqqq wobble flimflam`, the model returned a single "pick" labelled "I don't
+    recognize this phrase" carrying a question with every field None — and the engine
+    accepted it. A director typing nonsense would have been offered one fake choice that
+    opened the default order list.
+
+    ⚠️ THE ENGINE'S JOB IS TO DECIDE, AND "SHOW EVERYTHING" IS NOT AN INTERPRETATION OF
+    ANYTHING. The standing contract is rules first, engine validates, None on failure —
+    and a criteria-less question is the one answer the model can always produce, so it is
+    exactly the answer the engine must refuse. `is_default` cannot be used for this: it
+    is forced to False a line earlier, so by the time anyone looks, every question claims
+    not to be the default.
+    """
+    # ⚠️ COMPARED AGAINST EACH FIELD'S OWN DEFAULT, NOT AGAINST A FALSY SET, AND A TEST
+    # FORCED THAT. My first version used `not in (None, False, "")`, which refused
+    # `invoiced=False` — "not invoiced" — as though it narrowed nothing. It narrows
+    # plenty. But `going_out=False` IS the default, so treating every `False` as a
+    # selector would reinstate the hole from the other side.
+    #
+    # The two fields are asymmetric by design: `delivered` and `invoiced` default to
+    # None (don't care), `going_out` defaults to False. Only the model knows that, so the
+    # model is asked rather than a hand-written list of which falsy values count.
+    defaults = type(question).model_fields
+    for f in _SELECTORS:
+        got = getattr(question, f, None)
+        field = defaults.get(f)
+        if field is None:
+            continue
+        if got != field.default:
+            return True
+    return False
+
+
 def accept_model_payload(payload: object) -> Interpretation | None:
     """The same gate, for a caller that already has the parsed object.
 
@@ -601,6 +658,9 @@ def accept_model_payload(payload: object) -> Interpretation | None:
     if not isinstance(payload, dict) or _banned(payload):
         return None
     if payload.get("unsure") is True:
+        # ⚠️ A PICK LIST MUST BE A CHOICE AND EVERY OPTION MUST NARROW SOMETHING. Both
+        # halves are enforced below; see `_selects_something` for why, and for the phrase
+        # that found it.
         picks: list[Pick] = []
         for item in payload.get("picks") or []:
             if not isinstance(item, dict) or _banned(item):
@@ -615,8 +675,15 @@ def accept_model_payload(payload: object) -> Interpretation | None:
                 return None
             question.is_default = False
             question.about_money = money_for(question)
+            if not _selects_something(question):
+                return None
             picks.append(Pick(label=label, question=question))
-        if not picks:
+        # ⚠️ TWO OPTIONS OR NONE, MEASURED ON PRODUCTION 2026-10-23. `zzzqqq wobble
+        # flimflam` came back as ONE pick labelled "I don't recognize this phrase" whose
+        # question was the criteria-less default — so nonsense would have offered a
+        # single fake choice that opened Open Orders. A one-option pick is not a choice,
+        # and a refusal dressed as an option is worse than a refusal.
+        if len(picks) < 2:
             return None
         return Interpretation(kind="picks", picks=picks, hint="Which one?")
     body = payload.get("question", payload)
@@ -628,6 +695,12 @@ def accept_model_payload(payload: object) -> Interpretation | None:
         return None
     question.is_default = False
     question.about_money = money_for(question)
+    # ⚠️ THE SAME HOLE WAS ON THIS PATH TOO. `{"question": {}}` validates into an
+    # OrderQuestion with every field None, and `is_default` is forced False just above —
+    # so an empty object became a question that constrains nothing and opens the whole
+    # list. The model does not get to open Open Orders by saying nothing.
+    if not _selects_something(question):
+        return None
     if question.title == "Open orders":
         question.title = title_for(question)
     return Interpretation(kind="question", question=question)
