@@ -486,6 +486,39 @@ def job_price_version_activation():
     _run_global("PRICE_VERSION_ACTIVATION", activate_scheduled_versions)
 
 
+def job_credential_probe():
+    """Daily: one authenticated no-op per configured external credential.
+
+    ⚠️ IT EXISTS BECAUSE A DEAD CREDENTIAL WAS DISCOVERABLE FOR 42 HOURS AND NOBODY
+    LOOKED (James, 2026-10-23). The Anthropic key went invalid mid-rotation; 36 briefings
+    went out with a one-line narrative instead of a written one, at $0.00 cost, and
+    nothing said the model had been skipped.
+
+    ⚠️ A BUSINESS HOUR EASTERN, BY RULING, and that is not cosmetic: a notification that
+    arrives at 03:00 is read at 09:00 anyway, and the whole point is to shorten the gap
+    between breaking and knowing.
+    """
+    from app.services.health.jobs import run_credential_probe
+
+    _run_global("CREDENTIAL_PROBE", run_credential_probe)
+
+
+def job_model_failure_watch():
+    """Hourly: has any prompt been attempted and never succeeded in the window?
+
+    ⚠️ IT READS THE TABLE THAT ALREADY HELD THE ANSWER. `intelligence_executions`
+    recorded `api_error` from the first minute of the 2026-10-22 incident and kept
+    recording it for 42 hours.
+
+    ⚠️ AND IT ASKS "ANY SUCCESS?", NOT "ANY FAILURE?" — a 529 overload or a schema miss
+    is ordinary and this table holds plenty of both. A prompt that never succeeds across
+    a whole window is a credential or configuration problem.
+    """
+    from app.services.health.jobs import run_model_failure_watch
+
+    _run_global("MODEL_FAILURE_WATCH", run_model_failure_watch)
+
+
 def job_briefing_sweep():
     """Phase 6 — per-user morning/evening briefing sweep.
 
@@ -691,6 +724,10 @@ def job_platform_incident_dispatcher():
 # ---------------------------------------------------------------------------
 
 JOB_REGISTRY: dict[str, callable] = {
+    # ⚠️ IN THE REGISTRY SO THEY CAN BE HAND-FIRED. A health check nobody can run on
+    # demand is a health check nobody runs while diagnosing the thing it watches.
+    "credential_probe": job_credential_probe,
+    "model_failure_watch": job_model_failure_watch,
     "audit_health_tasks": job_audit_health_tasks,
     "tax_accumulation": job_tax_accumulation,
     "draft_invoice_generator": job_draft_invoice_generator,
@@ -1142,6 +1179,31 @@ def register_all_jobs():
         name="calendar_subscription_renewal_sweep",
         replace_existing=True,
         misfire_grace_time=300,
+    )
+
+    # ── health checks (James, 2026-10-23: "no more silent failures") ──────
+    #
+    # ⚠️ A BUSINESS HOUR EASTERN FOR THE PROBE, BY RULING. 09:05 rather than 09:00 so it
+    # does not contend with whatever else fires on the hour.
+    scheduler.add_job(
+        job_credential_probe,
+        CronTrigger(hour=9, minute=5, timezone=BUSINESS_TZ),
+        id="credential_probe",
+        name="credential_probe",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    # ⚠️ HOURLY AT :41, AND THE OFFSET IS DELIBERATE. The briefing prompts run on the
+    # hour; checking at :41 means a window that already contains that hour's attempts
+    # rather than racing them. See `model_failure_watch.WINDOW_MINUTES` for why the
+    # window is 90 minutes and not 60.
+    scheduler.add_job(
+        job_model_failure_watch,
+        CronTrigger(minute=41, timezone=UTC_TZ),
+        id="model_failure_watch",
+        name="model_failure_watch",
+        replace_existing=True,
+        misfire_grace_time=600,
     )
 
     logger.info(f"Registered {len(scheduler.get_jobs())} scheduled jobs")

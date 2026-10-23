@@ -110,6 +110,18 @@ class StructuredSections(BaseModel):
 
     greeting: str | None = None
 
+    #: ⚠️ WHY THIS BRIEFING IS SHORT, WHEN IT IS (James, 2026-10-23). The writing model
+    #: died mid-rotation on 2026-10-22 and 36 briefings went out with a 29–61 character
+    #: narrative instead of 356–528 — every count in them correct, and nothing saying
+    #: the model had been skipped. A degradation visible in the prose but not in the
+    #: sections is invisible to any surface that renders sections, so it is declared
+    #: here as well as prepended there.
+    #:
+    #: ⚠️ A DECLARED FIELD, NOT AN EXTRA KEY, because `extra="forbid"` above would
+    #: reject a smuggled one — and a marker that fails validation is a marker that
+    #: silently does not appear, which is the defect it exists to fix.
+    degraded_note: str | None = None
+
     # Morning sections
     overnight_summary: dict[str, Any] | None = None
     overnight_calls: dict[str, Any] | None = None

@@ -133,8 +133,10 @@ def _generate(
         error_message = error_message or f"intelligence status={status}"
         if raise_on_failure:
             raise GenerationError(error_message)
-        # Fallback content so the user sees something.
-        narrative_text, sections = _fallback_content(ctx, briefing_type)
+        # ⚠️ THE REASON TRAVELS WITH THE FALLBACK. Without it the stub is
+        # indistinguishable from a quiet day, which is how 42 hours of degraded
+        # briefings went unnoticed.
+        narrative_text, sections = _fallback_content(ctx, briefing_type, reason=status)
     else:
         parsed = result.response_parsed or {}
         narrative_text, sections = _parse_generation_response(
@@ -212,12 +214,16 @@ def _parse_generation_response(
     with `extra="forbid"` so unexpected keys in the AI output raise (and
     we catch → stub).
     """
+    # ⚠️ A SHAPE FAILURE IS A DEGRADATION TOO. These two paths are reached when the
+    # model ANSWERED but not in the agreed shape — 44 `briefing.evening` responses have
+    # omitted `structured_sections` since May. The reader must be told for the same
+    # reason as a provider failure: the briefing is short, and not because the day was.
     if not isinstance(parsed, dict):
-        return _fallback_content(ctx, briefing_type)
+        return _fallback_content(ctx, briefing_type, reason="unparseable response")
     narrative = parsed.get("narrative_text") or parsed.get("narrative") or ""
     sections_raw = parsed.get("structured_sections") or {}
     if not isinstance(narrative, str) or not narrative.strip():
-        return _fallback_content(ctx, briefing_type)
+        return _fallback_content(ctx, briefing_type, reason="empty narrative")
     try:
         sections = StructuredSections.model_validate(sections_raw)
     except Exception as e:
@@ -229,14 +235,36 @@ def _parse_generation_response(
     return narrative.strip(), sections
 
 
+#: ⚠️ THE SENTENCE THAT WAS MISSING FOR 42 HOURS (James, 2026-10-23). The Anthropic key
+#: died mid-rotation and 36 briefings went out with a 29–61 character narrative instead
+#: of 356–528, at $0.00 cost, and NOTHING on them said the writing model had been
+#: skipped. A director read a one-line briefing and had no way to know it was not the
+#: whole briefing.
+#:
+#: ⚠️ IT LEADS RATHER THAN TRAILS. A note at the end is read after the reader has already
+#: taken the short narrative for the full one.
+DEGRADED_PREFIX = "Short briefing — the writing model was unavailable."
+
+
 def _fallback_content(
-    ctx: BriefingDataContext, briefing_type: BriefingType
+    ctx: BriefingDataContext,
+    briefing_type: BriefingType,
+    reason: str | None = None,
 ) -> tuple[str, StructuredSections]:
     """Generate a deterministic stub when Intelligence is unavailable.
 
     Not pretty, but the user sees non-empty content + can retry. Kept
     factual so it never misleads — literally lists raw counts from the
     data context.
+
+    ⚠️ "KEPT FACTUAL SO IT NEVER MISLEADS" WAS TRUE OF EVERY WORD AND STILL MISLED, BY
+    OMISSION. Every count in the stub was correct; what it never said was that it was a
+    stub. That is the whole of the 2026-10-23 finding, so `reason` is now part of the
+    signature and the output says so — see `DEGRADED_PREFIX`.
+
+    ⚠️ `reason` IS RECORDED IN THE SECTIONS, NOT ONLY IN THE PROSE, so a surface that
+    renders sections rather than the narrative can show it too. A degradation visible in
+    one of two renderings is invisible in the other.
     """
     name = ctx.user_first_name or "there"
     time_phrase = "Good morning" if briefing_type == "morning" else "Evening"
@@ -257,9 +285,13 @@ def _fallback_content(
             parts.append(
                 f"{voicemails} voicemail{'s' if voicemails != 1 else ''} overnight."
             )
+    if reason:
+        # ⚠️ PREPENDED TO `parts`, so the greeting section below carries it as well.
+        parts.insert(0, DEGRADED_PREFIX)
     narrative = " ".join(parts)
     sections = StructuredSections(
         greeting=parts[0],
+        degraded_note=(f"{DEGRADED_PREFIX} ({reason})" if reason else None),
     )
     return narrative, sections
 

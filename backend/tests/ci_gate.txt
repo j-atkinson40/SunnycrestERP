@@ -604,3 +604,12 @@ tests/test_opas_decision_log.py
 # that reconciles the 2026-10-13 and 2026-10-20 rulings, and the Python half of the
 # cross-language drift guard that holds `ghost.ts` to the same rule.
 tests/test_capture_abbreviations.py
+# No more silent failures (James, 2026-10-23). The credential probe and the
+# model-failure watch, after a dead Anthropic key degraded 36 briefings over 42 hours
+# while `intelligence_executions` recorded `api_error` from the first minute and nothing
+# read it. Includes the leak test that caught the probe echoing a credential into its own
+# report, and the positive control that reports an un-failable probe as UNRELIABLE.
+tests/test_health_checks.py
+# A short briefing says why it is short — the fallback was factual in every word and
+# misled by omission.
+tests/test_briefing_degraded.py
