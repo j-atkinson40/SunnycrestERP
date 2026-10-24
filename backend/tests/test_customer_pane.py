@@ -16,6 +16,8 @@ import pytest
 
 from app.services.order_list.customer import (
     MAX_HABITS,
+    MIN_HABIT_ORDERS,
+    MIN_HABIT_SHARE,
     MIN_ORDERS_FOR_HABITS,
     NOT_ENOUGH,
     _nice_terms,
@@ -94,11 +96,13 @@ def test_three_orders_counts_them_and_never_shows_a_percentage():
     got = what_opas_knows(three)
     assert "not_enough" not in got
     assert got["orders"] == 3
-    assert [h["line"] for h in got["usual_vault"]] == [
-        "Monticello · 2 of 3 orders", "Venetian · 1 of 3 orders",
-    ]
+    # ⚠️ CORRECTED 2026-10-24. This asserted a second entry on each line —
+    # "Venetian · 1 of 3 orders" and "Lake View · 1 of 3 orders". A habit now needs 2+
+    # orders AND 25%+ of them, and a single order clears the share (33%) but not the
+    # count. "A 1-of-10 is history, not a habit" (James) — and so is a 1-of-3.
+    assert [h["line"] for h in got["usual_vault"]] == ["Monticello · 2 of 3 orders"]
     assert [h["line"] for h in got["usual_cemeteries"]] == [
-        "St. Mary's Cemetery · 2 of 3 orders", "Lake View · 1 of 3 orders",
+        "St. Mary's Cemetery · 2 of 3 orders",
     ]
     # ⚠️ THE PROTOTYPE'S OWN FORMAT IS THE THING BEING REFUSED. It shows
     # "Monticello 51%"; the dispatch overrides it. A percentage over three orders is an
@@ -130,9 +134,16 @@ def test_a_cancelled_order_does_not_teach_a_habit():
 
 
 def test_ties_break_by_name_so_the_rulebook_does_not_change_its_mind():
+    """⚠️ THE TIE IS NOW AT TWO EACH, NOT ONE EACH. The original built three vaults with
+    one order apiece; under the 2026-10-24 thresholds none of them is a habit, so the
+    list came back empty and the test proved nothing about ordering. Six orders, two
+    apiece: each clears 2 orders and 33%, so all three qualify and the ORDER is what is
+    under test again.
+    """
     orders = [
-        _order(id="a", vault="Venetian"), _order(id="b", vault="Monticello"),
-        _order(id="c", vault="Continental"),
+        _order(id="a", vault="Venetian"), _order(id="b", vault="Venetian"),
+        _order(id="c", vault="Monticello"), _order(id="d", vault="Monticello"),
+        _order(id="e", vault="Continental"), _order(id="f", vault="Continental"),
     ]
     lines = [h["name"] for h in what_opas_knows(orders)["usual_vault"]]
     assert lines == ["Continental", "Monticello", "Venetian"]
@@ -151,6 +162,128 @@ def test_an_order_with_no_vault_is_counted_in_the_denominator_but_not_the_tally(
     assert got["usual_vault"] == [
         {"name": "Monticello", "count": 2, "of": 3, "line": "Monticello · 2 of 3 orders"},
     ]
+
+
+def test_a_one_of_ten_is_history_not_a_habit():
+    """⚠️ JAMES'S OWN SENTENCE, AND THE CASE THAT PROMPTED THE RULING. Johnson Funeral
+    Home on testco has 10 orders across five vaults, every one of them 1-of-10. The cap
+    stopped the line being a five-entry census; it did not stop it calling a single order
+    "usual". The thresholds do: "at least 2 orders and at least 25% of the customer's
+    orders" (James, 2026-10-24).
+    """
+    census = [_order(id=str(i), vault=f"Vault {i}") for i in range(10)]
+    got = what_opas_knows(census)
+    assert got["usual_vault"] == []
+    assert got["usual_vault_varies"] == "Varies, no usual vault yet"
+    # ⚠️ AND IT IS NOT "Not enough orders yet" — that would report a measured finding as
+    # missing data. Ten orders is plenty; the answer is that there is no usual vault.
+    assert "not_enough" not in got
+    assert got["orders"] == 10
+
+
+def test_both_halves_of_the_bar_are_load_bearing():
+    """⚠️ EACH THRESHOLD CATCHES WHAT THE OTHER MISSES, which is why the ruling says both.
+
+    A count-only rule lets 2-of-40 (5%) read as usual. A share-only rule lets 1-of-3
+    (33%) read as usual off a single order. Neither case is a habit, and a test that
+    exercised only one of them would go green with the other deleted.
+    """
+    # 2 of 40 — clears the count, fails the share.
+    wide = [_order(id=str(i), vault="Monticello" if i < 2 else f"Other {i}")
+            for i in range(40)]
+    got = what_opas_knows(wide)
+    assert got["usual_vault"] == [], "2 of 40 is 5%"
+    assert got["usual_vault_varies"] == "Varies, no usual vault yet"
+
+    # 1 of 3 — clears the share, fails the count.
+    narrow = [_order(id="a", vault="Monticello"), _order(id="b", vault="Venetian"),
+              _order(id="c", vault="Continental")]
+    assert what_opas_knows(narrow)["usual_vault"] == [], "1 of 3 is 33% of one order"
+
+    # The control: 2 of 4 clears both and IS a habit.
+    both = [_order(id="a", vault="Monticello"), _order(id="b", vault="Monticello"),
+            _order(id="c", vault="Venetian"), _order(id="d", vault="Continental")]
+    assert [h["line"] for h in what_opas_knows(both)["usual_vault"]] == [
+        "Monticello · 2 of 4 orders",
+    ]
+
+
+def test_the_varies_line_is_absent_when_there_IS_a_habit():
+    """The sentence is an answer, not a label — it must not ride along beside a habit."""
+    got = what_opas_knows([
+        _order(id="a", vault="Monticello", cemetery="St. Mary's Cemetery"),
+        _order(id="b", vault="Monticello", cemetery="St. Mary's Cemetery"),
+        _order(id="c", vault="Monticello", cemetery="St. Mary's Cemetery"),
+    ])
+    assert "usual_vault_varies" not in got
+    assert "usual_cemeteries_varies" not in got
+
+
+def test_a_habit_can_vary_on_one_axis_and_not_the_other():
+    """⚠️ PER-FIELD, NOT ONE FLAG FOR THE WHOLE TAB. A customer who always uses St.
+    Mary's but no particular vault must read as exactly that. A single `varies` would
+    have to pick one of the two to be wrong about.
+    """
+    orders = [
+        _order(id="a", vault="Monticello", cemetery="St. Mary's Cemetery"),
+        _order(id="b", vault="Venetian", cemetery="St. Mary's Cemetery"),
+        _order(id="c", vault="Continental", cemetery="St. Mary's Cemetery"),
+    ]
+    got = what_opas_knows(orders)
+    assert got["usual_vault"] == []
+    assert got["usual_vault_varies"] == "Varies, no usual vault yet"
+    assert [h["line"] for h in got["usual_cemeteries"]] == [
+        "St. Mary's Cemetery · 3 of 3 orders",
+    ]
+    assert "usual_cemeteries_varies" not in got
+
+
+def test_varies_needs_something_recorded_to_vary():
+    """⚠️ MEASURED ON PRODUCTION, AND THE RULING DID NOT HAVE TO COVER IT.
+
+    "Varies, no usual vault yet" asserts that the orders were looked at and no vault
+    repeated. Two unlike cases on testco would both have said it:
+
+        Johnson Funeral Home    5 orders, vault recorded 5/5, all five different
+        Green Valley Memorial   5 orders, vault recorded 0/5
+
+    The first is the finding. The second is a claim about nothing, and it is the shape
+    CLAUDE.md §5 names — "not established" must stay distinguishable from a measured
+    value. An unrecorded field leaves the row out instead, which is this pane's standing
+    rule for missing fields.
+    """
+    # Green Valley: nothing recorded. No habit, and NO sentence either.
+    blank = [_order(id=str(i), cemetery="Oakwood Cemetery") for i in range(5)]
+    got = what_opas_knows(blank)
+    assert got["usual_vault"] == []
+    assert "usual_vault_varies" not in got, "nothing recorded cannot vary"
+    # The control, same shape: the cemetery IS recorded, so that axis still answers.
+    assert [h["line"] for h in got["usual_cemeteries"]] == [
+        "Oakwood Cemetery · 5 of 5 orders",
+    ]
+
+    # Johnson: five recorded, all different. THAT varies.
+    varied = [_order(id=str(i), vault=f"Vault {i}") for i in range(5)]
+    got = what_opas_knows(varied)
+    assert got["usual_vault"] == []
+    assert got["usual_vault_varies"] == "Varies, no usual vault yet"
+
+    # ⚠️ AND ONE RECORDED VALUE IS ENOUGH TO EARN THE SENTENCE. A single vault across
+    # ten orders is 1-of-10 — not a habit, but evidence we looked.
+    one = [_order(id=str(i), vault="Monticello" if i == 0 else None) for i in range(10)]
+    got = what_opas_knows(one)
+    assert got["usual_vault"] == []
+    assert got["usual_vault_varies"] == "Varies, no usual vault yet"
+
+
+def test_the_habit_bar_is_james_s_numbers():
+    """⚠️ THE VALUES, PINNED, FOR THE SAME REASON AS `MIN_ORDERS_FOR_HABITS` BELOW. Every
+    test above builds its fixture from literal counts, so each would stay green if the
+    constants moved to meet it. These two came from outside the code: "at least 2 orders
+    and at least 25% of the customer's orders" (James, 2026-10-24).
+    """
+    assert MIN_HABIT_ORDERS == 2
+    assert MIN_HABIT_SHARE == 0.25
 
 
 def test_the_threshold_is_james_s_number():
@@ -278,14 +411,24 @@ def test_a_habit_line_shows_at_most_three():
     ⚠️ IT DOES NOT DECIDE WHETHER A 1-of-10 IS "USUAL" — that is James's call about his
     own rulebook, and it is in the report rather than in this assertion.
     """
+    # ⚠️ CORRECTED 2026-10-24, AND THE OLD FIXTURE NOW PROVES THE OTHER RULING. It was
+    # ten orders across ten vaults, one apiece — Johnson's census. Under the thresholds
+    # not one of those is a habit, so `usual_vault` comes back EMPTY and this test could
+    # no longer see the cap at all. It needs FOUR qualifying habits to show three.
+    #
+    # Eight orders, four vaults, two apiece: 2 orders each and exactly 25% each, so all
+    # four qualify — which also pins the share boundary as inclusive.
     many = [
-        _order(id=str(i), vault=f"Vault {i}", cemetery="Oakwood Cemetery")
-        for i in range(10)
+        _order(id=str(i), vault=f"Vault {i % 4}", cemetery="Oakwood Cemetery")
+        for i in range(8)
     ]
     got = what_opas_knows(many)
+    assert [h["line"] for h in got["usual_vault"]] == [
+        "Vault 0 · 2 of 8 orders", "Vault 1 · 2 of 8 orders", "Vault 2 · 2 of 8 orders",
+    ], "four qualify, three are shown, ties by name"
     assert len(got["usual_vault"]) == MAX_HABITS == 3
-    # The control: a real habit is not truncated away, and the denominator is still 10.
+    # The control: a real habit is not truncated away, and the denominator is still 8.
     assert got["usual_cemeteries"] == [
-        {"name": "Oakwood Cemetery", "count": 10, "of": 10,
-         "line": "Oakwood Cemetery · 10 of 10 orders"},
+        {"name": "Oakwood Cemetery", "count": 8, "of": 8,
+         "line": "Oakwood Cemetery · 8 of 8 orders"},
     ]

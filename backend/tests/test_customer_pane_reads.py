@@ -129,18 +129,74 @@ def test_a_prefix_reaches_a_word_inside_the_name(tenant):
     assert [h["id"] for h in cust.resolve(db, tid, "riverside memorial")] == [riverside.id]
 
 
-def test_a_single_generic_word_reaches_nothing(tenant):
-    """⚠️ MY SUBSTRING PASS DEFEATED THE RULING UNTIL A PRODUCTION RENDER SHOWED IT.
-    "memorial" opened Riverside Memorial Chapel, because `needle in name` does not care
-    that `memorial` is in `GENERIC_WORDS`. Generic words never count as a match point.
+def test_a_single_generic_word_asks_and_never_opens(tenant):
+    """⚠️ SUPERSEDES `test_a_single_generic_word_reaches_nothing` (James, 2026-10-24).
+
+    That test asserted `resolve(db, tid, generic) == []` for every generic word, and the
+    reasoning was that the 2026-10-21 match-point ruling governed the contains pass too.
+    It does not: "ask, don't refuse. A generic word on its own shows 'Did you mean…' with
+    every customer it matches as a choice, even a single one; the person confirms. No
+    matches: the honest miss. It never opens anything directly."
+
+    So the word RESOLVES, and the confirmation happens one layer up.
     """
     db, tid = tenant
-    _customer(db, tid, "Riverside Memorial Chapel")
-    _customer(db, tid, "Hopkins Funeral Home")
-    for generic in ("memorial", "chapel", "funeral", "home", "cemetery", "the"):
-        assert cust.resolve(db, tid, generic) == [], generic
-    # The control: two words, one distinctive, still resolves.
+    riverside = _customer(db, tid, "Riverside Memorial Chapel")
+    hopkins = _customer(db, tid, "Hopkins Funeral Home")
+
+    # "memorial" matches one of the two — and is still a question, not an opening.
+    got = cust.open_from_phrase(db, tid, "memorial")
+    assert got is not None
+    assert got["kind"] == "customer_picks", "even a single match is confirmed"
+    assert got["hint"] == cust.DID_YOU_MEAN
+    assert [p["customer_id"] for p in got["customer_picks"]] == [riverside.id]
+
+    # "funeral" matches the other, same shape.
+    got = cust.open_from_phrase(db, tid, "funeral")
+    assert got["kind"] == "customer_picks"
+    assert [p["customer_id"] for p in got["customer_picks"]] == [hopkins.id]
+
+    # ⚠️ A GENERIC WORD MATCHING BOTH IS STILL ONE QUESTION, not a pick of one.
+    got = cust.open_from_phrase(db, tid, "the")
+    if got is not None:
+        assert got["kind"] == "customer_picks"
+
+    # ⚠️ NO MATCHES IS THE HONEST MISS, which here means None so `ask` can fall through
+    # to the model door. "cemetery" is generic and matches neither name.
+    assert cust.open_from_phrase(db, tid, "cemetery") is None
+
+    # The control: two words, one distinctive, resolves AND opens directly.
     assert len(cust.resolve(db, tid, "memorial chapel")) == 1
+    direct = cust.open_from_phrase(db, tid, "memorial chapel")
+    assert direct["kind"] == "open_customer", "not a generic word on its own"
+    assert direct["customer_id"] == riverside.id
+
+
+def test_a_lone_generic_word_is_confirmed_even_when_it_names_a_customer_exactly(tenant):
+    """⚠️ THE EXACT PASS IS NOT AN EXCEPTION, and that is why the rule lives in
+    `open_from_phrase` rather than in `resolve`. A customer literally called "Memorial"
+    is matched by the exact-name pass, which would otherwise hand back one hit and open
+    it — "it never opens anything directly" (James, 2026-10-24).
+    """
+    db, tid = tenant
+    exact = _customer(db, tid, "Memorial")
+    got = cust.open_from_phrase(db, tid, "memorial")
+    assert got["kind"] == "customer_picks"
+    assert [p["customer_id"] for p in got["customer_picks"]] == [exact.id]
+
+
+def test_a_distinctive_word_still_opens_without_asking(tenant):
+    """The control for the pair above: ruling 1 changed the GENERIC case only."""
+    db, tid = tenant
+    hopkins = _customer(db, tid, "Hopkins Funeral Home")
+    got = cust.open_from_phrase(db, tid, "hopkins")
+    assert got["kind"] == "open_customer"
+    assert got["customer_id"] == hopkins.id
+    assert cust.needs_confirmation("hopkins") is False
+    assert cust.needs_confirmation("memorial") is True
+    # ⚠️ CASE AND PADDING, because the phrase arrives as the director typed it.
+    assert cust.needs_confirmation("  MEMORIAL  ") is True
+    assert cust.needs_confirmation("memorial chapel") is False
 
 
 def test_two_customers_sharing_a_word_are_a_choice_not_a_guess(tenant):

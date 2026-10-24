@@ -196,9 +196,11 @@ describe("the tabs", () => {
     getCustomerDetail.mockResolvedValue(hopkinsBare({
       knows: {
         orders: 3,
+        // ⚠️ ONE ENTRY, NOT TWO. This fixture carried "Venetian · 1 of 3 orders" until
+        // 2026-10-24; the thresholds mean the server can no longer produce that, and a
+        // fixture the system cannot emit tests a shape nobody will see.
         usual_vault: [
           { name: "Monticello", count: 2, of: 3, line: "Monticello · 2 of 3 orders" },
-          { name: "Venetian", count: 1, of: 3, line: "Venetian · 1 of 3 orders" },
         ],
         usual_cemeteries: [
           { name: "St. Mary's Cemetery", count: 3, of: 3, line: "St. Mary's Cemetery · 3 of 3 orders" },
@@ -210,10 +212,39 @@ describe("the tabs", () => {
     fireEvent.click(screen.getByTestId("opas-customer-tab-knows"))
     const knows = screen.getByTestId("opas-customer-knows")
     expect(knows.textContent).toContain("Usual vault")
-    expect(knows.textContent).toContain("Monticello · 2 of 3 orders · Venetian · 1 of 3 orders")
+    expect(knows.textContent).toContain("Monticello · 2 of 3 orders")
     expect(knows.textContent).toContain("St. Mary's Cemetery · 3 of 3 orders")
     // ⚠️ THE PROTOTYPE'S FORMAT IS THE THING BEING REFUSED, by the dispatch.
     expect(knows.textContent).not.toContain("%")
+  })
+
+  it("says Varies when the orders are there and no vault qualifies", async () => {
+    // ⚠️ THE ROW USED TO RETURN null AND SHOW NOTHING, which made a measured finding
+    // ("this customer has no usual vault") look identical to one Opas had never counted.
+    // "If none qualify, say 'Varies, no usual vault yet'" (James, 2026-10-24).
+    getCustomerDetail.mockResolvedValue(hopkinsBare({
+      knows: {
+        orders: 10,
+        usual_vault: [],
+        usual_vault_varies: "Varies, no usual vault yet",
+        usual_cemeteries: [
+          { name: "Oakwood", count: 10, of: 10, line: "Oakwood · 10 of 10 orders" },
+        ],
+      },
+    }))
+    render(<CustomerPane customerId="c1" />)
+    await waitFor(() => screen.getByTestId("opas-customer-tab-knows"))
+    fireEvent.click(screen.getByTestId("opas-customer-tab-knows"))
+
+    const varies = screen.getByTestId("opas-customer-knows-varies")
+    expect(varies.textContent).toContain("Usual vault")
+    expect(varies.textContent).toContain("Varies, no usual vault yet")
+    // ⚠️ AND IT IS NOT THE OTHER ARM OF THE UNION. "Not enough orders yet" means Opas
+    // has not seen enough; this customer has ten orders.
+    expect(screen.queryByTestId("opas-customer-knows-not-enough")).toBeNull()
+    // the axis that DOES have a habit still shows it
+    expect(screen.getByTestId("opas-customer-knows").textContent)
+      .toContain("Oakwood · 10 of 10 orders")
   })
 })
 

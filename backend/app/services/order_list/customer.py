@@ -90,7 +90,25 @@ MIN_ORDERS_FOR_HABITS = 3
 #: it does not decide what counts as usual. Reported rather than ruled on here.
 MAX_HABITS = 3
 
+#: A habit needs at least this many orders, AND at least this share of them.
+#:
+#: ⚠️ BOTH, NOT EITHER (James, 2026-10-24): "at least 2 orders and at least 25% of the
+#: customer's orders… a 1-of-10 is history, not a habit". The count alone would let
+#: 2-of-40 read as usual; the share alone would let 1-of-3 (33%) read as usual off a
+#: single order. Each covers the other's blind spot, so both apply.
+MIN_HABIT_ORDERS = 2
+MIN_HABIT_SHARE = 0.25
+
 NOT_ENOUGH = "Not enough orders yet"
+
+#: Said when the customer HAS enough orders but nothing clears the habit bar.
+#:
+#: ⚠️ A DIFFERENT SENTENCE FROM `NOT_ENOUGH`, AND THE DIFFERENCE IS THE POINT. "Not
+#: enough orders yet" means Opas has not seen enough to say. "Varies" means it HAS, and
+#: the answer is that this customer has no usual one. Collapsing them would report a
+#: measured finding as missing data.
+def varies(noun: str) -> str:
+    return f"Varies, no usual {noun} yet"
 NO_INVOICES = "No invoices yet"
 
 #: ⚠️ CANCELLED ORDERS DO NOT TEACH A HABIT, and this is a judgement the dispatch did not
@@ -338,6 +356,10 @@ def what_opas_knows(orders: list[OrderFacts]) -> dict:
     if total < MIN_ORDERS_FOR_HABITS:
         return {"not_enough": NOT_ENOUGH, "orders": total}
 
+    def recorded(field: str) -> int:
+        """How many of this customer's orders record the field at all."""
+        return sum(1 for o in live if getattr(o, field, None))
+
     def tally(field: str) -> list[dict]:
         counts: dict[str, int] = {}
         for order in live:
@@ -347,14 +369,52 @@ def what_opas_knows(orders: list[OrderFacts]) -> dict:
         # ⚠️ TIES BREAK BY NAME, so the same data always renders in the same order. An
         # unstable order would read as the rulebook changing its mind.
         ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+        # ⚠️ FILTERED BEFORE THE CAP — AND A BREAK TEST PROVED MY REASON FOR IT FALSE.
+        # I wrote that capping first "would let a qualifying fourth habit be dropped by
+        # three that do not qualify". It cannot happen, and the ranking is why: `ranked`
+        # is by count descending, and a habit that FAILS the bar can never outrank one
+        # that passes. A larger count over the same denominator is a larger share, so
+        # anything above a qualifying habit qualifies too. The two orderings are
+        # equivalent in output, which is why the break for it turned nothing red.
+        #
+        # The order is kept because the equivalence is a property of the SORT, not of
+        # this line — change the ranking and filter-after-cap starts dropping habits
+        # while this comment still explains why it could not. Stated rather than
+        # silently relied on; `/tmp/break_rulings.py` keeps it as a green equivalence.
+        kept = [
+            (name, n) for name, n in ranked
+            if n >= MIN_HABIT_ORDERS and (n / total) >= MIN_HABIT_SHARE
+        ]
         return [
             {"name": name, "count": n, "of": total,
              "line": f"{name} · {n} of {total} orders"}
-            for name, n in ranked[:MAX_HABITS]
+            for name, n in kept[:MAX_HABITS]
         ]
 
-    return {"usual_vault": tally("vault"), "usual_cemeteries": tally("cemetery"),
-            "orders": total}
+    vault, cemeteries = tally("vault"), tally("cemetery")
+    out = {"usual_vault": vault, "usual_cemeteries": cemeteries, "orders": total}
+    # ⚠️ THE SERVER SAYS IT, because the pane lays out and does not phrase — the same
+    # rule as `meta`, `account.line` and each habit's own `line`.
+    #
+    # ⚠️ AND "VARIES" NEEDS AT LEAST ONE RECORDED VALUE, WHICH IS A DISTINCTION THE
+    # RULING DID NOT HAVE TO MAKE AND THE DATA FORCES. "Varies, no usual vault yet"
+    # asserts that we looked across the orders and found no repeat. Measured on
+    # production, two unlike cases would both have said it:
+    #
+    #     Johnson Funeral Home     5 orders, vault recorded 5/5, all five different
+    #                              -> "Varies" is TRUE and measured
+    #     Green Valley Memorial    5 orders, vault recorded 0/5
+    #                              -> "Varies" would be a claim about nothing
+    #
+    # So an unrecorded field leaves the row OUT, which is this pane's standing rule —
+    # "missing fields are left out, never shown as blank labels". Varies then means what
+    # James said it means. Reported to him; a third sentence ("Not recorded on any
+    # order") would be more informative and is his wording to choose, not mine.
+    if not vault and recorded("vault"):
+        out["usual_vault_varies"] = varies("vault")
+    if not cemeteries and recorded("cemetery"):
+        out["usual_cemeteries_varies"] = varies("cemetery")
+    return out
 
 
 def customer_detail(
@@ -469,14 +529,20 @@ def resolve(db: Session, company_id: str, typed: str) -> list[dict]:
     exact = [dict(r) for r in rows if r["name"].casefold() == needle]
     if exact:
         return exact
-    # ⚠️ A SINGLE GENERIC WORD IS NOT A NAME, AND MY SUBSTRING PASS DEFEATED THE RULING
-    # UNTIL A PRODUCTION RENDER SHOWED IT. "memorial" opened Riverside Memorial Chapel,
-    # because `needle in name` does not care that `memorial` is in `GENERIC_WORDS`. The
-    # ruling (James, 2026-10-21) is that generic words never count as a match point, and
-    # a second matching pass that skips the rule is the same defect as a second copy of
-    # it. "memorial chapel" is still fine — it is two words, one of them distinctive.
-    if len(text_in.split()) == 1 and needle in GENERIC_WORDS:
-        return []
+    # ⚠️ A LONE GENERIC WORD IS RESOLVED, AND THEN CONFIRMED — IT IS NOT REFUSED.
+    # SUPERSEDES the 2026-10-21 reading that shipped here as `return []`.
+    #
+    # The 2026-10-21 ruling is about MATCH POINTS: a generic word may not be the place a
+    # prefix attaches, which is `reaches`'s job and still holds below. I read it as a
+    # refusal for the contains pass too, so "memorial" resolved nothing even though two
+    # customers contain the word. James ruled on that directly (2026-10-24): "ask, don't
+    # refuse… shows 'Did you mean…' with every customer it matches as a choice, even a
+    # single one; the person confirms. It never opens anything directly."
+    #
+    # So the list comes back whole and `open_from_phrase` decides it must be confirmed —
+    # see `needs_confirmation`. Keeping the decision there rather than here is what makes
+    # "never opens directly" true of the EXACT pass as well: a customer literally named
+    # "Memorial" is still a question, not an opening.
     contains = [dict(r) for r in rows if needle in r["name"].casefold()]
     if contains:
         return sorted(contains, key=lambda r: (len(r["name"]), r["name"]))
@@ -498,6 +564,24 @@ _ORDER_WORDS = frozenset({"order", "orders", "order's"})
 _OPENERS = ("open ", "show ", "pull up ", "bring up ")
 
 TOO_MANY = "Which one?"
+
+#: Asked when the phrase was a lone generic word.
+#:
+#: ⚠️ DELIBERATELY NOT `TOO_MANY`. "Which one?" is what you say when the person named
+#: something real and two records answer to it. A lone generic word is a different
+#: situation — they may not have meant a customer at all — so the question is whether
+#: any of these was meant, which is what "Did you mean…" asks (James, 2026-10-24).
+DID_YOU_MEAN = "Did you mean\u2026"
+
+
+def needs_confirmation(typed: str) -> bool:
+    """Is this phrase one generic word, which must be confirmed rather than opened?
+
+    ⚠️ ASKED OF THE PHRASE, NOT OF THE MATCHES, so one generic word behaves the same way
+    whether it matched one customer or five. "Even a single one; the person confirms."
+    """
+    words = " ".join((typed or "").split()).strip().casefold().split()
+    return len(words) == 1 and words[0] in GENERIC_WORDS
 
 
 def open_from_phrase(db: Session, company_id: str, phrase: str) -> dict | None:
@@ -524,8 +608,21 @@ def open_from_phrase(db: Session, company_id: str, phrase: str) -> dict | None:
         return None
 
     hits = resolve(db, company_id, text_in)
+    # ⚠️ NO MATCHES IS STILL None, NOT AN EMPTY QUESTION. "No matches: the honest miss."
+    # Returning None is what lets `ask` fall through to the model door, which is the only
+    # thing that can turn an unknown phrase into a miss with the right wording.
     if not hits:
         return None
+    # ⚠️ BEFORE THE len == 1 BRANCH, which is the whole of ruling 1. A lone generic word
+    # never opens anything directly, so this has to outrank the single-hit shortcut.
+    if needs_confirmation(text_in):
+        return {
+            "kind": "customer_picks",
+            "hint": DID_YOU_MEAN,
+            "customer_picks": [
+                {"label": hit["name"], "customer_id": hit["id"]} for hit in hits[:6]
+            ],
+        }
     if len(hits) == 1:
         return {
             "kind": "open_customer",

@@ -174,6 +174,35 @@ describe("New order puts the line in the bar", () => {
   })
 })
 
+describe("a lone generic word asks, even with one match", () => {
+  it("renders Did you mean… as a question and opens only on confirm", async () => {
+    // ⚠️ ONE PICK, NOT TWO, AND THAT IS THE RULING. "A generic word on its own shows
+    // 'Did you mean…' with every customer it matches as a choice, EVEN A SINGLE ONE; the
+    // person confirms. It never opens anything directly" (James, 2026-10-24). The host
+    // maps `customer_picks` of any length, so this pins that a one-entry list is still a
+    // question rather than being shortcut into an opening somewhere on the way.
+    askOrderList.mockResolvedValue({
+      kind: "customer_picks",
+      hint: "Did you mean\u2026",
+      customer_picks: [{ label: "Riverside Memorial Chapel", customer_id: "c1" }],
+    })
+    openOverlay()
+    await ask("memorial")
+
+    await waitFor(() =>
+      expect(screen.getByText("Did you mean\u2026")).toBeTruthy(),
+    )
+    // nothing opened on its own
+    expect(screen.queryByTestId("opas-customer-title")).toBeNull()
+    expect(getCustomerDetail).not.toHaveBeenCalled()
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Riverside Memorial Chapel"))
+    })
+    await waitFor(() => expect(getCustomerDetail).toHaveBeenCalledWith("c1"))
+  })
+})
+
 describe("two customers are a choice, not a guess", () => {
   it("offers both and opens the one chosen", async () => {
     askOrderList.mockResolvedValue({

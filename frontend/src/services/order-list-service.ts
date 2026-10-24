@@ -310,6 +310,14 @@ export interface CustomerDetail {
     | {
         readonly usual_vault: readonly CustomerHabit[]
         readonly usual_cemeteries: readonly CustomerHabit[]
+        /** "Varies, no usual vault yet" — present ONLY when `usual_vault` is empty.
+         *
+         *  ⚠️ NOT THE SAME AS `not_enough`, which is the other arm of this union. That
+         *  one means Opas has not seen enough orders to say; this one means it HAS and
+         *  the answer is that there is no usual choice. A habit needs 2+ orders AND 25%+
+         *  of them (James, 2026-10-24) — "a 1-of-10 is history, not a habit". */
+        readonly usual_vault_varies?: string
+        readonly usual_cemeteries_varies?: string
         readonly orders: number
       }
   readonly recent: readonly {

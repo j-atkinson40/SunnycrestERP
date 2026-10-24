@@ -410,30 +410,54 @@ function Knows({ knows }: { knows: CustomerDetail["knows"] }) {
   }
   return (
     <div data-testid="opas-customer-knows" style={{ marginTop: 10 }}>
-      <KnowsRow label="Usual vault" habits={knows.usual_vault} />
-      <KnowsRow label="Usual cemeteries" habits={knows.usual_cemeteries} />
+      <KnowsRow
+        label="Usual vault"
+        habits={knows.usual_vault}
+        empty={knows.usual_vault_varies}
+      />
+      <KnowsRow
+        label="Usual cemeteries"
+        habits={knows.usual_cemeteries}
+        empty={knows.usual_cemeteries_varies}
+      />
     </div>
   )
 }
 
 function KnowsRow({
-  label, habits,
+  label, habits, empty,
 }: {
   label: string
   habits: readonly { name: string; line: string }[]
+  /** The server's "Varies, no usual vault yet". Rendered INSTEAD of the habits. */
+  empty?: string
 }) {
-  if (habits.length === 0) return null
+  // ⚠️ AN EMPTY LIST IS AN ANSWER NOW, NOT AN ABSENCE (James, 2026-10-24). This row used
+  // to return null, so a customer with ten orders and no habit showed the same blank as
+  // a customer whose vaults Opas had never counted. The thresholds make empty the COMMON
+  // case, which is exactly why it has to say something.
+  // ⚠️ ONE ROW STYLE FOR BOTH STATES, so "Varies" sits on the same hairline and baseline
+  // as a habit list. A differently-shaped empty state reads as a rendering fault.
+  const row = {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 16,
+    padding: "6px 0",
+    borderTop: HAIRLINE,
+    fontSize: 13,
+  } as const
+  if (habits.length === 0) {
+    if (empty === undefined) return null
+    return (
+      <div data-testid="opas-customer-knows-varies" style={row}>
+        <span style={LABEL}>{label}</span>
+        {/* Quieter than a habit, because it is the absence of one. */}
+        <span style={{ color: "#5e5e5e", textAlign: "right" }}>{empty}</span>
+      </div>
+    )
+  }
   return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        gap: 16,
-        padding: "6px 0",
-        borderTop: HAIRLINE,
-        fontSize: 13,
-      }}
-    >
+    <div style={row}>
       <span style={LABEL}>{label}</span>
       <span style={{ color: "#f2f2f2", textAlign: "right" }}>
         {habits.map((h) => h.line).join(" · ")}
