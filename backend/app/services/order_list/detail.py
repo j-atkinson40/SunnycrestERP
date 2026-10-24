@@ -546,6 +546,16 @@ def order_detail(
         "number": facts.number,
         "deceased_name": facts.deceased_name or "Unnamed",
         "funeral_home": facts.funeral_home,
+        # ⚠️ THE ID, SO THE NAME CAN BE A LINK (James, 2026-10-24: "Right now the funeral
+        # home link on an order goes nowhere"). `funeral_home` above is the NAME and is
+        # kept — the pane renders it, and the reply line says it. Opening the Customer
+        # Pane needs the account's id, and resolving a name back to an account in the
+        # client would be the name-matching this pane already has the key for.
+        #
+        # ⚠️ ABSENT WHEN THE ORDER HAS NO CUSTOMER ROW, which `_order_extras` already
+        # tolerates with a LEFT JOIN. The frontend renders plain text in that case
+        # rather than a link that cannot resolve.
+        **({"customer_id": extras["customer_id"]} if extras.get("customer_id") else {}),
         "stands_at": stands_at(facts, today),
         # ── the pane ──────────────────────────────────────────────────────
         "title": title_case_name(facts.deceased_name) or "Unnamed",

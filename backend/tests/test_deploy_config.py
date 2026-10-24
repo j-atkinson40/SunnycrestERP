@@ -240,4 +240,14 @@ def test_railway_echoes_back_the_keys_it_read_from_the_file():
     assert "preDeployCommand" in mapping, (
         "Railway did not take preDeployCommand from the file — prep may not be running"
     )
-    assert meta["serviceManifest"]["deploy"]["preDeployCommand"] == "bash railway-prep.sh"
+    # ⚠️ RAILWAY NORMALISES IT TO A SINGLE-ITEM LIST, AND MY FIRST ASSERTION DID NOT
+    # KNOW THAT. The schema says `preDeployCommand` accepts "string or single-item array
+    # of strings"; the config file carries a string and the deployment object echoed
+    # `['bash railway-prep.sh']`. An `== "bash railway-prep.sh"` would have failed the
+    # live check against a deploy that was working perfectly — the test being wrong
+    # about the shape of the evidence, which is its own failure mode.
+    echoed = meta["serviceManifest"]["deploy"]["preDeployCommand"]
+    if isinstance(echoed, list):
+        assert len(echoed) == 1, echoed
+        echoed = echoed[0]
+    assert echoed == "bash railway-prep.sh", echoed

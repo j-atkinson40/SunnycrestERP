@@ -20,6 +20,7 @@ const EVERY_KIND: readonly OpasPaneKind[] = [
   "product-list",
   "order-list",
   "sales-order",
+  "customer",
 ]
 
 function pane(kind: OpasPaneKind, extra: Partial<OpasPane> = {}): Omit<OpasPane, "id"> {
@@ -34,7 +35,17 @@ describe("every pane kind is classified", () => {
   it("the union has not been widened to string", () => {
     const widened: string[] = EVERY_KIND as unknown as string[]
     expect(widened.every((k) => typeof k === "string" && k.length > 0)).toBe(true)
-    expect(widened).toHaveLength(5)
+    // ⚠️ A DELIBERATE COUNT, NOT A DERIVED ONE, AND THE REASON IS WHY IT CANNOT BE
+    // `EVERY_KIND.length`. The test above already checks the list against the map;
+    // this one exists to catch someone SHORTENING the list to make that pass. Derived
+    // from the list it would be vacuous.
+    //
+    // ⚠️ AND IT IS THE "count travelling separately from the list" SHAPE CLAUDE.md
+    // names, so it will go stale again: bumping it is part of adding a kind. 6 as of
+    // 2026-10-24, when `customer` landed. There is no duplicate-free check elsewhere,
+    // so it is here — a list with a repeat would satisfy both this and the map check.
+    expect(new Set(widened).size).toBe(widened.length)
+    expect(widened).toHaveLength(6)
   })
 })
 
@@ -54,6 +65,11 @@ describe("what has an identity and what does not", () => {
   it("a sales order pane is identified by its order", () => {
     expect(paneIdentity(pane("sales-order", { salesOrderId: "o1" }))).toBe("order:o1")
     expect(paneIdentity(pane("sales-order"))).toBeNull()
+    // ⚠️ A CUSTOMER IS REACHABLE THREE WAYS IN SLICE 1 — the bar, the funeral home link
+    // on an order, and "the customer" with an order in front — so order -> customer ->
+    // order -> customer is the ordinary walk. Without this row it leaves a stack.
+    expect(paneIdentity(pane("customer", { customerId: "c1" }))).toBe("customer:c1")
+    expect(paneIdentity(pane("customer"))).toBeNull()
   })
 
   it("the order list is a singleton and the catalog is not", () => {

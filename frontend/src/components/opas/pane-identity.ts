@@ -42,6 +42,12 @@ export const PANE_IDENTITY: Record<OpasPaneKind, PaneIdentity> = {
   // open and the patching caller would then update the wrong one.
   "order-list": () => "order-list",
   "sales-order": (p) => (p.salesOrderId !== undefined ? `order:${p.salesOrderId}` : null),
+  // ⚠️ "Opening one already open focuses it; never a duplicate" (James, 2026-10-24),
+  // which is the same rule as the order and the product. It earns its keep here more
+  // than anywhere: a customer is reachable three ways in this slice — the bar, the
+  // funeral home link on an order, and "the customer" with an order in front — so
+  // walking order -> customer -> order -> customer is the ordinary path, not a corner.
+  customer: (p) => (p.customerId !== undefined ? `customer:${p.customerId}` : null),
 }
 
 /** ⚠️ NO FALLBACK, DELIBERATELY — see the module docstring. */

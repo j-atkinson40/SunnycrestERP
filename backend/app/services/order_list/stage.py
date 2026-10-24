@@ -351,6 +351,29 @@ def week_bounds(today: date) -> tuple[date, date]:
     return start, start + timedelta(days=6)
 
 
+def is_overdue(facts: OrderFacts, today: date) -> bool:
+    """Its service day has passed and it has not gone out.
+
+    ⚠️ EXTRACTED FROM `group_of` ON 2026-10-24 BECAUSE THE CUSTOMER PANE ASKED A
+    DIFFERENT QUESTION AND GOT THE DEFAULT VIEW'S ANSWER. `group_of` ranks an order into
+    one of four groups and a FLAG WINS over everything — correct there, since the row
+    still appears under "Needs something". The Customer Pane renders only "coming up"
+    and "overdue", so a past-dated order carrying a flag fell into neither and vanished
+    from its own customer's pane. Measured on production: SO-2026-0003, dated the day
+    before, undelivered, no driver — shown nowhere.
+    ⚠️ The fix is NOT to copy the predicate into the pane. "Overdue" has one definition;
+    PRECEDENCE belongs to whoever is ranking. `group_of` still reads this first, so the
+    default view is unchanged.
+    """
+    return (
+        not facts.cancelled
+        and not facts.invoiced
+        and not facts.delivered
+        and facts.service_date is not None
+        and facts.service_date < today
+    )
+
+
 def group_of(facts: OrderFacts, today: date) -> GroupId | None:
     """Which default-view group this order belongs in. None means it stays hidden.
 
@@ -367,7 +390,7 @@ def group_of(facts: OrderFacts, today: date) -> GroupId | None:
         return "needs_something"
     if facts.delivered:
         return "delivered_not_invoiced"
-    if facts.service_date is not None and facts.service_date < today:
+    if is_overdue(facts, today):
         # ⚠️ READ BEFORE THE WEEK, which is the whole point. This row used to fall into
         # "Going out this week" whenever its passed service date happened to sit in the
         # current calendar week, and vanish when it did not — so the same stale order

@@ -31,6 +31,10 @@ export const PANE_MODE: Record<OpasPaneKind, PaneMode> = {
   "product-list": "info",
   "order-list": "info",
   "sales-order": "info",
+  // The director is READING an account — open orders, a balance, what Opas has worked
+  // out. Its one action starts a capture, which opens an `entry` pane of its own; the
+  // button is not a text field, so this pane is not an entry pane.
+  customer: "info",
 }
 
 /** ⚠️ NO FALLBACK, DELIBERATELY — see the module docstring. */

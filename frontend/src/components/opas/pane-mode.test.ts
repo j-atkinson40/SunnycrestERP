@@ -23,6 +23,7 @@ const EVERY_KIND: readonly OpasPaneKind[] = [
   "product-list",
   "order-list",
   "sales-order",
+  "customer",
 ]
 
 describe("every pane kind is classified", () => {
@@ -46,7 +47,7 @@ describe("the classification itself", () => {
     expect(isEntryPane("capture")).toBe(true)
   })
 
-  it.each(["product", "product-list", "order-list", "sales-order"] as const)(
+  it.each(["product", "product-list", "order-list", "sales-order", "customer"] as const)(
     "%s is an INFO pane — the director is reading",
     (kind) => {
       expect(isEntryPane(kind)).toBe(false)

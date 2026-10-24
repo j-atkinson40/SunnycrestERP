@@ -15,6 +15,7 @@ from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session
 
 from app.models.company import Company
+from app.services.order_list import customer
 from app.services.order_list.question import (
     TRY_HINT,
     Interpretation,
@@ -581,6 +582,20 @@ def ask(
         interpreted = Interpretation(kind="question", question=question)
     elif phrase:
         interpreted = interpret(phrase, today=today, current=question, taught=taught)
+        # ⚠️ A BARE CUSTOMER NAME IS A DETERMINISTIC RULE AND RUNS BEFORE THE MODEL DOOR.
+        # "a funeral home name or prefix on its own ('hopkins', 'riverside memorial')
+        # opens the pane" (James, 2026-10-24). Rules first is the standing contract, and
+        # it matters here beyond tidiness: the model would answer "hopkins" with an
+        # order-LIST question for that home, which is a plausible, wrong, and ~900 ms
+        # answer to a question the tenant's own customer table settles for free.
+        #
+        # ⚠️ IT IS ONLY TRIED WHEN THE RULES DECLINED, so nothing that already works
+        # changes meaning. "hopkins order" is still `open_order`; "hopkins orders this
+        # month" is still a list.
+        if interpreted.kind == "unrecognized":
+            opened = customer.open_from_phrase(db, company_id, phrase)
+            if opened is not None:
+                return opened
         if interpreted.kind == "unrecognized" and propose is not None:
             proposed = propose(phrase, today, db, company_id)
             if proposed is not None:

@@ -68,6 +68,8 @@ export interface SalesOrderPaneProps {
   readonly orderId: string
   /** Opens the vault in the existing Product Pane. Absent in tests that only read. */
   readonly onOpenProduct?: (variantTemplateId: string) => void
+  /** Opens the funeral home in the Customer Pane. Absent in tests that only read. */
+  readonly onOpenCustomer?: (customerId: string, name: string) => void
   /** Called after a successful Undo confirm so the host can re-read. */
   readonly onChanged?: () => void
   /**
@@ -99,7 +101,7 @@ export interface SalesOrderPaneProps {
 }
 
 export function SalesOrderPane({
-  orderId, onOpenProduct, onChanged, onLoaded, undoRequest,
+  orderId, onOpenProduct, onOpenCustomer, onChanged, onLoaded, undoRequest,
 }: SalesOrderPaneProps) {
   const [row, setRow] = useState<SalesOrderSummary | null>(null)
   const [failed, setFailed] = useState(false)
@@ -227,10 +229,37 @@ export function SalesOrderPane({
       <p style={{ margin: "0 0 10px", color: "#9a9a9a", fontSize: 13 }}>
         <span data-testid="opas-sales-order-number">{row.number}</span>
         {" · "}
-        {/* ⚠️ THE FUNERAL HOME IS A LINK IN THE PROTOTYPE (`data-a="fh"`) AND IS NOT ONE
-            HERE. The Customer Pane is the NEXT slice; linking it now would be the dead
-            click the dispatch forbids for the cemetery. Plain text until it exists. */}
-        <span data-testid="opas-sales-order-fh">{row.funeral_home}</span>
+        {/* ⚠️ A LINK SINCE 2026-10-24, WHICH IS WHAT THE PROTOTYPE ALWAYS HAD
+            (`<button type="button" class="lnk" data-a="fh">${O.fh}</button>`). It was
+            plain text while the Customer Pane did not exist — "Right now the funeral
+            home link on an order goes nowhere" was the dispatch's own first line.
+
+            ⚠️ AND IT FALLS BACK TO TEXT WITHOUT AN ID. `_order_extras` LEFT JOINs the
+            customer, so an order with no customer row yields no `customer_id`, and a
+            button that cannot resolve is the dead click the cemetery row still avoids
+            by being inert. */}
+        {row.customer_id !== undefined && onOpenCustomer !== undefined ? (
+          <button
+            type="button"
+            data-testid="opas-sales-order-fh"
+            onClick={() => onOpenCustomer(row.customer_id!, row.funeral_home)}
+            style={{
+              border: 0,
+              background: "transparent",
+              padding: 0,
+              font: "inherit",
+              color: LINK_COLOR,
+              cursor: "pointer",
+              textDecoration: "underline",
+              textDecorationColor: "rgba(255,255,255,.22)",
+              textUnderlineOffset: 3,
+            }}
+          >
+            {row.funeral_home}
+          </button>
+        ) : (
+          <span data-testid="opas-sales-order-fh">{row.funeral_home}</span>
+        )}
       </p>
 
       <OrderSteps state={row.state} />

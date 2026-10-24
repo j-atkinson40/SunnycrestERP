@@ -60,6 +60,7 @@ import { consumePickDigit } from "./pick-digit"
 import { resolvePhrase } from "@/services/opas-catalog-service"
 import {
   askOrderList,
+  type CustomerDetail,
   type OrderListSnapshot,
   type OrderPick,
   type SalesOrderSummary,
@@ -68,6 +69,7 @@ import { ProductListPane } from "./ProductListPane"
 import { ProductPane } from "./ProductPane"
 import { OrderListPane } from "./order-list/OrderListPane"
 import { isOrderListPhrase, isOrderRefinement } from "./order-list/order-list-routing"
+import { CustomerPane } from "./order-list/CustomerPane"
 import { SalesOrderPane } from "./order-list/SalesOrderPane"
 
 /** How long an approved pane stays on screen before it closes itself.
@@ -292,6 +294,8 @@ export function OpasHost() {
    *  phrases read it, at the moment the director asks. In state, every order pane
    *  finishing its fetch would re-render the whole host. */
   const orderFacts = useRef<Record<string, SalesOrderSummary>>({})
+  /** Customers as read, by id, so the bar can answer from one without re-reading. */
+  const customerFacts = useRef<Record<string, CustomerDetail>>({})
 
   /**
    * The bar gets the cursor back. James's first rule of 2026-10-20: "After any Opas
@@ -1104,6 +1108,32 @@ export function OpasHost() {
    *  can produce another pick — and one of them has to be reached indirectly. */
   const chooseOrderPickRef = useRef<(pick: OrderPick) => void>(() => {})
 
+  /**
+   * Open a customer, or focus the one already open.
+   *
+   * ⚠️ IT GOES THROUGH `opas.openPane`, WHICH DEDUPES BY `PANE_IDENTITY`. "Opening one
+   * already open focuses it; never a duplicate" (James, 2026-10-24) is therefore true
+   * for every caller rather than for the one that remembered — the argument
+   * `pane-identity.ts` already makes. A customer is reachable three ways in this slice,
+   * so this is the path all three take.
+   */
+  const openCustomer = useCallback((customerId: string, name?: string) => {
+    opas.openPane({ kind: "customer", label: "Customer", customerId })
+    if (name !== undefined) say("ack", `Opened ${name}`)
+  }, [opas, say])
+
+  /**
+   * "New order" on a customer: a capture with the funeral home already filled.
+   *
+   * ⚠️ IT REUSES `openingLine`, THE SAME FIELD THE BAR USES. "as if the bar said 'order
+   * <name> '" (James, 2026-10-24) — so the capture is started by the same mechanism as
+   * typing it, extraction and all. A second path that pre-filled a field directly would
+   * be a second way to start an order, free to drift from the one the director uses.
+   */
+  const startOrderFor = useCallback((openingLine: string) => {
+    opas.openPane({ kind: "capture", label: "Order", openingLine })
+  }, [opas])
+
   const settleOrderAnswer = useCallback((result: OrderListSnapshot, spoken: string | undefined) => {
     if (result.kind === "unrecognized" || result.kind === "total") {
       // ⚠️ A TOTAL IS AN ANSWER, NOT A MISS. "How much is that?" returns a sentence the
@@ -1114,6 +1144,26 @@ export function OpasHost() {
     }
     if (result.kind === "open_order" && result.open_order_id) {
       openSalesOrder(result.open_order_id)
+      return
+    }
+    // ⚠️ A BARE NAME OPENS THE CUSTOMER, AND THE RULES DECIDED THAT, NOT THE MODEL. The
+    // server tries its own customer table before the door is consulted, so "hopkins" is
+    // a deterministic open rather than a ~900 ms guess at an order-list question.
+    if (result.kind === "open_customer" && result.customer_id) {
+      openCustomer(result.customer_id, result.customer_name)
+      return
+    }
+    if (result.kind === "customer_picks") {
+      const picks = result.customer_picks ?? []
+      const options: ReplyOption[] = picks.map((pick, i) => ({
+        id: `customer-${i}`,
+        label: pick.label,
+      }))
+      const act: Record<string, () => void> = {}
+      picks.forEach((pick, i) => {
+        act[`customer-${i}`] = () => openCustomer(pick.customer_id, pick.label)
+      })
+      say("question", result.hint ?? "Which one?", { options, act })
       return
     }
     // ⚠️ THE PICK NO LONGER OPENS A PANE (James's third rule, 2026-10-20: "Choices sit
@@ -1277,9 +1327,16 @@ export function OpasHost() {
           return
         }
         case "customer":
-          // ⚠️ IT SAYS THE NAME RATHER THAN NOTHING. The Customer Pane is the next
-          // slice; a silent no-op would read as a broken phrase.
-          say("miss", `${order.funeral_home} \u00b7 the customer pane isn\u2019t built yet.`)
+          // ⚠️ THE ID, NOT THE NAME. `detail.order_detail` emits `customer_id` since
+          // 2026-10-24; before that this case could only say the name, because resolving
+          // it back to an account here would have been client-side name matching for a
+          // key the server holds.
+          if (order.customer_id === undefined) {
+            // An order with no customer row. The LEFT JOIN tolerates it, so this must.
+            say("miss", `${order.funeral_home} \u00b7 no customer record on this order.`)
+            return
+          }
+          openCustomer(order.customer_id, order.funeral_home)
           return
         case "cemetery": {
           const cemetery = rowValue("Cemetery")
@@ -1818,10 +1875,22 @@ export function OpasHost() {
                   onOpenProduct={(id) =>
                     opas.openPane({ kind: "product", label: "Product", variantTemplateId: id })
                   }
+                  // The other half of the walk: the funeral home link comes back to the
+                  // Customer Pane, and `openPane` dedupes so it focuses the open one.
+                  onOpenCustomer={openCustomer}
                   // ⚠️ THE ORDER IS REPORTED UP so the bar can answer "when's the
                   // service" from it without opening anything.
                   onLoaded={(order) => { orderFacts.current[order.id] = order }}
                   undoRequest={undoRequest[pane.salesOrderId]}
+                />
+              ) : pane.kind === "customer" && pane.customerId ? (
+                <CustomerPane
+                  customerId={pane.customerId}
+                  // The walk: open a customer, open one of its orders, and the funeral
+                  // home link on that order comes back here — to this same pane.
+                  onOpenOrder={openSalesOrder}
+                  onNewOrder={startOrderFor}
+                  onLoaded={(c) => { customerFacts.current[c.id] = c }}
                 />
               ) : pane.kind === "product" ? (
                 <ProductPane variantTemplateId={pane.variantTemplateId!} />

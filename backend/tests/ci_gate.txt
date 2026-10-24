@@ -636,3 +636,19 @@ tests/test_seed_prompt_is_not_one_shot.py
 # declared `manual` so they stop running on production deploys. Pins both halves of the
 # config plus the fail-loud abort paths that make a bad deploy go red.
 tests/test_deploy_config.py
+# The Customer Pane, slice 1 (James, 2026-10-24). The pure rules — the meta line's
+# collapsing separators, "What Opas knows" counts, and the `is_overdue` predicate
+# extracted from `group_of` because the pane asked a different question and got the
+# default view's precedence. No database guard on this file, deliberately.
+tests/test_customer_pane.py
+# The same slice against a database: the name/prefix resolver reusing the 2026-10-21
+# generic-word ruling, the account line's exclusion of draft invoices, tenant isolation,
+# and the bare-name rule running BEFORE the model door.
+tests/test_customer_pane_reads.py
+# A migration may not drop or rename a column or table in upgrade() without a reviewed
+# DESTRUCTIVE_REVIEWED marker (James, 2026-10-24). Migrations now run while the PREVIOUS
+# deploy is still serving — 396-552 s measured — so a dropped column breaks production
+# for that window, and a rollback has no schema to return to because downgrade() does not
+# run on one. 12 of 398 shipped migrations are grandfathered as a ratchet that may only
+# shrink; the marker is read with `ast`, never grepped.
+tests/test_migration_safety.py

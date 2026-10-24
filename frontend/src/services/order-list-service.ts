@@ -91,7 +91,16 @@ export interface OrderPick {
 
 /** One answer from `POST /order-list/ask`. Absent keys are absent, not null. */
 export interface OrderListSnapshot {
-  kind: "question" | "unrecognized" | "open_order" | "picks" | "total"
+  kind:
+    | "question"
+    | "unrecognized"
+    | "open_order"
+    | "picks"
+    | "total"
+    /** A bare customer name or prefix ("hopkins"). Carries `customer_id`/`customer_name`. */
+    | "open_customer"
+    /** Two or more customers could be meant. Carries `picks` with `customer_id`. */
+    | "customer_picks"
   layout?: "grouped" | "flat" | "picks"
   title?: string
   question?: OrderQuestion
@@ -106,6 +115,16 @@ export interface OrderListSnapshot {
   hint?: string
   open_order_id?: string
   picks?: OrderPick[]
+  /** For `kind: "open_customer"`. */
+  customer_id?: string
+  customer_name?: string
+  /** For `kind: "customer_picks"` — a separate list from `picks`, deliberately.
+   *
+   *  ⚠️ NOT REUSING `picks`. An `OrderPick` carries a `question` that narrows the ORDER
+   *  LIST; a customer pick carries an id that OPENS A PANE. Sharing the field would
+   *  make every consumer of `picks` test which kind it was holding, and the one that
+   *  forgot would send a customer id into `askOrderList` as a question. */
+  customer_picks?: { label: string; customer_id: string }[]
 }
 
 /** Where a kv row's value can take you. Absent means the value is plain text. */
@@ -169,6 +188,21 @@ export interface OrderHistoryEntry {
 export interface SalesOrderSummary {
   id: string
   number: string
+  /** The account's id, so the funeral home name can be a link.
+   *
+   *  ⚠️ ABSENT WHEN THE ORDER HAS NO CUSTOMER ROW — `_order_extras` LEFT JOINs, so this
+   *  is optional rather than guaranteed, and the pane renders plain text in that case
+   *  rather than a button that cannot resolve.
+   *
+   *  ⚠️ IT WAS ALREADY DECLARED HERE, UNDOCUMENTED, AT THE END OF THIS INTERFACE — AND
+   *  NOTHING PRODUCED OR READ IT. `tsc` found the duplicate when I added this one;
+   *  checking the tree before today, `customer_id` appeared in exactly one place in the
+   *  whole frontend: that declaration. The server did not send it until 2026-10-24.
+   *  So `row.customer_id` was permanently `undefined`, and any future reader would have
+   *  taken an optional field with no producer for a live one — CLAUDE.md §11's
+   *  unprovisioned-entrance class, in the small. The undocumented copy is deleted; this
+   *  one is real as of today. */
+  customer_id?: string
   deceased_name: string
   funeral_home: string
   stands_at: string
@@ -186,7 +220,6 @@ export interface SalesOrderSummary {
   /** True only for a `confirmed` order. The SERVER owns the rest of the rule and
    *  refuses the PATCH with the sentence that names the remedy. */
   can_undo_confirm: boolean
-  customer_id?: string
 }
 
 export async function askOrderList(body: {
@@ -208,5 +241,82 @@ export async function askOrderList(body: {
 
 export async function getSalesOrderSummary(orderId: string): Promise<SalesOrderSummary> {
   const r = await apiClient.get<SalesOrderSummary>(`/order-list/orders/${orderId}`)
+  return r.data
+}
+
+/** One order row on the Customer Pane. */
+export interface CustomerOrderRow {
+  readonly id: string
+  readonly number: string
+  /** The prototype's `.mono` — the last four of the number. */
+  readonly short: string
+  readonly deceased_name: string
+  /** "Monticello Burial Vault · St. Mary\'s Cemetery". Absent when neither is recorded. */
+  readonly what?: string
+  /** From the order's REAL status — Draft / Cancelled / Confirmed / Delivered / Invoiced. */
+  readonly status: string
+  readonly date_in_week?: boolean
+  readonly date_primary?: string
+  readonly date_head?: string
+  readonly date_day?: string
+  readonly time_label?: string
+}
+
+/** One "usual vault" / "usual cemetery" line, counted from records. */
+export interface CustomerHabit {
+  readonly name: string
+  readonly count: number
+  readonly of: number
+  /** "Monticello · 2 of 3 orders" — composed by the server so one rule writes it. */
+  readonly line: string
+}
+
+/**
+ * The Customer Pane.
+ *
+ * ⚠️ OPTIONAL MEANS THE RECORD DOES NOT HOLD IT, NOT THAT THE SERVER FORGOT. "Missing
+ * fields are left out, never shown as blank labels" (James, 2026-10-24). Measured on
+ * production: every address, town, director and kind is NULL for all five of
+ * Sunnycrest's customers and there are zero contacts, so `meta` and `people` are both
+ * absent there. Rendering `undefined` as "—" would turn an empty record into a measured
+ * emptiness.
+ */
+export interface CustomerDetail {
+  readonly id: string
+  readonly name: string
+  /** "Funeral home · 12 Genesee St, Skaneateles, NY · Ruth Hopkins, director". */
+  readonly meta?: string
+  readonly action: {
+    readonly kind: "new_order"
+    readonly label: string
+    /** "order Hopkins Funeral Home " — note the trailing space. */
+    readonly opening_line: string
+  }
+  readonly open_orders: readonly CustomerOrderRow[]
+  readonly overdue: readonly CustomerOrderRow[]
+  /** The order list's own fourth-group heading, so one wording serves both. */
+  readonly overdue_label: string
+  readonly account:
+    | { readonly line: string; readonly past_due: boolean; readonly invoices: number }
+    | { readonly none: string }
+  readonly knows:
+    | { readonly not_enough: string; readonly orders: number }
+    | {
+        readonly usual_vault: readonly CustomerHabit[]
+        readonly usual_cemeteries: readonly CustomerHabit[]
+        readonly orders: number
+      }
+  readonly recent: readonly {
+    readonly kind: "order" | "invoice"
+    readonly label: string
+    readonly when?: string
+    readonly detail?: string
+  }[]
+  /** Absent when the record has no contacts — the tab is left out, not empty. */
+  readonly people?: readonly { readonly name: string; readonly detail?: string }[]
+}
+
+export async function getCustomerDetail(customerId: string): Promise<CustomerDetail> {
+  const r = await apiClient.get<CustomerDetail>(`/order-list/customers/${customerId}`)
   return r.data
 }

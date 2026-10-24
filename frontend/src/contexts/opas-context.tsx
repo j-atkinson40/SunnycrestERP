@@ -45,7 +45,13 @@ import type { OrderListSnapshot, OrderQuestion } from "@/services/order-list-ser
  * — a new entry pane opening in the wrong place with the bar not wired to it, and
  * nothing failing.
  */
-export type OpasPaneKind = "product-list" | "product" | "capture" | "order-list" | "sales-order"
+export type OpasPaneKind =
+  | "product-list"
+  | "product"
+  | "capture"
+  | "order-list"
+  | "sales-order"
+  | "customer"
 
 /** One pane opened from the command line. */
 export interface OpasPane {
@@ -74,6 +80,13 @@ export interface OpasPane {
   readonly orderSnapshot?: OrderListSnapshot
   /** The phrase that produced `orderQuestion`, taught back when a pill is corrected. */
   readonly orderPhrase?: string
+  /** For `kind: "customer"` — the `customers.id` the pane reads.
+   *
+   *  ⚠️ AN ID, NOT THE NAME, AND THE ORDER PAYLOAD NOW CARRIES IT. `funeral_home` on a
+   *  sales order is a display string; resolving it back to an account in the client
+   *  would be name-matching for a key the server already has. `detail.order_detail`
+   *  emits `customer_id` since 2026-10-24 for exactly this. */
+  readonly customerId?: string
   /** For `kind: "sales-order"`. */
   readonly salesOrderId?: string
 }

@@ -16,7 +16,7 @@ from app.api.deps import get_current_user, get_db
 from app.models.company import Company
 from app.models.role import Role
 from app.models.user import User
-from app.services.order_list import decision_log
+from app.services.order_list import customer, decision_log
 from app.services.order_list.proposal import propose
 from app.services.order_list.question import OrderQuestion
 from app.services.order_list.service import ask, sales_order_summary, today_for
@@ -99,6 +99,32 @@ def ask_orders(
         model_refused_reason=seen.get("reason"),
     )
     return body_out
+
+
+@router.get("/customers/{customer_id}")
+def get_customer(
+    customer_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """The Customer Pane. 404 when it is not this caller's customer.
+
+    ⚠️ NO `response_model`, THE SAME REASON THE OTHER TWO READS GIVE: absent facts are
+    omitted (a customer with no address has no meta line, one with no contacts has no
+    People tab), and a response model would put those keys back as nulls — which is the
+    "never shown as blank labels" rule, broken by a schema.
+
+    ⚠️ AND IT IS A PURE READ. Opening a pane from a link or a row logs nothing; the
+    decision log records BAR INTERPRETATIONS, and this endpoint is reached by clicking.
+    The bar's own customer open is logged in `ask`, where the phrase exists.
+    """
+    company = db.get(Company, current_user.company_id)
+    detail = customer.customer_detail(
+        db, current_user.company_id, customer_id, today_for(company),
+    )
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Unknown customer")
+    return detail
 
 
 @router.get("/orders/{order_id}")
