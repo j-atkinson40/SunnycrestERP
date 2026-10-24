@@ -306,6 +306,24 @@ def test_past_due_is_named_and_flagged(tenant):
     assert d["account"]["line"] == "$400 balance · $400 past due · Net 30"
 
 
+def test_the_account_line_shows_words_not_the_stored_token(tenant):
+    """⚠️ THE INTEGRATION SIDE, AND A BREAK TEST FORCED IT. `test_terms_are_words_...`
+    exercises `_nice_terms` directly, and the past-due test stores an already-pretty
+    "Net 30" — so breaking `_account`'s call to the prettifier turned NOTHING red. The
+    stored value has to be the raw token for this path to be covered, which is exactly
+    what testco holds: `net_30`.
+    """
+    db, tid = tenant
+    c = _customer(db, tid, "Hopkins Funeral Home", payment_terms="net_30")
+    _invoice(db, tid, c.id, "INV-1", status="sent", total=Decimal("400"),
+             amount_paid=Decimal("0"),
+             invoice_date=datetime(2026, 10, 1, tzinfo=timezone.utc))
+    db.flush()
+    d = cust.customer_detail(db, tid, c.id, TODAY, facts=[])
+    assert d["account"]["line"] == "$400 balance · Net 30"
+    assert "net_30" not in d["account"]["line"]
+
+
 def test_terms_come_from_the_customer_and_are_absent_when_unstored(tenant):
     """⚠️ `invoices.payment_terms` IS POPULATED ON PRODUCTION ('Net 30' on 8 of 9) and
     `customers.payment_terms` is NOT — so reading the invoice would fill the line in.

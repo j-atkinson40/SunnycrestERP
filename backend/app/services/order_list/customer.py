@@ -76,6 +76,20 @@ from app.services.order_list.stage import (
 #: and it is also the argument for the pane — the counts fill as Opas gets used.
 MIN_ORDERS_FOR_HABITS = 3
 
+#: How many habits a line shows.
+#:
+#: ⚠️ THE PROTOTYPE'S OWN NUMBER, WHICH IS WHY IT IS NOT MY INVENTION. Its line reads
+#: `Monticello 51% · Venetian 23% · Continental 13%` — three. Measured on testco, where
+#: Johnson Funeral Home has 10 orders across 5 different vaults, the uncapped line read
+#: "Bronze Triune · 1 of 10 orders · Cameo Rose · 1 of 10 orders · Continental · 1 of 10
+#: orders · Monticello · 1 of 10 orders · Venetian · 1 of 10 orders" — five entries, not
+#: one of them a habit. A "usual vault" that lists everything once is a census.
+#:
+#: ⚠️ AND IT DOES NOT ANSWER THE REAL QUESTION, WHICH IS JAMES'S: whether a 1-of-10
+#: belongs on a line headed "Usual vault" at all. Capping stops the line running away;
+#: it does not decide what counts as usual. Reported rather than ruled on here.
+MAX_HABITS = 3
+
 NOT_ENOUGH = "Not enough orders yet"
 NO_INVOICES = "No invoices yet"
 
@@ -92,6 +106,39 @@ def _nice_kind(raw: str | None) -> str | None:
     if not raw:
         return None
     return raw.replace("_", " ").strip().capitalize() or None
+
+
+def _nice_terms(raw: str | None) -> str | None:
+    """`net_30` -> `Net 30`. None stays None.
+
+    ⚠️ FOUND BY WALKING THE ROUTE OVER HTTP ON DATA-RICH testco, WHICH PRODUCTION COULD
+    NOT SHOW ME. Sunnycrest stores no terms at all, so the line read "$0 balance" there
+    and looked finished. testco stores `net_30`, and the account line rendered
+    "$0 balance · net_30" — a database token on the office's screen. The prototype says
+    `Net 30`.
+
+    ⚠️ SENTENCE CASE, NOT TITLE CASE, AND MY FIRST VERSION GOT IT WRONG. Capitalising
+    every word turned `due_on_receipt` into "Due On Receipt" — a mid-phrase "On" that
+    reads like a brand. These are phrases, not headings.
+
+    ⚠️ A LONE SHORT ACRONYM SURVIVES; A SHOUTED PHRASE DOES NOT. My second attempt kept
+    any all-caps token under five characters, which turned `DUE_ON_RECEIPT` into "DUE ON
+    receipt" — "DUE" and "ON" preserved, "RECEIPT" lowered. Per-token rules cannot tell
+    an acronym from a shouted word, so the decision is made about the WHOLE value: one
+    short word stays as stored ("COD", "EOM"), anything longer is a phrase and gets
+    sentence case. A lowercase "cod" becomes "Cod" — what the database says, sentence
+    cased; reading it as an acronym would be inventing a fact about the tenant's data.
+    """
+    if not raw:
+        return None
+    words = raw.replace("_", " ").split()
+    if not words:
+        return None
+    if len(words) == 1 and words[0].isupper() and len(words[0]) <= 4:
+        return words[0]
+    head = words[0]
+    head = head[0].upper() + head[1:].lower() if head[:1].isalpha() else head
+    return " ".join([head, *(w.lower() for w in words[1:])]) or None
 
 
 def meta_line(row: dict) -> str | None:
@@ -216,8 +263,9 @@ def _account(db: Session, company_id: str, customer_id: str, terms: str | None,
     past_due = Decimal(row["past_due"])
     if past_due > 0:
         bits.append(f"{format_money(f'{past_due:.2f}')} past due")
-    if terms:
-        bits.append(terms)
+    nice = _nice_terms(terms)
+    if nice:
+        bits.append(nice)
     return {
         "line": " · ".join(bits),
         "past_due": past_due > 0,
@@ -302,7 +350,7 @@ def what_opas_knows(orders: list[OrderFacts]) -> dict:
         return [
             {"name": name, "count": n, "of": total,
              "line": f"{name} · {n} of {total} orders"}
-            for name, n in ranked
+            for name, n in ranked[:MAX_HABITS]
         ]
 
     return {"usual_vault": tally("vault"), "usual_cemeteries": tally("cemetery"),

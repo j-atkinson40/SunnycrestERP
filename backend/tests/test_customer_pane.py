@@ -15,8 +15,10 @@ from decimal import Decimal
 import pytest
 
 from app.services.order_list.customer import (
+    MAX_HABITS,
     MIN_ORDERS_FOR_HABITS,
     NOT_ENOUGH,
+    _nice_terms,
     meta_line,
     what_opas_knows,
 )
@@ -237,3 +239,53 @@ def test_an_invoiced_order_is_not_overdue():
     )
     assert drafted.invoiced is False
     assert is_overdue(drafted, TODAY) is True
+
+
+# ── the account line's words ──────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("stored,shown", [
+    ("net_30", "Net 30"),
+    # ⚠️ A SHOUTED PHRASE BECOMES A PHRASE. My per-token rule turned this into
+    # "DUE ON receipt" — "DUE" and "ON" kept as short all-caps, "RECEIPT" lowered.
+    ("DUE_ON_RECEIPT", "Due on receipt"),
+    ("NET_30", "Net 30"),
+    ("due_on_receipt", "Due on receipt"),
+    # A lone short acronym survives as stored.
+    ("COD", "COD"),
+    ("EOM", "EOM"),
+    # Lowercase stays sentence-cased rather than being guessed into an acronym.
+    ("cod", "Cod"),
+    ("2/10 net 30", "2/10 net 30"),
+    ("Net 30", "Net 30"),
+    (None, None),
+    ("", None),
+])
+def test_terms_are_words_and_not_a_database_token(stored, shown):
+    """⚠️ FOUND BY WALKING THE ROUTE OVER HTTP ON testco, WHICH PRODUCTION CANNOT SHOW.
+    Sunnycrest stores no terms, so the line read "$0 balance" and looked finished.
+    testco stores `net_30`, and the account line rendered "$0 balance · net_30" — a
+    database token on the office's screen, where the prototype says "Net 30".
+    """
+    assert _nice_terms(stored) == shown
+
+
+def test_a_habit_line_shows_at_most_three():
+    """⚠️ THE PROTOTYPE'S OWN NUMBER, and measured need. Johnson Funeral Home on testco
+    has 10 orders across FIVE vaults, so the uncapped line read five entries each "1 of
+    10 orders" — a census, not a habit. The prototype shows three.
+
+    ⚠️ IT DOES NOT DECIDE WHETHER A 1-of-10 IS "USUAL" — that is James's call about his
+    own rulebook, and it is in the report rather than in this assertion.
+    """
+    many = [
+        _order(id=str(i), vault=f"Vault {i}", cemetery="Oakwood Cemetery")
+        for i in range(10)
+    ]
+    got = what_opas_knows(many)
+    assert len(got["usual_vault"]) == MAX_HABITS == 3
+    # The control: a real habit is not truncated away, and the denominator is still 10.
+    assert got["usual_cemeteries"] == [
+        {"name": "Oakwood Cemetery", "count": 10, "of": 10,
+         "line": "Oakwood Cemetery · 10 of 10 orders"},
+    ]
