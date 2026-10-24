@@ -815,7 +815,11 @@ describe("an order pane opens from TYPING, with no Enter", () => {
     await typeOnly("order for hopkins")
     await waitFor(() => expect(screen.getByTestId("capture-rows")).toBeInTheDocument())
 
-    expect(startCapture).toHaveBeenCalledWith(undefined)
+    // ⚠️ THE FIRST ARGUMENT, NOT THE WHOLE CALL. This read
+    // `toHaveBeenCalledWith(undefined)` and went red on 2026-10-24 when `startCapture`
+    // gained a second parameter (`prefill`) — the claim was still true and the
+    // assertion was about the arity. Positional keeps it about the opening line.
+    expect(vi.mocked(startCapture).mock.calls[0][0]).toBeUndefined()
   })
 
   it("opens ONCE for a phrase typed continuously, not once per keystroke", async () => {

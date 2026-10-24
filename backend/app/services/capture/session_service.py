@@ -134,9 +134,26 @@ def _load(db: Session, session_id: str, *, company_id: str, user_id: str) -> Cap
 
 
 def start(
-    db: Session, *, company_id: str, user_id: str, opening_line: str | None = None
+    db: Session,
+    *,
+    company_id: str,
+    user_id: str,
+    opening_line: str | None = None,
+    prefill: dict[str, object] | None = None,
 ) -> CaptureSession:
-    """Create a session, feeding the opening line through extraction if one was given."""
+    """Create a session, feeding the opening line through extraction if one was given.
+
+    ⚠️ `prefill` IS WHAT A PANE CHOSE, AND IT IS STORED RATHER THAN APPLIED ONCE. Writing
+    it into `values` here is what the bug was: `start` left `full_text` as None, the
+    client's next debounced `set_text` arrived with whatever was in the BAR — nothing, on
+    a fresh bar — and `values` was rebuilt from an empty string. Reproduced 2026-10-24:
+    `start(opening_line="order Johnson Funeral Home ")` gives
+    `funeral_home='Johnson Funeral Home'`, and the very next `set_text("")` gives None.
+
+    ⚠️ AND THE CLIENT GUARD COULD NOT HAVE SAVED IT. `CapturePane` skips the re-extract
+    when `state.full_text === text`, but `start` goes through `add_line`, which leaves
+    `full_text` NULL — so `null === ""` is false and the wipe always fired.
+    """
     row = CaptureSession(
         company_id=company_id,
         user_id=user_id,
@@ -147,11 +164,22 @@ def start(
         unrecognized=[],
         pending_picks=[],
     )
+    if prefill:
+        row.prefill = dict(prefill)
     db.add(row)
     db.flush()
     if opening_line and opening_line.strip():
         add_line(db, row.id, company_id=company_id, user_id=user_id, line=opening_line)
         db.refresh(row)
+        # ⚠️ RE-APPLIED AFTER `add_line`, because `add_line` rebuilds `values` from the
+        # line and does not know about prefills. Harmless when the line names the same
+        # home — it is the same value — and necessary when it does not.
+        if prefill:
+            values = dict(row.values or {})
+            for field_id, value in prefill.items():
+                values.setdefault(field_id, value)
+            row.values = values
+            db.flush()
     return row
 
 
@@ -263,7 +291,8 @@ def set_text(
         completing = True
         body = shorter
 
-    ex = extract_text(db, tenant_id=company_id, text=body, resolutions=resolutions)
+    ex = extract_text(db, tenant_id=company_id, text=body, resolutions=resolutions,
+                      prefill=row.prefill)
 
     # ⚠️ THE TYPED TEXT IS STORED, NOT THE STRIPPED BODY. `full_text` is the order's
     # own words and ends up in `sales_orders.notes`; editing it here would make the
@@ -401,7 +430,8 @@ def take_switch(
 
     if row.full_text is not None:
         ex = extract_text(
-            db, tenant_id=company_id, text=row.full_text, resolutions=resolutions
+            db, tenant_id=company_id, text=row.full_text, resolutions=resolutions,
+            prefill=row.prefill,
         )
         row.values = dict(ex.values)
         row.unrecognized = list(ex.unrecognized)
@@ -460,7 +490,8 @@ def choose(
         # settled pick means, and it would differ the moment resolutions gained any
         # behaviour beyond overwrite.
         ex = extract_text(
-            db, tenant_id=company_id, text=row.full_text, resolutions=resolutions
+            db, tenant_id=company_id, text=row.full_text, resolutions=resolutions,
+            prefill=row.prefill,
         )
         row.values = dict(ex.values)
         row.unrecognized = list(ex.unrecognized)

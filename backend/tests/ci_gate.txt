@@ -645,6 +645,12 @@ tests/test_customer_pane.py
 # generic-word ruling, the account line's exclusion of draft invoices, tenant isolation,
 # and the bare-name rule running BEFORE the model door.
 tests/test_customer_pane_reads.py
+# James's walk, 2026-10-24: "New order" in the Hopkins pane filled the funeral home and
+# a second later it went blank. A funeral home filled FROM A PANE is the director's own
+# choice and the debounced whole-text re-read may not clear it — it yields only to a
+# different home named in the text. This file runs the whole cycle (start with a prefill,
+# re-extract from several bar texts, fill the rest around it) against a database.
+tests/test_capture_prefill.py
 # A migration may not drop or rename a column or table in upgrade() without a reviewed
 # DESTRUCTIVE_REVIEWED marker (James, 2026-10-24). Migrations now run while the PREVIOUS
 # deploy is still serving — 396-552 s measured — so a dropped column breaks production

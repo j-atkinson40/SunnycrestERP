@@ -1130,9 +1130,32 @@ export function OpasHost() {
    * typing it, extraction and all. A second path that pre-filled a field directly would
    * be a second way to start an order, free to drift from the one the director uses.
    */
-  const startOrderFor = useCallback((openingLine: string) => {
-    opas.openPane({ kind: "capture", label: "Order", openingLine })
-  }, [opas])
+  const startOrderFor = useCallback(
+    (openingLine: string, prefill?: Readonly<Record<string, string>>) => {
+      const id = opas.openPane({
+        kind: "capture", label: "Order", openingLine, capturePrefill: prefill,
+      })
+      // ⚠️ THE BAR SHOWS WHAT WAS CAPTURED, AND THAT IS HALF THE FIX. "The bar shows
+      // 'order Hopkins Funeral Home ' with the cursor at the end, so what's on screen
+      // matches what was captured" (James, 2026-10-24). Without it the pane's `text`
+      // prop was whatever the bar held — nothing — and the debounced whole-text re-read
+      // erased the funeral home about a second after it appeared.
+      //
+      // ⚠️ IT IS NOT SUFFICIENT ON ITS OWN, WHICH IS WHY THE PREFILL EXISTS TOO. Text in
+      // the bar is text: deleting the name would un-capture the home, and the ruling is
+      // that a pane-made choice survives that. Belt and braces, and they do different
+      // jobs — this one keeps the screen honest, the prefill keeps the choice.
+      opas.setEntryText(id, openingLine)
+      // The cursor goes after the trailing space, ready for the next word.
+      window.setTimeout(() => {
+        const el = inputRef.current
+        if (el === null) return
+        el.focus({ preventScroll: true })
+        el.setSelectionRange(openingLine.length, openingLine.length)
+      }, 0)
+    },
+    [opas],
+  )
 
   const settleOrderAnswer = useCallback((result: OrderListSnapshot, spoken: string | undefined) => {
     if (result.kind === "unrecognized" || result.kind === "total") {
@@ -1836,6 +1859,7 @@ export function OpasHost() {
               ) : pane.kind === "capture" ? (
                 <CapturePane
                   openingLine={pane.openingLine}
+                  prefill={pane.capturePrefill}
                   onSessionStarted={(id) => opas.setCaptureSession(pane.id, id)}
                   text={opas.entryText[pane.id] ?? ""}
                   onStatus={(st) => reportStatus(pane.id, st)}

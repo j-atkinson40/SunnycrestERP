@@ -32,6 +32,10 @@ function hopkinsBare(over: Record<string, unknown> = {}) {
       kind: "new_order",
       label: "New order",
       opening_line: "order Hopkins Funeral Home ",
+      // ⚠️ THE SERVER SENDS THIS UNCONDITIONALLY (`customer.py`, the `new_order`
+      // action) and this fixture predated it, so the pane's forwarding of it was
+      // untested — the one assertion that looked at the call was asserting the arity.
+      prefill: { funeral_home: "Hopkins Funeral Home" },
     },
     open_orders: [],
     overdue: [
@@ -136,7 +140,15 @@ describe("the one action", () => {
     fireEvent.click(screen.getByTestId("opas-customer-new-order"))
     // ⚠️ INCLUDING THE TRAILING SPACE. "as if the bar said 'order <name> '" — the space
     // is what leaves the capture ready for the next word rather than mid-token.
-    expect(onNewOrder).toHaveBeenCalledWith("order Hopkins Funeral Home ")
+    //
+    // ⚠️ AND THE PREFILL TRAVELS WITH IT, which is the second half of the same action
+    // and the fix for James's vanishing funeral home (2026-10-24). The line alone is
+    // not enough: re-extraction rebuilds every value from the bar's text, and a name
+    // that is only IN THE TEXT can be re-read away. The prefill is the durable record
+    // that the director chose this home.
+    expect(onNewOrder).toHaveBeenCalledWith("order Hopkins Funeral Home ", {
+      funeral_home: "Hopkins Funeral Home",
+    })
   })
 
   it("opens one of the customer's orders", async () => {

@@ -71,6 +71,16 @@ export interface OpasPane {
   // optional prop with no producer reads as a live feature to the next reader.
   /** For `kind: "capture"` — fed through extraction on start (prototype `:568`). */
   readonly openingLine?: string
+  /** For `kind: "capture"` — what a pane CHOSE, which the text may override but
+   *  re-extraction may not clear.
+   *
+   *  ⚠️ NOT THE SAME AS `openingLine`, AND THE BUG WAS BELIEVING IT WAS. An opening line
+   *  is text: it is extracted once, and the next debounced whole-text re-read rebuilds
+   *  every value from whatever is in the BAR — which, for a capture opened from a pane
+   *  rather than typed, was empty. Measured 2026-10-24: the funeral home appeared for
+   *  about a second and went blank. A prefill is stored on the session and re-applied
+   *  beneath the text on every re-read (James's ruling, 2026-10-24). */
+  readonly capturePrefill?: Readonly<Record<string, string>>
   /** For `kind: "capture"` — ⚠️ SET AFTER THE SERVER REPLIES, so a tucked and reopened
    *  pane RE-READS the session instead of starting a second one. This is what makes
    *  "survives tuck" true rather than asserted: the pane holds no order state itself. */

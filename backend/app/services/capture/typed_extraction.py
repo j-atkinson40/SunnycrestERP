@@ -2567,8 +2567,20 @@ def extract_text(
     tenant_id: str,
     text: str,
     resolutions: dict[str, object] | None = None,
+    prefill: dict[str, object] | None = None,
 ) -> TextExtraction:
     """Re-read the WHOLE typed text. Last mention wins; resolutions outrank it.
+
+    ⚠️ THREE TIERS SINCE 2026-10-24, AND `prefill` IS THE ONE BELOW THE TEXT:
+
+        prefill       a pane's choice made BEFORE any text. Fills a field the text says
+                      nothing about; yields the moment the text names something else.
+        text          last mention wins, as below.
+        resolutions   the director's decision ABOUT ambiguous text. Outranks it.
+
+    The order is the ruling: "a funeral home filled from the Customer Pane is the
+    person's choice… Re-extraction can't clear it. It's replaced only if the person
+    names a different funeral home in the text" (James, 2026-10-24).
 
     ⚠️ IT COMPOSES `extract_line` RATHER THAN REPLACING IT, which is why the span rule,
     every vocabulary, the party resolvers and the claim-before-write discipline all
@@ -2681,6 +2693,21 @@ def extract_text(
             values[field_id] = payload
         else:
             picks.append(payload)
+
+    # ⚠️ BENEATH THE TEXT, WHICH IS THE WHOLE POINT, SO `setdefault` AND NOT `[...] =`.
+    # A prefilled field the text is silent about stays filled; one the text names
+    # differently is replaced by the text and gets the ordinary conflict handling, since
+    # the text's value is already in `values` by the time this runs.
+    #
+    # ⚠️ AND A PENDING PICK IS NOT "SILENT". If the text produced a QUESTION for the
+    # field, the director is being asked which of several things they meant — answering
+    # it from a prefill would settle their question for them without saying so. The
+    # prefill is skipped and the pick stands.
+    asked = {p.field_id for p in picks}
+    for field_id, value in (prefill or {}).items():
+        if field_id in values or field_id in asked:
+            continue
+        values[field_id] = value
 
     for field_id, value in (resolutions or {}).items():
         values[field_id] = value

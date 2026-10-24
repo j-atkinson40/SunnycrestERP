@@ -309,6 +309,7 @@ export function money(value: string): string {
 
 export function CapturePane({
   openingLine,
+  prefill,
   onSessionStarted,
   text = "",
   onStatus,
@@ -319,6 +320,8 @@ export function CapturePane({
 }: {
   /** Fed through extraction on start, per the prototype (`:568` calls `feed` at once). */
   readonly openingLine?: string
+  /** What a pane chose. Survives re-extraction; yields to a different name in the text. */
+  readonly prefill?: Readonly<Record<string, string>>
   readonly onSessionStarted?: (id: string) => void
   /** ⚠️ WHAT IS IN THE BAR. The pane does not own this and has no field of its own —
    *  the bar is the only input, by ruling. */
@@ -445,7 +448,7 @@ export function CapturePane({
         // could never start another. The fix closed an UNUSABLE restored pane;
         // removing the restore removes the whole class, including the usable case
         // that still held the bar. Smaller mechanism, no bug to have.
-        const s = await startCapture(openingLine)
+        const s = await startCapture(openingLine, prefill)
         if (!mounted.current) return
         setState(s)
         onSessionStartedRef.current?.(s.session_id)
@@ -458,7 +461,7 @@ export function CapturePane({
     // ⚠️ NO CLEANUP, AND NO CALLBACK DEPENDENCIES. Both were a bug: the cleanup
     // cancelled a start that was still needed, and the callback dependency was what
     // made the cleanup run at all.
-  }, [openingLine])
+  }, [openingLine, prefill])
 
   /**
    * LIVE EXTRACTION. One call per pause, the whole text, stale responses dropped.

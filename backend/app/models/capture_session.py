@@ -98,6 +98,21 @@ class CaptureSession(Base):
     #: keystroke: the text that was ambiguous is still on screen and still ambiguous.
     #: Applied LAST, after extraction. Durable, so a reload restores the picks too.
     resolutions: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    #: What a PANE filled in before any text existed.
+    #:
+    #: ⚠️ IT IS NOT `resolutions`, AND THE DIFFERENCE IS PRECEDENCE AGAINST THE TEXT.
+    #: A resolution is the director's decision ABOUT ambiguous text and OUTRANKS it —
+    #: correct, because the text stays ambiguous and the pick must keep winning. A
+    #: prefill is a choice made BEFORE any text: it applies when the text says nothing
+    #: about the field and YIELDS when the text names something else.
+    #:
+    #: ⚠️ JAMES'S RULING, 2026-10-24: "a funeral home filled from the Customer Pane is
+    #: the person's choice, durable like a click-made pick. Re-extraction can't clear
+    #: it. It's replaced only if the person names a different funeral home in the text."
+    #: Measured first: seeding `resolutions` makes it survive an empty re-read AND makes
+    #: a different name in the text be ignored, which is the second half of the ruling
+    #: broken.
+    prefill: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     #: ⚠️ VALUES CHOSEN FOR THE DIRECTOR, EACH WITH ITS ONE ALTERNATIVE. A switch is
     #: NOT a pick: the field is captured and the order can be completed without
     #: touching it. Ruled 2026-10-13 for a vault ambiguous only by form — the burial

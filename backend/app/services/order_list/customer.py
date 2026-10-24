@@ -408,6 +408,17 @@ def customer_detail(
             # space is what leaves the capture ready for the next word rather than
             # mid-token, and it is in the dispatch's own quoting.
             "opening_line": f"order {row['name']} ",
+            # ⚠️ THE SERVER NAMES THE FIELD, NOT THE CLIENT. The capture route
+            # whitelists what a pane may seed (`PREFILLABLE_FIELDS`), and having the
+            # client decide which field "New order" fills would put that decision in two
+            # places — one of them the side that cannot be trusted with it.
+            #
+            # ⚠️ AND IT IS WHAT MAKES THE FILL SURVIVE. Measured 2026-10-24: the opening
+            # line alone gave a funeral home that the next debounced re-read erased,
+            # because `start` leaves `full_text` NULL and the bar's text arrives empty.
+            # `prefill` is stored on the session and re-applied beneath the text on every
+            # re-read; it yields only when the text names a different home.
+            "prefill": {"funeral_home": row["name"]},
         },
         "open_orders": [_row_for_pane(f, today) for f in coming],
         "overdue": [_row_for_pane(f, today) for f in overdue],

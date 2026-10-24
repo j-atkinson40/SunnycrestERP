@@ -214,9 +214,15 @@ export async function fetchVocabulary(): Promise<readonly VocabTerm[]> {
   }
 }
 
-export async function startCapture(openingLine?: string): Promise<CaptureState> {
+export async function startCapture(
+  openingLine?: string,
+  prefill?: Readonly<Record<string, string>>,
+): Promise<CaptureState> {
   const r = await apiClient.post<CaptureState>(BASE, {
     opening_line: openingLine ?? null,
+    // ⚠️ OMITTED WHEN ABSENT rather than sent as null, so a typed capture's request is
+    // byte-for-byte what it was before this change.
+    ...(prefill !== undefined ? { prefill } : {}),
   })
   return r.data
 }

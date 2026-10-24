@@ -291,6 +291,12 @@ export interface CustomerDetail {
     readonly label: string
     /** "order Hopkins Funeral Home " — note the trailing space. */
     readonly opening_line: string
+    /** The field(s) the server seeded, which re-extraction may not clear.
+     *
+     *  ⚠️ THE SERVER NAMES THE FIELD. The capture route whitelists what a pane may seed
+     *  (`PREFILLABLE_FIELDS`); having the client decide would put that in two places,
+     *  one of them the side that cannot be trusted with it. */
+    readonly prefill?: Readonly<Record<string, string>>
   }
   readonly open_orders: readonly CustomerOrderRow[]
   readonly overdue: readonly CustomerOrderRow[]

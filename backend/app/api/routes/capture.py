@@ -27,7 +27,7 @@ raises `SessionNotFound` for a wrong id and for another user's id alike, so a 40
 be used to prove a session exists.
 """
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
@@ -38,11 +38,41 @@ from app.services.order_list import decision_log
 router = APIRouter()
 
 
+#: Fields a pane may seed. One entry, deliberately — widen it when a pane needs to.
+#:
+#: ⚠️ A SEEDED VALUE IS NOT VALIDATED AGAINST THE TENANT'S VOCABULARY HERE, because the
+#: extractor is what knows the tenant's names and it re-reads the whole text on the next
+#: pause anyway. What this list stops is the SHAPE of the attack: seeding `total`, or
+#: `service_date`, or anything the office would read as measured.
+PREFILLABLE_FIELDS = frozenset({"funeral_home"})
+
+
 class StartRequest(BaseModel):
     #: ⚠️ OPTIONAL, AND FED THROUGH EXTRACTION WHEN PRESENT. The prototype starts a
     #: capture and immediately feeds the same line, which is what lets "start an order
     #: for Hopkins" capture the funeral home on the opening keystroke.
     opening_line: str | None = Field(default=None, max_length=2000)
+
+    #: What a PANE chose before any text existed — today only `funeral_home`, from the
+    #: Customer Pane's "New order".
+    #:
+    #: ⚠️ WHITELISTED RATHER THAN PASSED THROUGH, AND THAT IS THE POINT. A client able to
+    #: seed any field could write a value no extractor produced and no director typed,
+    #: which is the thing the whole-text model exists to prevent. Unknown keys are
+    #: dropped, not refused: an older bundle sending nothing still works, and a newer one
+    #: sending a field this release does not know about must not break the capture.
+    prefill: dict[str, str] | None = None
+
+    @field_validator("prefill")
+    @classmethod
+    def _only_known_fields(cls, v: dict[str, str] | None) -> dict[str, str] | None:
+        if not v:
+            return None
+        kept = {
+            k: val for k, val in v.items()
+            if k in PREFILLABLE_FIELDS and isinstance(val, str) and val.strip()
+        }
+        return kept or None
 
 
 class LineRequest(BaseModel):
@@ -100,6 +130,7 @@ def start_session(
         company_id=current_user.company_id,
         user_id=current_user.id,
         opening_line=body.opening_line,
+        prefill=body.prefill,
     )
     db.commit()
     return _state(db, row.id, current_user)

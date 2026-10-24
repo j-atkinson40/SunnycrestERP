@@ -68,8 +68,16 @@ export interface CustomerPaneProps {
   readonly customerId: string
   /** Opens one of this customer's orders in the Sales Order Pane. */
   readonly onOpenOrder?: (orderId: string) => void
-  /** Starts a capture with the funeral home already filled. */
-  readonly onNewOrder?: (openingLine: string) => void
+  /** Starts a capture with the funeral home already filled.
+   *
+   *  ⚠️ BOTH ARGUMENTS, AND THEY DO DIFFERENT JOBS. The opening line goes in the BAR so
+   *  the screen matches what was captured; the prefill is stored on the SESSION so the
+   *  debounced whole-text re-read cannot clear the choice. Passing only the first is
+   *  the bug James walked into on 2026-10-24 — the home showed for about a second. */
+  readonly onNewOrder?: (
+    openingLine: string,
+    prefill?: Readonly<Record<string, string>>,
+  ) => void
   /** The customer, as read, handed up so the host can answer in the reply line. */
   readonly onLoaded?: (detail: CustomerDetail) => void
 }
@@ -165,7 +173,7 @@ export function CustomerPane({
       <button
         type="button"
         data-testid="opas-customer-new-order"
-        onClick={() => onNewOrder?.(row.action.opening_line)}
+        onClick={() => onNewOrder?.(row.action.opening_line, row.action.prefill)}
         style={{
           marginTop: row.meta === undefined ? 10 : 2,
           border: "1px solid #f2f2f2",

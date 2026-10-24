@@ -431,3 +431,23 @@ def test_the_bare_name_rule_runs_before_the_model_door(tenant):
         teach_phrase=None, today=TODAY, propose=spy,
     )
     assert called == ["anything going to st marys"]
+
+
+def test_the_action_names_the_field_it_seeds(tenant):
+    """⚠️ A GAP A BREAK TEST FOUND. Deleting `action.prefill` from the server turned
+    NOTHING red — every prefill test called `session_service.start` directly, so the
+    Customer Pane's half of the wiring was unwatched.
+
+    The server names the field because the capture route whitelists what a pane may seed
+    (`PREFILLABLE_FIELDS`); letting the client decide would put that in two places, one
+    of them the side that cannot be trusted with it.
+    """
+    db, tid = tenant
+    c = _customer(db, tid, "Hopkins Funeral Home")
+    db.flush()
+    d = cust.customer_detail(db, tid, c.id, TODAY, facts=[])
+    assert d["action"]["prefill"] == {"funeral_home": "Hopkins Funeral Home"}
+    # ⚠️ AND IT AGREES WITH THE OPENING LINE. Two strings naming the same home, from one
+    # row — if they ever disagreed the bar would show one thing and the capture hold
+    # another, which is the "what's on screen matches what was captured" rule broken.
+    assert d["action"]["prefill"]["funeral_home"] in d["action"]["opening_line"]

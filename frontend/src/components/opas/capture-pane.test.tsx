@@ -256,7 +256,11 @@ describe("the entrance", () => {
     // typing and the phrase is carried into it as the order's TEXT, so it arrives via
     // `setCaptureText` and `startCapture` takes nothing. One write path instead of
     // two — see the host's opening effect for why.
-    expect(startCapture).toHaveBeenCalledWith(undefined)
+    // ⚠️ THE FIRST ARGUMENT, NOT THE WHOLE CALL. This read
+    // `toHaveBeenCalledWith(undefined)` and went red on 2026-10-24 when `startCapture`
+    // gained a second parameter (`prefill`) — the claim was still true and the
+    // assertion was about the arity. Positional keeps it about the opening line.
+    expect(vi.mocked(startCapture).mock.calls[0][0]).toBeUndefined()
     expect(screen.getByTestId("opas-input")).toHaveValue("start an order for Hopkins")
   })
 
