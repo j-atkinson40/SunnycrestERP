@@ -22,8 +22,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Make start script executable
-RUN chmod +x railway-start.sh
+# Make the start script AND the pre-deploy script executable. Both ship in the image:
+# Railway runs `railway-prep.sh` as `preDeployCommand` in a container built from this
+# same image, then `railway-start.sh` as the service CMD.
+RUN chmod +x railway-start.sh railway-prep.sh
 
 EXPOSE 8000
 

@@ -24,6 +24,58 @@ import sys
 
 # name -> (tier, one-line justification)
 TIERS: dict[str, tuple[str, str]] = {
+    # ── the five demo seeds that had no production guard (2026-10-24) ──────────
+    #
+    # ⚠️ THESE RAN ON EVERY PRODUCTION DEPLOY AND NOTHING STOPPED THEM. Measured
+    # 2026-10-23 while classifying the boot seeds: `seed_jcf_demo` carries an
+    # ENVIRONMENT refusal and these five do not, so the canonical runner started a
+    # Python process for each of them on production, 55 seeds deep, to write demo
+    # data.
+    #
+    # ⚠️ AND THE HAZARD IS NOT HYPOTHETICAL, THOUGH IT HAS NOT FIRED. `seed_quotes`
+    # and `seed_saved_orders` share a `pick_tenant` that prefers `testco` and
+    # otherwise takes THE FIRST ACTIVE COMPANY WITH THE SALES MODULE, under a comment
+    # reading "When Sunnycrest onboards, relocate deliberately" — a deferred decision
+    # never made, and Sunnycrest is live. On production that fallback resolves to
+    # `sunnycrest` (created 2026-03-27). It has not fired only because `testco`
+    # exists on production and the preferred branch wins: measured, all 8 quotes and
+    # 2 saved orders are in `testco` and none in `sunnycrest`. Deleting `testco`
+    # would redirect demo quotes into the real company's books on the next deploy.
+    #
+    # ⚠️ `manual` RATHER THAN A GUARD INSIDE EACH SCRIPT, for the reason the entry
+    # below gives for the demo catalogue: a tier is read ONCE per boot and logged with
+    # its reason, where five separate ENVIRONMENT checks are five chances to write one
+    # that fails open — which `railway-prep.sh` records having already happened once
+    # (`!= "production"` inferred "dev" from a MISSING variable and created
+    # `hopkins-fh` on production 73 seconds after that guard was committed).
+    "seed_quotes": (
+        "manual",
+        "4 sample quotes for the Quoting Hub demo. No ENVIRONMENT guard, and its "
+        "`pick_tenant` falls back to the first active company with the sales module — "
+        "`sunnycrest` on production. Invoked by seed_dev.sh for local dev and CI.",
+    ),
+    "seed_saved_orders": (
+        "manual",
+        "2 sample saved orders for the Compose-templates demo. Same unguarded "
+        "`pick_tenant` fallback as seed_quotes. Local dev and CI only.",
+    ),
+    "seed_nl_demo_data": (
+        "manual",
+        "Phase 4 NL-overlay demo companies and cases, written against `testco` by "
+        "default. Nothing for production to do with them.",
+    ),
+    "seed_demo_artifact_focuses": (
+        "manual",
+        "MoC option-3 demo artifacts — two focus configs. Demo content by its own "
+        "docstring; platform-scope rows, so no tenant fallback, but still not "
+        "production's.",
+    ),
+    "seed_demo_artifact_workflows": (
+        "manual",
+        "MoC option-3 demo artifact — the Invoice & Statement Run workflow. Same "
+        "reasoning as seed_demo_artifact_focuses.",
+    ),
+
     "seed_sunnycrest_demo_catalog": (
         "manual",
         "gives the canonical dev/CI sunnycrest the demo catalogue four tests are "

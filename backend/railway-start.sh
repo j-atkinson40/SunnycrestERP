@@ -1,195 +1,32 @@
 #!/bin/bash
-
-# C-10 postmortem (2026-07-09) — serialize boot prep across overlapping
-# container boots. Railway's restart policy can start boot N+1 while boot N
-# is still seeding; seed_staging's clean+re-seed then races the previous
-# boot's seed_dispatch_demo (witnessed: cemetery rows replaced between a
-# query and its dependent INSERT → FK violation → self-sustaining crash
-# loop). The wrapper holds a Postgres advisory lock for the PREP phase only
-# (migrations + seeds); uvicorn starts after the lock releases, so serving
-# is never serialized. See scripts/with_boot_lock.py.
-if [ -z "${BRIDGEABLE_BOOT_PREP_LOCKED:-}" ]; then
-    export BRIDGEABLE_BOOT_PREP_LOCKED=1
-    if ! python -m scripts.with_boot_lock bash "$0" "$@"; then
-        echo "✗ boot prep FAILED under lock — deploy aborted."
-        exit 1
-    fi
-    echo ""
-    echo "Starting server..."
-    exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
-fi
-# From here down we are the LOCKED child: prep only, no server.
-
-echo "=== Railway Startup ==="
-echo "Current alembic revision:"
-alembic current 2>&1 || echo "(could not read current revision)"
-
-echo ""
-echo "Running database migrations..."
-# R-3.1.3: Fail-loud on migration errors (matching R-1.6.3 seed discipline).
 #
-# Pre-R-3.1.3 this block swallowed `alembic upgrade head` failures with a
-# WARNING and continued. That's how R-3.0's r88_focus_compositions_rows
-# migration silently failed to apply on staging — two alembic heads
-# (r48_fh_demo_email_tld_fix + r88_focus_compositions_rows) made
-# `alembic upgrade head` refuse with "Multiple head revisions"; the
-# deploy continued with stale schema; R-3.1's Playwright specs 17-20
-# surfaced the drift via 7 failing valid-payload POSTs that hit a
-# missing column and 500'd. R-3.1.2 shipped the merge migration; this
-# block is R-3.1.3 — same class of fix as R-1.6.3, applied to migrations
-# instead of seeds.
+# The service container's CMD. It starts the server and does nothing else.
 #
-# New contract: migration failures fail the deploy. Railway dashboard
-# goes red, ops sees the failure immediately, the next deploy must
-# repair the migration chain before continuing.
-if ! alembic upgrade head 2>&1; then
-    echo "  ✗ alembic upgrade head FAILED — deploy aborted (R-3.1.3 fail-loud discipline)."
-    echo "    Common causes: multiple alembic heads (run \`alembic heads\` to verify),"
-    echo "    schema drift, missing parent revisions. Resolve manually before re-deploy."
-    exit 1
-fi
-echo "Migrations completed successfully."
+# ⚠️ EVERYTHING THAT USED TO BE HERE IS NOW IN `railway-prep.sh`, WHICH RAILWAY RUNS
+# AS `preDeployCommand` (see railway.toml). This file was 195 lines of migrations and
+# seeding, and the port was not bound until all of it had finished — measured at
+# 537-552 s on 2026-10-23, which was a hard outage of at least 329 s per deploy before
+# the healthcheck and an invisible nine-minute lag after it.
+#
+# ⚠️ KEEP IT THIS SMALL. The next person to need "just one thing before the server
+# starts" is the reason the old file grew to 195 lines, and every line of it delayed
+# the first request. Boot work goes in `railway-prep.sh`, where it delays the DEPLOY
+# instead of the SERVER and where a failure fails the deploy loudly.
+#
+# ⚠️ AND IF PREP DID NOT RUN, THIS STILL STARTS. Railway will not start the service
+# container when `preDeployCommand` fails, so that case cannot arise through the
+# supported path — but a `railway.toml` that lost the key, or a service whose
+# config-file path was changed in the dashboard, would silently serve without
+# migrating. The deployment object echoes what it read from the file, so that is
+# checkable without reading logs:
+#
+#     railway deployment list --service SunnycrestERP --environment production --json
+#     -> meta.serviceManifest.deploy.preDeployCommand   must be the prep command
+#     -> meta.propertyFileMapping                       must list it as file-sourced
+#
+# That check is asserted by tests/test_deploy_config.py so it cannot quietly lapse.
 
-echo ""
-echo "Post-migration alembic revision:"
-alembic current 2>&1 || echo "(could not read revision)"
+set -u
 
-# R-1.6 — Auto-seed staging tenants after migrations.
-#
-# Both seed scripts are idempotent (safe to re-run on every deploy):
-#   - seed_staging.py creates the testco tenant + 4 demo users +
-#     products + orders + invoices + KB. Re-runs clean + re-seed for
-#     end-state consistency. Skipped in production (ENVIRONMENT guard).
-#   - seed_fh_demo.py --idempotent creates Hopkins FH (slug "hopkins-fh")
-#     + St. Mary's Cemetery (slug "st-marys") + the demo case
-#     FC-2026-0001. Ensure-or-skip semantics — never deletes existing
-#     data. Skipped in production (ENVIRONMENT guard inside the script).
-#
-# Both scripts self-skip in production via the ENVIRONMENT=production
-# guard. Staging has ENVIRONMENT=dev (per /api/health output). Production
-# Railway env should set ENVIRONMENT=production explicitly.
-#
-# R-1.6.3: Fail-loud on seed errors.
-#
-# Pre-R-1.6.3 these blocks swallowed seed failures with "non-blocking;
-# server will start". This is how seed_fh_demo was broken from b04f071
-# (March 2026) through six R-* phases — TypeError from a half-fixed
-# _ensure_user crashed the script, the warning logged, the deploy went
-# green anyway, Hopkins FH was half-seeded for months. The CI bot
-# investigation in R-1.6.3 surfaced the root cause; this fixes the
-# class of bug.
-#
-# New contract: seed failures fail the deploy. Railway dashboard goes
-# red, ops sees the failure immediately, the next deploy must repair
-# the seed before continuing. Documented in CLAUDE.md staging section.
-#
-# Production still skips all staging seeds via the ENVIRONMENT guard.
-#
-# ⚠️ THIS TEST USED TO READ `[ "${ENVIRONMENT:-dev}" != "production" ]`, WHICH
-# FAILED OPEN. A deploy where the variable was merely MISSING inferred "dev"
-# and ran the demo seeds — so the guard's safe state depended on a variable
-# being present, and absence silently permitted. `hopkins-fh` was created on
-# the production database 73 seconds after this guard was committed, by the
-# deploy that shipped it. Absence now REFUSES, loudly, and fails the deploy —
-# the same discipline as the migration and seed blocks above: we would rather
-# go red than write into a database we cannot name.
-if ! ENV_RESOLVED="$(bash "$(dirname "$0")/scripts/require_known_environment.sh")"; then
-    echo "  ✗ boot prep aborted — ENVIRONMENT must be set explicitly."
-    exit 1
-fi
-if [ "$ENV_RESOLVED" != "production" ]; then
-    echo ""
-    echo "Running staging seed scripts (R-1.6 — auto-seed on every deploy)..."
-    echo "Seed failures FAIL the deploy (R-1.6.3). Half-seeded tenants are not acceptable."
-
-    if ! python -m scripts.seed_staging --idempotent 2>&1; then
-        echo "  ✗ seed_staging.py FAILED — deploy aborted."
-        exit 1
-    fi
-    echo "  ✓ seed_staging.py completed."
-
-    if ! python -m scripts.seed_fh_demo --apply --idempotent 2>&1; then
-        echo "  ✗ seed_fh_demo.py FAILED — deploy aborted."
-        exit 1
-    fi
-    echo "  ✓ seed_fh_demo.py completed."
-
-    # 2026-09-04 — The CI bot ensure step was wired here and then REMOVED the
-    # same day, when the e2e channel it authenticated was abandoned rather than
-    # repaired (STATE.md, priority shift to production).
-    #
-    # It is removed rather than left in place because it would have printed
-    # `✗ STAGING_CI_BOT_PASSWORD is not set` on EVERY deploy, forever, for a
-    # channel nobody is going to fix. A warning that fires on every deploy for
-    # work no one will do is how deploy output becomes something people skip —
-    # the same shape as the CI red that went unread for five and a half weeks,
-    # which is what this whole episode was about.
-    #
-    # `provision_ci_bot --ensure` REMAINS in the script and is still correct:
-    # it reads the stored secret rather than minting one, so nothing is printed
-    # and nothing must be typed. CLAUDE.md §7 cites it as the worked example of
-    # restructuring a procedure so a credential never transits a session. If a
-    # CI channel is ever revived, restoring this is one line.
-
-    # R-1.6.16 — Auto-seed dispatch demo data on testco. Pre-R-1.6.16,
-    # testco's `/dispatch/funeral-schedule` rendered empty (zero
-    # Delivery rows, no DeliverySchedule rows for any date). The
-    # dispatch demo populates ~20 deliveries (kanban + ancillary +
-    # direct-ship) + 4 drivers + dispatcher user across today through
-    # +3 days. The dispatcher's daily surface (DeliveryCard +
-    # AncillaryCard render here) becomes test-fixture-ready for R-2
-    # entity-card click-to-edit specs. Idempotent via the
-    # [dispatch-demo] tag in Delivery.special_instructions — re-runs
-    # cleanly delete + rebuild demo rows without touching unrelated
-    # data. Production guard inside the script
-    # (ENVIRONMENT=production refusal) parallels seed_staging +
-    # seed_fh_demo.
-    if ! python -m scripts.seed_dispatch_demo 2>&1; then
-        echo "  ✗ seed_dispatch_demo.py FAILED — deploy aborted."
-        exit 1
-    fi
-    echo "  ✓ seed_dispatch_demo.py completed."
-
-    # B-2 (May 2026) — seed edge panel templates via the new B-1.5
-    # `edge_panel_templates` substrate. Replaces the deleted R-5.0
-    # `seed_edge_panel.py` (which targeted the dropped legacy
-    # focus_compositions kind=edge_panel rows). Seeds two
-    # vertical_default rows (funeral_home + manufacturing) — see
-    # `scripts/seed_edge_panel_inheritance.py` for content. Idempotent
-    # via content-equality short-circuit; ENVIRONMENT=production
-    # refusal inside the script.
-    if ! python -m scripts.seed_edge_panel_inheritance 2>&1; then
-        echo "  ✗ seed_edge_panel_inheritance.py FAILED — deploy aborted."
-        exit 1
-    fi
-    echo "  ✓ seed_edge_panel_inheritance.py completed."
-else
-    echo ""
-    echo "ENVIRONMENT=production — skipping staging seed scripts."
-fi
-
-# D-1 — Canonical platform seed runner.
-#
-# Discovers all `seed_*.py` in backend/scripts/ alphabetically and runs
-# each via `python -m scripts.<name>`. Skips seeds already invoked with
-# fail-loud discipline upstream (SKIP_SEEDS in the runner). Failures
-# are non-fatal: warn + continue + exit 0 (locked decision 2 — partial
-# state + idempotent re-run on next deploy is preferred over
-# deploy-lockout).
-#
-# Closes the gap where new canonical seeds (e.g., scheduling-kanban-core
-# from sub-arc B-1) added to backend/scripts/ weren't being applied on
-# staging deploys. New canonical seeds in future arcs are picked up
-# automatically by naming convention.
-#
-# Production also runs the canonical seeds — they're idempotent and
-# self-guard demo content via ENVIRONMENT=production refusal inside the
-# script. Inheritance/platform-canonical seeds (focus_template_inheritance,
-# etc.) intentionally seed in production too.
-echo ""
-echo "Running canonical platform seeds (D-1)..."
-bash "$(dirname "$0")/scripts/run_canonical_seeds.sh"
-
-# Prep complete — return to the wrapper, which releases the boot lock and
-# execs uvicorn (see the guard at the top of this file).
-exit 0
+echo "=== Railway start: serving ==="
+exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}"

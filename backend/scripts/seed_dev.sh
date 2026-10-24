@@ -182,6 +182,35 @@ if [ "${demo_rc}" -ne 0 ]; then
 fi
 grep -E "^\[seed_sunnycrest_demo_catalog\]" "${LOG}" | tail -2
 
+# ⚠️ AND THE FIVE DEMO SEEDS, EXPLICITLY, FOR THE SAME REASON AS THE CATALOGUE ABOVE
+# (2026-10-24). They were declared `manual` in `seed_manifest.py` because they had no
+# ENVIRONMENT guard and `run_canonical_seeds.sh` runs on every PRODUCTION deploy —
+# `seed_quotes` and `seed_saved_orders` share a `pick_tenant` that falls back to the
+# first active company with the sales module, which on production is `sunnycrest`.
+#
+# ⚠️ A `manual` TIER IS SKIPPED EVERYWHERE, INCLUDING HERE, which is the half that is
+# easy to miss: declaring them manual removes them from local dev and CI too. Without
+# this block the change would be a quiet reduction in what a dev database contains,
+# and the first symptom would be a test failing for want of data nobody removed on
+# purpose. That is the exact shape of the 2026-09-23 incident this script exists for.
+#
+# Ordered after the canonical runner because `seed_quotes` and `seed_saved_orders`
+# need `testco` to exist, and `seed_staging` creates it in the fail-loud block above.
+echo "[seed-dev] demo seeds (local/CI only — manual tier)"
+demo_failed=""
+for mod in seed_quotes seed_saved_orders seed_nl_demo_data \
+           seed_demo_artifact_focuses seed_demo_artifact_workflows; do
+    if ! "$PY" -m "scripts.${mod}" >> "${LOG}" 2>&1; then
+        demo_failed="${demo_failed} ${mod}"
+    fi
+done
+if [ -n "${demo_failed# }" ]; then
+    echo "[seed-dev] FAILED: demo seed(s):${demo_failed}" >&2
+    tail -20 "${LOG}" >&2
+    exit 1
+fi
+echo "[seed-dev]   ok: 5 demo seeds"
+
 # EXIT NON-ZERO WHEN SEEDING DID NOT WORK. Until 2026-09-23 this script printed
 # "INCOMPLETE - read the log" and exited 0, so a broken database and a working
 # one were the same result to anything downstream: a human skimming the last

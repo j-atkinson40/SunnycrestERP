@@ -1,37 +1,47 @@
 # Railway config-as-code for the API service. Values here override the dashboard,
 # so this file is the record of WHY each one is set.
 #
-# ⚠️ WHY THIS FILE EXISTS: EVERY DEPLOY TOOK PRODUCTION OFFLINE FOR MINUTES.
-# Measured 2026-10-23 across two deploys of this service: a 502 window of AT LEAST
-# 329 seconds on one and roughly nine minutes on another. Railway was routing
-# api.getbridgeable.com at the new container the moment it started, and
-# `railway-start.sh` does not bind a port until it has run `alembic upgrade head`
-# plus every canonical seed. Until then there is nothing listening, and the old
-# container had already been removed — so the gap is a hard outage, not a slow page.
+# ⚠️ POSITIVE CONTROL FOR THIS FILE, because "Railway read it" and "Railway ignored it
+# and the dashboard happened to agree" look identical from outside. The deployment
+# object echoes both the path it read and which keys came from it:
 #
-# With `healthcheckPath` set, Railway holds traffic on the PREVIOUS deployment until
-# the new one answers, then switches. The boot stays just as slow; the downtime goes
-# to zero. That is the trade James asked for on 2026-10-23.
+#     meta.configFile              /backend/railway.toml
+#     meta.propertyFileMapping     one entry per key taken from the file
 #
-# ⚠️ THE ROOT CAUSE IS THE SEEDS IN THE BOOT PATH AND THIS DOES NOT FIX IT. It makes
-# the slowness invisible to users, which is worth having and is also exactly how a
-# nine-minute boot stops being anybody's problem until it hits a timeout. The
-# proposal for moving seeds to `preDeployCommand` is in the report; it is not applied
-# here, because James rules on seed behaviour.
+# Asserted by tests/test_deploy_config.py against the live deployment when the CLI is
+# available. Do not take a working deploy as evidence the file applied.
 
 [deploy]
-# Public, unauthenticated, and it already reports what the gate needs — the running
-# commit and whether the database answered. Nothing else is suitable: every other
-# route needs a JWT, and a healthcheck that 401s never goes healthy.
+# ── the seeds are not in the serving path ────────────────────────────────────
+#
+# ⚠️ WHY A PRE-DEPLOY AND NOT A BACKGROUND TASK. Railway fails the whole deploy when
+# this exits non-zero, which is the R-1.6.3 (seeds) and R-3.1.3 (migrations) contract
+# exactly: red dashboard, and the next deploy must repair the seed. A thread started
+# after the server came up would have made every one of those failures quiet, and
+# CLAUDE.md §11 names converting a loud failure into a quiet one as a regression in
+# its own right even when the change is otherwise an improvement.
+preDeployCommand = "bash railway-prep.sh"
+
+# ⚠️ MEASURED, NOT ROUND. Prep took 537 s and 552 s on the two deploys of 2026-10-23,
+# both while it was still the container's startup. 1800 s is ~3.3x the slower of the
+# two, which leaves room for the seed set to grow before anyone has to think about this
+# number again. Railway's ceiling for this field is 3600.
+preDeployTimeoutSeconds = 1800
+
+# ── the healthcheck ──────────────────────────────────────────────────────────
+#
+# Public, unauthenticated, and it already reports what is needed — the running commit
+# and whether the database answered. Nothing else is suitable: every other route needs
+# a JWT, and a healthcheck that 401s never goes healthy.
 healthcheckPath = "/api/health"
 
-# ⚠️ GENEROUS ON PURPOSE, AND THE NUMBER IS MEASURED RATHER THAN ROUND. Boot has been
-# observed at 330s and at ~540s. Railway FAILS a deploy whose healthcheck does not
-# pass inside this window, so a timeout near the observed boot time would convert
-# today's silent outage into a red deploy — a different failure, not a fix. 900s is
-# ~1.7x the slowest boot seen. It costs nothing on a fast boot: the check passes as
-# soon as uvicorn binds and the switch happens then.
+# ⚠️ WAS 900, AND BRINGING IT DOWN IS THE POINT OF THE CHANGE ABOVE. 900 s was ~1.7x a
+# measured nine-minute boot — correct then, and a place for a real hang to hide: a
+# server that never bound would have taken fifteen minutes to say so. With migrations
+# and seeding moved out, this container imports the app and binds a port, so the honest
+# budget is seconds. 180 s is generous for that and still fails fast.
 #
-# ⚠️ IF THE SEEDS LEAVE THE BOOT PATH, BRING THIS DOWN. A 15-minute tolerance for a
-# service that should bind in seconds is a place for a real hang to hide.
-healthcheckTimeout = 900
+# ⚠️ IF SOMETHING EVER GOES BACK INTO `railway-start.sh`, THIS NUMBER IS WRONG AGAIN.
+# That is the trade for making it tight, and it is the right way round: a slow start now
+# fails the deploy instead of quietly delaying every first request.
+healthcheckTimeout = 180
