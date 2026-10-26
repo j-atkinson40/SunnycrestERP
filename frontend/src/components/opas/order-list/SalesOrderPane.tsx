@@ -68,6 +68,8 @@ export interface SalesOrderPaneProps {
   readonly orderId: string
   /** Opens the vault in the existing Product Pane. Absent in tests that only read. */
   readonly onOpenProduct?: (variantTemplateId: string) => void
+  /** Opens the order's cemetery. Live since 2026-10-26; the row was inert before. */
+  readonly onOpenCemetery?: (cemeteryId: string, name: string) => void
   /** Opens the funeral home in the Customer Pane. Absent in tests that only read. */
   readonly onOpenCustomer?: (customerId: string, name: string) => void
   /** Called after a successful Undo confirm so the host can re-read. */
@@ -101,7 +103,7 @@ export interface SalesOrderPaneProps {
 }
 
 export function SalesOrderPane({
-  orderId, onOpenProduct, onOpenCustomer, onChanged, onLoaded, undoRequest,
+  orderId, onOpenProduct, onOpenCustomer, onOpenCemetery, onChanged, onLoaded, undoRequest,
 }: SalesOrderPaneProps) {
   const [row, setRow] = useState<SalesOrderSummary | null>(null)
   const [failed, setFailed] = useState(false)
@@ -267,7 +269,12 @@ export function SalesOrderPane({
       {/* ── "The order" — absent rows are absent ─────────────────────────── */}
       <dl data-testid="opas-sales-order-rows" style={{ margin: "12px 0 0" }}>
         {row.order.map((field) => (
-          <Row key={field.label} field={field} onOpenProduct={onOpenProduct} />
+          <Row
+            key={field.label}
+            field={field}
+            onOpenProduct={onOpenProduct}
+            onOpenCemetery={onOpenCemetery}
+          />
         ))}
       </dl>
 
@@ -419,13 +426,21 @@ function OrderSteps({ state }: { state: SalesOrderSummary["state"] }) {
 function Row({
   field,
   onOpenProduct,
+  onOpenCemetery,
 }: {
   field: OrderDetailRow
   onOpenProduct?: (variantTemplateId: string) => void
+  onOpenCemetery?: (cemeteryId: string, name: string) => void
 }) {
   const link = field.link
   const openable =
     link?.kind === "product" && link.variant_template_id !== undefined && onOpenProduct !== undefined
+  // ⚠️ THE CEMETERY LINK IS LIVE AS OF 2026-10-26 and takes the SAME branch shape as the
+  // product one. The `inert` branch below is kept because it is the pattern for the next
+  // unbuilt link, not because anything produces `inert` today — the cemetery row was the
+  // only producer and now sends `cemetery_id` instead.
+  const cemeteryOpenable =
+    link?.kind === "cemetery" && link.cemetery_id !== undefined && onOpenCemetery !== undefined
 
   return (
     <div
@@ -445,6 +460,23 @@ function Row({
             type="button"
             data-testid={`opas-sales-order-open-${field.label.toLowerCase()}`}
             onClick={() => onOpenProduct?.(link!.variant_template_id!)}
+            style={{
+              border: 0,
+              background: "transparent",
+              padding: 0,
+              font: "inherit",
+              color: LINK_COLOR,
+              cursor: "pointer",
+              textAlign: "right",
+            }}
+          >
+            {field.value}
+          </button>
+        ) : cemeteryOpenable ? (
+          <button
+            type="button"
+            data-testid={`opas-sales-order-open-${field.label.toLowerCase()}`}
+            onClick={() => onOpenCemetery?.(link!.cemetery_id!, field.value)}
             style={{
               border: 0,
               background: "transparent",

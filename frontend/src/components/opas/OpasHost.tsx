@@ -60,6 +60,7 @@ import { consumePickDigit } from "./pick-digit"
 import { resolvePhrase } from "@/services/opas-catalog-service"
 import {
   askOrderList,
+  type CemeteryDetail,
   type CustomerDetail,
   type OrderListSnapshot,
   type OrderPick,
@@ -69,6 +70,7 @@ import { ProductListPane } from "./ProductListPane"
 import { ProductPane } from "./ProductPane"
 import { OrderListPane } from "./order-list/OrderListPane"
 import { isOrderListPhrase, isOrderRefinement } from "./order-list/order-list-routing"
+import { CemeteryPane } from "./order-list/CemeteryPane"
 import { CustomerPane } from "./order-list/CustomerPane"
 import { SalesOrderPane } from "./order-list/SalesOrderPane"
 
@@ -296,6 +298,8 @@ export function OpasHost() {
   const orderFacts = useRef<Record<string, SalesOrderSummary>>({})
   /** Customers as read, by id, so the bar can answer from one without re-reading. */
   const customerFacts = useRef<Record<string, CustomerDetail>>({})
+  /** Cemeteries as read, same reason. */
+  const cemeteryFacts = useRef<Record<string, CemeteryDetail>>({})
 
   /**
    * The bar gets the cursor back. James's first rule of 2026-10-20: "After any Opas
@@ -1122,6 +1126,11 @@ export function OpasHost() {
     if (name !== undefined) say("ack", `Opened ${name}`)
   }, [opas, say])
 
+  const openCemetery = useCallback((cemeteryId: string, name?: string) => {
+    opas.openPane({ kind: "cemetery", label: "Cemetery", cemeteryId })
+    if (name !== undefined) say("ack", `Opened ${name}`)
+  }, [opas, say])
+
   /**
    * "New order" on a customer: a capture with the funeral home already filled.
    *
@@ -1174,6 +1183,29 @@ export function OpasHost() {
     // a deterministic open rather than a ~900 ms guess at an order-list question.
     if (result.kind === "open_customer" && result.customer_id) {
       openCustomer(result.customer_id, result.customer_name)
+      return
+    }
+    if (result.kind === "open_cemetery") {
+      if (result.cemetery_id !== undefined) {
+        openCemetery(result.cemetery_id, result.cemetery_name)
+      }
+      return
+    }
+    if (result.kind === "cemetery_picks") {
+      const picks = result.cemetery_picks ?? []
+      const options: ReplyOption[] = picks.map((pick, i) => ({
+        id: `cemetery-${i}`,
+        label: pick.label,
+        // ⚠️ THE TOWN IS THE DISCRIMINATOR AND IT RIDES IN `detail`. Two cemeteries of
+        // the same name are told apart by nothing else — "ask which with the choice
+        // list, town shown" (James, 2026-10-26).
+        ...(pick.detail !== undefined ? { detail: pick.detail } : {}),
+      }))
+      const act: Record<string, () => void> = {}
+      picks.forEach((pick, i) => {
+        act[`cemetery-${i}`] = () => openCemetery(pick.cemetery_id, pick.label)
+      })
+      say("question", result.hint ?? "Which one?", { options, act })
       return
     }
     if (result.kind === "customer_picks") {
@@ -1362,10 +1394,22 @@ export function OpasHost() {
           openCustomer(order.customer_id, order.funeral_home)
           return
         case "cemetery": {
-          const cemetery = rowValue("Cemetery")
-          say("miss", cemetery !== undefined
-            ? `${cemetery} \u00b7 the cemetery pane isn\u2019t built yet.`
-            : "This order has no cemetery on it.")
+          // ⚠️ THE ID COMES OFF THE ROW'S LINK, not from matching the name. This case
+          // said "the cemetery pane isn't built yet" until 2026-10-26 — honest, and
+          // unopenable while the row carried only a name. The server now puts
+          // `cemetery_id` on that link, and reading it here is what keeps the id in ONE
+          // place rather than having the client resolve a name it did not resolve.
+          const row = order.order.find((r) => r.label === "Cemetery")
+          const id = row?.link?.kind === "cemetery" ? row.link.cemetery_id : undefined
+          if (id === undefined) {
+            // A name with no link is an order whose cemetery join did not resolve, and
+            // no name at all is an order with no cemetery. Different sentences.
+            say("miss", row?.value !== undefined
+              ? `${row.value} \u00b7 no cemetery record on this order.`
+              : "This order has no cemetery on it.")
+            return
+          }
+          openCemetery(id, row?.value)
           return
         }
         case "undo-confirm":
@@ -1902,6 +1946,17 @@ export function OpasHost() {
                   // The other half of the walk: the funeral home link comes back to the
                   // Customer Pane, and `openPane` dedupes so it focuses the open one.
                   onOpenCustomer={openCustomer}
+                  // ⚠️ AND THE CEMETERY ROW, LIVE SINCE 2026-10-26. This is step 2 of
+                  // James's walk — cemetery, an order, then back to the cemetery — and
+                  // `openPane` dedupes on `cemetery:<id>`, so it focuses the St. Mary's
+                  // already open rather than putting a second one on the desk.
+                  //
+                  // ⚠️ THE MOBILE MOUNT BELOW GETS NEITHER THIS NOR `onOpenCustomer`,
+                  // which is pre-existing and left alone deliberately: on a phone the
+                  // order panes live in their own track and an info pane opened from
+                  // there would land on a desk that is not on screen. Matching the
+                  // customer link's treatment exactly rather than fixing half of it.
+                  onOpenCemetery={openCemetery}
                   // ⚠️ THE ORDER IS REPORTED UP so the bar can answer "when's the
                   // service" from it without opening anything.
                   onLoaded={(order) => { orderFacts.current[order.id] = order }}
@@ -1915,6 +1970,17 @@ export function OpasHost() {
                   onOpenOrder={openSalesOrder}
                   onNewOrder={startOrderFor}
                   onLoaded={(c) => { customerFacts.current[c.id] = c }}
+                />
+              ) : pane.kind === "cemetery" && pane.cemeteryId ? (
+                <CemeteryPane
+                  cemeteryId={pane.cemeteryId}
+                  // The walk James gave with the slice: open the cemetery, open one of
+                  // its orders, and that order's cemetery link comes back HERE — to this
+                  // same pane, because `pane-identity` gives a cemetery an identity.
+                  onOpenOrder={openSalesOrder}
+                  onOpenCustomer={openCustomer}
+                  onOpenCemetery={openCemetery}
+                  onLoaded={(c) => { cemeteryFacts.current[c.id] = c }}
                 />
               ) : pane.kind === "product" ? (
                 <ProductPane variantTemplateId={pane.variantTemplateId!} />

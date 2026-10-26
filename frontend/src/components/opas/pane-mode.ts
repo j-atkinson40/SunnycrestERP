@@ -35,6 +35,10 @@ export const PANE_MODE: Record<OpasPaneKind, PaneMode> = {
   // out. Its one action starts a capture, which opens an `entry` pane of its own; the
   // button is not a text field, so this pane is not an entry pane.
   customer: "info",
+  // Read-only in slice 1. Its one action is a LINK OUT to a maps tab, not a text
+  // field, so this is not an entry pane — and on today's data that action is absent
+  // anyway, because no cemetery has an address recorded.
+  cemetery: "info",
 }
 
 /** ⚠️ NO FALLBACK, DELIBERATELY — see the module docstring. */

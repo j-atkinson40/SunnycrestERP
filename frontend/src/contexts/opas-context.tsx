@@ -52,6 +52,7 @@ export type OpasPaneKind =
   | "order-list"
   | "sales-order"
   | "customer"
+  | "cemetery"
 
 /** One pane opened from the command line. */
 export interface OpasPane {
@@ -81,6 +82,8 @@ export interface OpasPane {
    *  about a second and went blank. A prefill is stored on the session and re-applied
    *  beneath the text on every re-read (James's ruling, 2026-10-24). */
   readonly capturePrefill?: Readonly<Record<string, string>>
+  /** For `kind: "cemetery"` — which cemetery's pane this is. */
+  readonly cemeteryId?: string
   /** For `kind: "capture"` — ⚠️ SET AFTER THE SERVER REPLIES, so a tucked and reopened
    *  pane RE-READS the session instead of starting a second one. This is what makes
    *  "survives tuck" true rather than asserted: the pane holds no order state itself. */

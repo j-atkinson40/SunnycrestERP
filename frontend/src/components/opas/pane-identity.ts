@@ -48,6 +48,11 @@ export const PANE_IDENTITY: Record<OpasPaneKind, PaneIdentity> = {
   // funeral home link on an order, and "the customer" with an order in front — so
   // walking order -> customer -> order -> customer is the ordinary path, not a corner.
   customer: (p) => (p.customerId !== undefined ? `customer:${p.customerId}` : null),
+  // ⚠️ AND A CEMETERY NEEDS IT FOR A FOURTH REASON, which is the walk James gave with
+  // the slice: cemetery -> order -> back to the cemetery via the order's own link. That
+  // last step MUST focus the pane already open, or the desk ends up holding two
+  // St. Mary's.
+  cemetery: (p) => (p.cemeteryId !== undefined ? `cemetery:${p.cemeteryId}` : null),
 }
 
 /** ⚠️ NO FALLBACK, DELIBERATELY — see the module docstring. */

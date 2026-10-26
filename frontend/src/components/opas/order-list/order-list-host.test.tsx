@@ -96,7 +96,9 @@ beforeEach(() => {
       {
         label: "Cemetery",
         value: "St. Mary's Cemetery, Skaneateles",
-        link: { kind: "cemetery", inert: true, why: "The cemetery pane isn't built yet." },
+        // ⚠️ WHAT THE SERVER ACTUALLY SENDS SINCE 2026-10-26. This read `inert: true,
+        // why: "The cemetery pane isn't built yet."` — a shape no producer emits now.
+        link: { kind: "cemetery", cemetery_id: "m1" },
       },
       { label: "Service", value: "Fri Oct 23 · 11:00 AM church" },
       { label: "Total", value: "$1,705" },

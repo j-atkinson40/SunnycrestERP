@@ -15,7 +15,7 @@ from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session
 
 from app.models.company import Company
-from app.services.order_list import customer
+from app.services.order_list import cemetery, customer
 from app.services.order_list.question import (
     TRY_HINT,
     Interpretation,
@@ -142,6 +142,8 @@ def load_facts(
                so.status, so.total, so.delivered_at, so.completed_at,
                so.delivered_by_driver_name,
                c.name AS funeral_home,
+               so.cemetery_id AS cemetery_id,
+               so.customer_id AS customer_id,
                cem.name AS cemetery_name,
                cem.city AS cemetery_city,
                (
@@ -266,6 +268,8 @@ def load_facts(
             number=row["number"],
             deceased_name=row["deceased_name"],
             funeral_home=row["funeral_home"] or "",
+            cemetery_id=row["cemetery_id"],
+            customer_id=row["customer_id"],
             cemetery=row["cemetery_name"],
             cemetery_city=row["cemetery_city"],
             vault=row["vault_name"],
@@ -593,6 +597,30 @@ def ask(
         # changes meaning. "hopkins order" is still `open_order`; "hopkins orders this
         # month" is still a list.
         if interpreted.kind == "unrecognized":
+            # ⚠️ THE CEMETERY RULE RUNS FIRST, AND THAT CHANGES A SHIPPED BEHAVIOUR. On
+            # sunnycrest "st marys" matches a CEMETERY named "St. Mary's Cemetery" AND a
+            # CUSTOMER account of exactly the same name — measured, both resolvers return
+            # one hit each. Until today that phrase opened the Customer Pane. It now
+            # opens the Cemetery Pane.
+            #
+            # WHY THAT WAY ROUND. The 2026-10-26 dispatch makes the bar a cemetery
+            # entrance and its walk opens with "st marys. The pane opens"; the account
+            # stays reachable from an order's funeral-home link, from "the customer", and
+            # from any name that is customer-only. The reverse order would make the
+            # dispatch's first step fail.
+            #
+            # ⚠️ THE REVERSAL IS THIS ONE BLOCK MOVING BELOW THE CUSTOMER BLOCK. Written
+            # down because the choice is a judgement, not a derivation, and the next
+            # person should be able to undo it in one edit rather than re-deriving it.
+            #
+            # ⚠️ AND THE PLATFORM CANNOT YET TELL THESE ARE ONE SUBJECT. `cemeteries`
+            # has a `customer_id` for exactly this — the billing account behind the
+            # operational record — and it is NULL on all four cemetery rows. Linked, this
+            # would stop being a collision and become one subject with two faces. Worth
+            # James's attention; it is data, not code.
+            opened = cemetery.open_from_phrase(db, company_id, phrase)
+            if opened is not None:
+                return opened
             opened = customer.open_from_phrase(db, company_id, phrase)
             if opened is not None:
                 return opened

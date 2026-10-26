@@ -139,6 +139,18 @@ class OrderFacts:
     number: str
     deceased_name: str | None
     funeral_home: str
+    #: ⚠️ THE ID, SO THE SALES ORDER PANE'S CEMETERY LINK CAN STOP BEING INERT. The row
+    #: carried the NAME and the TOWN and no way back to the record, which is why that
+    #: link shipped with `inert: True` and a reason string. Absent when the order names
+    #: no cemetery — `_order_extras` LEFT JOINs, so this is optional rather than
+    #: guaranteed, and the pane renders plain text in that case rather than a button
+    #: that cannot resolve.
+    cemetery_id: str | None = None
+    #: ⚠️ THE FUNERAL HOME'S ACCOUNT ID, for the same reason as `cemetery_id` above: the
+    #: Cemetery Pane's rows name the funeral home, and naming it without a way back to
+    #: the record is how the cemetery link spent two weeks inert. Absent when the order
+    #: has no customer row.
+    customer_id: str | None = None
     cemetery: str | None = None
     cemetery_city: str | None = None
     vault: str | None = None

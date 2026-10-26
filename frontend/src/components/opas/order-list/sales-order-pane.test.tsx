@@ -48,7 +48,7 @@ function confirmed(over: Record<string, unknown> = {}) {
       {
         label: "Cemetery",
         value: "St. Mary's Cemetery, Skaneateles",
-        link: { kind: "cemetery", inert: true, why: "The cemetery pane isn't built yet." },
+        link: { kind: "cemetery", cemetery_id: "m1" },
       },
       { label: "Service", value: "Fri Oct 23 · 11:00 AM church" },
       { label: "Equipment", value: "Full Equipment" },
@@ -202,14 +202,37 @@ describe('"the order"', () => {
     )
   })
 
-  it("⚠️ THE CEMETERY IS INERT AND SAYS WHY — no dead click", async () => {
-    await mount()
-    // not a button, not a link
+  it("the cemetery opens its pane", async () => {
+    // ⚠️ SUPERSEDES "THE CEMETERY IS INERT AND SAYS WHY — no dead click" (2026-10-26).
+    // That test asserted a SPAN with `title="The cemetery pane isn't built yet."` and
+    // was still GREEN after the link went live, because its own fixture supplied
+    // `inert: true` — a shape the server stopped producing. A fixture pinned to the old
+    // implementation tests a case nobody will ever see, which is why it was rewritten
+    // rather than deleted: the row is still the thing under test.
+    const onOpenCemetery = vi.fn()
+    await mount({ onOpenCemetery })
+    expect(screen.queryByTestId("opas-sales-order-inert-cemetery")).toBeNull()
+    const open = screen.getByTestId("opas-sales-order-open-cemetery")
+    expect(open.tagName).toBe("BUTTON")
+    expect(open.textContent).toBe("St. Mary's Cemetery, Skaneateles")
+    fireEvent.click(open)
+    expect(onOpenCemetery).toHaveBeenCalledWith("m1", "St. Mary's Cemetery, Skaneateles")
+  })
+
+  it("a cemetery with no id stays plain text", async () => {
+    // ⚠️ THE BRANCH THE LEFT JOIN MAKES REACHABLE. `_order_extras` LEFT JOINs the
+    // cemetery, so an order can carry a NAME the join did not resolve to a row. A
+    // button there would 404; the dispatch's rule is plain text instead.
+    //
+    // ⚠️ THE FIXTURE IS NARROWED HERE, NOT THE PROPS. `mount` spreads into the
+    // component; the link lives in the SERVER's payload, so this swaps the mock.
+    getSalesOrderSummary.mockResolvedValue(confirmed({
+      order: [{ label: "Cemetery", value: "St. Mary's Cemetery, Skaneateles" }],
+    }))
+    await mount({ onOpenCemetery: vi.fn() })
     expect(screen.queryByTestId("opas-sales-order-open-cemetery")).toBeNull()
-    const inert = screen.getByTestId("opas-sales-order-inert-cemetery")
-    expect(inert.tagName).toBe("SPAN")
-    expect(inert.getAttribute("title")).toBe("The cemetery pane isn't built yet.")
-    expect(inert.textContent).toBe("St. Mary's Cemetery, Skaneateles")
+    expect(screen.queryByTestId("opas-sales-order-inert-cemetery")).toBeNull()
+    expect(screen.getByText("St. Mary's Cemetery, Skaneateles")).toBeTruthy()
   })
 })
 

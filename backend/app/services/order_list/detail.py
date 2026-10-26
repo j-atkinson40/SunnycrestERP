@@ -514,13 +514,19 @@ def order_detail(
         _row("Personalization", _personalization_value(personalization)),
         _row(
             "Cemetery", cemetery or None,
-            # ⚠️ INERT, AND IT SAYS SO RATHER THAN CLICKING NOWHERE. "link, inert until
-            # the Cemetery Pane exists: say so in a tooltip, no dead click" (dispatch).
+            # ⚠️ LIVE AS OF 2026-10-26, AND IT NEEDED AN ID RATHER THAN A DECISION. This
+            # shipped as `{"kind": "cemetery", "inert": True, "why": "The cemetery pane
+            # isn't built yet."}` — honest, and unbuildable while `OrderFacts` carried
+            # the cemetery's NAME and TOWN but no way back to the row. `facts.cemetery_id`
+            # is what retired the tooltip.
+            #
+            # ⚠️ AND IT IS STILL CONDITIONAL ON THE ID, not on the name. `_order_extras`
+            # LEFT JOINs, so an order can name a cemetery the join did not resolve; the
+            # pane then renders plain text rather than a button that 404s.
             **({"link": {
                 "kind": "cemetery",
-                "inert": True,
-                "why": "The cemetery pane isn't built yet.",
-            }} if cemetery else {}),
+                "cemetery_id": facts.cemetery_id,
+            }} if cemetery and facts.cemetery_id else {}),
         ),
         _row(
             "Service",

@@ -651,6 +651,16 @@ tests/test_customer_pane_reads.py
 # different home named in the text. This file runs the whole cycle (start with a prefill,
 # re-extract from several bar texts, fill the rest around it) against a database.
 tests/test_capture_prefill.py
+# The Cemetery Pane, slice 1 (James, 2026-10-26). The pure rules: the town-only meta
+# line, Directions absent without an address, a FALSE equipment flag saying nothing (the
+# four columns are NOT NULL DEFAULT FALSE, so false is indistinguishable from unset), and
+# the counts that can be counted.
+tests/test_cemetery_pane.py
+# The same slice against a database: name/town resolution including the dispatch's own
+# "st mary's skaneateles" (which resolved to NOTHING before this slice), the shared-name
+# choice list with the town shown, tenant isolation, and the ask door trying the cemetery
+# rule BEFORE the customer rule — which changed a shipped behaviour for "st marys".
+tests/test_cemetery_pane_reads.py
 # A migration may not drop or rename a column or table in upgrade() without a reviewed
 # DESTRUCTIVE_REVIEWED marker (James, 2026-10-24). Migrations now run while the PREVIOUS
 # deploy is still serving — 396-552 s measured — so a dropped column breaks production

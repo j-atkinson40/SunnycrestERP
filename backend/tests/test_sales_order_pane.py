@@ -386,6 +386,49 @@ def test_an_immediate_customer_reads_as_after_delivery_and_says_sending_is_off(d
 
 
 # ───────────────────────────────────────────────────────────────────────────
+# the cemetery link
+# ───────────────────────────────────────────────────────────────────────────
+
+def test_the_cemetery_link_carries_the_id_to_open_it_with(db):
+    """⚠️ THE SERVER SIDE OF THIS LINK WAS NEVER PINNED AT ALL, which is how it stayed
+    inert without anything noticing.
+
+    It shipped 2026-10-19 as `{"kind": "cemetery", "inert": True, "why": "The cemetery
+    pane isn't built yet."}`. The FRONTEND had a test for that shape; the backend had
+    none, so the only assertion in the tree was one whose own fixture supplied the
+    `inert` flag — green, and about a payload the server might have stopped sending at
+    any time.
+
+    ⚠️ AND THE `inert` BRANCH IS NOW UNREACHABLE FROM HERE. `OrderRowLink.inert` still
+    exists in the contract as the pattern for the NEXT unbuilt link; nothing produces it
+    as of 2026-10-26, and a reader should know that rather than infer a live state.
+    """
+    company = _company(db)
+    order = _order(db, company, number="SO-2026-0101")
+    rows = {row["label"]: row for row in _detail(db, company, order)["order"]}
+    link = rows["Cemetery"]["link"]
+    assert link["kind"] == "cemetery"
+    assert link["cemetery_id"], "the id is what retired the tooltip"
+    assert "inert" not in link and "why" not in link
+    # The id is the real cemetery's, not the order's or anything else's.
+    cemetery = db.query(Cemetery).filter(
+        Cemetery.company_id == company.id,
+        Cemetery.name == "St. Mary's Cemetery",
+    ).one()
+    assert link["cemetery_id"] == cemetery.id
+
+
+def test_an_order_with_no_cemetery_has_no_link_and_no_row(db):
+    """The control. `_order_extras` LEFT JOINs, so this branch is reachable, and a link
+    with no id would render a button that 404s."""
+    company = _company(db)
+    order = _order(db, company, number="SO-2026-0102", cemetery_name=None,
+                   cemetery_city=None)
+    rows = {row["label"]: row for row in _detail(db, company, order)["order"]}
+    assert "Cemetery" not in rows, "an absent row rather than an empty one"
+
+
+# ───────────────────────────────────────────────────────────────────────────
 # the vault link
 # ───────────────────────────────────────────────────────────────────────────
 

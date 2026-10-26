@@ -21,6 +21,7 @@ const EVERY_KIND: readonly OpasPaneKind[] = [
   "order-list",
   "sales-order",
   "customer",
+  "cemetery",
 ]
 
 function pane(kind: OpasPaneKind, extra: Partial<OpasPane> = {}): Omit<OpasPane, "id"> {
@@ -42,10 +43,12 @@ describe("every pane kind is classified", () => {
     //
     // ⚠️ AND IT IS THE "count travelling separately from the list" SHAPE CLAUDE.md
     // names, so it will go stale again: bumping it is part of adding a kind. 6 as of
-    // 2026-10-24, when `customer` landed. There is no duplicate-free check elsewhere,
-    // so it is here — a list with a repeat would satisfy both this and the map check.
+    // 2026-10-24 when `customer` landed; **7 as of 2026-10-26** when `cemetery` did —
+    // and it went red on the way, which is the guard doing its job rather than a
+    // nuisance. There is no duplicate-free check elsewhere, so it is here — a list with
+    // a repeat would satisfy both this and the map check.
     expect(new Set(widened).size).toBe(widened.length)
-    expect(widened).toHaveLength(6)
+    expect(widened).toHaveLength(7)
   })
 })
 
@@ -70,6 +73,11 @@ describe("what has an identity and what does not", () => {
     // order -> customer is the ordinary walk. Without this row it leaves a stack.
     expect(paneIdentity(pane("customer", { customerId: "c1" }))).toBe("customer:c1")
     expect(paneIdentity(pane("customer"))).toBeNull()
+    // ⚠️ AND THE CEMETERY, for the walk James gave with the 2026-10-26 slice: cemetery
+    // -> an order -> back to the cemetery through the order's own link. Without this row
+    // that last step leaves two St. Mary's on the desk.
+    expect(paneIdentity(pane("cemetery", { cemeteryId: "m1" }))).toBe("cemetery:m1")
+    expect(paneIdentity(pane("cemetery"))).toBeNull()
   })
 
   it("the order list is a singleton and the catalog is not", () => {

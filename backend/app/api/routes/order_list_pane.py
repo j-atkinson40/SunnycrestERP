@@ -16,7 +16,7 @@ from app.api.deps import get_current_user, get_db
 from app.models.company import Company
 from app.models.role import Role
 from app.models.user import User
-from app.services.order_list import customer, decision_log
+from app.services.order_list import cemetery, customer, decision_log
 from app.services.order_list.proposal import propose
 from app.services.order_list.question import OrderQuestion
 from app.services.order_list.service import ask, sales_order_summary, today_for
@@ -124,6 +124,32 @@ def get_customer(
     )
     if detail is None:
         raise HTTPException(status_code=404, detail="Unknown customer")
+    return detail
+
+
+@router.get("/cemeteries/{cemetery_id}")
+def get_cemetery(
+    cemetery_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """The Cemetery Pane. 404 when it is not this caller's cemetery.
+
+    ⚠️ NO `response_model`, for the reason the other reads give: absent facts are
+    omitted, and a schema would put them back as nulls. It matters more here than
+    anywhere — on today's data every optional field is empty, so a response model would
+    turn four honest records into a wall of `null`.
+
+    ⚠️ AND A PURE READ, LOGGING NOTHING. The decision log records BAR interpretations;
+    this endpoint is reached by clicking a row or a link. The bar's own cemetery open is
+    logged in `ask`, where the phrase exists.
+    """
+    company = db.get(Company, current_user.company_id)
+    detail = cemetery.cemetery_detail(
+        db, current_user.company_id, cemetery_id, today_for(company),
+    )
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Unknown cemetery")
     return detail
 
 

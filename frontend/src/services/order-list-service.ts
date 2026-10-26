@@ -101,6 +101,14 @@ export interface OrderListSnapshot {
     | "open_customer"
     /** Two or more customers could be meant. Carries `picks` with `customer_id`. */
     | "customer_picks"
+    /** A bare cemetery name or prefix ("st marys"). Carries `cemetery_id`/`cemetery_name`.
+     *
+     *  ⚠️ TRIED BEFORE `open_customer` ON THE SERVER, which changed a shipped behaviour:
+     *  "st marys" matches a CEMETERY and a CUSTOMER of the same name on sunnycrest and
+     *  used to open the account. See `service.ask`'s comment for why and how to reverse. */
+    | "open_cemetery"
+    /** Two or more cemeteries could be meant. Carries `cemetery_picks` with the town. */
+    | "cemetery_picks"
   layout?: "grouped" | "flat" | "picks"
   title?: string
   question?: OrderQuestion
@@ -125,19 +133,39 @@ export interface OrderListSnapshot {
    *  make every consumer of `picks` test which kind it was holding, and the one that
    *  forgot would send a customer id into `askOrderList` as a question. */
   customer_picks?: { label: string; customer_id: string }[]
+  /** For `kind: "open_cemetery"`. */
+  cemetery_id?: string
+  cemetery_name?: string
+  /** For `kind: "cemetery_picks"` — its own key, the same argument as `customer_picks`.
+   *
+   *  ⚠️ `detail` IS THE TOWN AND IS THE WHOLE POINT. "ask which with the choice list,
+   *  town shown" (James, 2026-10-26): two cemeteries of the same name differ only by
+   *  town, so options without it would be a question nobody can answer. */
+  cemetery_picks?: { label: string; cemetery_id: string; detail?: string }[]
 }
 
 /** Where a kv row's value can take you. Absent means the value is plain text. */
 export interface OrderRowLink {
-  /** `"product"` opens the Product Pane; `"cemetery"` is inert in slice 1. */
+  /** `"product"` opens the Product Pane; `"cemetery"` opens the Cemetery Pane. */
   kind: "product" | "cemetery"
   /** Present only for `kind: "product"`, and only when the vault name resolved to
    *  exactly ONE catalog variant. `products.variant_template_id` is NULL on every
    *  product platform-wide, so the server resolves the line's NAME instead — an
    *  ambiguous name yields no link rather than an arbitrary one. */
   variant_template_id?: string
+  /** Present only for `kind: "cemetery"`, and only when the order's cemetery join
+   *  resolved. Absent means the row renders as plain text.
+   *
+   *  ⚠️ THIS IS WHAT RETIRED `inert`. The link shipped 2026-10-19 as `{kind:
+   *  "cemetery", inert: true, why: "The cemetery pane isn't built yet."}` — honest, and
+   *  unbuildable while `OrderFacts` carried the cemetery's name and town but no id. */
+  cemetery_id?: string
   /** `true` for a link that is deliberately not wired yet. The pane renders the
-   *  reason rather than a dead click. */
+   *  reason rather than a dead click.
+   *
+   *  ⚠️ NO PRODUCER AS OF 2026-10-26 — the cemetery link was the only one and it is
+   *  live now. Kept because the NEXT inert link wants it and the pane still reads it;
+   *  a reader should know it is a facility, not a live state. */
   inert?: boolean
   why?: string
 }
@@ -332,5 +360,80 @@ export interface CustomerDetail {
 
 export async function getCustomerDetail(customerId: string): Promise<CustomerDetail> {
   const r = await apiClient.get<CustomerDetail>(`/order-list/customers/${customerId}`)
+  return r.data
+}
+
+/** One order row on the Cemetery Pane. */
+export interface CemeteryOrderRow {
+  readonly id: string
+  readonly number: string
+  /** The prototype's `.mono` — the last four of the number. */
+  readonly short: string
+  readonly deceased_name: string
+  /** ⚠️ THE FUNERAL HOME, NOT THE CEMETERY — the mirror of `CustomerOrderRow`. We are
+   *  inside the cemetery's pane, so its own name on every row is the blank-label problem
+   *  in a different key; the funeral home is what the office cannot see from here. */
+  readonly funeral_home?: string
+  /** Present only when the order has a customer row, so the name can be a link. */
+  readonly customer_id?: string
+  /** From the order's REAL status — Draft / Cancelled / Confirmed / Delivered / Invoiced. */
+  readonly status: string
+  readonly date_in_week?: boolean
+  readonly date_primary?: string
+  readonly date_head?: string
+  readonly date_day?: string
+  readonly time_label?: string
+}
+
+/** The other cemetery in this tenant with the same name. */
+export interface CemeterySameName {
+  readonly cemetery_id: string
+  readonly name: string
+  readonly town?: string
+  /** "not the St. Mary's in Auburn" — composed by the server. */
+  readonly line: string
+}
+
+/**
+ * The Cemetery Pane.
+ *
+ * ⚠️ OPTIONAL MEANS THE RECORD DOES NOT HOLD IT. Measured on production 2026-10-26:
+ * there are FOUR cemetery rows platform-wide, and `address`, `phone`, `contact_name`,
+ * `access_notes`, `equipment_note`, `county`, `zip_code` and lat/long are NULL on every
+ * one. So `action` and `essentials` are absent and `essentials_empty` carries the
+ * sentence instead. That is the dispatch's "leave the rest out rather than faking it"
+ * working, not a gap in this type.
+ */
+export interface CemeteryDetail {
+  readonly id: string
+  readonly name: string
+  /** "Skaneateles, NY". Absent only if the record holds no town. */
+  readonly meta?: string
+  /** Directions — present ONLY when an address is recorded, which today is never. */
+  readonly action?: {
+    readonly kind: "directions"
+    readonly label: string
+    readonly url: string
+  }
+  /** The recorded facts about getting in. Absent when nothing is recorded. */
+  readonly essentials?: readonly { readonly label: string; readonly value: string }[]
+  /** "Nothing recorded about getting in yet" — present INSTEAD of `essentials`. */
+  readonly essentials_empty?: string
+  readonly same_name?: CemeterySameName
+  /** Non-cancelled orders with a service date today or later. */
+  readonly coming: readonly CemeteryOrderRow[]
+  readonly overdue: readonly CemeteryOrderRow[]
+  /** The order list's own fourth-group heading, so one wording serves both. */
+  readonly overdue_label: string
+  readonly knows: {
+    readonly deliveries_this_year: number
+    readonly year: number
+    readonly next_delivery?: { readonly order_id: string; readonly line: string }
+    readonly same_name?: CemeterySameName
+  }
+}
+
+export async function getCemeteryDetail(cemeteryId: string): Promise<CemeteryDetail> {
+  const r = await apiClient.get<CemeteryDetail>(`/order-list/cemeteries/${cemeteryId}`)
   return r.data
 }

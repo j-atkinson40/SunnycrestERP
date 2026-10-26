@@ -24,6 +24,7 @@ const EVERY_KIND: readonly OpasPaneKind[] = [
   "order-list",
   "sales-order",
   "customer",
+  "cemetery",
 ]
 
 describe("every pane kind is classified", () => {
