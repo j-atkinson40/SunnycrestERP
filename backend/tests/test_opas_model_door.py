@@ -13,6 +13,7 @@ the subtraction cannot be undone by a later edit adding a field "for context".
 from __future__ import annotations
 
 import os
+import re
 import uuid
 from datetime import date, datetime, time, timezone
 from decimal import Decimal
@@ -728,3 +729,150 @@ class TestTheEngineRefusesAQuestionThatSelectsNOTHING:
             ],
         }
         assert accept_model_payload(mixed, DOOR_TODAY) is None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The door may not offer an action that does not exist
+#
+# James's walk, 2026-10-26, SO-2026-0005. After approving he typed "change monticello
+# to continental" and the door offered **"Change a Monticello vault order to
+# Continental"** as choice 1. The decision log records it twice — 16:21:48 and
+# 16:22:12, both `model/asked` — and no edit action exists anywhere in Opas. The
+# pick's PAYLOAD was an ordinary order-list question, so choosing it would have run a
+# list; the label described something the thing it was attached to could not do.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_THE_AUDIT_the_doors_shapes_are_reads_and_nothing_else():
+    """⚠️ THE AUDIT JAMES ASKED FOR, AS A TEST, so the answer cannot go stale.
+
+    "Audit the request shapes the door can return against the actions that exist; add a
+    test per unimplemented shape." The audit's finding is that there are **two** shapes
+    and both are reads — `kind="question"` and `kind="picks"` — so there is no write
+    shape for a model to reach for, and the per-shape tests reduce to this one plus the
+    label tests below.
+
+    ⚠️ IT IS THE LIST THAT MATTERS, NOT THE COUNT. A later edit that teaches the door to
+    return `kind="open_order"` — or anything that ACTS — turns this red, and the person
+    adding it has to decide deliberately whether the action exists. That is the whole
+    point: the hole was not a missing check, it was nobody having written down what the
+    door is allowed to mean.
+    """
+    import inspect
+
+    from app.services.order_list import question as Q
+
+    source = inspect.getsource(Q.accept_model_payload)
+    kinds = set(re.findall(r'Interpretation\(kind="([a-z_]+)"', source))
+    assert kinds == {"question", "picks"}, (
+        f"the door can now return {sorted(kinds)}; every one of those must be an action "
+        "that exists, and an acting shape needs a refusal or an implementation"
+    )
+
+
+def test_a_pick_LABEL_from_the_model_is_discarded_and_derived_instead():
+    """⚠️ THE EXACT PAYLOAD FROM THE WALK, with its lying label.
+
+    The label is composed from the question by `title_for`, so a pick can only ever
+    describe the list it will show. Removing the route rather than policing the words —
+    a verb stoplist would have been the recognition version and would have been wrong
+    about "Changeling Cemetery" soon enough.
+    """
+    from app.services.order_list.question import accept_model_payload
+
+    got = accept_model_payload(
+        {
+            "unsure": True,
+            "picks": [
+                {
+                    "label": "Change a Monticello vault order to Continental",
+                    "question": {"vault": "Monticello"},
+                },
+                {
+                    "label": "Show me all Continental Burial Vault orders",
+                    "question": {"vault": "Continental"},
+                },
+            ],
+        },
+        DOOR_TODAY,
+    )
+    assert got is not None and got.kind == "picks"
+    labels = [p.label for p in got.picks]
+    # ⚠️ NOT THE MODEL'S WORDS. The assertion that matters is the ABSENCE of the verb,
+    # because that is the promise the engine could not keep.
+    assert "Change a Monticello vault order to Continental" not in labels
+    for label in labels:
+        assert "change" not in label.lower(), label
+    # and what it says instead is derived from the question it carries
+    assert labels == ["Monticellos", "Continentals"], labels
+
+
+def test_two_picks_that_would_READ_THE_SAME_are_refused():
+    """⚠️ THE COST OF DERIVING LABELS, PAID HERE RATHER THAN ON SCREEN. Two questions
+    differing only in a field `title_for` does not say would both render "Orders", and
+    "Which one? 1. Orders 2. Orders" is not a choice. The rules' own answer stands.
+    """
+    from app.services.order_list.question import accept_model_payload
+
+    assert accept_model_payload(
+        {
+            "unsure": True,
+            "picks": [
+                {"label": "Hopkins, invoiced", "question": {"funeral_home": "hopkins",
+                                                            "invoiced": True}},
+                {"label": "Hopkins, also invoiced", "question": {"funeral_home": "hopkins",
+                                                                 "invoiced": True}},
+            ],
+        },
+        DOOR_TODAY,
+    ) is None
+
+
+def test_an_instruction_to_EDIT_is_refused_by_name():
+    """⚠️ AND IT NAMES THE WAY ROUND. A refusal with no route is a dead end, and Undo
+    confirm is the only way an order's details change today — which the office has no way
+    to learn from "I can't do that"."""
+    from app.services.order_list.question import CANNOT_EDIT, asks_to_edit
+
+    for phrase in (
+        "change monticello to continental",
+        "change the vault to continental",
+        "set the service time to 11am",
+        "update SO-2026-0005 to continental",
+        "swap the vault to venetian",
+        "make it a continental",
+    ):
+        assert asks_to_edit(phrase) is True, phrase
+    assert "Undo confirm" in CANNOT_EDIT
+    assert "can" in CANNOT_EDIT and "yet" in CANNOT_EDIT
+
+
+def test_a_QUESTION_about_orders_is_not_mistaken_for_an_instruction():
+    """⚠️ THE CONTROL, AND IT IS WHY THE RULE NEEDS A TARGET. `change` is also an order
+    FLAG ("needs change"), and `to` appears in every phrase about a destination. A verb
+    alone, or a `to` alone, would have swallowed all of these.
+    """
+    from app.services.order_list.question import asks_to_edit
+
+    for phrase in (
+        # ⚠️ THESE FOUR CARRY A BARE CHANGE VERB AND NO TARGET, and they are the ones
+        # that actually exercise the rule. A break test removing the `to` requirement
+        # turned NOTHING red against my first control set — because "changes" and
+        # "changed" do not match `\bchange\b` at all, so the set tested the word forms
+        # rather than the target. These do.
+        "change orders",
+        "the change orders",
+        "orders set for friday",
+        "which orders need change",
+        # inflected forms: still not instructions, and now not the only evidence
+        "orders with changes",
+        "what changed this week",
+        # `to` without a verb: a destination, which every cemetery phrase has
+        "anything going to st marys",
+        "orders going out to st marys this week",
+        "hopkins orders",
+        "going out friday",
+        "how much is the monticello",
+        "st marys",
+    ):
+        assert asks_to_edit(phrase) is False, phrase

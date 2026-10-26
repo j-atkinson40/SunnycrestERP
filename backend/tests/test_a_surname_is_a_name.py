@@ -21,7 +21,10 @@ import pytest
 from sqlalchemy import text
 
 from app.database import SessionLocal
-from app.services.capture.typed_extraction import extract_text
+from app.services.capture.typed_extraction import (
+    _trim_absorbed_word,
+    extract_text,
+)
 
 
 def _refuse_a_non_local_database() -> None:
@@ -491,6 +494,66 @@ def test_JAMES_SENTENCE_from_the_walk(db, james_tenant):
     assert ex.values.get("funeral_home") == "Hopkins Funeral Home"
     assert ex.values.get("vault") == "Monticello Burial Vault"
     assert ex.values.get("grave_location") == "Section 4"
+
+
+def test_JAMES_SENTENCE_2026_10_26_the_name_came_out_Smith_It(db, james_tenant):
+    """His exact words, and the order they made said the deceased was **"Smith It"**.
+
+    SO-2026-0005 on sunnycrest, read back from `capture_sessions.full_text`:
+
+        order for hopkins monticello for smith friday at 1 church in st. marys
+        last name smith it is 1 oclock church service 1pm friday
+
+    ⚠️ "last name smith" IS THE MARKER AND THE SPAN TOOK THE NEXT WORD TOO. The
+    two-word form is greedy by design — "decedent mary smith" needs it — and `it`
+    came from "it is 1 oclock", a clause that had nothing to do with the name.
+
+    ⚠️ AND THE ONE-WORD FIX WAS REFUSED BY RULING: "fix it in the name rules (not a
+    one-word stoplist)". Measured before fixing, the whole class absorbed — `smith is`,
+    `smith he`, `smith was`, `smith has`, `smith will`, `smith that` — so `it` was the
+    symptom. English function words are a CLOSED class, which is what makes enumerating
+    them admissible where "common words" would not be: the set is complete, while
+    surnames are open and gain members constantly.
+    """
+    ex = extract_text(
+        db,
+        tenant_id=james_tenant,
+        text=(
+            "order for hopkins monticello for smith friday at 1 church in st. marys "
+            "last name smith it is 1 oclock church service 1pm friday"
+        ),
+    )
+    assert ex.values.get("deceased_name") == "smith", ex.values
+    # and nothing else was disturbed by the fix
+    assert ex.values.get("funeral_home") == "Hopkins Funeral Home"
+    assert ex.values.get("vault") == "Monticello Burial Vault"
+    assert ex.values.get("cemetery") == "St. Mary's Cemetery"
+
+
+@pytest.mark.parametrize("tail", [
+    "it", "is", "he", "she", "they", "that", "was", "has", "will", "from", "there",
+])
+def test_a_name_span_never_takes_a_FUNCTION_WORD(tail):
+    """⚠️ THE CLASS, NOT THE ONE WORD THAT SHOWED UP. Every one of these came back as a
+    two-word name before 2026-10-26; `it` is simply the one James saw.
+
+    ⚠️ A PURE TEST, SO IT RUNS WITHOUT A DATABASE. The rule is about English, not about
+    a tenant's records — which is the whole argument for admitting the set.
+    """
+    assert _trim_absorbed_word(f"smith {tail}") == "smith"
+
+
+@pytest.mark.parametrize("name", [
+    "mary smith", "van dyke", "de la cruz", "o'brien kelly", "smith jones",
+    # ⚠️ THE TRADE, STATED AS A TEST. "Will" and "May" are real given names AND
+    # function words, and a first-name-then-surname span survives because the trim
+    # only ever looks at the LAST word. The reversed form ("smith will") does lose
+    # one, which is the same trade the weekday list already makes — somebody is named
+    # Friday too. Asserted so the next reader sees which direction is safe.
+    "will smith", "may smith", "june carter",
+])
+def test_a_real_two_word_name_still_survives(name):
+    assert _trim_absorbed_word(name) == name
 
 
 def test_the_funeral_home_span_does_not_swallow_a_trailing_the(db, tenant, the_records_exist):

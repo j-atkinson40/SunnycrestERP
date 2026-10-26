@@ -17,11 +17,13 @@ from sqlalchemy.orm import Session
 from app.models.company import Company
 from app.services.order_list import cemetery, customer, rulebook
 from app.services.order_list.question import (
+    CANNOT_EDIT,
     TRY_HINT,
     Interpretation,
     OrderQuestion,
     Pick,
     _going,
+    asks_to_edit,
     _nice,
     default_question,
     interpret,
@@ -596,6 +598,23 @@ def ask(
         # ⚠️ IT IS ONLY TRIED WHEN THE RULES DECLINED, so nothing that already works
         # changes meaning. "hopkins order" is still `open_order`; "hopkins orders this
         # month" is still a list.
+        # ⚠️ AN INSTRUCTION TO EDIT IS REFUSED BY NAME, BEFORE THE MODEL. James's walk
+        # of 2026-10-26: he typed "change monticello to continental" after approving and
+        # the door offered "Change a Monticello vault order to Continental" — a choice no
+        # action in Opas can carry out. The decision log has it twice, 16:21:48 and
+        # 16:22:12, both `model/asked`.
+        #
+        # ⚠️ TWO FIXES, AND THIS IS THE SECOND HALF. `accept_model_payload` now composes
+        # pick labels from the question, so the door can no longer promise anything —
+        # but with only that, this phrase would have come back as two honest list
+        # options, which still does not answer what he asked. "Opas says so honestly in
+        # the reply line" (James), so it says so.
+        #
+        # ⚠️ AND IT RUNS BEFORE THE MODEL rather than after it, which is the standing
+        # rules-first contract and saves two ~900 ms round trips to be told something
+        # the engine already knew.
+        if interpreted.kind == "unrecognized" and asks_to_edit(phrase):
+            return {"kind": "unrecognized", "hint": CANNOT_EDIT}
         if interpreted.kind == "unrecognized" and rulebook.opens_rulebook(phrase):
             # ⚠️ BEFORE THE NAME RULES, AND AN EXACT PHRASE RATHER THAN A STEM. "the
             # rulebook" and "rules" are the dispatch's own words; a stem rule would

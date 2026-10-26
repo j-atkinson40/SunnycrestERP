@@ -394,3 +394,45 @@ def test_a_draft_proof_is_a_proof_flag_on_the_order(db):
     assert match["flag"] == "proof"
     assert match["action"] == "proof"
     assert match["action_label"] == "Open the proof"
+
+
+def test_an_EDIT_instruction_is_refused_BEFORE_the_model_is_asked(db):
+    """James's walk, 2026-10-26: "change monticello to continental", twice, after an
+    approve. Both times the door was consulted and offered a choice it could not carry
+    out — the decision log has it at 16:21:48 and 16:22:12.
+
+    ⚠️ `propose` IS A SPY RATHER THAN None HERE, which is the whole assertion. Passing
+    None would prove the refusal happens; it would not prove the refusal happens
+    FIRST, and "the rules answer before the model is asked" is the standing contract —
+    worth two ~900 ms round trips in this one phrase alone.
+    """
+    from app.services.order_list.question import CANNOT_EDIT
+
+    home = _company(db, "Order List Edit Refusal")
+    called: list[str] = []
+
+    def spy(phrase, today, session, company_id):
+        called.append(phrase)
+        raise AssertionError("the model must not be asked to edit an order")
+
+    body = ask(
+        db, company_id=home.id, user_id=None, role_slug=None,
+        phrase="change monticello to continental", question=None,
+        remove_pill_id=None, teach_phrase=None, today=date(2026, 10, 26),
+        propose=spy,
+    )
+    assert body["kind"] == "unrecognized"
+    assert body["hint"] == CANNOT_EDIT
+    assert called == [], "the door was consulted about an action that does not exist"
+
+    # ⚠️ THE CONTROL: a phrase the rules decline and that is NOT an instruction DOES
+    # still reach the door. Without it, a refusal that swallowed everything would pass
+    # the assertions above.
+    with pytest.raises(AssertionError):
+        ask(
+            db, company_id=home.id, user_id=None, role_slug=None,
+            phrase="zzzqqq wobble flimflam", question=None,
+            remove_pill_id=None, teach_phrase=None, today=date(2026, 10, 26),
+            propose=spy,
+        )
+    assert called == ["zzzqqq wobble flimflam"]

@@ -668,6 +668,60 @@ _SURNAME_CLAUSE = re.compile(
     re.I,
 )
 
+#: English function words: a span must never take one as a name.
+#:
+#: ⚠️ A CLASS, NOT A STOPLIST OF WORDS THAT HAPPENED TO BURN US. James's walk of
+#: 2026-10-26 produced the deceased name **"Smith It"** from
+#:
+#:     "… in st. marys last name smith it is 1 oclock church service 1pm friday"
+#:
+#: and the ruling was "fix it in the name rules (not a one-word stoplist)". Adding `it`
+#: alone would have been exactly that — and measured, the whole class absorbs:
+#: `smith is`, `smith he`, `smith was`, `smith has`, `smith will`, `smith that` all
+#: came back as two-word names. One word was the symptom.
+#:
+#: ⚠️ AND IT SATISFIES THIS FILE'S OWN DOCTRINE RATHER THAN BENDING IT.
+#: `_trim_absorbed_word` says the test is "a closed list of words that are something
+#: else, not a guess at what a name looks like", because surnames are an OPEN set and
+#: any rule about their shape is wrong about somebody's family. A function word has
+#: another job: it is a pronoun, a copula, an auxiliary or a determiner. What makes
+#: this admissible where "common words" would not be is that the class is CLOSED —
+#: English gains surnames constantly and gains pronouns about once a century — so this
+#: set is complete in a way a frequency list never is.
+#:
+#: ⚠️ THE SEPARATORS ARE ALREADY IN `_SPAN_TAIL_STOPS` and are not repeated here; the
+#: two sets are unioned below. Kept apart because they are admitted for different
+#: reasons — those are words `party_resolver.normalize` strips, which is a fact about
+#: this codebase; these are a fact about English.
+_FUNCTION_WORDS = frozenset(
+    {
+        # pronouns, including possessive and reflexive forms
+        "i", "me", "my", "mine", "myself",
+        "you", "your", "yours", "yourself", "yourselves",
+        "he", "him", "his", "himself",
+        "she", "her", "hers", "herself",
+        "it", "its", "itself",
+        "we", "us", "our", "ours", "ourselves",
+        "they", "them", "their", "theirs", "themselves",
+        "who", "whom", "whose", "which", "what",
+        # determiners and demonstratives not already in `_SPAN_TAIL_STOPS`
+        "that", "these", "those", "there", "here",
+        "any", "some", "each", "every", "both", "either", "neither", "no", "none",
+        # the copula and the auxiliaries
+        "is", "am", "are", "was", "were", "be", "been", "being",
+        "do", "does", "did", "done",
+        "has", "have", "had",
+        "will", "would", "shall", "should", "can", "could", "may", "might", "must",
+        # conjunctions and the remaining prepositions `_SPAN_TAIL_STOPS` does not hold
+        "but", "or", "nor", "so", "if", "then", "than", "because", "while", "when",
+        "from", "by", "about", "into", "over", "under", "after", "before", "until",
+        "up", "down", "out", "off", "through",
+        # the possessive clitic, which arrives as its own token after a split
+        "'s",
+    }
+)
+
+
 #: Words a two-word name span must not absorb as its second word.
 #:
 #: ⚠️ IT IS THE VOCABULARY THIS MODULE ALREADY RECOGNISES, not a theory about names.
@@ -689,6 +743,7 @@ _NOT_A_NAME_WORD = frozenset(
         "next", "this", "last",
     }
     | _SPAN_TAIL_STOPS
+    | _FUNCTION_WORDS
 )
 
 

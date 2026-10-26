@@ -266,6 +266,48 @@ def money_for(question: OrderQuestion) -> bool:
     ))
 
 
+#: What Opas says when asked to change an order from the bar.
+#:
+#: ⚠️ IT NAMES THE WAY ROUND, which is the difference between a refusal and a dead end.
+#: Undo confirm exists on the Sales Order Pane and takes a confirmed order back to draft;
+#: that is the only route an order's details change today, and the office has no way to
+#: know it from "I can't do that".
+CANNOT_EDIT = (
+    "I can\u2019t change orders from the bar yet. Open the order and use Undo "
+    "confirm, then start it again."
+)
+
+#: "change the vault to continental" — an instruction to EDIT, which nothing implements.
+#:
+#: ⚠️ IT REQUIRES A TARGET, AND THAT IS WHAT KEEPS IT OFF THE READS. A change verb alone
+#: is not enough: `change` is also an order FLAG ("needs change"), so "orders with
+#: changes" and "what changed this week" are questions about the list and must keep
+#: working. What makes a phrase an instruction is naming what to change it TO — so the
+#: rule is <verb> … to <something>, and a phrase with no `to` falls through to the rules
+#: and then the door exactly as before.
+#:
+#: ⚠️ AND IT RUNS BEFORE THE MODEL, which is the standing contract (rules first) and
+#: matters here beyond tidiness: James typed this twice and waited for the model twice,
+#: and both times it answered with a choice it could not carry out.
+_EDIT_REQUEST = re.compile(
+    r"\b(?:change|edit|update|amend|correct|fix|replace|switch|swap|set)\b"
+    r"[^?]*?\bto\b\s+\S",
+    re.I,
+)
+
+#: ⚠️ "make it X" HAS NO `to`, so it needs its own alternative rather than a looser
+#: pattern — loosening the one above would claim "orders going to st marys".
+_MAKE_IT = re.compile(r"\bmake\s+(?:it|this|that|the\s+\w+)\s+\S", re.I)
+
+
+def asks_to_edit(phrase: str) -> bool:
+    """Is this an instruction to change an order, rather than a question about orders?"""
+    text = " ".join((phrase or "").split())
+    if not text:
+        return False
+    return bool(_EDIT_REQUEST.search(text) or _MAKE_IT.search(text))
+
+
 def title_for(question: OrderQuestion) -> str:
     if question.is_default:
         return "Open orders"
@@ -733,6 +775,29 @@ def accept_model_payload(payload: object, today: date) -> Interpretation | None:
         for item in payload.get("picks") or []:
             if not isinstance(item, dict) or _banned(item):
                 return None
+            # ⚠️ THE MODEL'S LABEL IS READ AND THEN DISCARDED, AND THAT IS THE FIX FOR
+            # JAMES'S WALK OF 2026-10-26. It still has to be a string — a payload
+            # missing it is malformed and the door is refused — but the words shown to
+            # the office are composed from the QUESTION below.
+            #
+            # ⚠️ WHAT IT COST. He typed "change monticello to continental" after
+            # approving, and the door offered "Change a Monticello vault order to
+            # Continental" as choice 1. The decision log records it twice, at 16:21:48
+            # and 16:22:12. **No edit action exists anywhere in Opas.** The pick's
+            # PAYLOAD was an ordinary order-list question — choosing it would have run a
+            # list — so the label described something the thing it was attached to could
+            # not do, and nothing compared the two. The question was validated hard
+            # (banned keys, no model-supplied dates, `_selects_something`); the label was
+            # free text.
+            #
+            # ⚠️ AND THE AUDIT SAYS THIS CLOSES THE WHOLE CLASS, not one phrase. The
+            # door's returnable shapes are exactly TWO — `kind="question"` and
+            # `kind="picks"` — and both are READS. There is no write shape for a model to
+            # reach for. So a free-text label was the only route by which an
+            # unimplemented action could appear on screen, and deriving it removes the
+            # route rather than policing the words. CLAUDE.md: removal before
+            # recognition. A verb stoplist would have been the recognition version, and
+            # would have been wrong about "Changeling Cemetery" soon enough.
             label = item.get("label")
             body = item.get("question")
             if not isinstance(label, str) or not isinstance(body, dict):
@@ -749,13 +814,22 @@ def accept_model_payload(payload: object, today: date) -> Interpretation | None:
             question.about_money = money_for(question)
             if not _selects_something(question):
                 return None
-            picks.append(Pick(label=label, question=question))
+            # ⚠️ `title_for`, NOT `label`. The words come from the question's own
+            # fields, so a pick can only ever describe the list it will show.
+            picks.append(Pick(label=title_for(question), question=question))
         # ⚠️ TWO OPTIONS OR NONE, MEASURED ON PRODUCTION 2026-10-23. `zzzqqq wobble
         # flimflam` came back as ONE pick labelled "I don't recognize this phrase" whose
         # question was the criteria-less default — so nonsense would have offered a
         # single fake choice that opened Open Orders. A one-option pick is not a choice,
         # and a refusal dressed as an option is worse than a refusal.
         if len(picks) < 2:
+            return None
+        # ⚠️ DERIVED LABELS CAN COLLIDE WHERE THE MODEL'S WOULD NOT HAVE, which is the
+        # cost of deriving them and is paid here rather than on screen. Two picks whose
+        # questions differ only in a field `title_for` does not say would both read
+        # "Orders", and "Which one? 1. Orders 2. Orders" is not a choice. A pick list
+        # that cannot be told apart is refused, and the rules' own answer stands.
+        if len({pick.label for pick in picks}) != len(picks):
             return None
         return Interpretation(kind="picks", picks=picks, hint="Which one?")
     body = payload.get("question", payload)
