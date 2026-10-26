@@ -193,6 +193,26 @@ export interface CaptureState {
     readonly subject_primary?: string | null
     readonly subject_secondary?: string | null
   }
+  /** The one question Opas asks after an approve, or absent.
+   *
+   *  ⚠️ ABSENT UNTIL THE ORDER EXISTS, which is what "after you approve" is in data.
+   *  "once, right after you approve, and only if you changed something Opas had filled
+   *  in. It never asks while you're typing" (James, 2026-10-26).
+   *
+   *  ⚠️ AND ABSENT AGAIN ONCE ANSWERED OR SKIPPED. It is recomputed on every read, so a
+   *  reload after an approve still shows it; the decision row's `reason_scope` is what
+   *  stops it coming back. "never asks twice for one order." */
+  readonly ask_why?: {
+    readonly field: string
+    /** "Vault" — the capture template's own label. */
+    readonly label: string
+    readonly was: string
+    readonly now: string
+    /** `extraction` | `prefill` | `default` — how Opas came to the value it had. */
+    readonly source: string
+    /** "You changed the vault from Monticello to Continental. Why?" */
+    readonly prompt: string
+  }
 }
 
 const BASE = "/capture/sessions"
@@ -345,5 +365,31 @@ export async function approveCapture(sessionId: string): Promise<CaptureState> {
  *  in client memory, so reopening cannot lose a half-typed order. */
 export async function readCapture(sessionId: string): Promise<CaptureState> {
   const r = await apiClient.get<CaptureState>(`${BASE}/${sessionId}`)
+  return r.data
+}
+
+/**
+ * Answer Opas's "why?". Two steps, one endpoint.
+ *
+ *   {scope: "skipped"}                      Esc, or a phrase that was really a request
+ *   {reason, scope: "today"}                stored, and that is all
+ *   {reason, scope: "always"}               stored, and a rule sentence comes back
+ *   {reason, scope: "always", rule_text}    that sentence becomes a rule
+ *
+ * ⚠️ THE REASON AND THE SCOPE TRAVEL TOGETHER because the server's CHECK constraint
+ * forbids a reason with no scope — a row holding one without the other would read as a
+ * deliberate record of a half-answered question. So the bar holds the typed reason until
+ * ⌘1 or ⌘2 and sends both.
+ */
+export async function answerWhy(
+  sessionId: string,
+  body: { reason?: string; scope: "today" | "always" | "skipped"; rule_text?: string },
+): Promise<{ stored: boolean; scope?: string; draft?: string; rule_id?: string | null }> {
+  const r = await apiClient.post<{
+    stored: boolean
+    scope?: string
+    draft?: string
+    rule_id?: string | null
+  }>(`${BASE}/${sessionId}/why`, body)
   return r.data
 }

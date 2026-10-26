@@ -33,7 +33,8 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, get_db
 from app.models.user import User
 from app.services.capture import session_service
-from app.services.order_list import decision_log
+from app.services.capture import rule_draft, why
+from app.services.order_list import decision_log, rulebook
 
 router = APIRouter()
 
@@ -73,6 +74,36 @@ class StartRequest(BaseModel):
             if k in PREFILLABLE_FIELDS and isinstance(val, str) and val.strip()
         }
         return kept or None
+
+
+#: The scopes the bar can send. 'skipped' is a scope, not an absence — "Esc, or typing
+#: something that's clearly a new request, skips it silently (logged as skipped)".
+WHY_SCOPES = ("today", "always", "skipped")
+
+
+class WhyRequest(BaseModel):
+    """The answer to "why?", in one or two calls.
+
+    ⚠️ REASON AND SCOPE TRAVEL TOGETHER, which is a shape the CHECK constraint enforces
+    (`reason IS NULL OR reason_scope IS NOT NULL`). The bar collects the reason, then
+    the scope, and sends both — so a row holding a reason with no scope, which would
+    read as a deliberate record of a half-answered question, cannot exist.
+
+    ⚠️ AND `rule_text` IS THE SECOND CALL, not a third field on the first. Sending
+    `scope="always"` with no `rule_text` asks for a DRAFT; sending it with one CONFIRMS
+    that sentence. One endpoint, two steps, and the person has seen the words either way.
+    """
+
+    reason: str | None = Field(default=None, max_length=2000)
+    scope: str = Field(min_length=1, max_length=8)
+    rule_text: str | None = Field(default=None, max_length=400)
+
+    @field_validator("scope")
+    @classmethod
+    def _known_scope(cls, v: str) -> str:
+        if v not in WHY_SCOPES:
+            raise ValueError(f"scope must be one of {WHY_SCOPES}")
+        return v
 
 
 class LineRequest(BaseModel):
@@ -208,12 +239,26 @@ def set_text(
     # responses because the client is the only party that knows what is in the bar.
     state["seq"] = body.seq
     if first_text:
-        decision_log.record_capture_open(
+        # ⚠️ THE RETURNED ID IS KEPT NOW, AND IT WAS BEING THROWN AWAY. The dispatch of
+        # 2026-10-26 says "the decision-log row for that capture gets the reason", and a
+        # session had no way back to its own row — `record_capture_open` has always
+        # returned the id and nothing read it.
+        #
+        # ⚠️ BEST-EFFORT, LIKE THE LOG ITSELF. `record_capture_open` returns None when
+        # the write failed, and the capture carries on without a link rather than
+        # failing: a log that can break the thing it observes is worse than no log.
+        decision_id = decision_log.record_capture_open(
             db,
             company_id=current_user.company_id,
             user_id=current_user.id,
             phrase=body.text,
         )
+        if decision_id is not None:
+            session_service.attach_decision(
+                db, session_id,
+                company_id=current_user.company_id, user_id=current_user.id,
+                decision_id=decision_id,
+            )
     return state
 
 
@@ -330,6 +375,95 @@ def approve_session(
     except session_service.SessionNotFound:
         raise HTTPException(status_code=404, detail="capture session not found")
     return _state(db, session_id, current_user)
+
+
+@router.post("/sessions/{session_id}/why")
+def answer_why(
+    session_id: str,
+    body: WhyRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Answer Opas's one question about a change. Two steps, one endpoint.
+
+        scope="skipped"                     logged as skipped, nothing else
+        scope="today"                       the reason is stored and that is all
+        scope="always", no rule_text        the reason is stored AND a rule is drafted
+        scope="always", with rule_text      that sentence becomes a rule
+
+    ⚠️ ONLY THE PERSON WHO APPROVED CAN ANSWER, and it is `_load`'s own filter that makes
+    that true rather than a check here: a capture session is scoped by `user_id`, so
+    another user's session is a 404 and always has been. "Only the person who approved
+    is asked."
+
+    ⚠️ AND IT REFUSES A SECOND ANSWER. `record_answer` returns False when the row already
+    carries a scope — a retry, a second tab, or a double ⌘1 must not replace the first
+    answer. "never asks twice for one order" is enforced at the record, not only in the
+    drawing.
+    """
+    row = _session_or_404(db, session_id, current_user)
+    if row.decision_id is None:
+        # ⚠️ NOT AN ERROR. The link is best-effort by design — the decision log swallows
+        # its own failures — so a capture whose log row never landed simply has nowhere
+        # to record a reason. Saying so is better than inventing a row to hang it on.
+        return {"stored": False, "why": "no decision row for this capture"}
+
+    change = why.ask_payload(row)
+    if change is None and body.scope != "skipped":
+        # The question is gone (answered already, or the change no longer stands).
+        return {"stored": False, "why": "nothing to explain"}
+
+    # ── confirming a drafted rule ────────────────────────────────────────────
+    if body.scope == "always" and body.rule_text:
+        rule_id = rulebook.add_rule(
+            db, company_id=current_user.company_id, user_id=current_user.id,
+            rule_text=body.rule_text, source_decision_id=row.decision_id,
+        )
+        # ⚠️ THE SCOPE IS WRITTEN IN THE SAME TRANSACTION AS THE RULE. A crash between
+        # them would leave a rule nobody can trace, or a question that looks unanswered
+        # with a rule already in the book.
+        rulebook.record_answer(
+            db, decision_id=row.decision_id, company_id=current_user.company_id,
+            reason=body.reason, scope="always", change=change,
+        )
+        db.commit()
+        return {"stored": True, "scope": "always", "rule_id": rule_id,
+                "rule_text": body.rule_text}
+
+    stored = rulebook.record_answer(
+        db, decision_id=row.decision_id, company_id=current_user.company_id,
+        reason=body.reason, scope=body.scope, change=change,
+    )
+    if not stored:
+        db.rollback()
+        return {"stored": False, "why": "already answered"}
+
+    draft: str | None = None
+    if body.scope == "always":
+        # ⚠️ DRAFTED AFTER THE REASON IS STORED, so a model timeout cannot lose the
+        # person's own words. And the fallback is their words verbatim — "If the model
+        # is down, your own words become the draft" (James).
+        draft = rule_draft.draft(
+            db, company_id=current_user.company_id,
+            field_label=change["label"] if change else "",
+            was=change["was"] if change else "",
+            now=change["now"] if change else "",
+            reason=body.reason or "",
+        ) or (body.reason or None)
+    db.commit()
+    out: dict = {"stored": True, "scope": body.scope}
+    if draft:
+        out["draft"] = draft
+    return out
+
+
+def _session_or_404(db: Session, session_id: str, user: User):
+    try:
+        return session_service.load_for_user(
+            db, session_id, company_id=user.company_id, user_id=user.id,
+        )
+    except session_service.SessionNotFound:
+        raise HTTPException(status_code=404, detail="capture session not found")
 
 
 @router.get("/sessions/{session_id}")

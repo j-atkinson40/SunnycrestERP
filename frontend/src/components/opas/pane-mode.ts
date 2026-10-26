@@ -39,6 +39,9 @@ export const PANE_MODE: Record<OpasPaneKind, PaneMode> = {
   // field, so this is not an entry pane — and on today's data that action is absent
   // anyway, because no cemetery has an address recorded.
   cemetery: "info",
+  // Read-and-edit, but every edit is on a row inside the pane — there is no text field
+  // for the bar to own. Switching a rule off is a click, like Undo confirm.
+  rulebook: "info",
 }
 
 /** ⚠️ NO FALLBACK, DELIBERATELY — see the module docstring. */

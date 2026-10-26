@@ -53,6 +53,10 @@ export const PANE_IDENTITY: Record<OpasPaneKind, PaneIdentity> = {
   // last step MUST focus the pane already open, or the desk ends up holding two
   // St. Mary's.
   cemetery: (p) => (p.cemeteryId !== undefined ? `cemetery:${p.cemeteryId}` : null),
+  // ⚠️ A SINGLETON, LIKE THE ORDER LIST. There is one rulebook per tenant, so asking
+  // for it twice must focus the open one — two copies could disagree about which rules
+  // are switched off the moment one of them was edited.
+  rulebook: () => "rulebook",
 }
 
 /** ⚠️ NO FALLBACK, DELIBERATELY — see the module docstring. */

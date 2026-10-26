@@ -53,6 +53,7 @@ export type OpasPaneKind =
   | "sales-order"
   | "customer"
   | "cemetery"
+  | "rulebook"
 
 /** One pane opened from the command line. */
 export interface OpasPane {

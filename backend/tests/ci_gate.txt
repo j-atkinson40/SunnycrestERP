@@ -661,6 +661,15 @@ tests/test_cemetery_pane.py
 # choice list with the town shown, tenant isolation, and the ask door trying the cemetery
 # rule BEFORE the customer rule — which changed a shipped behaviour for "st marys".
 tests/test_cemetery_pane_reads.py
+# Opas asks "why?" (James, 2026-10-26), first slice. The rules: what counts as a change
+# (a field Opas filled that the person then changed), what does NOT (a first fill, an
+# answer to a pick, churn while typing), and which single change is asked about.
+tests/test_opas_why.py
+# The same slice against a database, plus ONE test that drives the real FastAPI route —
+# the 2026-10-20 lesson that every service test can pass while the endpoint never calls
+# them. Also the cross-side check on the rulebook's opener list, which is mirrored in
+# order-list-routing.ts because the bar needs the predicate locally.
+tests/test_rulebook.py
 # A migration may not drop or rename a column or table in upgrade() without a reviewed
 # DESTRUCTIVE_REVIEWED marker (James, 2026-10-24). Migrations now run while the PREVIOUS
 # deploy is still serving — 396-552 s measured — so a dropped column breaks production

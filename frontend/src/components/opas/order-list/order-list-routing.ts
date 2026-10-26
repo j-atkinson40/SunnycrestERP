@@ -59,3 +59,38 @@ export function isOrderRefinement(text: string): boolean {
   if (/^what(?:'s| is) the total/.test(t)) return true
   return false
 }
+
+/**
+ * What opens the rulebook from the bar.
+ *
+ * ⚠️ MIRRORED FROM `order_list/rulebook.py`'s `_OPENERS`, AND THE MIRROR IS CHECKED.
+ * `tests/test_rulebook.py::test_the_two_opener_lists_agree` reads THIS FILE and compares
+ * the two sets, so a phrase added to one side and not the other turns the backend red.
+ * That is the same arrangement `GENERIC_WORDS` has with `ghost.ts` and for the same
+ * reason: a predicate the client needs locally cannot be a round trip, and two copies
+ * that nothing compares will drift.
+ *
+ * ⚠️ WHY THE CLIENT NEEDS IT AT ALL, since `ask` already answers "rules" with
+ * `open_rulebook`: the reason stage of Opas's "why?" has to tell a REASON from a NEW
+ * REQUEST without asking the server, because the server has not been told there is a
+ * question outstanding. Without this, typing "rules" at that moment would be recorded
+ * as somebody's explanation.
+ *
+ * ⚠️ EXACT PHRASES, NOT A STEM. "ruled", "rule out" and "the rules of thumb" are not
+ * requests for the rulebook.
+ */
+const RULEBOOK_OPENERS: readonly string[] = [
+  "the rulebook",
+  "rulebook",
+  "rules",
+  "the rules",
+  "open the rulebook",
+  "show the rulebook",
+  "show me the rulebook",
+  "open rules",
+  "show rules",
+]
+
+export function opensRulebook(text: string): boolean {
+  return RULEBOOK_OPENERS.includes(cleaned(text))
+}

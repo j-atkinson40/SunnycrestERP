@@ -24,7 +24,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { useAuth } from "@/contexts/auth-context"
 import { useOpas, type OpasPaneKind } from "@/contexts/opas-context"
-import { abandonCapture, fetchVocabulary } from "@/services/opas-capture-service"
+import {
+  abandonCapture,
+  answerWhy,
+  fetchVocabulary,
+  type CaptureState,
+} from "@/services/opas-capture-service"
 import { CapturePane, ENTRY_PLACEHOLDER, type EntryPaneStatus } from "./CapturePane"
 import {
   CaptureMirror,
@@ -69,8 +74,13 @@ import {
 import { ProductListPane } from "./ProductListPane"
 import { ProductPane } from "./ProductPane"
 import { OrderListPane } from "./order-list/OrderListPane"
-import { isOrderListPhrase, isOrderRefinement } from "./order-list/order-list-routing"
+import {
+  isOrderListPhrase,
+  isOrderRefinement,
+  opensRulebook,
+} from "./order-list/order-list-routing"
 import { CemeteryPane } from "./order-list/CemeteryPane"
+import { RulebookPane } from "./order-list/RulebookPane"
 import { CustomerPane } from "./order-list/CustomerPane"
 import { SalesOrderPane } from "./order-list/SalesOrderPane"
 
@@ -1185,6 +1195,10 @@ export function OpasHost() {
       openCustomer(result.customer_id, result.customer_name)
       return
     }
+    if (result.kind === "open_rulebook") {
+      openRulebook()
+      return
+    }
     if (result.kind === "open_cemetery") {
       if (result.cemetery_id !== undefined) {
         openCemetery(result.cemetery_id, result.cemetery_name)
@@ -1427,8 +1441,103 @@ export function OpasHost() {
     [opas, say],
   )
 
+  /**
+   * Opas's one question after an approve, and the two steps that answer it.
+   *
+   * ⚠️ A SMALL STATE MACHINE RATHER THAN THREE BOOLEANS. `reason` is waiting for words;
+   * `rule` is waiting for the office to confirm or retype the sentence the model
+   * drafted. A flag per stage would permit both at once, which is not a state this
+   * conversation has.
+   */
+  const [whyAsk, setWhyAsk] = useState<
+    | { stage: "reason"; sessionId: string; ask: NonNullable<CaptureState["ask_why"]> }
+    | { stage: "rule"; sessionId: string; draft: string }
+    | null
+  >(null)
+  /** Bumped when a rule lands, so an open rulebook pane re-reads itself. */
+  const [rulesChanged, setRulesChanged] = useState(0)
+
+  const openRulebook = useCallback(() => {
+    opas.openPane({ kind: "rulebook", label: "Rulebook" })
+  }, [opas])
+
+  /**
+   * Skip the question, silently, and log it as skipped.
+   *
+   * ⚠️ "NEVER BLOCKS" IS THE WHOLE RULE, so this is fire-and-forget: a failed skip must
+   * not stop whatever the person typed instead from being routed. The record is best
+   * effort; the person's next request is not.
+   */
+  const skipWhy = useCallback((sessionId: string) => {
+    setWhyAsk(null)
+    void answerWhy(sessionId, { scope: "skipped" }).catch(() => {})
+  }, [])
+
+  /** Ask for the scope once there is a reason. ⌘1 / ⌘2, a bare digit, or a click. */
+  const askScope = useCallback(
+    (sessionId: string, reason: string) => {
+      const act: Record<string, () => void> = {
+        today: () => {
+          setWhyAsk(null)
+          void answerWhy(sessionId, { reason, scope: "today" })
+            .then(() => say("ack", "Noted for today."))
+            .catch(() => say("miss", "That did not save."))
+        },
+        always: () => {
+          // ⚠️ THE PANE DOES NOT WAIT ON THE MODEL WITH A SPINNER. The reason is already
+          // stored by the time a draft comes back, so a slow or dead model costs the
+          // office nothing it typed — and when it is dead the server returns their own
+          // words as the draft, which is the dispatch's own fallback.
+          setWhyAsk(null)
+          void answerWhy(sessionId, { reason, scope: "always" })
+            .then((out) => {
+              const draft = out.draft ?? reason
+              setWhyAsk({ stage: "rule", sessionId, draft })
+              say("question", `Rule: “${draft}” — Enter to keep it, or type a different sentence.`)
+            })
+            .catch(() => say("miss", "That did not save."))
+        },
+      }
+      say("question", "Just today, or always?", {
+        options: [
+          { id: "today", label: "Just today" },
+          { id: "always", label: "Always" },
+        ],
+        act,
+      })
+    },
+    [say],
+  )
+
+  const confirmRule = useCallback(
+    (sessionId: string, reason: string, ruleText: string) => {
+      setWhyAsk(null)
+      void answerWhy(sessionId, { reason, scope: "always", rule_text: ruleText })
+        .then(() => {
+          setRulesChanged((n) => n + 1)
+          // ⚠️ IT SAYS WHERE THE RULE WENT. A confirmation with no destination leaves
+          // the office unsure whether anything was kept — and "rules" is how they look.
+          say("ack", "In the rulebook. Say “rules” to see it.")
+        })
+        .catch(() => say("miss", "That did not save."))
+    },
+    [say],
+  )
+
   const submit = useCallback(async () => {
     const phrase = text.trim()
+
+    // ⚠️ BEFORE THE EMPTY GUARD, because a bare Enter is how the drafted rule is kept.
+    // "shown in the reply line for the person to confirm (Enter) or edit (type a new
+    // sentence)" — and `submit` returns early on an empty phrase, so a confirm that
+    // lived below this line could never fire.
+    if (whyAsk?.stage === "rule") {
+      const sentence = phrase === "" ? whyAsk.draft : phrase
+      setText("")
+      confirmRule(whyAsk.sessionId, whyAsk.draft, sentence)
+      return
+    }
+
     if (phrase === "" || busy) return
     setBusy(true)
     // ⚠️ IT CLEARS A SENTENCE, NOT A QUESTION, AND THE DISTINCTION IS A BUG I SHIPPED
@@ -1547,6 +1656,44 @@ export function OpasHost() {
         say("question", "Which order?", { options, act })
         return
       }
+      // ⚠️ THE REASON STAGE SITS AFTER THE OUTSTANDING-OPTIONS CHECK AND BEFORE EVERY
+      // ROUTE. The person has been asked "why?" and what they type next is either the
+      // answer or a change of subject — and the dispatch says the second one wins
+      // silently: "Esc, or typing something that's clearly a new request, skips it
+      // silently (logged as skipped). Never blocks."
+      //
+      // ⚠️ "CLEARLY A NEW REQUEST" IS DECIDED BY THE ROUTES THAT ALREADY EXIST, not by a
+      // new guess. If the phrase opens a capture, reads as an order-list question, is a
+      // close request or asks for the rulebook, it is a request. Anything else is prose,
+      // and prose is what a reason is. A fresh predicate here would be a second place
+      // deciding what the bar means.
+      if (whyAsk?.stage === "reason") {
+        const looksLikeARequest =
+          opensCapture(phrase) ||
+          isOrderListPhrase(phrase) ||
+          isCloseRequest(phrase) ||
+          opensRulebook(phrase)
+        if (looksLikeARequest) {
+          skipWhy(whyAsk.sessionId)
+          // and fall through: the phrase is routed as what it is
+        } else {
+          const sessionId = whyAsk.sessionId
+          setWhyAsk(null)
+          setText("")
+          askScope(sessionId, phrase)
+          return
+        }
+      }
+
+      // ⚠️ THE RULEBOOK, BEFORE EVERY NAME RULE. "the rulebook" / "rules" are the
+      // dispatch's words and no record should be able to shadow them.
+      if (opensRulebook(phrase)) {
+        setText("")
+        openRulebook()
+        say("ack", "The rulebook")
+        return
+      }
+
       // ⚠️ AFTER CAPTURE AND THE CATALOG, BEFORE THE RESOLVER. An order question
       // is a structured read, not a product name. A refinement ("only Hopkins")
       // only counts while the order list — or the sales order it opened — is in front.
@@ -1650,6 +1797,18 @@ export function OpasHost() {
   }, [
     text, busy, opas, settleOrderAnswer, closeFrontPane, say, hush,
     reply, answerOption, frontOrder, openOrderPanes, handleContext, focusBar,
+    // ⚠️ CORRECTED AFTER A BREAK TEST FALSIFIED THE REASON I FIRST GAVE. I wrote that
+    // omitting `whyAsk` "would make every piece work and the feature do nothing" — a
+    // stale closure seeing `null` forever. Removing it turns NOTHING red, and the
+    // ranking is why: `text` is already a dependency and changes on every keystroke, so
+    // `submit` is rebuilt constantly and picks up fresh state regardless.
+    //
+    // They stay listed because the equivalence is a property of `text` being here, not
+    // of this line — drop `text` one day (a ref, say) and the stale-closure bug becomes
+    // real while a comment explaining why it could not happen sits above it. Correct
+    // and NOT load-bearing is a different claim from load-bearing, and the difference
+    // is what a reader needs.
+    whyAsk, askScope, confirmRule, skipWhy, openRulebook,
   ])
 
   /** The panes on the desk. Order-list and sales-order panes move to the mobile track
@@ -1904,6 +2063,13 @@ export function OpasHost() {
                 <CapturePane
                   openingLine={pane.openingLine}
                   prefill={pane.capturePrefill}
+                  // ⚠️ THE QUESTION GOES TO THE BAR, NOT THE PANE. "one line above the
+                  // bar" (James) — and a question drawn inside the pane would vanish
+                  // with it when tucked, taking the answer with it.
+                  onAskWhy={(sessionId, ask) => {
+                    setWhyAsk({ stage: "reason", sessionId, ask })
+                    say("question", ask.prompt)
+                  }}
                   onSessionStarted={(id) => opas.setCaptureSession(pane.id, id)}
                   text={opas.entryText[pane.id] ?? ""}
                   onStatus={(st) => reportStatus(pane.id, st)}
@@ -1981,6 +2147,15 @@ export function OpasHost() {
                   onOpenCustomer={openCustomer}
                   onOpenCemetery={openCemetery}
                   onLoaded={(c) => { cemeteryFacts.current[c.id] = c }}
+                />
+              ) : pane.kind === "rulebook" ? (
+                <RulebookPane
+                  refresh={rulesChanged}
+                  // ⚠️ NO `onOpenDecision` YET, DELIBERATELY. A rule's provenance is a
+                  // DECISION row, and nothing opens one — the decision log has no pane.
+                  // Passing a handler that could not resolve would be the dead click
+                  // the cemetery row spent two weeks avoiding; the pane renders the
+                  // change as plain text without one.
                 />
               ) : pane.kind === "product" ? (
                 <ProductPane variantTemplateId={pane.variantTemplateId!} />

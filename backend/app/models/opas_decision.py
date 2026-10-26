@@ -68,6 +68,17 @@ class OpasDecision(Base):
             "proposed_by <> 'model' OR model_accepted IS NOT NULL",
             name="ck_opas_decisions_model_has_verdict",
         ),
+        CheckConstraint(
+            "reason_scope IS NULL OR reason_scope IN ('today', 'always', 'skipped')",
+            name="ck_opas_decisions_reason_scope",
+        ),
+        #: ⚠️ ONE-DIRECTIONAL ON PURPOSE. A reason with no scope is a half-answered
+        #: question that would read as a deliberate record; a SCOPE with no reason is
+        #: exactly what a skip is.
+        CheckConstraint(
+            "reason IS NULL OR reason_scope IS NOT NULL",
+            name="ck_opas_decisions_reason_has_scope",
+        ),
         Index("ix_opas_decisions_company_created", "company_id", "created_at"),
         Index(
             "ix_opas_decisions_misses",
@@ -107,3 +118,15 @@ class OpasDecision(Base):
     model_latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     model_accepted: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     model_refused_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    #: Why the person changed what Opas had filled in. Their own words.
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: `today` | `always` | `skipped`. NULL means they were never asked.
+    #:
+    #: ⚠️ NULL IS NOT 'skipped'. Every row written before 2026-10-26 was never asked
+    #: anything, and recording those as skips would be a claim that somebody declined.
+    reason_scope: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    #: The one change asked about — field, and the values either side of it.
+    changed_field: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    changed_from: Mapped[str | None] = mapped_column(Text, nullable=True)
+    changed_to: Mapped[str | None] = mapped_column(Text, nullable=True)

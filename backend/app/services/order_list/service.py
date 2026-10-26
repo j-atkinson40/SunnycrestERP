@@ -15,7 +15,7 @@ from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session
 
 from app.models.company import Company
-from app.services.order_list import cemetery, customer
+from app.services.order_list import cemetery, customer, rulebook
 from app.services.order_list.question import (
     TRY_HINT,
     Interpretation,
@@ -596,6 +596,12 @@ def ask(
         # ⚠️ IT IS ONLY TRIED WHEN THE RULES DECLINED, so nothing that already works
         # changes meaning. "hopkins order" is still `open_order`; "hopkins orders this
         # month" is still a list.
+        if interpreted.kind == "unrecognized" and rulebook.opens_rulebook(phrase):
+            # ⚠️ BEFORE THE NAME RULES, AND AN EXACT PHRASE RATHER THAN A STEM. "the
+            # rulebook" and "rules" are the dispatch's own words; a stem rule would
+            # claim "ruled" and "rule out". Ahead of the cemetery and customer rules
+            # because nothing should be able to name a record "rules" and shadow it.
+            return {"kind": "open_rulebook"}
         if interpreted.kind == "unrecognized":
             # ⚠️ THE CEMETERY RULE RUNS FIRST, AND THAT CHANGES A SHIPPED BEHAVIOUR. On
             # sunnycrest "st marys" matches a CEMETERY named "St. Mary's Cemetery" AND a

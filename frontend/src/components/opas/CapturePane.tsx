@@ -315,6 +315,7 @@ export function CapturePane({
   onStatus,
   pickRequest,
   onApproved,
+  onAskWhy,
   completeRequest,
   caretFieldIds,
 }: {
@@ -343,6 +344,13 @@ export function CapturePane({
    *  order's pane opens in its place." It is OPTIONAL because the server's
    *  `sales_order_id` is — see the `capture-approved-link` guard below — and the host
    *  falls back to leaving this pane open when it is absent. */
+  /** Opas's one question after an approve, handed up for the BAR to ask.
+   *
+   *  ⚠️ THE PANE DOES NOT ASK IT. "one line above the bar" (James, 2026-10-26) — the
+   *  question is a conversation and conversations happen in the reply line, beside every
+   *  other thing Opas says. A question inside the pane would also vanish when the pane
+   *  was tucked, taking the answer with it. */
+  readonly onAskWhy?: (sessionId: string, ask: NonNullable<CaptureState["ask_why"]>) => void
   readonly onApproved?: (order: {
     readonly number: string
     readonly total: string
@@ -484,6 +492,8 @@ export function CapturePane({
   // the same trap that left the pane stuck on "Starting…" earlier in this arc.
   const onApprovedRef = useRef(onApproved)
   onApprovedRef.current = onApproved
+  const onAskWhyRef = useRef(onAskWhy)
+  onAskWhyRef.current = onAskWhy
   useEffect(() => {
     if (sessionId === undefined) return
     // ⚠️ THE OPENING LINE WAS ALREADY EXTRACTED BY `start`, so the first effect run on
@@ -757,6 +767,17 @@ export function CapturePane({
           total: next.total ?? "0.00",
           id: next.sales_order_id ?? null,
         })
+      }
+      // ⚠️ AFTER `onApproved`, SO THE ORDER'S OWN LINE IS SAID FIRST. The approve
+      // acknowledgement is the answer to what the person just did; the question is the
+      // next thing Opas says, not a replacement for it.
+      //
+      // ⚠️ AND ONLY FROM THE APPROVE RESPONSE, never from a plain read. The server
+      // recomputes `ask_why` on every read so a reload still shows it — but handing it
+      // up from here means the bar asks once, at the moment the dispatch names ("once,
+      // right after you approve"), rather than every time this pane refetches.
+      if (next.ask_why) {
+        onAskWhyRef.current?.(sessionId, next.ask_why)
       }
     } catch (e) {
       // ⚠️ THE 409'S BLOCKERS ARE SHOWN, NOT "something went wrong". The server

@@ -49,6 +49,7 @@ from app.services.capture.typed_extraction import (
     extract_text,
     segments,
 )
+from app.services.capture import why
 
 logger = logging.getLogger(__name__)
 
@@ -180,6 +181,13 @@ def start(
                 values.setdefault(field_id, value)
             row.values = values
             db.flush()
+    # ⚠️ A PREFILL IS ONE OF THE SOURCES JAMES NAMES ("from extraction, prefill, a
+    # default such as burial vs urn, or a derived value"), so a funeral home the
+    # Customer Pane filled and the person then changed IS a change worth asking about.
+    if row.values:
+        why.remember(row, dict(row.values),
+                     source=why.SOURCE_PREFILL if prefill else why.SOURCE_EXTRACTION)
+        db.flush()
     return row
 
 
@@ -294,6 +302,16 @@ def set_text(
     ex = extract_text(db, tenant_id=company_id, text=body, resolutions=resolutions,
                       prefill=row.prefill)
 
+    # ⚠️ WHAT OPAS PROPOSED IS REMEMBERED HERE, BEFORE `full_text` IS OVERWRITTEN, and
+    # the order matters: `is_continuation` needs the text as it WAS. Refreshed while the
+    # person is still typing, frozen the moment they go back and change a word — which
+    # is the only way to know later that Opas had read Monticello. See `capture/why.py`.
+    why.remember(
+        row, ex.values,
+        continuing=why.is_continuation(row.full_text, text),
+        switch_fields=frozenset(sw.field_id for sw in ex.switches),
+    )
+
     # ⚠️ THE TYPED TEXT IS STORED, NOT THE STRIPPED BODY. `full_text` is the order's
     # own words and ends up in `sales_orders.notes`; editing it here would make the
     # record disagree with what the director saw in the bar.
@@ -325,6 +343,41 @@ def set_text(
         row.status = STATUS_CAPTURING
         db.flush()
     return row
+
+
+def load_for_user(
+    db: Session, session_id: str, *, company_id: str, user_id: str
+) -> CaptureSession:
+    """The session, for its own owner. Public because the routes need the ROW.
+
+    ⚠️ IT IS `_load` UNDER A PUBLIC NAME, NOT A SECOND LOOKUP. The "why?" endpoint needs
+    `decision_id` and `opas_proposed` off the row, and a route reaching into `_load`
+    would be reaching past the underscore that says this module owns the query. One
+    query, one tenant-and-user filter, one place that raises `SessionNotFound`.
+    """
+    return _load(db, session_id, company_id=company_id, user_id=user_id)
+
+
+def attach_decision(
+    db: Session, session_id: str, *, company_id: str, user_id: str, decision_id: str,
+) -> None:
+    """Link the session to the decision row its opening sentence wrote.
+
+    ⚠️ ONCE, AND NEVER OVERWRITTEN. `record_capture_open` fires on the FIRST text a
+    session receives, so this should run once — but a retry or a second tab must not
+    repoint an answered question at a different row.
+
+    ⚠️ AND IT SWALLOWS A MISSING SESSION. The caller is already past the write it cared
+    about; failing the request because the LOG could not be linked would invert the
+    rule that the log must not break what it observes.
+    """
+    try:
+        row = _load(db, session_id, company_id=company_id, user_id=user_id)
+    except SessionNotFound:
+        return
+    if row.decision_id is None:
+        row.decision_id = decision_id
+        db.flush()
 
 
 def complete(
@@ -812,6 +865,22 @@ def read_state(
         # property of the order. A typed completion phrase is detected on the SERVER,
         # so the client cannot know about that attempt unless the response says so.
         "completion_attempt": bool(completion_attempt),
+        # ⚠️ THE ONE QUESTION OPAS ASKS AFTER AN APPROVE, OR ABSENT. "once, right after
+        # you approve, and only if you changed something Opas had filled in. It never
+        # asks while you're typing" (James, 2026-10-26) — so this is None until
+        # `sales_order_id` is set, which is what "after you approve" means in data.
+        #
+        # ⚠️ AND IT IS COMPUTED ON EVERY READ RATHER THAN STORED, so a reload after an
+        # approve still shows the question — and `already_answered` is what stops it
+        # coming back once the person has answered or skipped. The alternative, a flag
+        # on the session, would be a second place saying whether a record exists.
+        **(
+            {"ask_why": asked}
+            if (asked := (
+                None if why.already_answered(db, row) else why.ask_payload(row)
+            )) is not None
+            else {}
+        ),
     }
 
 

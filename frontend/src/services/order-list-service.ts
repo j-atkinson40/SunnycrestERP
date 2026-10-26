@@ -109,6 +109,8 @@ export interface OrderListSnapshot {
     | "open_cemetery"
     /** Two or more cemeteries could be meant. Carries `cemetery_picks` with the town. */
     | "cemetery_picks"
+    /** "the rulebook" / "rules". Carries nothing — the pane reads itself. */
+    | "open_rulebook"
   layout?: "grouped" | "flat" | "picks"
   title?: string
   question?: OrderQuestion
@@ -435,5 +437,51 @@ export interface CemeteryDetail {
 
 export async function getCemeteryDetail(cemeteryId: string): Promise<CemeteryDetail> {
   const r = await apiClient.get<CemeteryDetail>(`/order-list/cemeteries/${cemeteryId}`)
+  return r.data
+}
+
+/** One rule in the rulebook. */
+export interface OpasRule {
+  readonly id: string
+  /** The sentence, as the office confirmed it. */
+  readonly text: string
+  readonly created_at?: string
+  readonly who?: string
+  /** "vault · Monticello Burial Vault → Continental Burial Vault" — server-composed. */
+  readonly change?: string
+  /** The person's own words, as they typed them. */
+  readonly reason?: string
+  /** The decision row, so the pane can link to the order it came from. */
+  readonly decision_id?: string
+}
+
+/**
+ * The rulebook pane.
+ *
+ * ⚠️ `footer` IS LOAD-BEARING, NOT DECORATION. "nothing uses the rulebook in this slice.
+ * It records and shows, and the model starts reading it in the next step" (James,
+ * 2026-10-26). A reader who sees a rule they confirmed would otherwise reasonably assume
+ * it is in force. The server composes the sentence so one place decides what it says.
+ */
+export interface RulebookDetail {
+  readonly rules: readonly OpasRule[]
+  readonly footer: string
+  /** "No rules yet" — present INSTEAD of rules when there are none. */
+  readonly empty?: string
+}
+
+export async function getRulebook(): Promise<RulebookDetail> {
+  const r = await apiClient.get<RulebookDetail>("/order-list/rulebook")
+  return r.data
+}
+
+export async function updateRule(
+  ruleId: string,
+  patch: { text?: string; is_active?: boolean },
+): Promise<{ id: string; text: string; is_active: boolean }> {
+  const r = await apiClient.patch<{ id: string; text: string; is_active: boolean }>(
+    `/order-list/rules/${ruleId}`,
+    patch,
+  )
   return r.data
 }

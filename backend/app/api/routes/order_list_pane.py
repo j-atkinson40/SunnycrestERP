@@ -9,14 +9,14 @@ from __future__ import annotations
 from functools import partial
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
 from app.models.company import Company
 from app.models.role import Role
 from app.models.user import User
-from app.services.order_list import cemetery, customer, decision_log
+from app.services.order_list import cemetery, customer, decision_log, rulebook
 from app.services.order_list.proposal import propose
 from app.services.order_list.question import OrderQuestion
 from app.services.order_list.service import ask, sales_order_summary, today_for
@@ -125,6 +125,47 @@ def get_customer(
     if detail is None:
         raise HTTPException(status_code=404, detail="Unknown customer")
     return detail
+
+
+@router.get("/rulebook")
+def get_rulebook(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """The rulebook pane: the tenant's active rules, newest first.
+
+    ⚠️ DECLARED BEFORE THE `/{id}`-SHAPED ROUTES BELOW. FastAPI matches in declaration
+    order, so a literal path registered after `/customers/{customer_id}` is fine but one
+    registered after a bare `/{something}` would be swallowed. There is no bare one here
+    today; the ordering is kept deliberate so adding one later does not silently capture
+    this path — the same trap `spaces.py` records for `/affinity`.
+    """
+    return rulebook.rulebook(db, current_user.company_id)
+
+
+class RuleUpdate(BaseModel):
+    """Edit a rule's sentence, or switch it off. Both optional, at least one required."""
+
+    text: str | None = Field(default=None, max_length=400)
+    is_active: bool | None = None
+
+
+@router.patch("/rules/{rule_id}")
+def patch_rule(
+    rule_id: str,
+    body: RuleUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Edit a rule or switch it off. 404 when it is not this caller's rule."""
+    got = rulebook.update_rule(
+        db, company_id=current_user.company_id, rule_id=rule_id,
+        rule_text=body.text, is_active=body.is_active,
+    )
+    if got is None:
+        raise HTTPException(status_code=404, detail="Unknown rule")
+    db.commit()
+    return got
 
 
 @router.get("/cemeteries/{cemetery_id}")

@@ -22,6 +22,7 @@ const EVERY_KIND: readonly OpasPaneKind[] = [
   "sales-order",
   "customer",
   "cemetery",
+  "rulebook",
 ]
 
 function pane(kind: OpasPaneKind, extra: Partial<OpasPane> = {}): Omit<OpasPane, "id"> {
@@ -46,9 +47,10 @@ describe("every pane kind is classified", () => {
     // 2026-10-24 when `customer` landed; **7 as of 2026-10-26** when `cemetery` did —
     // and it went red on the way, which is the guard doing its job rather than a
     // nuisance. There is no duplicate-free check elsewhere, so it is here — a list with
-    // a repeat would satisfy both this and the map check.
+    // a repeat would satisfy both this and the map check. **8 as of 2026-10-26** when
+    // `rulebook` landed.
     expect(new Set(widened).size).toBe(widened.length)
-    expect(widened).toHaveLength(7)
+    expect(widened).toHaveLength(8)
   })
 })
 
@@ -78,6 +80,9 @@ describe("what has an identity and what does not", () => {
     // that last step leaves two St. Mary's on the desk.
     expect(paneIdentity(pane("cemetery", { cemeteryId: "m1" }))).toBe("cemetery:m1")
     expect(paneIdentity(pane("cemetery"))).toBeNull()
+    // ⚠️ AND THE RULEBOOK IS A SINGLETON, so "rules" twice focuses one pane. Two copies
+    // could disagree about which rules are off the moment one was edited.
+    expect(paneIdentity(pane("rulebook"))).toBe("rulebook")
   })
 
   it("the order list is a singleton and the catalog is not", () => {

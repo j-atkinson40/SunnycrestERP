@@ -123,6 +123,27 @@ class CaptureSession(Base):
     #: something about every session row that predates r209, and nothing measured one.
     switches: Mapped[list | None] = mapped_column(JSONB, nullable=True)
 
+    #: What OPAS proposed for each field, so a change can be told from a first fill.
+    #:
+    #: ⚠️ IT EXISTS FOR ONE OF THE THREE WAYS A FIELD CHANGES, and the other two need
+    #: nothing stored. A switch taken and a pick answered both land in `resolutions`, so
+    #: Opas's own reading is recoverable exactly by re-extracting WITHOUT them. Retyping
+    #: is not: the bar is the only input, so changing the vault means editing the text,
+    #: and once it says Continental nothing remembers Opas had read Monticello.
+    #:
+    #: ⚠️ FROZEN ON AN EDIT, REFRESHED WHILE STILL TYPING. `field_id -> {value, source}`.
+    #: The dispatch excludes "churn while typing", and the signal is whether the new text
+    #: CONTINUES the old one: "mont" -> "monticello" is the same thought finishing,
+    #: "monticello" -> "continental" is a different one. See `capture/why.py`.
+    opas_proposed: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    #: The `opas_decisions` row this capture opened with, so the "why?" answer has
+    #: somewhere to land.
+    #:
+    #: ⚠️ NO FOREIGN KEY, DELIBERATELY. `decision_log` swallows its own failures by
+    #: design — a log that breaks what it observes is worse than no log — so this id is
+    #: best-effort, and an FK would turn a failed log write into a failed CAPTURE.
+    decision_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
     #: The sales order this session was approved into. ⚠️ NULLABLE AND WITHOUT A
     #: MODEL DEFAULT — a session that has not been approved has not established an
     #: order, which is different from having none. Reading it inside the approving
