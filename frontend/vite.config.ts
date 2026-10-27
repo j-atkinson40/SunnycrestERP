@@ -50,6 +50,15 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
+    // ⚠️ RAISED FROM VITEST'S 5000ms DEFAULT so it stays ABOVE the 4000ms
+    // `asyncUtilTimeout` set in that setup file. If the two crossed, a `waitFor` that
+    // was still legitimately polling would be killed by the test timeout instead —
+    // the same spurious red, reported as a different thing.
+    //
+    // ⚠️ IT IS A CEILING ON A HANG, NOT A BUDGET FOR SLOWNESS. Nothing here should
+    // take ten seconds; this is what makes a genuine hang fail its own test rather
+    // than stall the run.
+    testTimeout: 10000,
     // Match *.test.ts(x) + *.spec.ts(x) under src/. Exclude Playwright
     // tests under tests/e2e explicitly.
     include: ["src/**/*.{test,spec}.{ts,tsx}"],

@@ -12,8 +12,32 @@
  */
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterEach } from "vitest";
+
+/**
+ * How long `waitFor`, `findBy*` and friends keep polling.
+ *
+ * ⚠️ RAISED FROM TESTING-LIBRARY'S 1000ms DEFAULT ON 2026-10-27, BECAUSE CI IS
+ * CONTENDED AND THE DEFAULT IS TUNED FOR AN UNLOADED MACHINE. Measured on the run
+ * that forced this: `DocumentsTab.test.tsx` timed out waiting for a mock call that
+ * takes **16ms locally** — a 60x margin — while the runner reported
+ * `Duration 250.36s … environment 315.66s`. Environment setup exceeding wall-clock
+ * time means several workers were competing for two cores, and a 1000ms budget can
+ * expire there for work that is effectively instant.
+ *
+ * ⚠️ IT IS NOT A FIX FOR ANYTHING IN THE CODE, and saying so matters: the test was
+ * correct, the component was correct, and the only thing wrong was a deadline. The
+ * failure appeared when the suite grew past some contention threshold — so it would
+ * have landed on whoever added the next twenty tests, not on whoever wrote the defect.
+ *
+ * ⚠️ THE COST, STATED: a genuinely hung assertion now takes 4s to surface instead of
+ * 1s. That is bounded by `testTimeout` in `vite.config.ts`, which is deliberately
+ * larger than this — so a real hang still fails the TEST rather than hanging the suite.
+ * A spurious red is worse than a slower red: the first makes the channel unreadable,
+ * which is the condition CLAUDE.md §11 calls dark.
+ */
+configure({ asyncUtilTimeout: 4000 });
 
 afterEach(() => {
   cleanup();
