@@ -761,6 +761,186 @@ def test_an_equipment_answer_that_fits_a_cremation_SURVIVES_the_change(db, canon
     assert note is None
 
 
+# ── CLAUSE 4's SECOND HALF, WHICH I SHIPPED BROKEN AND REPORTED AS WORKING ────────
+#
+# ⚠️ FOUR GREEN TESTS COVERED CLAUSE 4 AND ALL FOUR TESTED THE URN/EQUIPMENT HALF.
+# "a vault without that personalization clears it" had no test at all, and the
+# implementation could not run: it imported `resolve_availability_config` from
+# `personalization.availability` (it lives in `personalization.enrollment`) AND called
+# `resolve_schema(db, company_id=..., values=...)` against a keyword-only signature
+# that takes none of those three. ImportError, then TypeError — and a bare
+# `except Exception` swallowed both, so the rule was a permanent silent no-op.
+#
+# ⚠️ IT WAS FOUND BY A PRODUCTION RETEST PROBE THAT HAPPENED TO COPY THE SAME BAD
+# IMPORT, NOT BY ANY TEST. The 48-break harness could not have caught it either:
+# breaking a path that no test exercises turns nothing red. The gap was the absent
+# test, and a break test cannot find an absence.
+
+
+def _variant_of(db, name: str) -> str | None:
+    """The variant id the CATALOGUE gives this name — never a literal.
+
+    ⚠️ DERIVED, NOT HARDCODED, because availability is keyed by variant_template_id and
+    a UUID pasted from one database is a fixture that silently tests nothing anywhere
+    else. This is also the line that measures the real limitation: on testco only 2 of
+    25 products resolve to a variant at all.
+    """
+    from app.services.product_name_resolver import build_index
+    from app.services.product_name_resolver import resolve as resolve_vault
+
+    return getattr(resolve_vault(build_index(db), name), "variant_template_id", None)
+
+
+# ⚠️ A VAULT THAT RESOLVES, CHOSEN BY MEASUREMENT. `Wilbert Bronze` is one of the two
+# testco products that reach a variant id, and its form is `burial_vault`, which is one
+# of the two forms `AvailabilityOffered` accepts for the personalization question.
+_RESOLVING_VAULT = "Wilbert Bronze"
+
+
+def test_the_personalization_clear_REACHES_resolve_schema(db, canonical_tenant, monkeypatch):
+    """⚠️ THE TEST WHOSE ABSENCE HID TWO DEFECTS. It asserts only that the branch RUNS —
+    no clearing, no note — because running is exactly what was broken, and because an
+    assertion about the outcome would have been satisfied by the swallowed no-op.
+
+    The guard is on the KEYWORD NAMES. `resolve_schema` is keyword-only, so the old
+    call's `db`/`company_id`/`values` could never bind; pinning the accepted names here
+    means a future edit that reintroduces them fails on this test rather than
+    disappearing into an except clause.
+    """
+    from app.services.capture import clears
+
+    seen: list[dict] = []
+    real = clears.resolve_schema
+
+    def recording(**kwargs):
+        seen.append(kwargs)
+        return real(**kwargs)
+
+    monkeypatch.setattr(clears, "resolve_schema", recording)
+
+    clears.clear_what_no_longer_fits(
+        db, company_id=TESTCO_ID,
+        resolutions={"vault": _RESOLVING_VAULT, "personalization": "legacy_print"},
+        changed_field="vault",
+    )
+
+    # ⚠️ NON-ZERO IS THE WHOLE POINT. "No exception raised" was TRUE for the entire
+    # period the rule did nothing, because the exception was caught. A call count is
+    # the one reading the broken version could not produce.
+    assert len(seen) == 1, f"the personalization branch did not run: {seen}"
+    assert set(seen[0]) == {
+        "vault_product_id", "personalization_config", "vault_form",
+        "platform_fields", "answers",
+    }, seen[0]
+
+
+def test_a_vault_that_does_not_offer_the_personalization_CLEARS_it(
+    db, canonical_tenant, monkeypatch
+):
+    """James's clause 4: "a vault without that personalization clears it."
+
+    ⚠️ THE AVAILABILITY READ IS THE ONLY DOUBLE, AND IT HAS TO BE. Measured against
+    testco: 4 variants narrow personalization, 25 products exist, and NO product
+    resolves to a narrowing variant — so the positive case cannot be built from seeded
+    data at all. The resolver, `resolve_schema`, the applies_when conditions, the
+    permitted-answer narrowing and the label lookup are all real; only the licensee's
+    config is crafted.
+    """
+    from app.services.capture import clears
+
+    variant = _variant_of(db, _RESOLVING_VAULT)
+    assert variant, "control: this vault must resolve, or the test proves nothing"
+
+    monkeypatch.setattr(
+        clears, "resolve_availability_config",
+        lambda _db, _cid: {"availability": {variant: {"personalization": ["nameplate_only"]}}},
+    )
+
+    after, note = clears.clear_what_no_longer_fits(
+        db, company_id=TESTCO_ID,
+        resolutions={"vault": _RESOLVING_VAULT, "personalization": "legacy_print"},
+        changed_field="vault",
+    )
+
+    assert "personalization" not in after, after
+    assert note is not None
+    # ⚠️ THE LABEL, NOT THE ID — the same ruling the equipment note is held to.
+    assert "Legacy Series" in note, note
+    assert "legacy_print" not in note, note
+
+
+def test_a_vault_that_DOES_offer_the_personalization_keeps_it(
+    db, canonical_tenant, monkeypatch
+):
+    """⚠️ THE DISCRIMINATOR. Without this, the test above passes against an
+    implementation that clears personalization on every vault change — which is the
+    equipment rule's own worked mistake, one field over."""
+    from app.services.capture import clears
+
+    variant = _variant_of(db, _RESOLVING_VAULT)
+    monkeypatch.setattr(
+        clears, "resolve_availability_config",
+        lambda _db, _cid: {"availability": {variant: {"personalization": ["legacy_print", "nameplate_only"]}}},
+    )
+
+    after, note = clears.clear_what_no_longer_fits(
+        db, company_id=TESTCO_ID,
+        resolutions={"vault": _RESOLVING_VAULT, "personalization": "legacy_print"},
+        changed_field="vault",
+    )
+
+    assert after.get("personalization") == "legacy_print"
+    assert note is None
+
+
+def test_a_PROGRAMMING_error_in_the_availability_read_is_NOT_swallowed(
+    db, canonical_tenant, monkeypatch
+):
+    """⚠️ THIS PINS THE STRUCTURAL FIX, which matters more than the two defects it
+    caught. The except clause was `except Exception`, so a wrong module name and a
+    wrong call signature both read as "this tenant has no availability config" —
+    indistinguishable, at runtime, from the condition it was written for.
+    """
+    from app.services.capture import clears
+
+    def boom(_db, _cid):
+        raise TypeError("wrong signature, the exact class that hid for a whole slice")
+
+    monkeypatch.setattr(clears, "resolve_availability_config", boom)
+
+    with pytest.raises(TypeError):
+        clears.clear_what_no_longer_fits(
+            db, company_id=TESTCO_ID,
+            resolutions={"vault": _RESOLVING_VAULT, "personalization": "legacy_print"},
+            changed_field="vault",
+        )
+
+
+def test_a_DATABASE_error_in_the_availability_read_FAILS_OPEN(
+    db, canonical_tenant, monkeypatch
+):
+    """⚠️ AND THE OTHER SIDE OF THE SAME NARROWING, or the fix above would be a
+    regression rather than a repair. An unreachable config table must not delete the
+    director's answers — that was the except clause's real purpose, and it still holds.
+    """
+    from sqlalchemy.exc import OperationalError
+
+    from app.services.capture import clears
+
+    def db_down(_db, _cid):
+        raise OperationalError("SELECT 1", {}, Exception("connection reset"))
+
+    monkeypatch.setattr(clears, "resolve_availability_config", db_down)
+
+    after, note = clears.clear_what_no_longer_fits(
+        db, company_id=TESTCO_ID,
+        resolutions={"vault": _RESOLVING_VAULT, "personalization": "legacy_print"},
+        changed_field="vault",
+    )
+    assert after.get("personalization") == "legacy_print"
+    assert note is None
+
+
 # ── CLAUSE 2's THREE FOLLOW-UP CHAINS ──────────────────────────────────────────────
 #
 # ⚠️ ALL THREE ALREADY WORKED, ON CONDITIONS THAT PREDATE THIS SLICE, and that is

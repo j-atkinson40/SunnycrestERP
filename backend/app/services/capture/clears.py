@@ -26,12 +26,27 @@ surviving a reload and explaining a change the director made yesterday.
 """
 from __future__ import annotations
 
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.services.capture.pills import BURIAL_ONLY_EQUIPMENT
-from app.services.capture.schema import VAULT_FIELD_ID
+from app.services.capture.schema import VAULT_FIELD_ID, resolve_schema
 from app.services.capture.vault_form import form_of
+
+# ⚠️ IMPORTED AT MODULE LEVEL ON PURPOSE, AND THIS LINE IS THE FIX FOR A SHIPPED
+# DEFECT. These two were function-local inside a `try: ... except Exception:` that
+# fails open, and `resolve_availability_config` was imported from
+# `personalization.availability` — where it does not live. It lives in
+# `personalization.enrollment`. So every call raised ImportError, the except swallowed
+# it, and the personalization half of James's clause 4 cleared NOTHING, silently, from
+# the day it shipped. At module level a wrong name is an ImportError at import time,
+# which every test in this package trips immediately. The failure is now unexpressible
+# rather than merely discouraged.
+from app.services.capture import SALES_ORDER, template_for
+from app.services.personalization.enrollment import resolve_availability_config
 from app.services.personalization.questions import ANSWER_NONE
+from app.services.product_name_resolver import build_index
+from app.services.product_name_resolver import resolve as resolve_vault
 
 EQUIPMENT_FIELD_ID = "cemetery_equipment"
 
@@ -106,16 +121,32 @@ def clear_what_no_longer_fits(
     # personalization answer on every tenant that has not been set up.
     dropped_personalization: list[str] = []
     try:
-        from app.services.capture.schema import resolve_schema
-        from app.services.personalization.availability import (
-            resolve_availability_config,
-        )
-
+        # ⚠️ ONLY THE DATABASE READ IS GUARDED, AND ONLY AGAINST DATABASE ERRORS. The
+        # except below used to be a bare `except Exception` wrapping the imports too,
+        # which is how a wrong module name became a permanently silent no-op. A bare
+        # Exception here conflates two unlike things: "this tenant's availability could
+        # not be read", which is a real runtime condition that must fail open, and "this
+        # code is wrong", which must fail loudly. `SQLAlchemyError` covers the first and
+        # lets the second through.
+        # ⚠️ THE CALL SHAPE IS `typed_extraction`'s, AND THE ONE IT REPLACES COULD NOT
+        # HAVE RUN. `resolve_schema` is keyword-only over
+        # (vault_product_id, personalization_config, vault_form, platform_fields,
+        # answers) — it takes no session, no `company_id` and no `values`. The previous
+        # call passed `db` positionally plus both of those names, so it raised TypeError
+        # on every invocation, which the bare `except Exception` then swallowed
+        # alongside the ImportError. Two independent defects, one silence.
+        #
+        # ⚠️ AND THE VAULT IS A NAME HERE, NOT AN ID. Availability is keyed by
+        # variant_template_id, so the name has to go through the catalogue's own
+        # resolver — the same two lines `typed_extraction` uses — rather than being
+        # handed to a resolver that expects an id.
+        resolution = resolve_vault(build_index(db), str(vault) or None)
         resolved = resolve_schema(
-            db,
-            company_id=company_id,
-            values={**after, VAULT_FIELD_ID: vault},
+            vault_product_id=resolution.variant_template_id,
             personalization_config=resolve_availability_config(db, company_id),
+            vault_form=form.form,
+            platform_fields=template_for(SALES_ORDER),
+            answers={**after, VAULT_FIELD_ID: vault},
         )
         for field in resolved:
             field_id = field.definition.field_id
@@ -129,10 +160,16 @@ def clear_what_no_longer_fits(
             label = _label_for(db, company_id, field_id, str(answer))
             del after[field_id]
             dropped_personalization.append(label)
-    except Exception:  # pragma: no cover - availability is optional per tenant
+    except SQLAlchemyError:
         # ⚠️ FAILS OPEN AND CLEARS NOTHING. An availability read that cannot run is not
         # evidence that an answer no longer fits; clearing on an exception would delete
         # the director's answers because a config table was unreachable.
+        #
+        # ⚠️ AND THE `pragma: no cover` THAT USED TO SIT ON THIS LINE WAS LOAD-BEARING
+        # IN THE WRONG DIRECTION. It told the coverage tool not to care that this branch
+        # never ran under test — while in production it was the ONLY branch that ever
+        # ran. An exemption from coverage on the path that fails open is an exemption
+        # from noticing that the path is the whole behaviour.
         dropped_personalization = []
 
     if dropped_personalization:
