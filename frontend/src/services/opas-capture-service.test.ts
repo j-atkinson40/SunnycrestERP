@@ -75,10 +75,19 @@ describe("the four paths match the registered routes", () => {
     // request distinguishes them. A `post` here would reach the LINES endpoint's
     // neighbour, 405, and only at runtime.
     await setCaptureText("abc", "tent only", 7)
+    // ⚠️ A THIRD ARGUMENT SINCE 2026-10-27 — the axios CONFIG, carrying the focused
+    // field as a query param when a row has been clicked. It is `{}` here because
+    // nothing is focused, and `{}` rather than omitted because the call always passes
+    // a config object.
+    //
+    // ⚠️ AND THE FIELD IS A QUERY PARAM, NOT A BODY FIELD, which this assertion also
+    // pins: the body is still exactly `{ text, seq }`. `asking` is a question about
+    // which question to compose in the RESPONSE, not something the session records,
+    // and putting it in the body would make it look stored.
     expect(put).toHaveBeenCalledWith("/capture/sessions/abc/text", {
       text: "tent only",
       seq: 7,
-    })
+    }, {})
     expect(post).not.toHaveBeenCalled()
   })
 
@@ -87,12 +96,40 @@ describe("the four paths match the registered routes", () => {
     // values for words that are no longer on screen — the exact defect whole-text
     // re-extraction exists to fix, reintroduced one layer up.
     await setCaptureText("abc", "", 2)
-    expect(put).toHaveBeenCalledWith("/capture/sessions/abc/text", { text: "", seq: 2 })
+    expect(put).toHaveBeenCalledWith(
+      "/capture/sessions/abc/text", { text: "", seq: 2 }, {},
+    )
   })
 
   it("readCapture GETs /capture/sessions/{id}", async () => {
     await readCapture("abc")
-    expect(get).toHaveBeenCalledWith("/capture/sessions/abc")
+    // ⚠️ NO `params` WHEN NOTHING IS FOCUSED, and that is deliberate rather than
+    // incidental. The server validates `asking` against the fields it is asking
+    // about, so an empty string would be a value it must reject rather than a
+    // question it was never asked.
+    expect(get).toHaveBeenCalledWith("/capture/sessions/abc", {})
+  })
+
+  it("readCapture SENDS the clicked field, so Opas asks that question again", async () => {
+    /** ⚠️ THE HALF THAT WAS MISSING FROM MY FIRST VERSION. The click changed a
+     *  client-side focus and the question — composed on the server — did not follow.
+     *  The field has to go back. */
+    await readCapture("abc", "cemetery")
+    expect(get).toHaveBeenCalledWith("/capture/sessions/abc", {
+      params: { asking: "cemetery" },
+    })
+  })
+
+  it("setCaptureText carries the clicked field too, so typing does not lose it", async () => {
+    /** ⚠️ A DIRECTOR WHO CLICKS A ROW AND THEN TYPES gets a `setCaptureText` response;
+     *  without the field that response composes the server's NEXT question and the
+     *  outline jumps away mid-answer. */
+    await setCaptureText("abc", "st marys", 3, "cemetery")
+    expect(put).toHaveBeenCalledWith(
+      "/capture/sessions/abc/text",
+      { text: "st marys", seq: 3 },
+      { params: { asking: "cemetery" } },
+    )
   })
 
   it("no path repeats the /api/v1 prefix the client already adds", async () => {

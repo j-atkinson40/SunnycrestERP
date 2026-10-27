@@ -50,6 +50,7 @@ from app.services.capture.typed_extraction import (
     segments,
 )
 from app.services.capture import why
+from app.services.capture.schema import CREMATION_EQUIPMENT_ROW_LABEL
 
 logger = logging.getLogger(__name__)
 
@@ -720,8 +721,22 @@ def read_state(
     company_id: str,
     user_id: str,
     completion_attempt: bool = False,
+    asking: str | None = None,
 ) -> dict:
     """The session plus its evaluated capture state and rendered rows.
+
+    ⚠️ `asking` IS THE OFFICE CLICKING A ROW, AND IT EXISTS BECAUSE THE FIRST VERSION
+    ONLY MOVED THE OUTLINE. "Clicking a row asks that question again" (James,
+    2026-10-27) — and a client-side focus changed which row was outlined while Opas
+    went on asking the previous question. The sentence and the pills are composed HERE,
+    so the field has to reach here.
+
+    ⚠️ IT IS A PARAMETER, NOT STATE. Nothing about the ORDER changes when somebody
+    clicks a row, so there is nothing to store — and a column would mean a focus
+    surviving a reload and holding the pane on a question the office had moved past.
+    The client sends it while the row is focused and stops when it is answered.
+
+    ⚠️ AND IT IS IGNORED UNLESS IT IS A FIELD STILL BEING ASKED. See `_guided`.
 
     ⚠️ THE ROWS COME FROM THE EXISTING `capture` SURFACE, NOT FROM A NEW LIST. The
     investigation found the row layer already declares 9 rows over the template and is
@@ -782,6 +797,15 @@ def read_state(
         surface, resolved, rendered_answers, done_signal=said_done,
         conflicted_field_ids=frozenset(conflicted),
     )
+
+    # ⚠️ RESOLVED ONCE AND SHARED WITH `_guided`, because two callers asking the same
+    # question of the catalogue can disagree. The row label and the chip must either
+    # both say cremation or both not — a pane reading "Equipment" with a Cremation chip
+    # above it is the self-contradicting response this file already records twice.
+    #
+    # ⚠️ AND IT IS FIVE TABLE READS, so doing it twice on every keystroke is the cost
+    # the `FormResolver` was added to avoid in the first place.
+    vault_is_cremation = _is_cremation(db, company_id, row)
 
     # ⚠️ THE SUMMARY'S LINES AND BLOCKERS ARE COMPUTED ONLY IN REVIEW. Assessing on
     # every keystroke would run two product lookups and a customer lookup per
@@ -906,7 +930,17 @@ def read_state(
             "rows": [
                 {
                     "row_id": r.row_id,
-                    "label": r.label,
+                    # ⚠️ THE EQUIPMENT ROW IS RELABELLED ON A CREMATION, and it has
+                    # to happen here rather than on the Row: `Row.label` is static and
+                    # the surface layer cannot see the vault's form. The prototype does
+                    # the same flip — `f==='equip'&&k==='urn'?'Cremation setup':LABEL[f]`
+                    # — and it matters because "Equipment" over three cremation setups
+                    # reads as the same question with options missing.
+                    "label": (
+                        CREMATION_EQUIPMENT_ROW_LABEL
+                        if (vault_is_cremation and r.row_id == "cemetery_equipment")
+                        else r.label
+                    ),
                     "state": r.state.value,
                     "value": r.value,
                     "secondary_value": r.secondary_value,
@@ -921,6 +955,12 @@ def read_state(
                     # pointer cannot reach a span (the textarea owns it), so the pane
                     # row is the handle and it needs its own field ids to be one.
                     "field_ids": list(r.field_ids),
+                    # ⚠️ SENT 2026-10-27 SO A CLICK CAN ASK AGAIN. It was computed by
+                    # `resolve_surface` and dropped by this serializer — the same shape
+                    # as `subject_primary`, which was also computed and never sent and
+                    # is why the Review had no deceased name. A row the office is told
+                    # to click needs to carry what the click means.
+                    "edit_target": r.edit_target,
                 }
                 for r in rendered.rows
             ],
@@ -944,7 +984,7 @@ def read_state(
         # field. Composed separately they could disagree — a sentence about the
         # cemetery over pills for the vault — and nothing would be obviously wrong
         # on either side.
-        **_guided(db, company_id, row, state),
+        **_guided(db, company_id, row, state, vault_is_cremation, asking),
         # ⚠️ THE SPANS, IN WHOLE-TEXT COORDINATES, WITH THEIR SEQUENCE. James: "Spans
         # apply only to the exact text they were computed for (sequence number).
         # While typing, stale spans are hidden, never misplaced." The sequence is the
@@ -1067,7 +1107,27 @@ DID_YOU_MEAN_BY = "Which one did you mean by \u201c{phrase}\u201d?"
 PICK_HINT = "More than one matches. Pick one, and the rest of what you typed stays put."
 
 
-def _guided(db, company_id: str, row, state) -> dict:
+def _is_cremation(db, company_id: str, row) -> bool:
+    """Has the chosen vault made this order a cremation?
+
+    ⚠️ FAILS CLOSED TO `False`, AND "NO VAULT YET" IS ALSO False. An order whose vault
+    cannot be placed is not thereby a cremation; `vault_form.form_of` already makes
+    that distinction and this only has to not undo it.
+    """
+    try:
+        from app.services.capture.vault_form import form_of
+
+        return form_of(
+            db, tenant_id=company_id, vault=(row.values or {}).get("vault")
+        ).is_cremation
+    except Exception:  # pragma: no cover - the pane renders without the chip
+        logger.warning("could not resolve the vault's form", exc_info=True)
+        return False
+
+
+def _guided(
+    db, company_id: str, row, state, cremation: bool, asking: str | None = None,
+) -> dict:
     """The question's field, its hint, its pills, and the cremation chip.
 
     ⚠️ IT DOES NOT READ THE ORDER HISTORY ITSELF, AND MY FIRST VERSION DID. `pills_for`
@@ -1089,10 +1149,37 @@ def _guided(db, company_id: str, row, state) -> dict:
     indistinguishable from a question that has no pills — which is a real state for
     `deceased_name` — so the two must be told apart in the log if nowhere else.
     """
-    from app.services.capture.schema import next_field, question_for, hint_for
-    from app.services.capture.schema import CREMATION_CHIP
+    from app.services.capture.schema import guided_field, question_for, hint_for
+    from app.services.capture.schema import (
+        CREMATION_CHIP,
+        REVIEW_ACTION,
+        REVIEW_PILL_LABEL,
+        REVIEW_PILL_SUB,
+    )
 
-    field_id = next_field(state.missing)
+    # ⚠️ `guided_field`, NOT `next_field(state.missing)`, AND THE DIFFERENCE IS FOUR
+    # QUESTIONS. `missing` is required-and-unanswered, so the four fields that are
+    # never required — equipment, the Legacy series, the Legacy print and the Life's
+    # Reflections symbol — were never asked at all. See `guided_field`.
+    field_id = guided_field(state)
+
+    # ⚠️ THE CLICKED ROW WINS, AND ONLY WHILE IT IS STILL BEING ASKED. That is the
+    # prototype's own rule — `if(S.focus&&applicable(S.focus)&&!S.f[S.focus])return
+    # S.focus` — so a click on an ANSWERED row re-asks it (the office wants to change
+    # it) and a click on a field the schema does not ask for is ignored.
+    #
+    # ⚠️ VALIDATED AGAINST THE SETS RATHER THAN TRUSTED. `asking` arrives from a query
+    # string; accepting it unchecked would let a stale or hand-typed value put the pane
+    # on a question this order does not have — "Which Legacy print?" on an order with
+    # no personalization. The three sets below are every field the schema asks about.
+    if asking is not None:
+        askable = (
+            set(state.missing)
+            | set(state.unanswered_optional)
+            | set(state.answered)
+        )
+        if asking in askable:
+            field_id = asking
 
     # ⚠️ AN AMBIGUITY OUTRANKS A GAP, AND THE PILLS ARE THE SAME PILLS. James,
     # 2026-10-27: "The ambiguity choice list becomes these same pills." A pending pick
@@ -1119,18 +1206,23 @@ def _guided(db, company_id: str, row, state) -> dict:
     out: dict = {"question_field_id": field_id}
     try:
         from app.services.capture.pills import pills_for
-        from app.services.capture.vault_form import form_of
 
         values = dict(row.values or {})
-        form = form_of(db, tenant_id=company_id, vault=values.get("vault"))
-        if form.is_cremation:
+        if cremation:
             # ⚠️ THE CHIP IS A SENTENCE FROM THE SERVER like every other label, and
-            # `via` travels with it because the four ways of establishing a cremation
+            # `via` travels with it because the five ways of establishing a cremation
             # are not equally strong — on sunnycrest today it is the product's own
             # name. A reader who needs to know can; the pane just shows the chip.
-            out["cremation"] = {"label": CREMATION_CHIP, "via": form.via}
-        out["question"] = question_for(field_id, cremation=form.is_cremation)
-        hint = hint_for(field_id, cremation=form.is_cremation)
+            from app.services.capture.vault_form import form_of
+
+            out["cremation"] = {
+                "label": CREMATION_CHIP,
+                "via": form_of(
+                    db, tenant_id=company_id, vault=values.get("vault")
+                ).via,
+            }
+        out["question"] = question_for(field_id, cremation=cremation)
+        hint = hint_for(field_id, cremation=cremation)
         if hint:
             out["question_hint"] = hint
         if field_id is not None:
@@ -1152,6 +1244,36 @@ def _guided(db, company_id: str, row, state) -> dict:
                     today=date.today(),
                 )
             ]
+
+        # ── the Review action ───────────────────────────────────────────────────────
+        #
+        # ⚠️ ITS CONDITION IS "EVERYTHING NEEDED IS ANSWERED", WHICH IS HIS WORDING AND
+        # NOT "nothing left to ask". James, 2026-10-27: "When everything needed is
+        # answered, Opas says 'That's everything.' with a Review pill (⌥1) and Enter."
+        # `missing` empty is "everything needed"; optional questions can still remain,
+        # and `guided_field` still asks them.
+        #
+        # ⚠️ SO IT CAN SIT BESIDE ANSWER PILLS, and that combination is the point: once
+        # the order is reviewable the office must be able to finish from the question
+        # they are on, without answering about chairs first. In the prototype the two
+        # conditions coincide because its model has no optional fields; ours does, and
+        # collapsing them would either trap the office on an optional question or stop
+        # equipment ever being asked.
+        #
+        # ⚠️ AN ACTION, NOT AN ANSWER — it carries `act`, and the client must route it
+        # to what Enter does. Through `/answer` it would try to store "review" into a
+        # field.
+        #
+        # ⚠️ AND IT GOES LAST so the ⌥ numbers of the real answers do not shift as the
+        # order becomes reviewable. A pill whose key changes under the director's hand
+        # is worse than one further along the row.
+        if state.is_complete:
+            out["pills"] = [*out.get("pills", []), {
+                "act": REVIEW_ACTION,
+                "value": REVIEW_ACTION,
+                "label": REVIEW_PILL_LABEL,
+                "sub": REVIEW_PILL_SUB,
+            }]
     except Exception:
         logger.warning("guided capture extras unavailable for field %r", field_id,
                        exc_info=True)

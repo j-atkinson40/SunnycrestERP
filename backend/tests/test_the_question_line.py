@@ -34,8 +34,17 @@ def test_the_template_is_not_empty():
 def test_nothing_missing_reads_READY():
     assert next_question(set()) == READY_TO_REVIEW
     assert next_question(None) == READY_TO_REVIEW
-    # ⚠️ HIS WORDING, VERBATIM — he wrote the sentence, not a paraphrase of it.
-    assert READY_TO_REVIEW == "Ready. Press Enter to review."
+    # ⚠️ REWORDED 2026-10-27, AND BOTH WORDINGS ARE HIS. It was "Ready. Press Enter to
+    # review." — the line beside a Complete order BUTTON. The fixes remove the button:
+    # "When everything needed is answered, Opas says 'That's everything.' with a Review
+    # pill (⌥1) and Enter". With the pill carrying "Enter", a sentence that also says
+    # it says it twice.
+    assert READY_TO_REVIEW == "That\u2019s everything."
+    # ⚠️ AND THE INSTRUCTION MOVED TO THE HINT rather than disappearing — the
+    # prototype's own split.
+    from app.services.capture.schema import READY_HINT
+
+    assert READY_HINT == "Press Enter to review, or click any line to change it."
 
 
 @pytest.mark.parametrize(

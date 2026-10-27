@@ -26,7 +26,7 @@ reader would take its presence as evidence the write path exists.
 raises `SessionNotFound` for a wrong id and for another user's id alike, so a 404 cannot
 be used to prove a session exists.
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
@@ -152,12 +152,17 @@ class AnswerRequest(BaseModel):
 
 
 def _state(
-    db: Session, session_id: str, user: User, *, completion_attempt: bool = False
+    db: Session,
+    session_id: str,
+    user: User,
+    *,
+    completion_attempt: bool = False,
+    asking: str | None = None,
 ) -> dict:
     try:
         return session_service.read_state(
             db, session_id, company_id=user.company_id, user_id=user.id,
-            completion_attempt=completion_attempt,
+            completion_attempt=completion_attempt, asking=asking,
         )
     except session_service.SessionNotFound:
         raise HTTPException(status_code=404, detail="capture session not found")
@@ -205,6 +210,11 @@ def add_line(
 def set_text(
     session_id: str,
     body: TextRequest,
+    # ⚠️ A QUERY PARAM ON A PUT, deliberately, and not a field on `TextRequest`. It is
+    # not part of the text being stored — it is a question about which question to
+    # compose in the RESPONSE. Putting it in the body would make it look like something
+    # the session records.
+    asking: str | None = Query(default=None, max_length=64),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -248,7 +258,9 @@ def set_text(
     # client learns that an attempt happened and the rows should turn amber.
     attempted = bool(getattr(row, "_completion_attempt", False))
     db.commit()
-    state = _state(db, session_id, current_user, completion_attempt=attempted)
+    state = _state(
+        db, session_id, current_user, completion_attempt=attempted, asking=asking,
+    )
     # ⚠️ ECHOED, NOT ACTED ON. See `TextRequest.seq` — the client drops stale
     # responses because the client is the only party that knows what is in the bar.
     state["seq"] = body.seq
@@ -515,11 +527,19 @@ def _session_or_404(db: Session, session_id: str, user: User):
 @router.get("/sessions/{session_id}")
 def read_session(
     session_id: str,
+    asking: str | None = Query(
+        default=None,
+        max_length=64,
+        description=(
+            "A field the office clicked a row for, so Opas asks that question again. "
+            "Ignored unless the schema asks about it."
+        ),
+    ),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """The session's current state. ⚠️ The pane re-reads this after a tuck."""
-    return _state(db, session_id, current_user)
+    return _state(db, session_id, current_user, asking=asking)
 
 
 @router.get("/vocabulary")

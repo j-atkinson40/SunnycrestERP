@@ -14,7 +14,7 @@
  * pin the keys this file assumes.
  */
 import { describe, expect, it, vi, beforeEach } from "vitest"
-import { render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter } from "react-router-dom"
 
@@ -390,35 +390,40 @@ describe("the rows", () => {
     )
   })
 
-  it("counts ROWS, not fields — two missing fields on one row is ONE needed", async () => {
+  it("counts UNFILLED ROWS, not missing fields", async () => {
     /**
-     * ⚠️ THE PILL COUNTED FIELDS AND THE AMBER BELONGS TO ROWS, AND THAT IS WHAT
-     * JAMES READ OFF THE SCREEN. "2 needed" with nothing highlighted, because his two
-     * missing fields were `service_date` (on the Service row) and `grave_location`
-     * (on the Burial row) — and before that, a row only turned `needed` after a done
-     * signal, so the pane showed **"0 needed" with nine rows empty**.
+     * ⚠️ REWRITTEN 2026-10-27, AND BOTH THE OLD AND THE NEW RULE ARE RULINGS. It read
+     * "two missing fields on one row is ONE needed" — the 2026-10-14 ruling, where the
+     * pill counted amber-able ROWS so it could not disagree with the amber. The fixes
+     * rename it "N to go" and the prototype's meaning is `fields.length - filled`:
+     * every row still to answer, optional ones included, because with every applicable
+     * question now rendering a row an unanswered optional row IS a question still to
+     * be asked.
      *
-     * Ruled 2026-10-14: the pill count always equals the number of amber-able rows.
-     * Both now read each row's own `missing_field_ids`, so they cannot disagree.
+     * ⚠️ THE INVARIANT IS UNCHANGED AND IS THE POINT: the count and the rows it lights
+     * come from one filter. Only the filter widened. The next test pins that.
      *
-     * ⚠️ THE CASE THAT DISTINGUISHES THE TWO RULES IS TWO FIELDS ON ONE ROW. A fixture
-     * with one missing field per row passes under either, which is why this one puts
-     * `service_date` and `service_time` on the same Service row and expects ONE.
+     * ⚠️ THE FIXTURE MAKES THE TWO NUMBERS DIFFER ON PURPOSE. Three missing FIELDS sit
+     * on one row, and a second row is unfilled with nothing missing (an optional
+     * question) — so "missing fields" is 3, "unfilled rows" is 2, and a fixture where
+     * they happened to agree would pass under either rule.
      */
     const user = userEvent.setup()
     vi.mocked(startCapture).mockResolvedValue(
       state({
-        missing: ["service_date", "service_time"],
+        missing: ["service_date", "service_time", "service_location"],
         surface: {
           id: "capture",
           rows: [
-            { row_id: "funeral_home", label: "Funeral Home", state: "done",
+            { row_id: "funeral_home", label: "Funeral home", state: "done",
               value: "Hopkins Funeral Home", secondary_value: null,
               missing_field_ids: [] },
             { row_id: "service", label: "Service", state: "partial",
               value: "Church", secondary_value: null,
-              missing_field_ids: ["service_date", "service_time"] },
-            { row_id: "burial", label: "Burial", state: "not_mentioned",
+              missing_field_ids: ["service_date", "service_time", "service_location"] },
+            // ⚠️ UNFILLED AND NOTHING MISSING — an optional question, which the old
+            // rule did not count and the new one does.
+            { row_id: "cemetery_equipment", label: "Equipment", state: "not_mentioned",
               value: null, secondary_value: null, missing_field_ids: [] },
           ],
         },
@@ -430,11 +435,12 @@ describe("the rows", () => {
     await waitFor(() =>
       expect(screen.getByTestId("capture-captured-pill")).toHaveTextContent("1"),
     )
-    // two missing FIELDS, one amber-able ROW
-    expect(screen.getByTestId("capture-needed-pill")).toHaveTextContent("1")
+    // three missing FIELDS, two unfilled ROWS
+    expect(screen.getByTestId("capture-needed-pill")).toHaveTextContent("2")
+    expect(screen.getByTestId("capture-needed-pill")).toHaveTextContent("to go")
   })
 
-  it("THE PILL COUNT EQUALS THE NUMBER OF AMBER ROWS, in every state", async () => {
+  it("THE PILL COUNT EQUALS THE NUMBER OF ROWS IT LIGHTS, in every state", async () => {
     /**
      * ⚠️ THE RULING'S OWN TEST: "test the pill count equals the highlighted rows on
      * every state". Asserted as a property over several shapes rather than one case,
@@ -447,9 +453,13 @@ describe("the rows", () => {
      */
     const shapes = [
       { rows: [["a", []], ["b", []]], expected: 0 },
-      { rows: [["a", ["x"]], ["b", []]], expected: 1 },
-      { rows: [["a", ["x", "y"]], ["b", []]], expected: 1 },
-      { rows: [["a", ["x"]], ["b", ["y"]]], expected: 2 },
+      // ⚠️ SHAPES ARE NOW (row id, DONE?) — the count is unfilled rows, so what
+      // decides it is each row's state and not its missing-field list. The old shapes
+      // varied `missing_field_ids`, which the "to go" count no longer reads.
+      { rows: [["a", false], ["b", true]], expected: 1 },
+      { rows: [["a", false], ["b", false]], expected: 2 },
+      { rows: [["a", true], ["b", true]], expected: 0 },
+      { rows: [["a", false], ["b", false], ["c", true]], expected: 2 },
     ] as const
 
     for (const shape of shapes) {
@@ -458,22 +468,42 @@ describe("the rows", () => {
         state({
           surface: {
             id: "capture",
-            rows: shape.rows.map(([id, miss]) => ({
-              row_id: id, label: id.toUpperCase(), state: "not_mentioned",
-              value: null, secondary_value: null, missing_field_ids: miss,
+            rows: shape.rows.map(([id, done]) => ({
+              row_id: id,
+              label: id.toUpperCase(),
+              state: done ? "done" : "not_mentioned",
+              value: done ? "answered" : null,
+              secondary_value: null,
+              missing_field_ids: [],
             })),
           },
         }) as never,
       )
       const view = openOverlay()
       await type(user, "start an order")
+      if (shape.expected === 0) {
+        // ⚠️ NO PILL AT ALL WHEN THERE IS NOTHING TO GO, which is the prototype's own
+        // `if(fields.length>filled)`. A "0 to go" chip is the persistent noise the
+        // "not understood" count was removed for.
+        await waitFor(() => expect(screen.getByTestId("capture-rows")).toBeTruthy())
+        expect(screen.queryByTestId("capture-needed-pill")).toBeNull()
+        view.unmount()
+        continue
+      }
       const pill = await screen.findByTestId("capture-needed-pill")
       expect(pill).toHaveTextContent(String(shape.expected))
 
-      // ⚠️ NOTHING IS AMBER UNTIL ASKED. The pill lights its own rows on click.
-      expect(document.querySelectorAll('[data-amber="true"]')).toHaveLength(0)
+      // ⚠️ SCOPED TO ROWS, AND THE FIRST VERSION WAS NOT. `[data-lit="true"]` alone
+      // also matches the PILL, which carries the same attribute to show its own
+      // pressed state — so shape 1 expected 1 and counted 2. The old test counted
+      // `data-amber`, which the pill does not have, so the selector had never needed
+      // to be specific.
+      const lit = () =>
+        document.querySelectorAll('[data-testid^="capture-row-"][data-lit="true"]')
+      // ⚠️ NOTHING IS LIT UNTIL ASKED. The pill lights its own rows on click.
+      expect(lit()).toHaveLength(0)
       await user.click(pill)
-      expect(document.querySelectorAll('[data-amber="true"]')).toHaveLength(
+      expect(lit()).toHaveLength(
         shape.expected,
       )
       view.unmount()
@@ -733,6 +763,10 @@ describe("the done signal and the summary", () => {
         "sess-1",
         "that's everything",
         expect.any(Number),
+        // ⚠️ THE FOCUSED FIELD, FOURTH, SINCE 2026-10-27 — null while nothing is
+        // focused. The field rides the extraction so that a director who clicks a row
+        // and then TYPES the answer keeps that question on screen.
+        null,
       ),
     )
     await waitFor(() => expect(screen.getByTestId("capture-summary")).toBeInTheDocument())
@@ -1124,15 +1158,37 @@ describe("finishing an order", () => {
     })
   }
 
-  it("the Complete order button is ALWAYS visible while capturing", async () => {
+  it("the Complete order BUTTON IS GONE, and the Review pill is the control", async () => {
+    /**
+     * ⚠️ THIS ASSERTED THE OPPOSITE UNTIL 2026-10-27, AND THE OLD RULING WAS SOUND.
+     * 2026-10-14: "the only way to finish was to type the right phrase, and the phrase
+     * that most people would type — 'approve' — was the one that did not work. A
+     * control that is always there cannot be the thing nobody found."
+     *
+     * The fixes supersede it: "Remove the Complete order button and its hint. When
+     * everything needed is answered, Opas says 'That's everything.' with a Review pill
+     * (⌥1) and Enter." The requirement it was written for — an always-visible control
+     * — is now met by the pill, which sits beside the bar where the office is already
+     * looking and carries its own key. The button was a SECOND control, in the pane,
+     * and the pills row was drawn over it.
+     *
+     * ⚠️ AND THE PILL IS THE SERVER'S, SO THIS TEST ASSERTS THE ABSENCE ONLY. The
+     * Review pill's own behaviour belongs to `guided-question.test.tsx`, where the
+     * component that renders it lives; asserting it here would need a second fixture
+     * for a response this test does not otherwise care about.
+     */
     const user = userEvent.setup()
     vi.mocked(setCaptureText).mockResolvedValue(completable() as never)
     openOverlay()
     await type(user, "start an order for Hopkins")
-    expect(await screen.findByTestId("capture-complete")).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByTestId("capture-rows")).toBeInTheDocument())
+    expect(screen.queryByTestId("capture-complete")).toBeNull()
+    // ⚠️ AND ITS HINT WENT WITH IT. "Still need: service date" named every gap at once;
+    // the question above the bar names ONE thing and the rows carry the rest.
+    expect(screen.queryByTestId("capture-still-need")).toBeNull()
   })
 
-  it("pressing it turns the missing rows amber and NAMES them", async () => {
+  it("ENTER turns the missing rows amber", async () => {
     const user = userEvent.setup()
     vi.mocked(setCaptureText).mockResolvedValue(completable() as never)
     vi.mocked(completeCapture).mockResolvedValue(
@@ -1145,17 +1201,28 @@ describe("finishing an order", () => {
     // while the director is still speaking would make every order start alarming.
     expect(document.querySelectorAll('[data-amber="true"]')).toHaveLength(0)
 
-    await user.click(screen.getByTestId("capture-complete"))
+    // ⚠️ ENTER RATHER THAN THE REMOVED BUTTON. The action is unchanged and still has
+    // three entrances — Enter, ⌘Enter and the Review pill; only the button is gone. So
+    // this test keeps its subject (the amber) and changes its entrance.
+    await act(async () => {
+      fireEvent.keyDown(screen.getByLabelText("Say what the director said"), {
+        key: "Enter",
+      })
+    })
 
     await waitFor(() =>
-      expect(document.querySelectorAll('[data-amber="true"]')).toHaveLength(1),
+      expect(
+        document.querySelectorAll('[data-testid^="capture-row-"][data-amber="true"]'),
+      ).toHaveLength(1),
     )
     expect(screen.getByTestId("capture-row-service")).toHaveAttribute(
       "data-amber", "true",
     )
-    expect(screen.getByTestId("capture-still-need")).toHaveTextContent(
-      /still need: service date/i,
-    )
+    // ⚠️ "Still need: …" IS GONE AND IS NOT REPLACED HERE. It named every gap at once
+    // beside the button; the question above the bar now names one thing at a time, and
+    // the amber rows are what say which. Asserted as an absence so the sentence cannot
+    // quietly return alongside its replacement.
+    expect(screen.queryByTestId("capture-still-need")).toBeNull()
   })
 
   it("an OPTIONAL empty row stays quiet, not amber", async () => {
@@ -1180,7 +1247,11 @@ describe("finishing an order", () => {
     vi.mocked(completeCapture).mockResolvedValue(withOptional as never)
     openOverlay()
     await type(user, "start an order for Hopkins")
-    await user.click(screen.getByTestId("capture-complete"))
+    await act(async () => {
+      fireEvent.keyDown(screen.getByLabelText("Say what the director said"), {
+        key: "Enter",
+      })
+    })
 
     await waitFor(() =>
       expect(screen.getByTestId("capture-row-service")).toHaveAttribute(
@@ -1210,7 +1281,14 @@ describe("finishing an order", () => {
     )
     openOverlay()
     await type(user, "start an order for Hopkins")
-    await user.click(screen.getByTestId("capture-complete"))
+    // ⚠️ ENTER, NOT THE REMOVED BUTTON. The subject of this test is that the Review
+    // lands with Approve FOCUSED — which is about the summary, not about which of the
+    // three entrances got there.
+    await act(async () => {
+      fireEvent.keyDown(screen.getByLabelText("Say what the director said"), {
+        key: "Enter",
+      })
+    })
 
     const approve = await screen.findByTestId("capture-approve")
     // ⚠️ FOCUSED SO ENTER APPROVES, which is the ruling's own wording: "you see the
@@ -1441,5 +1519,257 @@ describe("why something was just cleared", () => {
     // ⚠️ IN THE PANE, NOT BESIDE THE QUESTION. One voice: the same sentence in two
     // places is two things to read and two to keep in step.
     expect(screen.queryByTestId("opas-cleared-note")).toBeNull()
+  })
+})
+
+describe("the pane looks like the prototype", () => {
+  /**
+   * James's fixes of 2026-10-27, clause 2: "Replace the capture pane's look with the
+   * prototype's: eyebrow 'Order'/'Quote', title 'New order', 'N captured' / 'N to go'
+   * chips (+ Cremation chip), a two-column row per question in call order …, the row
+   * Opas is asking about outlined with 'Opas is asking', filled rows ticked, clicking
+   * a row asks that question again, and the footer with the one-line note and the
+   * running total. Label 'Deceased', never 'Deceased name'. Remove 'RULES'."
+   */
+  function paneState(over: Record<string, unknown> = {}) {
+    return state({
+      question_field_id: "deceased_name",
+      question: "What is the name of the deceased?",
+      answered: ["funeral_home"],
+      total: "1405.00",
+      surface: {
+        id: "capture",
+        rows: [
+          { row_id: "funeral_home", label: "Funeral home", state: "done",
+            value: "Hopkins Funeral Home", secondary_value: null,
+            missing_field_ids: [], field_ids: ["funeral_home"],
+            edit_target: "funeral_home" },
+          { row_id: "deceased_name", label: "Deceased", state: "not_mentioned",
+            value: null, secondary_value: null, missing_field_ids: ["deceased_name"],
+            field_ids: ["deceased_name"], edit_target: "deceased_name" },
+          // ⚠️ `field_ids[0]` IS DELIBERATELY NOT THE `edit_target`, AND A BREAK TEST
+          // FORCED THIS. The real Cemetery row sources the name first, so
+          // `field_ids[0]` and `edit_target` coincide — and a break replacing the
+          // target with `field_ids[0]` turned nothing red. I had even written "would
+          // be the name here by luck" in the comment below and left the fixture as it
+          // was. The town first makes the two differ, which is the shape the Service
+          // row genuinely has (`FirstOf(service_location_other, service_location)`).
+          { row_id: "cemetery", label: "Cemetery", state: "not_mentioned",
+            value: null, secondary_value: null, missing_field_ids: ["cemetery"],
+            field_ids: ["cemetery_city", "cemetery", "eta"],
+            edit_target: "cemetery" },
+        ],
+      },
+      ...over,
+    })
+  }
+
+  it("the eyebrow and the title, not 'Order capture'", async () => {
+    const user = userEvent.setup()
+    vi.mocked(startCapture).mockResolvedValue(paneState() as never)
+    openOverlay()
+    await type(user, "start an order")
+    await waitFor(() => expect(screen.getByTestId("capture-title")).toBeTruthy())
+    expect(screen.getByTestId("capture-eyebrow").textContent).toBe("Order")
+    expect(screen.getByTestId("capture-title").textContent).toBe("New order")
+    expect(screen.getByTestId("capture-head").textContent).not.toContain("Order capture")
+  })
+
+  it("⚠️ 'RULES' IS GONE — it is an internal label", async () => {
+    /** James: "'RULES' in the corner is an internal label for how Opas understood you.
+     *  You shouldn't see it." It lives in the decision log, where every row already
+     *  carries its `source` (`catalog/rules/...`, `bar/model/asked`). */
+    const user = userEvent.setup()
+    vi.mocked(startCapture).mockResolvedValue(paneState() as never)
+    openOverlay()
+    await type(user, "start an order")
+    await waitFor(() => expect(screen.getByTestId("capture-rows")).toBeTruthy())
+    expect(screen.queryByTestId("capture-assist-label")).toBeNull()
+    expect(screen.getByTestId("capture-pane").textContent).not.toContain("RULES")
+  })
+
+  it("the asked row is outlined and says 'Opas is asking'", async () => {
+    const user = userEvent.setup()
+    vi.mocked(startCapture).mockResolvedValue(paneState() as never)
+    openOverlay()
+    await type(user, "start an order")
+    const row = await screen.findByTestId("capture-row-deceased_name")
+    expect(row).toHaveAttribute("data-asking", "true")
+    expect(row.textContent).toContain("Opas is asking")
+    // ⚠️ AND NOBODY ELSE IS. Two outlined rows would be two questions.
+    expect(
+      document.querySelectorAll('[data-testid^="capture-row-"][data-asking="true"]'),
+    ).toHaveLength(1)
+    // ⚠️ AND "Not mentioned yet" IS NOT ON THE ASKED ROW. James named that string: a
+    // row Opas is asking about right now has not been "not mentioned" — it is the
+    // question.
+    expect(row.textContent).not.toContain("Not mentioned")
+  })
+
+  it("a filled row is ticked and shows its value", async () => {
+    const user = userEvent.setup()
+    vi.mocked(startCapture).mockResolvedValue(paneState() as never)
+    openOverlay()
+    await type(user, "start an order")
+    const row = await screen.findByTestId("capture-row-funeral_home")
+    expect(row).toHaveAttribute("data-state", "done")
+    expect(row.textContent).toContain("Hopkins Funeral Home")
+    expect(row.textContent).toContain("✓")
+  })
+
+  it("the label is 'Deceased', never 'Deceased name'", async () => {
+    /** ⚠️ HE SAID IT TWICE — in the questions dispatch and again in the fixes — and the
+     *  row had its own copy of the label, which is how one gets corrected in one place
+     *  and stays wrong in another. */
+    const user = userEvent.setup()
+    vi.mocked(startCapture).mockResolvedValue(paneState() as never)
+    openOverlay()
+    await type(user, "start an order")
+    const rows = await screen.findByTestId("capture-rows")
+    expect(rows.textContent).toContain("Deceased")
+    expect(rows.textContent).not.toContain("Deceased name")
+    expect(rows.textContent).not.toContain("Deceased Name")
+  })
+
+  it("clicking a row asks that question again — the QUESTION changes, not just the outline", async () => {
+    /**
+     * James's fixes, clause 2: "clicking a row asks that question again".
+     *
+     * ⚠️ MY FIRST VERSION ONLY MOVED THE OUTLINE, and this test is what found it. The
+     * question, its hint and its pills are composed on the SERVER — so a click that
+     * changed a client-side focus outlined the clicked row while Opas went on asking
+     * the previous question. "Asks that question again" means the sentence changes.
+     *
+     * ⚠️ SO THE CLICK SENDS THE FIELD BACK: `readCapture(session, asking)`, and the
+     * server composes for it after validating it is a field this order asks about.
+     *
+     * ⚠️ AND IT ASKS THE ROW'S `edit_target`, NOT ITS FIRST FIELD. This fixture's
+     * Cemetery row lists `cemetery_city` first on purpose — a different question —
+     * so the `asking` value is the assertion.
+     */
+    const user = userEvent.setup()
+    vi.mocked(startCapture).mockResolvedValue(paneState() as never)
+    vi.mocked(readCapture).mockResolvedValue(
+      paneState({
+        question_field_id: "cemetery",
+        question: "Which cemetery?",
+      }) as never,
+    )
+    openOverlay()
+    await type(user, "start an order")
+
+    // the server is asking about the deceased
+    const asked = await screen.findByTestId("capture-row-deceased_name")
+    expect(asked).toHaveAttribute("data-asking", "true")
+
+    await user.click(screen.getByTestId("capture-row-cemetery"))
+
+    // ⚠️ THE FIELD SENT IS THE `edit_target`. `field_ids[0]` here is `cemetery_city`,
+    // which would ask "Which town is the cemetery in?" — a different question.
+    await waitFor(() =>
+      expect(readCapture).toHaveBeenCalledWith("sess-1", "cemetery"),
+    )
+    // ⚠️ AND THE SENTENCE FOLLOWS, which is the half the outline alone did not give.
+    await waitFor(() =>
+      expect(screen.getByTestId("opas-guided-question").textContent).toBe(
+        "Which cemetery?",
+      ),
+    )
+    await waitFor(() =>
+      expect(screen.getByTestId("capture-row-cemetery")).toHaveAttribute(
+        "data-asking", "true",
+      ),
+    )
+    // ⚠️ AND THE PREVIOUS ONE STOPS BEING ASKED. Two outlined rows would be two
+    // questions, which is the thing one-question-at-a-time exists to prevent.
+    expect(screen.getByTestId("capture-row-deceased_name")).not.toHaveAttribute(
+      "data-asking",
+    )
+  })
+
+  it("a clicked row stops being asked once it is answered", async () => {
+    /** ⚠️ THE END CONDITION, AND IT IS THE PROTOTYPE'S: `S.focus&&applicable(S.focus)&&
+     *  !S.f[S.focus]` — the focus is preferred only while the field is unanswered. A
+     *  focus that outlived its answer would hold the pane on a question the office had
+     *  just finished with. */
+    const user = userEvent.setup()
+    vi.mocked(startCapture).mockResolvedValue(paneState() as never)
+    vi.mocked(setCaptureText).mockResolvedValue(
+      paneState({ answered: ["funeral_home", "cemetery"] }) as never,
+    )
+    openOverlay()
+    await type(user, "start an order")
+    await waitFor(() => expect(screen.getByTestId("capture-rows")).toBeTruthy())
+
+    await user.click(screen.getByTestId("capture-row-cemetery"))
+    await waitFor(() =>
+      expect(screen.getByTestId("capture-row-cemetery")).toHaveAttribute(
+        "data-asking", "true",
+      ),
+    )
+
+    // the next read reports the cemetery answered; the walk resumes
+    //
+    // ⚠️ `fireEvent.change` ON THE BAR, NOT A SECOND `type(user, …)`. The helper clicks
+    // the SPHERE first, and the sphere is `pointer-events: none` once the overlay is
+    // open — so calling it twice in one test fails on the click rather than on the
+    // behaviour. Found exactly that way.
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("opas-input"), {
+        target: { value: "start an order st marys" },
+      })
+    })
+    await waitFor(() =>
+      expect(screen.getByTestId("capture-row-deceased_name")).toHaveAttribute(
+        "data-asking", "true",
+      ),
+    )
+    expect(screen.getByTestId("capture-row-cemetery")).not.toHaveAttribute("data-asking")
+  })
+
+  it("the footer carries the running total, and nothing when there is none", async () => {
+    const user = userEvent.setup()
+    vi.mocked(startCapture).mockResolvedValue(paneState() as never)
+    openOverlay()
+    await type(user, "start an order")
+    await waitFor(() => expect(screen.getByTestId("capture-footer")).toBeTruthy())
+    expect(screen.getByTestId("capture-total").textContent).toContain("1,405")
+    // ⚠️ AND IT SAYS WHAT CLICKING DOES — the only place that does, now that the rows
+    // are buttons that look like lines.
+    expect(screen.getByTestId("capture-footer-hint").textContent).toBe(
+      "Click any line to change it.",
+    )
+  })
+
+  it("⚠️ NO '$0.00' ON A FRESH ORDER — a priced order that costs nothing is a different claim", async () => {
+    const user = userEvent.setup()
+    vi.mocked(startCapture).mockResolvedValue(paneState({ total: "0.00" }) as never)
+    openOverlay()
+    await type(user, "start an order")
+    await waitFor(() => expect(screen.getByTestId("capture-footer")).toBeTruthy())
+    expect(screen.queryByTestId("capture-total")).toBeNull()
+  })
+
+  it("the Cremation chip rides the header too", async () => {
+    const user = userEvent.setup()
+    vi.mocked(startCapture).mockResolvedValue(
+      paneState({ cremation: { label: "Cremation", via: "recorded_name" } }) as never,
+    )
+    openOverlay()
+    await type(user, "start an order")
+    await waitFor(() => expect(screen.getByTestId("capture-kind-chip")).toBeTruthy())
+    expect(screen.getByTestId("capture-kind-chip").textContent).toBe("Cremation")
+  })
+
+  it("a quote says Quote and New quote", async () => {
+    const user = userEvent.setup()
+    vi.mocked(startCapture).mockResolvedValue(
+      paneState({ object_type: "quote" }) as never,
+    )
+    openOverlay()
+    await type(user, "start an order")
+    await waitFor(() => expect(screen.getByTestId("capture-title")).toBeTruthy())
+    expect(screen.getByTestId("capture-eyebrow").textContent).toBe("Quote")
+    expect(screen.getByTestId("capture-title").textContent).toBe("New quote")
   })
 })

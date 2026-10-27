@@ -69,85 +69,83 @@ _DASH = " — "
 CAPTURE_SALES_ORDER = Surface(
     id="capture",
     unanswered_word="needed",
+    # ⚠️ EVERY APPLICABLE QUESTION GETS A ROW, which is the prototype's own
+    # `ORDER.filter(applicable)` and what the 2026-10-27 fixes list requires: without
+    # it `cemetery_equipment` is optional-and-unmentioned on a fresh order, so the
+    # Equipment row James named would not render and could not be clicked.
+    show_unmentioned_optional=True,
+    # ── ONE ROW PER QUESTION, IN CALL ORDER ─────────────────────────────────────────
+    #
+    # ⚠️ RESHAPED 2026-10-27 BY RULING, after James walked the screen: "The prototype's
+    # pane has a line per question (service day, time and place separately), highlights
+    # the line Opas is asking about, labels it 'Deceased'". The previous shape was nine
+    # rows grouped by SUBJECT — one "Service" row carrying location, day and time — and
+    # it is wrong for guided capture for one reason: the pane now outlines the row Opas
+    # is ASKING about, and a row that answers three questions cannot be outlined for
+    # one of them.
+    #
+    # ⚠️ IN THE ENGINE'S `CALL_ORDER`, AND THE DISPATCH'S OWN PARENTHETICAL DISAGREES
+    # WITH IT. James wrote "a two-column row per question in call order (Funeral home,
+    # Deceased, Vault, Personalization/Print/Dates when they apply, Service day, Time,
+    # Service, Cemetery, Equipment)" — that list is the PROTOTYPE's `ORDER`, which puts
+    # personalization between the vault and the day. The engine's `CALL_ORDER` puts
+    # personalization and its follow-ups LAST, deliberately ("in the order they are
+    # chosen").
+    #
+    # The stated authority is "call order", so that is what this follows, and the
+    # behaviour is also better: the asking outline moves DOWN the list and never jumps
+    # back up it. Reported to James rather than resolved silently — if he wants the
+    # prototype's order, `CALL_ORDER` is the one place to change and this follows it.
     rows=(
-        Row(id="funeral_home", label="Funeral Home", order=1,
-            sources=(FieldSource("funeral_home"),)),
+        Row(id="funeral_home", label="Funeral home", order=1,
+            sources=(FieldSource("funeral_home"),),
+            edit_target="funeral_home"),
 
-        # ⚠️ RECORD-ONLY, AND THE ORDERED-SOURCE EXAMPLE DOES NOT YET APPLY. The
-        # amendment-1 illustration was `[captured contact_name, customer record]`,
-        # which presumes a CAPTURED contact field. No such template field exists
-        # and none was ruled in — the three fields added 2026-10-05 were
-        # date_of_birth, date_of_death and cemetery_equipment.
-        #
-        # So this row reads the record alone. The ordered mechanism is built and
-        # tested, and this row becomes its first production instance the day a
-        # captured contact field is ruled in — the call does know who spoke, which
-        # is the argument for it.
-        Row(id="contact", label="Contact", order=2,
-            sources=(RecordSource("customer", "contact_name"),)),
+        # ⚠️ "Deceased", NEVER "Deceased name" — James, 2026-10-27, twice: once in the
+        # question clause and once again in the fixes. The field's own label was
+        # changed to match; this row had its own copy, which is exactly how a label
+        # gets corrected in one place and stays wrong in another.
+        Row(id="deceased_name", label="Deceased", order=2,
+            sources=(FieldSource("deceased_name"),),
+            edit_target="deceased_name"),
 
-        Row(id="deceased_name", label="Deceased Name", order=3,
-            sources=(FieldSource("deceased_name"),)),
+        # ⚠️ "Vault", NOT "Vault / Product". The prototype's `LABEL.vault` is "Vault";
+        # the slash form was this surface's own invention for a pane that also showed
+        # non-vault products.
+        Row(id="vault", label="Vault", order=3,
+            sources=(FieldSource("vault"),),
+            edit_target="vault"),
 
-        # Prototype: "Mar 14, 1948 — Sep 14, 2026". Two fields, one row.
-        Row(id="dates", label="Dates", order=4,
-            sources=(ComposedSource(
-                (FieldSource("date_of_birth"), FieldSource("date_of_death")),
-                join=_DASH),),
-            edit_target="date_of_death"),
+        # ── the three that were one row ─────────────────────────────────────────────
+        # ⚠️ SPLIT BY RULING. The prototype has `day`, `time` and `place` as separate
+        # LABELs and asks them as separate questions; combining them meant one row for
+        # three questions, so the asking outline had nowhere correct to land.
+        Row(id="service_date", label="Service day", order=4,
+            sources=(FieldSource("service_date"),),
+            edit_target="service_date"),
 
-        # Prototype: "St. Mary's · Thu 10:00 AM".
-        #
-        # ⚠️ ORDERED SOURCES, FIRST-ANSWERED-WINS — and this row is the mechanism's
-        # first production use. `service_location_other` comes FIRST because it is the
-        # more specific answer: when the director said "other", the place's name is in
-        # that field and the vocabulary value is just the word "other".
-        #
-        # ⚠️ NO NEW ROW, BY RULING. `service_location_other` continues this row rather
-        # than opening one of its own — the prototype shows the service as a single
-        # line, and a row per field is the assumption this layer exists to break.
-        #
-        # ⚠️ THE SERVICE-TIME GAP IS CLOSED. This comment used to record that
-        # `service_time` had no template field and that my 2026-10-05 ruling calling it
-        # "already captured as burial_time" had read a defect as the specification. The
-        # field now exists — `burial_time` was renamed to it — so the row composes a
-        # location and a time as the prototype shows ("St. Mary's · Thu 10:00 AM").
-        # ⚠️ `service_date` JOINED THIS ROW 2026-10-07 (R4). The prototype's line is
-        # "St. Mary's · Thu 10:00 AM" — a place, a DAY and a time — and the day had
-        # no template field until R4. It composes into the existing row rather than
-        # opening one of its own, for the same reason the location did: the prototype
-        # shows the service as a single line.
-        # ⚠️ ONE SOURCE WITH A `FirstOf` FOR THE LOCATION, NOT TWO OVERLAPPING
-        # ALTERNATIVES. This row used to be two `ComposedSource`s — one per location
-        # field — each also carrying the date and the time, so the FIRST started
-        # yielding the moment a date existed and the LOCATION vanished from the row.
-        # See `FirstOf` in rows.py for the measurement.
+        # ⚠️ `service_location_other` RIDES THIS ROW rather than opening its own. It is
+        # the ANSWER to "where exactly?" when the location is `other`, so "Other ·
+        # Smith residence" is one fact read aloud. `FirstOf` prefers the specific text
+        # when it exists, which is what the previous combined row already did.
         Row(id="service", label="Service", order=5,
-            sources=(ComposedSource((
-                FirstOf((
-                    FieldSource("service_location_other"),
-                    FieldSource("service_location"),
-                )),
-                FieldSource("service_date"),
-                FieldSource("service_time"),
-            ), join=_DOT),),
+            sources=(FirstOf((
+                FieldSource("service_location_other"),
+                FieldSource("service_location"),
+            )),),
             edit_target="service_location"),
 
-        # Prototype: "Forest Lawn · Thu 11:30 AM" — labelled `Cemetery` here and
-        # `Burial` on the summary. Same facts, different label per surface.
-        # ⚠️ `eta` REPLACES `burial_time` HERE, BY RULING, and the slot is the
-        # argument: the prototype shows "Forest Lawn · Thu 11:30 AM", the cemetery
-        # ARRIVAL, which is the procession ETA. The field that used to render here was
-        # named `burial_time` and actually held what the director said about the
-        # SERVICE, which is why it was renamed to `service_time` and moved to the
-        # Service row.
-        #
-        # Two time facts, two rows, and no third name for anyone to conflate.
-        # ⚠️ `cemetery_city` JOINED THIS ROW 2026-10-07 (R4). It composes with the
-        # name rather than standing alone because the town is not a fact anyone wants
-        # on its own — it exists to make the NAME unambiguous, and "St. Mary's ·
-        # Auburn · 11:30 AM" is how a director reads it back.
-        Row(id="cemetery", label="Cemetery", order=6,
+        Row(id="service_time", label="Time", order=6,
+            sources=(FieldSource("service_time"),),
+            edit_target="service_time"),
+
+        # ⚠️ THE TOWN AND THE ETA STILL COMPOSE HERE, and the reason is unchanged from
+        # the row this replaces: the town is not a fact anyone wants on its own — it
+        # exists to make the NAME unambiguous — and the ETA is the cemetery ARRIVAL,
+        # read back as "St. Mary's · Skaneateles · 11:30 AM". Neither is a question
+        # Opas asks on its own in `CALL_ORDER`'s sense: `cemetery_city` is optional and
+        # said in the same breath as the name, and `eta` is prompted-but-never-required.
+        Row(id="cemetery", label="Cemetery", order=7,
             sources=(ComposedSource((
                 FieldSource("cemetery"),
                 FieldSource("cemetery_city"),
@@ -155,106 +153,67 @@ CAPTURE_SALES_ORDER = Surface(
             ), join=_DOT),),
             edit_target="cemetery"),
 
-        # ⚠️ NO SIZE ROW, AND NO LONGER A GAP. This comment used to record
-        # `vault_size` as deliberately unsourced — the prototype shows
-        # "Wilbert Bronze" with no size, and the field was ruled redundant but
-        # kept until a resolver existed. The resolver exists and the field is
-        # gone, so there is nothing to source: the variant IS the size, and the
-        # product name is the whole answer.
-        Row(id="vault", label="Vault / Product", order=7,
-            sources=(FieldSource("vault"),)),
+        # ⚠️ KEPT THOUGH THE DISPATCH'S LIST OMITS IT, and flagged rather than dropped.
+        # `grave_location` is CAPTURED — a director can say "section 4 lot 12" — and a
+        # row is the only place it appears. Dropping it to match the list would make a
+        # typed value vanish, which is the defect the 2026-10-12 ruling ("captured
+        # values must be visible") was made about. It is optional and unmentioned on
+        # almost every order, so the hide-optional-unmentioned rule keeps it off screen
+        # until somebody says it.
+        Row(id="grave_location", label="Grave", order=8,
+            sources=(FieldSource("grave_location"),),
+            edit_target="grave_location"),
 
-        # ⚠️ REPOINTED 2026-10-07 FOR R1, AND THE OLD SOURCES WERE DEAD THE MOMENT
-        # THE QUESTIONS COLLAPSED. This row read `legacy_print`,
-        # `nameplate_cover_emblem` and `lifes_reflections` — three template fields
-        # that no longer exist, so every source would have resolved to nothing and
-        # the row would have rendered blank on every order. The orphan check caught
-        # it, which is what that check is for.
-        #
-        # ⚠️ AND THE COLLAPSE MADE THE ROW MATCH THE PROTOTYPE MORE CLOSELY, NOT
-        # LESS. The prototype renders "Legacy print · American Flag" — a KIND and a
-        # DETAIL, which is exactly the shape R1 produces: the answer names the kind,
-        # `legacy_print_name` or `lifes_reflections_symbol` names the thing. Under
-        # three questions this row was joining three kinds and the detail had
-        # nowhere to come from.
-        Row(id="personalization", label="Personalization", order=8,
+        # ⚠️ "Equipment", not "Cemetery Equipment" — the prototype's `LABEL.equip`. The
+        # label flips to "Cremation setup" on an urn vault, and that flip happens where
+        # the cremation is KNOWN (the serializer), not here: `Row.label` is static and
+        # this layer cannot see the vault's form.
+        Row(id="cemetery_equipment", label="Equipment", order=9,
+            sources=(FieldSource("cemetery_equipment"),),
+            secondary=(FieldSource("extra_chairs_count"),),
+            edit_target="cemetery_equipment"),
+
+        # ── personalization and its follow-ups, last, as `CALL_ORDER` asks them ──────
+        Row(id="personalization", label="Personalization", order=10,
             sources=(ComposedSource((
                 FieldSource("personalization"),
-                # ⚠️ `legacy_series` JOINED 2026-10-07 (R2). It composes rather than
-                # opening a row because "Legacy print · custom" is one fact read
-                # aloud, and because a row per field is the assumption this layer
-                # exists to break.
-                FieldSource("legacy_series"),
-                FieldSource("legacy_print_name"),
                 FieldSource("lifes_reflections_symbol"),
-                # ⚠️ `nameplate_date_format` JOINED 2026-10-12 BY RULING. It was
-                # captured ("years only" -> `years`) and sourced by NO row on
-                # EITHER surface — a required answer with nowhere to appear, and
-                # the longest-standing member of the orphan set.
-                #
-                # ⚠️ IT COMPOSES HERE RATHER THAN OPENING A ROW because it is a
-                # property OF the nameplate, not a fact beside it: "Nameplate only
-                # · Years" is how the choice reads back. Its own row would imply a
-                # date format exists independently of a nameplate.
-                #
-                # ⚠️ ADDING IT CANNOT MAKE THIS ROW READ "not configured". That
-                # classification now requires `availability_governed`, and this
-                # field is conditional on an ANSWER (a nameplate was chosen), not
-                # on licensee enrollment — measured, and pinned by
-                # `test_a_FOLLOW_UP_question_with_a_vocabulary_is_not_unconfigured`.
-                FieldSource("nameplate_date_format"),
             ), join=_DOT),),
             edit_target="personalization"),
 
-        Row(id="cemetery_equipment", label="Cemetery Equipment", order=9,
-            sources=(FieldSource("cemetery_equipment"),),
-            # ⚠️ THE COUNT RIDES THE EQUIPMENT ROW RATHER THAN OPENING ITS OWN, for
-            # the reason `nameplate_date_format` does: it is a property OF the
-            # chairs, not a fact beside them. "Extra Chairs (Over 8) · 4 chairs" is
-            # how the answer reads back; a separate "Extra chairs: 4" row would imply
-            # a count that exists independently of choosing chairs.
-            secondary=(FieldSource("extra_chairs_count"),)),
+        # ⚠️ ITS OWN ROW NOW, because it is its own QUESTION — "Which Legacy series?"
+        # then "Which print?". It composed into Personalization when rows were grouped
+        # by subject; under one-row-per-question the asking outline needs it separate.
+        Row(id="legacy_print", label="Legacy print", order=11,
+            sources=(ComposedSource((
+                FieldSource("legacy_series"),
+                FieldSource("legacy_print_name"),
+            ), join=_DOT),),
+            edit_target="legacy_series"),
 
-        # ⚠️ ADDED 2026-10-12 BY RULING: "captured values must be visible". Both
-        # fields were CAPTURED BY THE EXTRACTOR AND SOURCED BY NO CAPTURE ROW, so a
-        # director could say them, the engine stored them, and the pane showed
-        # nothing — while both are REQUIRED, so the same pane reported the order
-        # incomplete without showing a row for what was missing. Found by
-        # enumerating the source map rather than reading it.
+        # ⚠️ ALSO ITS OWN ROW, and `nameplate_date_format` rides it rather than opening
+        # a twelfth: it is a property OF the dates ("1948 — 2026 · Years"), not a fact
+        # beside them. Same reasoning that kept it off its own row before the reshape.
+        Row(id="dates", label="Dates", order=12,
+            sources=(ComposedSource((
+                FieldSource("date_of_birth"),
+                FieldSource("date_of_death"),
+                FieldSource("nameplate_date_format"),
+            ), join=_DASH),),
+            edit_target="date_of_birth"),
+
+        # ⚠️ `contact` IS GONE, AND IT WAS NOT A QUESTION. It read
+        # `RecordSource("customer", "contact_name")` — the customer record, never
+        # anything the director said — so under one-row-per-question it has no question
+        # to be a row for. Its own comment recorded it as waiting for "the day a
+        # captured contact field is ruled in"; that day has not come, and the row can
+        # return with the field.
         #
-        # ⚠️ ONE ROW, NOT TWO, AND THE JOIN IS WHY. "Thu Mar 2, 2027 · Section C
-        # Lot 12" is one fact an office reads aloud — when and where the burial is.
-        # A row per field is the assumption this layer exists to break.
-        #
-        # ⚠️ `burial_date` IS DISTINCT FROM THE `dates` ROW, which carries the
-        # DECEDENT's birth and death. Three date facts in one order, and conflating
-        # the burial with the death is the same confusion the
-        # `burial_time`/`service_time` rename above was about. `burial_date`
-        # declares `display="date"`, so `rows.py::write_for_a_human` renders it
-        # office-style; the stored value is unchanged.
-        #
-        # ⚠️ `burial_date` WAS NEVER AN ORPHAN and that is not a contradiction: it
-        # already had a row on the SUMMARY surface, and orphanhood is computed over
-        # the UNION. Absent from capture and present on summary is a real gap and
-        # not orphanhood — which is the distinction `orphan_field_ids` exists to
-        # keep, and the reason the gap needed finding a different way.
-        # ⚠️ THE GRAVE LOCATION AND NOTHING ELSE, BY RULING (James, 2026-10-14),
-        # SUPERSEDING THE INHERITED-DATE LINE OF 2026-10-13. For one day this row
-        # read "Section 4 · Fri Oct 16, 2026 · same day as the service"; James ruled
-        # the date off it entirely — the service row already says the day, and
-        # repeating it under a second heading is the kind of duplication that makes a
-        # reader wonder which one is authoritative.
-        #
-        # ⚠️ AND SO THIS ROW CAN NEVER BE "needed". `grave_location` is optional by
-        # the same ruling, so an empty Burial row is a quiet empty row, not an amber
-        # one. `burial_date` is still DERIVED at Approve from `service_date`; it is
-        # simply not displayed anywhere.
-        Row(id="burial", label="Burial", order=10,
-            sources=(FieldSource("grave_location"),),
-            edit_target="grave_location"),
+        # ⚠️ AND `burial` IS GONE for the same reason: it sourced `grave_location`,
+        # which now has its own row under its own name. A "Burial" row that showed only
+        # the grave was a label describing more than it carried.
     ),
 )
-
 
 # ---------------------------------------------------------------------------
 # The summary surface — screen 2. Six rows + subject, counts worded "missing".

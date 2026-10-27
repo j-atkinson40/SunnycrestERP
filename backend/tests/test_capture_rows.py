@@ -52,14 +52,23 @@ from app.services.capture.surfaces import (
 
 #: Row ids the prototype shows, measured. Set equality, never counts — equal
 #: cardinalities pass while membership is wrong.
+# ⚠️ RESHAPED 2026-10-27 BY RULING: "a two-column row per question in call order".
+# James walked the screen and the pane was still grouped by SUBJECT — one "Service" row
+# carrying location, day and time — which cannot work once the pane outlines the row
+# Opas is ASKING about, because a row that answers three questions has no single
+# question to be outlined for.
+#
+# What changed, and each is a rename or a split rather than a new fact:
+#   service    -> service_date + service + service_time   (three questions, three rows)
+#   dates      -> dates                                   (unchanged, now its own row)
+#   burial     -> grave_location                          (same field, named for itself)
+#   contact    -> GONE                                    (a record, never a question)
+#   personalization -> personalization + legacy_print      (two questions, two rows)
 CAPTURE_ROW_IDS = {
-    "funeral_home", "contact", "deceased_name", "dates", "service",
-    "cemetery", "vault", "personalization", "cemetery_equipment",
-    # ⚠️ `burial` ADDED 2026-10-12 BY RULING. `burial_date` and `grave_location`
-    # were captured by the extractor and sourced by no CAPTURE row, so the pane
-    # showed nothing for either while both are required — it could report an order
-    # incomplete without showing a row for what was missing.
-    "burial",
+    "funeral_home", "deceased_name", "vault",
+    "service_date", "service", "service_time",
+    "cemetery", "grave_location", "cemetery_equipment",
+    "personalization", "legacy_print", "dates",
 }
 SUMMARY_ROW_IDS = {
     "funeral_home", "vault", "service", "burial", "personalization",
@@ -112,8 +121,18 @@ class TestRowsAreNotFields:
         # the line needs a quantity) and it displays on the EQUIPMENT row's secondary
         # rather than on a row of its own. So the field count moved and neither row
         # count did — 10 != 21 and 6 != 21.
+        # ⚠️ 12 CAPTURE ROWS SINCE 2026-10-27, not 10, AND THE ASSERTION THIS TEST
+        # EXISTS FOR IS STILL THE `!=`. The reshape to one-row-per-question split the
+        # Service row into three and Personalization into two, and dropped `contact`
+        # (a record, never a question) — so +4 -1 -1 = 12.
+        #
+        # ⚠️ AND IT MOVED TOWARD ONE-ROW-PER-FIELD WITHOUT REACHING IT, which is worth
+        # saying because the direction looks like a reversal. Four rows still compose
+        # several fields each: Cemetery (name + town + eta), Equipment (+ the chair
+        # count), Dates (birth + death + format), Legacy print (series + print). 12
+        # against 21 fields.
         assert n_fields == 21
-        assert len(CAPTURE_SALES_ORDER.rows) == 10 != n_fields
+        assert len(CAPTURE_SALES_ORDER.rows) == 12 != n_fields
         assert len(SUMMARY_SALES_ORDER.rows) == 6 != n_fields
 
     def test_collapse_the_answer_and_its_details_into_one_row(self):
@@ -127,16 +146,33 @@ class TestRowsAreNotFields:
         Flag" — which is what the prototype actually renders. The row count did not
         change; what feeds it did.
         """
-        row = next(r for r in CAPTURE_SALES_ORDER.rows if r.id == "personalization")
+        # ⚠️ REPOINTED AGAIN 2026-10-27. The Personalization row no longer carries the
+        # Legacy fields or the dates — one-row-per-question gave each its own — so the
+        # collapse this test names now lives on the DATES row: "1948 — 2026 · Years",
+        # the dates and the format they are written in.
+        #
+        # ⚠️ AND THE PERSONALIZATION ROW STILL COLLAPSES ONE, which is checked below:
+        # the kind and its symbol ("Life's Reflections · Dove") are one fact read
+        # aloud.
+        row = next(r for r in CAPTURE_SALES_ORDER.rows if r.id == "dates")
         assert set(row_field_ids(row)) == {
-            "personalization", "legacy_series",
-            "legacy_print_name", "lifes_reflections_symbol",
+            "date_of_birth", "date_of_death",
             # ⚠️ `nameplate_date_format` JOINED 2026-10-12 BY RULING, and it belongs
             # to exactly the collapse this test is about: it is a property OF the
             # nameplate, not a fact beside it. Before, it was sourced by no row on
             # either surface — a required answer with nowhere to appear.
             "nameplate_date_format",
         }
+        # ⚠️ AND THE PERSONALIZATION ROW STILL COLLAPSES THE KIND AND ITS SYMBOL. The
+        # row count did not change by splitting; what feeds each row did.
+        pers = next(r for r in CAPTURE_SALES_ORDER.rows if r.id == "personalization")
+        assert set(row_field_ids(pers)) == {
+            "personalization", "lifes_reflections_symbol",
+        }
+        # ⚠️ AND THE LEGACY ROW COLLAPSES THE SERIES AND THE PRINT, which is its own
+        # question pair: "Which Legacy series?" then "Which print?".
+        legacy = next(r for r in CAPTURE_SALES_ORDER.rows if r.id == "legacy_print")
+        assert set(row_field_ids(legacy)) == {"legacy_series", "legacy_print_name"}
 
     def test_composition_renders_with_the_designs_separator(self):
         """Prototype: "Forest Lawn · Thu 11:30 AM"."""
@@ -160,8 +196,20 @@ class TestTheTwoSurfacesDiffer:
         assert "cemetery" in row_field_ids(cap)
         assert "cemetery" in row_field_ids(summ)
 
-    def test_contact_is_a_row_on_capture_and_a_secondary_line_on_the_summary(self):
-        assert any(r.id == "contact" for r in CAPTURE_SALES_ORDER.rows)
+    def test_the_contact_is_a_SECONDARY_LINE_on_both_surfaces_now(self):
+        """⚠️ IT WAS A ROW ON THE CAPTURE UNTIL 2026-10-27, and the row is gone because
+        it was never a QUESTION. It read `RecordSource("customer", "contact_name")` —
+        the customer record, never anything the director said — so under
+        one-row-per-question there is no question for it to be a row for.
+
+        ⚠️ ITS OWN COMMENT PREDICTED THIS. The row recorded itself as waiting for "the
+        day a captured contact field is ruled in", noting the call does know who spoke.
+        That day has not come; the row can return with the field.
+
+        ⚠️ AND THE FACT IS NOT LOST — it is the funeral home's secondary line on the
+        summary, which is where the office reads it back.
+        """
+        assert not any(r.id == "contact" for r in CAPTURE_SALES_ORDER.rows)
         assert not any(r.id == "contact" for r in SUMMARY_SALES_ORDER.rows)
         fh = next(r for r in SUMMARY_SALES_ORDER.rows if r.id == "funeral_home")
         assert any(isinstance(s, RecordSource) and s.path == "contact_name"
@@ -440,10 +488,16 @@ class TestTheFourStates:
         # day. The 10-13 ruling put it there labelled "same day as the service"; the
         # 10-14 ruling took it off entirely, because the Service row already says the
         # day. The row now shows the grave location and nothing else.
-        burial_row = next(r for r in CAPTURE_SALES_ORDER.rows if r.id == "burial")
-        assert burial_row.secondary == (), burial_row.secondary
-        assert {i for s in burial_row.sources for i in ids(s)} == {"grave_location"}
-
+        # ⚠️ THE `burial` ROW IS GONE AS OF 2026-10-27, RENAMED FOR WHAT IT CARRIES.
+        # It sourced `grave_location` and nothing else, so a row called "Burial" was a
+        # label describing more than it held; under one-row-per-question it is the
+        # `grave_location` row, labelled "Grave". The exception above is unchanged —
+        # `burial_date` is still derived and still shown nowhere.
+        grave_row = next(
+            r for r in CAPTURE_SALES_ORDER.rows if r.id == "grave_location"
+        )
+        assert [s.field_id for s in grave_row.sources] == ["grave_location"]
+        assert not grave_row.secondary
     def test_EXACTLY_ONE_template_field_is_availability_governed_today(self):
         """⚠️ A RATCHET ON THE DISCRIMINATOR ITSELF. If a second field becomes
         availability-governed, its row gains the ability to read "not configured" —
@@ -729,12 +783,18 @@ class TestCountsBelongToTheCapture:
                               records={"customer": {"contact_name": "Tom"}})
         summ = resolve_surface(SUMMARY_SALES_ORDER, fields, values,
                                records={"customer": {"contact_name": "Tom"}})
-        # ⚠️ 10 SINCE 2026-10-12 — the `burial` row joined the capture surface. The
-        # prototype's "9 captured" was measured against a nine-row capture; the
-        # claim this test pins is NOT the number but that a summary reports the
-        # CAPTURE's count over its own six rows, which the final assertion checks.
-        assert len(cap.rows) == 10, [r.row_id for r in cap.rows]
-        assert counts(cap)[0] == 10
+        # ⚠️ 12 SINCE 2026-10-27 — the reshape to one-row-per-question. The
+        # prototype's "9 captured" was measured against a nine-row capture; the claim
+        # this test pins is NOT the number but that a summary reports the CAPTURE's
+        # count over its own six rows, which the final assertion checks.
+        # ⚠️ 11 RENDERED OF 12 DEFINED, AND THE MISSING ONE IS CORRECT. This fixture
+        # answers every field with "x", so `personalization` is "x" rather than
+        # `legacy_print` — `legacy_series` does not apply, every field on the Legacy
+        # print row is inapplicable, and the row is ABSENT rather than empty. That is
+        # the inapplicable-row rule doing its job, not a counting error.
+        assert len(cap.rows) == 11, [r.row_id for r in cap.rows]
+        assert not any(r.row_id == "legacy_print" for r in cap.rows)
+        assert counts(cap)[0] == 11
         assert len(summ.rows) == 6
         assert counts(cap)[0] != len(summ.rows), (
             "the summary shows the CAPTURE's count over its own six rows — "
@@ -753,10 +813,22 @@ class TestInapplicableRowsAreAbsent:
         assert {r.row_id for r in out.rows} == {"keep"}
 
     def test_a_record_only_row_renders_without_any_field(self):
-        """`Contact` has no template field at all and must still appear."""
+        """A row with no template field at all must still appear.
+
+        ⚠️ REPOINTED 2026-10-27 FROM THE CAPTURE TO THE SUMMARY. `Contact` was the
+        capture's record-only row and the reshape removed it — it was never a QUESTION,
+        so one-row-per-question has no place for it. The MECHANISM it demonstrated
+        (`if ids and not any(i in applicable…)` skips a row only when it HAS fields and
+        none applies) is unchanged and is what this test is for, so it now exercises it
+        where a record-only slot still lives: the summary's funeral-home secondary.
+
+        ⚠️ AND IF THE MECHANISM EVER HAS NO INSTANCE, THIS TEST SHOULD FAIL RATHER THAN
+        BE DELETED. A guard with no caller is the thing this codebase keeps finding; the
+        failure is the signal that the branch has become unreachable.
+        """
         out = resolve_surface(
-            CAPTURE_SALES_ORDER, _resolved(), {},
+            SUMMARY_SALES_ORDER, _resolved(), {},
             records={"customer": {"contact_name": "Tom Harding"}})
-        row = next(r for r in out.rows if r.row_id == "contact")
-        assert row.value == "Tom Harding"
-        assert row.state is RowState.DONE
+        row = next(r for r in out.rows if r.row_id == "funeral_home")
+        # the record-only SECONDARY renders with no template field behind it
+        assert row.secondary_value == "Tom Harding"

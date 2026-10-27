@@ -88,6 +88,11 @@ export function sameEntryStatus(
     cur.cremation === next.cremation &&
     cur.clearedNote === next.clearedNote &&
     cur.sessionId === next.sessionId &&
-    samePills(cur.guidedPills, next.guidedPills)
+    samePills(cur.guidedPills, next.guidedPills) &&
+    // ⚠️ THE EIGHTH, ADDED 2026-10-27 WITH THE CLICKABLE ROWS. The host retires a
+    // clicked row when its field becomes answered; if this were dropped, a status
+    // whose only change was "that field is now answered" would never reach the host
+    // and the pane would stay outlined on a question already finished.
+    sameIds(cur.answeredFieldIds, next.answeredFieldIds)
   )
 }

@@ -130,7 +130,11 @@ def test_nothing_missing_has_no_field_and_reads_READY():
     assert next_field(set()) is None
     assert next_field(None) is None
     assert question_for(None) == schema.READY_TO_REVIEW
-    assert hint_for(None) is None
+    # ⚠️ THE READY STATE HAS A HINT AS OF 2026-10-27, and this asserted None. The old
+    # ready line was "Ready. Press Enter to review." — it carried the instruction
+    # itself. The fixes make the sentence "That's everything." with the instruction in
+    # the hint and on the pill, which is the prototype's own split.
+    assert hint_for(None) == schema.READY_HINT
 
 
 def test_a_field_outside_the_call_order_is_still_asked():
@@ -951,3 +955,256 @@ def test_ANY_personalization_asks_the_dates_and_none_does_not():
     # ⚠️ AND DECLINING IT ASKS FOR NOTHING. "none" is an ANSWER — it clears the
     # requirement rather than leaving it open.
     assert "date_of_birth" not in missing({"personalization": ANSWER_NONE})
+
+
+# ── THE 2026-10-27 FIXES ───────────────────────────────────────────────────────────
+
+def test_the_guided_walk_REACHES_the_equipment_question():
+    """⚠️ THE DEFECT I SHIPPED AND REPORTED AS WORKING. `next_field(missing)` walks
+    required-and-unanswered, and `cemetery_equipment` is `required_when=Never()` — so
+    the equipment question was never asked, and "the equipment question offers the
+    cremation setups from the catalog" was unreachable through the flow. I had verified
+    it by calling `pills_for` on that field directly, which tests the pills and not
+    whether the walk gets there.
+
+    ⚠️ ASSERTED BY WALKING A WHOLE ORDER, not by inspecting the function. The defect was
+    invisible to reading: every piece was correct.
+    """
+    from app.services.capture import evaluate, template_for, SALES_ORDER
+    from app.services.capture.schema import guided_field
+
+    tmpl = template_for(SALES_ORDER)
+    answers: dict = {}
+    asked: list[str] = []
+    for _ in range(40):
+        st = evaluate(answers, vault_product_id=None, personalization_config=None,
+                      platform_fields=tmpl)
+        f = guided_field(st)
+        if f is None:
+            break
+        asked.append(f)
+        answers[f] = "church" if f == "service_location" else "x"
+    assert "cemetery_equipment" in asked, asked
+    # ⚠️ THE CONTROL: the required ones must still be asked, and FIRST. A walk that
+    # reached equipment by asking everything in schema order would satisfy the line
+    # above and bury the cemetery behind the chairs.
+    assert asked[:3] == ["funeral_home", "deceased_name", "vault"], asked
+    assert asked.index("cemetery") < asked.index("cemetery_equipment"), asked
+
+
+def test_the_guided_walk_NEVER_asks_the_burial_date():
+    """⚠️ RULED AWAY 2026-10-13: "the burial is always the same day as the service. When
+    it isn't, it is a graveside service." The field is kept and still extracted so a
+    contradictory date becomes a visible conflict, and it is DERIVED at approve.
+
+    ⚠️ MY FIRST `guided_field` ASKED IT. It ended `return sorted(optional)[0]` as a
+    fallback — right for a REQUIRED field absent from `CALL_ORDER` ("still a gap"),
+    wrong for an optional one, where absence from `CALL_ORDER` means nobody wants it
+    asked. The walk printed "Burial date?" and reinstated a question the ruling removed.
+    """
+    from app.services.capture import evaluate, template_for, SALES_ORDER
+    from app.services.capture.schema import guided_field, CALL_ORDER
+
+    assert "burial_date" not in CALL_ORDER, "the premise: it is absent on purpose"
+    tmpl = template_for(SALES_ORDER)
+    answers: dict = {}
+    for _ in range(40):
+        st = evaluate(answers, vault_product_id=None, personalization_config=None,
+                      platform_fields=tmpl)
+        f = guided_field(st)
+        if f is None:
+            break
+        assert f != "burial_date", "the ruling says this is never asked"
+        answers[f] = "church" if f == "service_location" else "x"
+
+
+def test_required_questions_come_before_optional_ones():
+    """⚠️ NOT THE PROTOTYPE'S RULE, AND THE RIGHT ONE HERE. Its `nextField` walks
+    `ORDER` and its model has no optional fields, so the distinction never arose. A
+    director who has not named the cemetery should be asked for the cemetery before
+    being asked about chairs — and `CALL_ORDER` alone would interleave them, because
+    `cemetery_equipment` sits above `personalization` in it."""
+    from app.services.capture.schema import guided_field
+
+    class FakeState:
+        missing = ("personalization",)
+        unanswered_optional = ("cemetery_equipment",)
+
+    # `cemetery_equipment` is EARLIER in CALL_ORDER than `personalization`, so a single
+    # walk over CALL_ORDER would return it. Required wins.
+    from app.services.capture.schema import CALL_ORDER
+    assert CALL_ORDER.index("cemetery_equipment") < CALL_ORDER.index("personalization")
+    assert guided_field(FakeState()) == "personalization"
+
+
+def test_the_ready_line_is_his_words_and_carries_no_instruction():
+    """James, 2026-10-27: "Opas says 'That's everything.' with a Review pill (⌥1) and
+    Enter". ⚠️ THE OLD WORDING WAS ALSO HIS — "Ready. Press Enter to review." — and it
+    was the line beside a Complete order BUTTON. With the pill carrying "Enter", a
+    sentence that also says it says it twice."""
+    from app.services.capture.schema import READY_TO_REVIEW, READY_HINT, question_for
+
+    assert READY_TO_REVIEW == "That’s everything."
+    assert question_for(None) == READY_TO_REVIEW
+    assert "Enter" not in READY_TO_REVIEW
+    # the instruction moved to the hint, which is the prototype's own split
+    assert READY_HINT == "Press Enter to review, or click any line to change it."
+
+
+def test_the_capture_surface_is_one_row_per_question_in_call_order():
+    """'a two-column row per question in call order'.
+
+    ⚠️ EVERY QUESTION FIELD MUST BE SOURCED BY SOME ROW, or a captured value is
+    invisible — the 2026-10-12 ruling. Asserted over `CALL_ORDER` rather than over a
+    list I typed here, so adding a question without a row fails this.
+    """
+    from app.services.capture.rows import row_field_ids
+    from app.services.capture.surfaces import CAPTURE_SALES_ORDER as S
+    from app.services.capture.schema import CALL_ORDER
+
+    covered: set[str] = set()
+    for row in S.rows:
+        covered |= set(row_field_ids(row))
+    assert not [f for f in CALL_ORDER if f not in covered], \
+        [f for f in CALL_ORDER if f not in covered]
+
+    # ⚠️ THE ROW ORDER FOLLOWS `CALL_ORDER`, which is the dispatch's stated authority
+    # even though its parenthetical list is the prototype's order. Checked as a
+    # relative ordering over the fields each row sources, because one row can source
+    # several.
+    order = {f: i for i, f in enumerate(CALL_ORDER)}
+    firsts = [
+        min((order[f] for f in row_field_ids(row) if f in order), default=10 ** 6)
+        for row in sorted(S.rows, key=lambda r: r.order)
+    ]
+    assert firsts == sorted(firsts), firsts
+
+
+def test_the_labels_are_the_prototypes():
+    from app.services.capture.surfaces import CAPTURE_SALES_ORDER as S
+
+    labels = {r.id: r.label for r in S.rows}
+    assert labels["deceased_name"] == "Deceased"      # never "Deceased name"
+    assert labels["vault"] == "Vault"                 # never "Vault / Product"
+    assert labels["cemetery_equipment"] == "Equipment"
+    assert labels["service_date"] == "Service day"
+    assert labels["service_time"] == "Time"
+    assert labels["service"] == "Service"
+    # ⚠️ AND NOTHING READS "Deceased Name" ANYWHERE ON THIS SURFACE.
+    assert all("Deceased name" != l and "Deceased Name" != l for l in labels.values())
+
+
+def test_every_row_can_be_clicked_to_ask_its_question_again():
+    """'clicking a row asks that question again' — so every row must name a field.
+
+    ⚠️ AND THE TARGET MUST BE A QUESTION, not just any field the row sources. The
+    Cemetery row sources the name, the town and the ETA; its target is `cemetery`, so a
+    click asks "Which cemetery?" rather than "Which town is the cemetery in?".
+    """
+    from app.services.capture.surfaces import CAPTURE_SALES_ORDER as S
+    from app.services.capture.schema import CALL_ORDER
+
+    for row in S.rows:
+        assert row.edit_target is not None, row.id
+        assert row.edit_target in CALL_ORDER, (row.id, row.edit_target)
+    assert {r.id: r.edit_target for r in S.rows}["cemetery"] == "cemetery"
+    assert {r.id: r.edit_target for r in S.rows}["service"] == "service_location"
+
+
+def test_the_capture_surface_shows_optional_questions_and_the_summary_does_not():
+    """⚠️ TWO RULINGS CONFLICT AND EACH IS RIGHT ABOUT ITS OWN SURFACE. 2026-10-14:
+    "only needed rows and things you've actually said are shown… nine empty rows on a
+    fresh order is a wall of grey". 2026-10-27: the row list includes Equipment, which
+    is optional — so the first hides a row the second names.
+
+    The capture pane is now the MAP, with the asked row outlined and every row
+    clickable; the Review has neither. So the flag is per-surface.
+    """
+    from app.services.capture.surfaces import CAPTURE_SALES_ORDER, SUMMARY_SALES_ORDER
+
+    assert CAPTURE_SALES_ORDER.show_unmentioned_optional is True
+    assert SUMMARY_SALES_ORDER.show_unmentioned_optional is False
+
+
+def test_the_equipment_row_is_relabelled_on_a_cremation():
+    from app.services.capture.schema import CREMATION_EQUIPMENT_ROW_LABEL
+
+    assert CREMATION_EQUIPMENT_ROW_LABEL == "Cremation setup"
+
+
+def test_the_funeral_home_pills_offer_only_customers_who_have_ORDERED(db, canonical_tenant):
+    """⚠️ WHAT JAMES SAW: "St. Mary's Cemetery and 'Fairview Burial Services' appear
+    under 'Which funeral home?'". Both are customers; neither has ever placed an order.
+    They were there because this branch padded the list from every ACTIVE customer — a
+    pad I added that the dispatch never asked for.
+
+    ⚠️ IT IS NOT THE `customer_type` FIX. No ruling on that has reached me, and measured
+    on production the column is NULL on all five of Sunnycrest's customers, so nothing
+    can tell a funeral home from a cemetery today. Order history is a different
+    discriminator that happens to give the right answer here.
+
+    ⚠️ AND IT HAS A KNOWN COST: a genuinely NEW funeral home has no orders either, so it
+    is not offered until its first one is typed. Asserted below so the trade is visible
+    rather than discovered.
+    """
+    from app.services.capture.pills import pills_for
+
+    facts = [
+        order(funeral_home="Hopkins Funeral Home"),
+        order(funeral_home="Hopkins Funeral Home"),
+        order(funeral_home="Riverside Memorial Chapel"),
+    ]
+    values: dict = {}
+    got = pills_for(
+        db, tenant_id=TESTCO_ID, field_id="funeral_home", values=values,
+        resolved_fields=_resolved(db, values), today=date(2026, 10, 27), facts=facts,
+    )
+    offered = {p.value for p in got}
+    assert "Hopkins Funeral Home" in offered
+    assert "Riverside Memorial Chapel" in offered
+    # ⚠️ THE CONTROL AND THE POINT: a customer with no orders is NOT offered, whatever
+    # it is called. Testco's own customer list is seeded and wider than these two.
+    assert offered == {"Hopkins Funeral Home", "Riverside Memorial Chapel"}, offered
+
+
+def test_a_customer_with_no_orders_is_not_offered_even_if_it_is_the_only_one(db, canonical_tenant):
+    """⚠️ THE COST, STATED AS A TEST. With no order history there are no funeral-home
+    pills at all — the office types the name, which always works. Pills are an
+    accelerator and never the only route, and this is the case the `customer_type`
+    ruling is needed for."""
+    from app.services.capture.pills import pills_for
+
+    values: dict = {}
+    got = pills_for(
+        db, tenant_id=TESTCO_ID, field_id="funeral_home", values=values,
+        resolved_fields=_resolved(db, values), today=date(2026, 10, 27), facts=[],
+    )
+    assert got == ()
+
+
+def test_the_capture_surface_RENDERS_the_optional_equipment_row():
+    """⚠️ THE FLAG'S VALUE IS NOT THE FLAG BEING READ, and a break test is why this
+    exists. `test_the_capture_surface_shows_optional_questions_and_the_summary_does_not`
+    asserts `show_unmentioned_optional is True` — which stays true if nothing consults
+    it. Disabling the read in `rows.py` turned nothing red in this suite.
+
+    ⚠️ SO THIS RENDERS. On a fresh order `cemetery_equipment` is applicable, optional
+    and unanswered — exactly the row the 2026-10-14 rule hides and the 2026-10-27 list
+    names — so its presence is the flag being obeyed.
+    """
+    from app.services.capture import template_for, SALES_ORDER
+    from app.services.capture.rows import resolve_surface
+    from app.services.capture.schema import resolve_schema
+    from app.services.capture.surfaces import CAPTURE_SALES_ORDER
+
+    fields = resolve_schema(
+        vault_product_id=None, personalization_config=None,
+        platform_fields=template_for(SALES_ORDER), answers={},
+    )
+    shown = {r.row_id for r in resolve_surface(CAPTURE_SALES_ORDER, fields, {}).rows}
+    assert "cemetery_equipment" in shown, sorted(shown)
+    # ⚠️ THE CONTROL: the required rows are there too, so a render that returned
+    # everything unconditionally would not satisfy this by accident — the assertion
+    # below is what fails if the surface stops hiding INAPPLICABLE rows.
+    assert {"funeral_home", "deceased_name", "vault"} <= shown, sorted(shown)
+    assert "legacy_print" not in shown, "inapplicable rows must still be absent"

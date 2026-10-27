@@ -228,23 +228,65 @@ def test_completing_an_incomplete_order_STAYS_PUT_and_names_the_gap(
     st = ss.read_state(db, row.id, company_id=tenant, user_id=user_id)
     assert st["missing_labels"] == ["Service date"]
     amber = [r["row_id"] for r in st["surface"]["rows"] if r["missing_field_ids"]]
-    assert amber == ["service"], amber
+    # ⚠️ `service_date` SINCE 2026-10-27. The day was on the combined `service` row
+    # until the reshape to one-row-per-question; it is its own row now, which is what
+    # lets the pane outline the row Opas is asking about.
+    assert amber == ["service_date"], amber
 
 
 def test_the_pill_count_equals_the_number_of_amber_ROWS(db, tenant, world, user_id):
-    """⚠️ THE RULING'S OWN TEST, and the case that distinguishes the two rules is two
-    missing fields on ONE row. A sentence with no day and no time leaves
-    `service_date` AND `service_time` outstanding, both on the Service row — two
-    fields, one amber row."""
+    """⚠️ THE RULING'S OWN TEST (2026-10-14): the pill count always equals the number of
+    amber-able rows, because two missing FIELDS can share one ROW.
+
+    ⚠️ ITS DISTINGUISHING CASE MOVED ON 2026-10-27 AND IS KEPT RATHER THAN DROPPED.
+    Until the reshape, "no day and no time" left `service_date` and `service_time`
+    outstanding on ONE Service row — two fields, one amber row. One-row-per-question
+    split them, so that sentence now produces two rows and would satisfy either rule.
+
+    ⚠️ AND THE CASE IS NOT REACHABLE BY TYPING ON TESTCO, which is why the second half
+    renders directly. Measured: `personalization` resolves NOT_APPLICABLE there (no
+    availability configured for the resolved vault), so the dates stay optional and
+    never enter `missing`. The only row that can hold two REQUIRED-unanswered fields is
+    Dates, and reaching it needs a configured vault.
+    """
     row = _session(
         db, tenant, user_id,
         "order for hopkins monticello St. marys full equipment church last name smith",
     )
     st = ss.read_state(db, row.id, company_id=tenant, user_id=user_id)
+    # ── the invariant, over whatever this sentence produces ─────────────────────────
     assert set(st["missing"]) == {"service_date", "service_time"}, st["missing"]
     amber = [r["row_id"] for r in st["surface"]["rows"] if r["missing_field_ids"]]
-    assert amber == ["service"], amber
-    assert len(amber) == 1 and len(st["missing"]) == 2
+    assert sorted(amber) == ["service_date", "service_time"], amber
+    # ⚠️ EVERY MISSING FIELD IS ON AN AMBER ROW, which is the half that holds whatever
+    # the row shape is: a field reported missing with no row to colour is the defect
+    # James read off the screen as "2 needed" with nothing highlighted.
+    covered = {
+        f for r in st["surface"]["rows"] for f in (r["missing_field_ids"] or [])
+    }
+    assert covered == set(st["missing"]), (covered, st["missing"])
+
+    # ── and the 2-fields-on-1-row case, constructed ─────────────────────────────────
+    from app.services.capture import template_for, SALES_ORDER
+    from app.services.capture.rows import resolve_surface
+    from app.services.capture.schema import resolve_schema
+    from app.services.capture.surfaces import CAPTURE_SALES_ORDER
+
+    answers = {"personalization": "nameplate_only"}
+    fields = resolve_schema(
+        vault_product_id="v1",
+        personalization_config={"availability": {"v1": {
+            "personalization": ["nameplate_only"],
+        }}},
+        platform_fields=template_for(SALES_ORDER),
+        answers=answers,
+    )
+    out = resolve_surface(CAPTURE_SALES_ORDER, fields, answers)
+    dates = next(r for r in out.rows if r.row_id == "dates")
+    # three REQUIRED fields outstanding, one row
+    assert len(dates.missing_field_ids) >= 2, dates
+    rows_with_missing = [r.row_id for r in out.rows if r.missing_field_ids]
+    assert rows_with_missing.count("dates") == 1, rows_with_missing
 
 
 def test_adding_the_day_reaches_the_summary(db, tenant, world, user_id):

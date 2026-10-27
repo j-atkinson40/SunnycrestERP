@@ -47,6 +47,7 @@ import {
   completeCapture,
   approveCapture,
   choosePick,
+  readCapture,
   setCaptureText,
   startCapture,
   takeSwitch,
@@ -108,6 +109,13 @@ export interface EntryPaneStatus {
    *  and dropped by the next one, because it answers "what just happened". */
   readonly clearedNote?: string | null
   readonly sessionId?: string | null
+  /** Which fields the server considers answered.
+   *
+   *  ⚠️ IT TRAVELS UP SO THE HOST CAN RETIRE A CLICKED ROW. "Clicking a row asks that
+   *  question again" needs an end condition, and the prototype's is "while it is still
+   *  unanswered" (`S.focus&&…&&!S.f[S.focus]`). The host holds the click; only the
+   *  server knows when it was answered. */
+  readonly answeredFieldIds?: readonly string[]
 }
 
 /** The placeholder, derived from what is true right now.
@@ -212,6 +220,33 @@ export function captureVoice(args: {
  *  them in the source file. */
 /** ⚠️ THE CARET'S ROW, lit from the bar. Deliberately the same blue as the span's
  *  lit state in the mirror so the two ends of the link read as one thing. */
+/** The prototype's `.row.current` — a steel outline and a 3px halo.
+ *
+ * ⚠️ IT OUTLINES RATHER THAN FILLS, which is the prototype's choice and the right one:
+ * the asked row is the one thing on the pane that is about to change, and a fill would
+ * read as a value already there. */
+const ROW_ASKING_CLASS =
+  "border-[rgba(143,176,207,0.5)] bg-[rgba(255,255,255,0.025)] " +
+  "shadow-[0_0_0_3px_rgba(143,176,207,0.16)]"
+
+/** `.row.current .mk{border-color:var(--steel)}` — the ring, not yet ticked. */
+const MARK_ASKING_CLASS = "border-[rgb(143,176,207)] text-transparent"
+
+/** What the "N to go" pill lights while it is hovered — the rows it counts. */
+const ROW_LIT_CLASS = "border-[rgba(227,171,79,0.45)]"
+
+/** ⚠️ THE PROTOTYPE'S OWN WORDS for the asked row's empty value: `Opas is asking`.
+ *  The old pane read "Not mentioned yet" on every empty row, which James named: a row
+ *  Opas is asking about right now has not been "not mentioned" — it is the question. */
+const ASKING_TEXT = "Opas is asking"
+
+/** The prototype's footer fallback: `'Click any line to change it.'`
+ *
+ * ⚠️ IT IS THE ONLY PLACE THAT SAYS THE ROWS ARE CLICKABLE. The rows became buttons by
+ * ruling ("clicking a row asks that question again") and a button that looks like a
+ * line needs one sentence somewhere saying so. */
+const FOOTER_HINT = "Click any line to change it."
+
 const ROW_CARET_CLASS =
   "outline outline-1 outline-[rgba(138,164,189,0.55)] bg-[rgba(138,164,189,0.07)]"
 
@@ -345,6 +380,9 @@ export function CapturePane({
   onStatus,
   pickRequest,
   answerRequest,
+  askedFieldId = null,
+  onAskAgain,
+  focusRequest,
   onApproved,
   onAskWhy,
   completeRequest,
@@ -364,6 +402,22 @@ export function CapturePane({
    *  rather than hover -> row because the textarea owns the pointer over its own
    *  text (James, 2026-10-16). */
   readonly caretFieldIds?: readonly string[]
+  /** Which field Opas is asking about, so the pane can outline that row.
+   *
+   *  ⚠️ IT COMES DOWN FROM THE HOST RATHER THAN BEING READ OFF `state` HERE, because
+   *  the host already holds it for the question above the bar. Two reads of the same
+   *  server field would not disagree today and would the moment one of them gained a
+   *  fallback. */
+  readonly askedFieldId?: string | null
+  /** Ask a question again, because the office clicked its row.
+   *
+   *  ⚠️ IT GOES UP TO THE HOST, NOT STRAIGHT TO THE SERVER. "Clicking a row asks that
+   *  question again" is a change to what Opas is ASKING, and the asking lives beside
+   *  the bar — the pane would otherwise be a second thing deciding the question. */
+  readonly onAskAgain?: (fieldId: string) => void
+  /** A row the office clicked, counter-stamped so a second click on the same row still
+   *  asks again. */
+  readonly focusRequest?: { readonly fieldId: string; readonly nonce: number }
   /** ⚠️ AN ANSWER REQUESTED FROM THE BAR — a pill click or a ⌥-digit — counter-stamped
    *  for the same reason `pickRequest` is: the same answer picked twice is two events,
    *  and an effect keyed on the VALUE would fire once. */
@@ -539,6 +593,12 @@ export function CapturePane({
   onApprovedRef.current = onApproved
   const onAskWhyRef = useRef(onAskWhy)
   onAskWhyRef.current = onAskWhy
+  // ⚠️ A REF, NOT THE PROP, AND THE DEBOUNCE IS WHY. The extraction effect is keyed on
+  // `[sessionId, text]` so that a click does not fire a request; its closure would
+  // therefore capture whatever the focus was when the text last changed. A ref reads
+  // the current value at send time without adding a dependency that re-triggers.
+  const askedFieldIdRef = useRef<string | null>(askedFieldId)
+  askedFieldIdRef.current = askedFieldId
   useEffect(() => {
     if (sessionId === undefined) return
     // ⚠️ THE OPENING LINE WAS ALREADY EXTRACTED BY `start`, so the first effect run on
@@ -549,7 +609,11 @@ export function CapturePane({
     const timer = window.setTimeout(() => {
       const seq = seqRef.current.issue()
       setInFlight(true)
-      void setCaptureText(sessionId, text, seq)
+      // ⚠️ THE CLICKED ROW RIDES THE EXTRACTION. A director who clicks a row and then
+      // TYPES the answer gets this response, and without the field the server would
+      // compose the question for ITS next choice and the outline would jump away
+      // mid-answer.
+      void setCaptureText(sessionId, text, seq, askedFieldIdRef.current)
         .then((next) => {
           // ⚠️ THE DROP. A response that arrives behind a newer one describes text the
           // director has already changed; applying it makes the pane show an older
@@ -652,6 +716,49 @@ export function CapturePane({
     [state],
   )
 
+  /**
+   * A clicked row asks its question NOW, not on the next keystroke.
+   *
+   * ⚠️ WITHOUT THIS THE CLICK ONLY MOVED THE OUTLINE until the director typed. The
+   * question, its hint and its pills are composed on the server, so seeing them means
+   * asking for them — and a click is not a keystroke, so the extraction effect does
+   * not fire.
+   *
+   * ⚠️ IT IS NOT SEQUENCED, LIKE A PICK. The sequencer orders EXTRACTIONS, which are
+   * competing readings of the same text; this is a decision about which question to
+   * show and has no competitor. But the sequence is ADVANCED, so an extraction already
+   * in flight cannot land on top of it and put the previous question back.
+   *
+   * ⚠️ IT WATCHES A COUNTER-STAMPED REQUEST, NOT `askedFieldId`, AND THE FIRST VERSION
+   * WATCHED THE FIELD. `askedFieldId` is non-null whenever the server is asking
+   * ANYTHING, so that effect re-read on every question — one redundant request per
+   * answer, and in the tests it replaced each fixture with the default one. A request
+   * fires only when the office clicks, which is the event this is for.
+   *
+   * ⚠️ AND THE NONCE IS WHY CLICKING THE SAME ROW TWICE WORKS. Keyed on the field, a
+   * second click on the row already focused would be a no-op — and the office clicking
+   * again plainly means "ask me that again".
+   */
+  useEffect(() => {
+    if (focusRequest === undefined || state === null) return
+    let alive = true
+    void readCapture(state.session_id, focusRequest.fieldId)
+      .then((next) => {
+        if (!alive || !mounted.current) return
+        seqRef.current.accept(seqRef.current.issue())
+        setState(next)
+      })
+      .catch(() => {
+        // ⚠️ SILENT, AND THAT IS RIGHT HERE. The row is already outlined by the host;
+        // a failed re-read means the question text lags, which is a smaller wrong than
+        // an error message about a click.
+      })
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusRequest?.nonce])
+
   /** ⚠️ ⌘1..9 ARRIVES FROM THE BAR, because the bar holds the focus. The pane is the
    *  only thing that knows which picks are pending and how to settle one, so the bar
    *  sends an INTENT and this turns it into the call. */
@@ -710,6 +817,7 @@ export function CapturePane({
       cremation: state?.cremation?.label ?? null,
       clearedNote,
       sessionId: state?.session_id ?? null,
+      answeredFieldIds: state?.answered ?? [],
       capturing: state !== null && state.status === "capturing",
       ready: state !== null,
       spans: state?.spans,
@@ -724,7 +832,8 @@ export function CapturePane({
       // so answering a question whose next question has the same `captureVoice`
       // sentence would leave the old question and the old pills on screen.
       state?.question, state?.question_hint, state?.question_field_id,
-      state?.pills, state?.cremation?.label, clearedNote, state?.session_id])
+      state?.pills, state?.cremation?.label, clearedNote, state?.session_id,
+      state?.answered])
 
   // ⚠️ DECLARED WITH THE OTHER HOOKS, ABOVE THE EARLY RETURNS. Placed after them it
   // ran conditionally and React reported "a change in the order of Hooks called by
@@ -828,10 +937,26 @@ export function CapturePane({
   // `state.missing.length` — fields — while the amber belongs to rows, and two
   // missing fields can share one row. So "2 needed" could mean one amber row and
   // James had to guess which fields the pane meant. Both now read the same list.
-  const amberRowIds = rows
-    .filter((r) => (r.missing_field_ids ?? []).length > 0)
-    .map((r) => r.row_id)
-  const needed = amberRowIds.length
+  // ⚠️ `amberRowIds` AND `needed` ARE BOTH GONE, AND DELETING THEM IS THE POINT.
+  // They were the 2026-10-14 pair — a count and the list it lights, derived from one
+  // filter so they could not disagree. The count is now `toGo` over a wider set
+  // (every unfilled row, the prototype's `fields.length - filled`), and `toGoRowIds`
+  // is that same list, so the invariant is preserved by the NEW pair rather than by
+  // the old one surviving beside it.
+  //
+  // ⚠️ I FIRST KEPT THEM WITH `void amberRowIds` TO SILENCE THE UNUSED WARNING. That
+  // is a dead derivation wearing a comment: a later reader would find two count-ish
+  // lists and have to work out which the pane obeys. The completion-attempt amber
+  // reads each row's own `missing_field_ids`, so nothing needed the list.
+  // ⚠️ "to go" IS UNFILLED ROWS, AND `toGoRowIds` IS THAT SAME LIST. The 2026-10-14
+  // ruling is that the count and the highlight agree by construction; deriving them
+  // from one filter is how that stays true rather than being asserted.
+  const toGoRowIds = rows.filter((r) => r.state !== "done").map((r) => r.row_id)
+  const toGo = toGoRowIds.length
+  // ⚠️ THE EYEBROW AND TITLE READ THE OBJECT TYPE, not a flag the pane invents. A quote
+  // and an order are captured by the same pane and the prototype titles them
+  // differently (`S.type==='quote'?'New quote':'New order'`).
+  const quoteLike = state.object_type === "quote"
   async function doComplete() {
     /**
      * Finish the order. One action behind three entrances, by ruling (2026-10-14).
@@ -917,7 +1042,30 @@ export function CapturePane({
         }
       : null
   const blockers = state.blockers ?? []
-  const missingLabels = state.missing_labels ?? []
+  /**
+   * The running total for the footer, or null while there is nothing to total.
+   *
+   * ⚠️ NULL RATHER THAN "$0.00", AND THE PROTOTYPE AGREES: `${t?money(t):''}` — it
+   * renders the total only when there IS one. A "$0.00" on a fresh order is a priced
+   * order that costs nothing, which is a different and wrong statement from "no vault
+   * chosen yet".
+   *
+   * ⚠️ AND IT READS THE SERVER'S TOTAL, never a sum of the lines. `assess_approval`
+   * prices the order from the tenant's products; adding the lines here would be a
+   * second total that could disagree with the one Approve obeys.
+   */
+  const total = (() => {
+    const raw = state.total
+    if (raw === null || raw === undefined) return null
+    const n = Number(raw)
+    if (!Number.isFinite(n) || n === 0) return null
+    return money(raw)
+  })()
+  // ⚠️ `missingLabels` IS GONE FROM THIS PANE AND STILL ON THE WIRE. It fed "Still
+  // need: service date, cemetery" beside the removed Complete button; `captureVoice`
+  // (line 204) still reads it for the BAR's own sentence, and the Approve blockers
+  // still name every gap at once because that is a report and should be. Deleted here
+  // rather than left unused.
   // ⚠️ AMBER ONLY AFTER AN ATTEMPT, by ruling: "as soon as Complete is attempted".
   // Colouring a half-typed order's gaps while the director is still speaking would
   // make every order start alarming.
@@ -927,160 +1075,245 @@ export function CapturePane({
   return (
     <div className="flex flex-col gap-3 p-3" data-testid="capture-pane">
       {/* header — prototype `:413` */}
-      <div className="flex items-center gap-2" data-testid="capture-head">
-        <span className="text-body-sm font-medium text-content-strong">
-          {reviewing ? "Review" : "Order capture"}
-        </span>
-        <span
-          className="rounded-full border border-border-subtle px-2 py-0.5 text-micro text-content-muted"
-          data-testid="capture-captured-pill"
-        >
-          <b className="text-content-strong">{captured}</b> captured
-        </span>
-        {/* ⚠️ THE COUNT THAT REPLACED THE "Not understood" BOX (James, 2026-10-16).
-            The words themselves are now dotted-underlined in the bar; this says HOW
-            MANY so a word scrolled out of view above the 40vh cap is still accounted
-            for. It renders only when there is something to count — a persistent
-            "0 not understood" would be the noise the box was removed for. */}
-        {state.unrecognized.length > 0 && (
-          <span
-            className="rounded-full border border-dashed border-border-base px-2 py-0.5 text-micro text-content-muted"
-            data-testid="capture-unrecognized-count"
-            title={state.unrecognized.join(", ")}
+      {/* ── the header — the prototype's `.ph` ────────────────────────────────────
+          ⚠️ REPLACED 2026-10-27 BY RULING. James, after walking the screen: "The pane
+          is still the old one. It says 'Order capture', 'RULES', 'Deceased name' and
+          'Not mentioned yet'… The executor kept the old pane's look."
+
+          The prototype's shape, quoted:
+            `<div class="ph"><div><div class="eb">Order</div>
+                                  <div class="pt">New order</div></div>
+                             <div class="pills">…chips…</div></div>` */}
+      <div
+        className="flex flex-wrap items-end justify-between gap-3"
+        data-testid="capture-head"
+      >
+        <div>
+          {/* `.eb{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase}` */}
+          <div
+            className="text-micro uppercase tracking-[0.16em] text-content-subtle"
+            data-testid="capture-eyebrow"
           >
-            <b className="text-content-strong">{state.unrecognized.length}</b> not
-            understood
+            {quoteLike ? "Quote" : "Order"}
+          </div>
+          {/* `.pt{font-size:19px;font-weight:400;letter-spacing:-.01em}` */}
+          <div
+            className="mt-0.5 text-[19px] font-normal tracking-[-0.01em] text-content-strong"
+            data-testid="capture-title"
+          >
+            {reviewing ? "Review" : quoteLike ? "New quote" : "New order"}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-1.5" data-testid="capture-chips">
+          {/* ⚠️ THE CREMATION CHIP IS THE SERVER'S WORD, and it lives here as well as
+              beside the question because this is the prototype's place for it —
+              `.chip.kind` in the pane header, where the order's KIND belongs. */}
+          {state.cremation?.label !== undefined && (
+            <span
+              className="whitespace-nowrap rounded-full border border-[rgba(143,176,207,0.5)] px-2.5 py-0.5 text-[12px] text-[rgb(143,176,207)]"
+              data-testid="capture-kind-chip"
+            >
+              {state.cremation.label}
+            </span>
+          )}
+          <span
+            className="whitespace-nowrap rounded-full border border-border-subtle px-2.5 py-0.5 text-[12px] text-content-muted"
+            data-testid="capture-captured-pill"
+          >
+            <b className="text-content-strong">{captured}</b> captured
           </span>
-        )}
-        {/* ⚠️ A BUTTON, BECAUSE THE COUNT HAS TO ANSWER "WHICH ONES". Ruled
-            2026-10-14: hovering or clicking the pill highlights the rows it counts.
-            James read "2 needed" with nothing highlighted and had to guess. */}
-        <button
-          type="button"
-          className={`rounded-full border px-2 py-0.5 text-micro ${
-            needed
-              ? "border-[rgba(224,168,74,0.55)] text-[rgb(224,168,74)]"
-              : "border-border-subtle text-content-muted"
-          }`}
-          data-testid="capture-needed-pill"
-          data-lit={pillLit ? "true" : "false"}
-          aria-label={
-            needed
-              ? `${needed} row${needed === 1 ? "" : "s"} still needed`
-              : "nothing needed"
-          }
-          onMouseEnter={() => setPillHover(true)}
-          onMouseLeave={() => setPillHover(false)}
-          onFocus={() => setPillHover(true)}
-          onBlur={() => setPillHover(false)}
-          onClick={() => setPillPinned((v) => !v)}
-        >
-          <b>{needed}</b> needed
-        </button>
+          {/* ⚠️ "to go", NOT "needed", AND IT COUNTS THE SAME ROWS IT LIGHTS. The
+              2026-10-14 ruling is that the count and the highlight must agree by
+              construction — James read "2 needed" with nothing highlighted and had to
+              guess. `toGo` is the unfilled rows and `toGoRowIds` is that same list, so
+              they cannot disagree.
+
+              ⚠️ IT COUNTS UNFILLED ROWS RATHER THAN REQUIRED-UNANSWERED ONES, which
+              is the prototype's meaning (`fields.length - filled`) and is wider than
+              the old pill's. With every applicable question now rendering a row, an
+              optional unanswered row is a question still to be asked — which is what
+              "to go" says. */}
+          {toGo > 0 && (
+            <button
+              type="button"
+              className="whitespace-nowrap rounded-full border border-[rgba(227,171,79,0.45)] px-2.5 py-0.5 text-[12px] text-[rgb(227,171,79)]"
+              data-testid="capture-needed-pill"
+              data-lit={pillLit ? "true" : "false"}
+              aria-label={`${toGo} line${toGo === 1 ? "" : "s"} still to answer`}
+              onMouseEnter={() => setPillHover(true)}
+              onMouseLeave={() => setPillHover(false)}
+              onFocus={() => setPillHover(true)}
+              onBlur={() => setPillHover(false)}
+              onClick={() => setPillPinned((v) => !v)}
+            >
+              <b>{toGo}</b> to go
+            </button>
+          )}
+          {/* ⚠️ KEPT FROM 2026-10-16 AND NOT MENTIONED IN THE FIXES. The words carry a
+              dotted underline in the bar; this says HOW MANY, so one scrolled out of
+              view above the 40vh cap is still accounted for. */}
+          {state.unrecognized.length > 0 && (
+            <span
+              className="whitespace-nowrap rounded-full border border-dashed border-border-base px-2.5 py-0.5 text-[12px] text-content-muted"
+              data-testid="capture-unrecognized-count"
+              title={state.unrecognized.join(", ")}
+            >
+              <b className="text-content-strong">{state.unrecognized.length}</b> not
+              understood
+            </span>
+          )}
+        </div>
       </div>
 
       {!reviewing && (
         <>
-          {/* column header — prototype `:414`. ⚠️ `AI ASSIST` is a LABEL in the
-              prototype and nothing more; this slice makes no model call, so the label
-              would be a claim. It reads RULES, which is what the pane does. */}
-          <div className="flex items-center justify-between border-b border-border-subtle pb-1 text-micro uppercase tracking-wide text-content-subtle">
-            <span>Order capture</span>
-            <span data-testid="capture-assist-label">RULES</span>
-          </div>
+          {/* ⚠️ THE "Order capture / RULES" SUB-HEADER IS GONE, BY RULING. James,
+              2026-10-27: "'RULES' in the corner is an internal label for how Opas
+              understood you. You shouldn't see it." It was taken from the prototype's
+              `AI ASSIST` label and corrected to RULES because this slice makes no
+              model call — accurate, and still an internal fact on a screen for the
+              office. The decision log is where it belongs, and it is already there:
+              every row carries `source` (`catalog/rules/...`, `bar/model/asked`).
 
-          {/* ⚠️ TWO COLUMNS, BY RULING (2026-10-13), AND NO SCROLL CONTAINER.
-              Ten rows in one column do not fit above the bar at 800px tall, so the
-              pane grew a scrollbar and auto-scrolled the focused row out of view —
-              James watched a captured row disappear. Two columns of five fit, which
-              is why the grid and the no-scrolling rule are one change.
+              ⚠️ AND "Order capture" WENT WITH IT because the header above now says
+              what this is — eyebrow "Order", title "New order". The old pane said it
+              twice. */}
+          {/* ── the rows — the prototype's `.rows` / `.row` ─────────────────────────
+              ⚠️ TWO COLUMNS, BY RULING (2026-10-13), AND NO SCROLL CONTAINER. Ten rows
+              in one column do not fit above the bar at 800px tall, so the pane grew a
+              scrollbar and auto-scrolled the focused row out of view — James watched a
+              captured row disappear. Two columns fit, which is why the grid and the
+              no-scrolling rule are one change.
 
-              ⚠️ `items-start` SO A SHORT COLUMN DOES NOT STRETCH, and `min-w-0` on
-              each column so a long value wraps instead of widening the grid past
-              the bar. */}
+              ⚠️ EACH ROW IS A BUTTON NOW, BY RULING (2026-10-27): "clicking a row asks
+              that question again". It was a `div` with a hover handler; a thing the
+              office is told to click is a button, and the keyboard gets it for free.
+
+              `.row{display:grid;grid-template-columns:18px minmax(0,1fr);…}`
+              `.row.filled .mk{background:var(--ok)}`  — the tick
+              `.row.current{border-color:var(--steel-b);box-shadow:0 0 0 3px …}`
+              `.row.current .v.empty{color:var(--steel);font-style:normal}` */}
           <div
-            className="grid grid-cols-2 items-start gap-x-3 gap-y-1"
+            className="grid grid-cols-2 items-start gap-x-3 gap-y-2"
             data-testid="capture-rows"
           >
             {[cols.left, cols.right].map((column, ci) => (
               <div
                 key={ci}
-                className="flex min-w-0 flex-col gap-1"
+                className="flex min-w-0 flex-col gap-2"
                 data-testid={`capture-column-${ci === 0 ? "left" : "right"}`}
               >
-                {column.map((r) => (
-                  <div
-                    key={r.row_id}
-                    data-testid={`capture-row-${r.row_id}`}
-                    data-state={r.state}
-                    // ⚠️ HOVER LIGHTS THE SPAN; THE CARET LIGHTS THE ROW. Two
-                    // directions, two devices, and they can be true at once — see
-                    // `mirror-spans.ts` for why the pointer cannot reach a span.
-                    {...(hoveredFields.length > 0 &&
-                    (r.field_ids ?? []).some((f) => hoveredFields.includes(f))
-                      ? { "data-hovered": "true" }
-                      : {})}
-                    onMouseEnter={() => setHoveredFields(r.field_ids ?? [])}
-                    onMouseLeave={() => setHoveredFields([])}
-                    {...((caretFieldIds ?? []).length > 0 &&
-                    (r.field_ids ?? []).some((f) => (caretFieldIds ?? []).includes(f))
-                      ? { "data-caret": "true" }
-                      : {})}
-                    {...((r.missing_field_ids ?? []).length > 0
-                      ? { "data-missing": "true" }
-                      : {})}
-                    {...((amber || pillLit) &&
-                    (r.missing_field_ids ?? []).length > 0
-                      ? { "data-amber": "true" }
-                      : {})}
-                    /* ⚠️ THE AMBER COMES FROM THE ROW'S OWN MISSING LIST, NOT FROM
-                       ITS STATE. The server only promotes a row to `needed` after a
-                       done signal, and a PARTIAL row (something captured, something
-                       missing — James's Service row) never reaches that state at
-                       all. Reading the list colours exactly the rows the pill
-                       counts, which is the ruling. */
-                    className={`flex items-start gap-2 rounded-base border px-2 py-1.5 ${
-                      (amber || pillLit) && (r.missing_field_ids ?? []).length > 0
-                        ? ROW_CLASS.needed
-                        : (ROW_CLASS[r.state] ?? ROW_CLASS.not_mentioned)
-                    } ${
-                      // ⚠️ THE CARET'S END OF THE LINK. Added rather than replacing the state
-                      // colour, because a row can be amber AND be the one the caret is in.
-                      (caretFieldIds ?? []).length > 0 &&
-                      (r.field_ids ?? []).some((f) => (caretFieldIds ?? []).includes(f))
-                        ? ROW_CARET_CLASS
-                        : ""
-                    }`}
-                  >
-                    <span
-                      aria-hidden
-                      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[10px] ${
-                        MARK_CLASS[r.state] ?? MARK_CLASS.not_mentioned
-                      }`}
+                {column.map((r) => {
+                  const filled = r.state === "done"
+                  // ⚠️ THE ASKED ROW COMES FROM THE SERVER'S `question_field_id`, not
+                  // from the pane's own guess at what is next. The question above the
+                  // bar and the outline below it must name the same field, and two
+                  // derivations of "what is Opas asking" is how they would come to
+                  // disagree while both looked right.
+                  const asking =
+                    askedFieldId !== null &&
+                    (r.field_ids ?? []).includes(askedFieldId)
+                  // ⚠️ TWO HIGHLIGHTS, NOT ONE, AND EACH AGREES WITH ITS OWN COUNT.
+                  // `amber` fires after a completion attempt and lights the
+                  // REQUIRED-unanswered rows — "what is blocking you". `litByPill`
+                  // fires while the "N to go" pill is hovered and lights the rows that
+                  // pill COUNTS, which are the unfilled ones. They were one attribute
+                  // reading `missing_field_ids`, so hovering a pill counting 10 would
+                  // light 7 — the 2026-10-14 defect ("the count and the highlight must
+                  // agree") reintroduced by widening the count.
+                  const litByPill = pillLit && !filled
+                  return (
+                    <button
+                      key={r.row_id}
+                      type="button"
+                      data-testid={`capture-row-${r.row_id}`}
+                      data-state={r.state}
+                      {...(asking ? { "data-asking": "true" } : {})}
+                      {...(hoveredFields.length > 0 &&
+                      (r.field_ids ?? []).some((f) => hoveredFields.includes(f))
+                        ? { "data-hovered": "true" }
+                        : {})}
+                      {...((caretFieldIds ?? []).length > 0 &&
+                      (r.field_ids ?? []).some((f) =>
+                        (caretFieldIds ?? []).includes(f),
+                      )
+                        ? { "data-caret": "true" }
+                        : {})}
+                      {...((r.missing_field_ids ?? []).length > 0
+                        ? { "data-missing": "true" }
+                        : {})}
+                      {...(amber && (r.missing_field_ids ?? []).length > 0
+                        ? { "data-amber": "true" }
+                        : {})}
+                      {...(litByPill ? { "data-lit": "true" } : {})}
+                      onMouseEnter={() => setHoveredFields(r.field_ids ?? [])}
+                      onMouseLeave={() => setHoveredFields([])}
+                      // ⚠️ IT ASKS THE ROW'S OWN `edit_target`, which the SERVER named
+                      // — `cemetery` for the cemetery row, `service_location` for the
+                      // Service row. Deriving it from `field_ids[0]` would ask about
+                      // the cemetery's TOWN on a row whose first source happens to be
+                      // the town.
+                      onClick={() => {
+                        const target = r.edit_target ?? (r.field_ids ?? [])[0]
+                        if (target !== undefined) onAskAgain?.(target)
+                      }}
+                      title={filled ? "Change this" : "Answer this"}
+                      className={`grid w-full grid-cols-[18px_minmax(0,1fr)] items-start gap-x-2.5 rounded-xl border px-3 py-2 text-left transition-[border-color,box-shadow,background] ${
+                        asking
+                          ? ROW_ASKING_CLASS
+                          : amber && (r.missing_field_ids ?? []).length > 0
+                            ? ROW_CLASS.needed
+                            : (ROW_CLASS[r.state] ?? ROW_CLASS.not_mentioned)
+                      } ${
+                        (caretFieldIds ?? []).length > 0 &&
+                        (r.field_ids ?? []).some((f) =>
+                          (caretFieldIds ?? []).includes(f),
+                        )
+                          ? ROW_CARET_CLASS
+                          : ""
+                      } ${litByPill ? ROW_LIT_CLASS : ""}`}
                     >
-                      {r.state === "done" ? "✓" : ""}
-                    </span>
-                    <div className="min-w-0">
-                      <div className="text-micro uppercase tracking-wide text-content-subtle">
-                        {r.label}
-                      </div>
-                      <div
-                        className={`text-body-sm ${
-                          r.state === "done"
-                            ? "text-content-strong"
-                            : "italic text-content-muted"
+                      {/* `.mk` — a ring, filled green with a tick once answered. */}
+                      <span
+                        aria-hidden
+                        className={`row-span-2 mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[10px] ${
+                          asking && !filled
+                            ? MARK_ASKING_CLASS
+                            : (MARK_CLASS[r.state] ?? MARK_CLASS.not_mentioned)
                         }`}
                       >
-                        {valueText(r.state, r.value)}
-                      </div>
+                        {filled ? "✓" : ""}
+                      </span>
+                      {/* `.lab{font-size:10.5px;letter-spacing:.13em;text-transform:uppercase}` */}
+                      <span className="min-w-0 text-micro uppercase tracking-[0.13em] text-content-subtle">
+                        {r.label}
+                      </span>
+                      {/* `.v` / `.v.empty` — and "Opas is asking" is the prototype's
+                          own words for the current row's empty value. */}
+                      <span
+                        className={`col-start-2 min-w-0 break-words text-body-sm ${
+                          filled
+                            ? "text-content-strong"
+                            : asking
+                              ? "text-[rgb(143,176,207)]"
+                              : "italic text-content-muted"
+                        }`}
+                      >
+                        {filled
+                          ? r.value
+                          : asking
+                            ? ASKING_TEXT
+                            : valueText(r.state, r.value)}
+                      </span>
                       {r.secondary_value ? (
-                        <div className="text-micro text-content-muted">
+                        <span className="col-start-2 min-w-0 text-micro text-content-muted">
                           {r.secondary_value}
-                        </div>
+                        </span>
                       ) : null}
-                    </div>
-                  </div>
-                ))}
+                    </button>
+                  )
+                })}
               </div>
             ))}
           </div>
@@ -1198,79 +1431,74 @@ export function CapturePane({
               </ul>
             )
           )}
-          {/* ── finishing ──────────────────────────────────────────────────
-              ⚠️ ALWAYS VISIBLE, BY RULING (2026-10-14). The only way to finish was
-              to type the right phrase, and the phrase that most people would type —
-              "approve" — was the one that did not work. A control that is always
-              there cannot be the thing nobody found. */}
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              data-testid="capture-complete"
-              disabled={busy}
-              onClick={() => void doComplete()}
-              /* ⚠️ THE PROTOTYPE'S SECONDARY `.btn`: a translucent white pill on the
-                 glass. Same reasoning as the primary above — the overlay is written
-                 in the prototype's literals, and a token pair chosen for platform
-                 cards is what made the primary unreadable. */
-              style={{
-                background: "rgba(255,255,255,0.08)",
-                color: "#f2f2f2",
-                border: "1px solid rgba(255,255,255,0.22)",
-                borderRadius: 999,
-                padding: "7px 16px",
-                fontSize: 14,
-                cursor: busy ? "default" : "pointer",
-                opacity: busy ? 0.6 : 1,
-              }}
-              className="outline-none focus-visible:ring-2 focus-visible:ring-[rgba(255,255,255,0.6)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(14,14,14,0.9)]"
-            >
-              {busy ? "Checking…" : "Complete order"}
-            </button>
-            {/* ⚠️ THE MISSING FIELDS ARE NAMED, not counted. "2 needed" is what sent
-                James looking for which two. The labels come from the server's own
-                missing set, so this sentence cannot name something the rows are not
-                highlighting. */}
+          {/* ⚠️ THE "Complete order" BUTTON AND ITS HINT ARE GONE, BY RULING. James,
+              2026-10-27: "Remove the Complete order button and its hint. When
+              everything needed is answered, Opas says 'That's everything.' with a
+              Review pill (⌥1) and Enter, as in the prototype."
+
+              ⚠️ AND IT SUPERSEDES THE 2026-10-14 RULING THAT PUT IT THERE, which said:
+              "the only way to finish was to type the right phrase, and the phrase that
+              most people would type — 'approve' — was the one that did not work. A
+              control that is always there cannot be the thing nobody found." That
+              problem is solved differently now: the Review PILL is the always-visible
+              control, it sits where the office is already looking, and it carries its
+              own key. The button was a second one, in the pane, which the pills then
+              covered.
+
+              ⚠️ THE ACTION ITSELF IS UNTOUCHED. `doComplete` still exists and is still
+              reached three ways — Enter from the bar, ⌘Enter, and the Review pill. The
+              button was one entrance to it, not the thing itself.
+
+              ⚠️ "Still need: …" WENT WITH IT. It named the missing fields, which was
+              right when the pane was the only surface; now the question above the bar
+              names ONE thing and the rows carry the rest, and a sentence listing them
+              all is the report that ruling replaced. */}
+
+          {/* ── the footer — the prototype's `.pf` ───────────────────────────────────
+              `<div class="pf"><span class="note">${S.note}</span>
+                               <span class="tot">${money(t)}</span></div>`
+
+              ⚠️ ONE LINE, TWO ENDS: why something was just cleared on the left, the
+              running total on the right. James, 2026-10-27: "the footer with the
+              one-line note and the running total."
+
+              ⚠️ THE NOTE IS THE SERVER'S AND IS TRANSIENT. `clears.py` composes it
+              beside the rule it explains — the arrangement the pick hint's
+              wrong-for-a-round copy is the argument for — and it arrives on the
+              response to the answer that caused the clearing, never on a plain read.
+
+              ⚠️ WITH NO NOTE THE LEFT SIDE SAYS WHAT CLICKING DOES, which is the
+              prototype's fallback (`'Click any line to change it.'`) and is what makes
+              the clickable rows discoverable. It is the only place that says so.
+
+              ⚠️ AMBER FOR THE NOTE (`.pf .note{color:var(--need)}`), grey otherwise.
+              Nothing went wrong; something stopped applying. */}
+          <div
+            className="flex items-baseline justify-between gap-3 border-t border-border-subtle pt-2"
+            data-testid="capture-footer"
+          >
             <span
-              className="text-micro text-content-subtle"
-              data-testid="capture-still-need"
+              className={`text-micro ${
+                clearedNote !== null ? "text-status-warning" : "text-content-subtle"
+              }`}
+              data-testid={
+                clearedNote !== null ? "capture-cleared-note" : "capture-footer-hint"
+              }
             >
-              {amber && missingLabels.length > 0
-                ? `Still need: ${missingLabels.join(", ").toLowerCase()}`
-                : "Or type \u201cdone\u201d. \u2318\u21a9 also works."}
+              {clearedNote ?? FOOTER_HINT}
             </span>
+            {/* ⚠️ `tabular-nums` SO THE DIGITS DO NOT JUMP as the total changes under
+                the director's hand — the same reason the summary's lines use it. */}
+            {total !== null && (
+              <span
+                className="text-body-sm tabular-nums text-content-strong"
+                data-testid="capture-total"
+              >
+                {total}
+              </span>
+            )}
           </div>
 
-          {/* ── why something was just cleared ─────────────────────────────
-              ⚠️ IN THE PANE FOOTER, BY THE DISPATCH'S OWN WORDS: "clears what no
-              longer fits … and says why in one line in the pane footer". I first put it
-              in the Opas pane beside the question, reasoning that the capture pane can
-              be tucked — but the note explains why a ROW emptied, and the rows are
-              here. A sentence about rows the reader cannot see is worse than one that
-              is tucked along with them.
-
-              ⚠️ AND IT IS IN THE CAPTURING BRANCH, NOT THE REVIEW ONE. I put it beside
-              the Review's totals first and the test could not find it: the two branches
-              are `{!reviewing && …}` and `{reviewing && …}` and are MUTUALLY
-              EXCLUSIVE, so a note rendered in the second cannot appear while the
-              director is still answering — which is the only time an answer gets
-              cleared. Second time that pair has caught me.
-
-              ⚠️ ONE LINE, AND IT IS THE SERVER'S. `clears.py` composes it beside the
-              rule it explains, which is the standing arrangement for every sentence
-              Opas says — and the reason the pick hint shipped wrong for a round when
-              it lived in the client.
-
-              ⚠️ AMBER, LIKE THE PROTOTYPE'S `.pf .note{color:var(--need)}`. Nothing
-              went wrong; something stopped applying. */}
-          {clearedNote !== null && (
-            <div
-              data-testid="capture-cleared-note"
-              className="border-t border-border-subtle pt-1 text-micro text-status-warning"
-            >
-              {clearedNote}
-            </div>
-          )}
         </>
       )}
 

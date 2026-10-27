@@ -232,20 +232,91 @@ def test_the_grave_location_reaches_the_review(db, tenant, world, user_id):
 # ── optional rows are not rendered until mentioned ──────────────────────────
 
 
-def test_an_unmentioned_OPTIONAL_row_is_not_rendered(db, tenant, world, user_id):
-    """⚠️ RULED 2026-10-14: "only needed rows and things you've actually said are
-    shown". Nine empty rows on a fresh order read as work outstanding, and three of
-    them — dates, grave location, contact — can never be outstanding."""
+def test_an_unmentioned_OPTIONAL_row_IS_rendered_on_the_capture_now(
+    db, tenant, world, user_id,
+):
+    """⚠️ THIS ASSERTED THE OPPOSITE UNTIL 2026-10-27, AND BOTH RULINGS ARE RIGHT ABOUT
+    THEIR OWN SURFACE.
+
+    2026-10-14: "only needed rows and things you've actually said are shown" — nine
+    empty rows on a fresh order read as work outstanding, and three of them could never
+    be outstanding.
+
+    2026-10-27: "a two-column row per question in call order (Funeral home, Deceased,
+    Vault, … Cemetery, Equipment)" — and `cemetery_equipment` is optional, so the first
+    ruling hides a row the second one names.
+
+    What changed between them is what the pane IS. In October it was the only surface
+    and an empty row was indistinguishable from outstanding work. Now the pills ask one
+    question at a time and the pane is the MAP, with the asked row outlined and every
+    row clickable to ask again — so an empty Equipment row reads as "a question you
+    will be asked", and a row that is not rendered cannot be clicked.
+
+    ⚠️ THE 10-14 BEHAVIOUR IS NOT GONE — it is the SUMMARY's, where there is no asking
+    and no clicking, and where an empty optional row is exactly the wall of grey he
+    objected to. `test_the_summary_still_hides_them` below is that half.
+    """
     row = ss.start(db, company_id=tenant, user_id=user_id)
     try:
         ss.set_text(db, row.id, company_id=tenant, user_id=user_id, text=HIS)
         st = ss.read_state(db, row.id, company_id=tenant, user_id=user_id)
         shown = {r["row_id"] for r in st["surface"]["rows"]}
-        for hidden in ("contact", "dates", "burial"):
-            assert hidden not in shown, (hidden, sorted(shown))
+        # the optional questions are now visible as lines to be asked
+        for present in ("dates", "grave_location", "cemetery_equipment"):
+            assert present in shown, (present, sorted(shown))
+        # ⚠️ AND `contact` IS STILL ABSENT, for a different reason: it was never a
+        # question, so the reshape removed the row rather than hiding it.
+        assert "contact" not in shown, sorted(shown)
     finally:
         db.execute(text("DELETE FROM capture_sessions WHERE id = :i"), {"i": row.id})
         db.commit()
+
+
+def test_the_summary_still_hides_them():
+    """⚠️ THE OTHER HALF OF THE PER-SURFACE SPLIT, and the test my own docstring above
+    promised. The 2026-10-14 ruling is unchanged for the Review: no asking, no
+    clicking, so an empty optional row there is exactly the wall of grey James
+    objected to.
+
+    ⚠️ ASSERTED ON THE FLAG RATHER THAN BY RENDERING, deliberately. The summary's rows
+    are a different six and none of them is optional-only, so a render-based test would
+    pass whatever the flag said — it would be green for a reason unrelated to the rule.
+    The flag IS the rule, and `rows.py` reads it in one place.
+    """
+    from app.services.capture.surfaces import CAPTURE_SALES_ORDER, SUMMARY_SALES_ORDER
+
+    assert SUMMARY_SALES_ORDER.show_unmentioned_optional is False
+    assert CAPTURE_SALES_ORDER.show_unmentioned_optional is True
+
+
+def test_the_hide_rule_still_fires_when_the_flag_is_off():
+    """⚠️ THE CONTROL FOR THE FLAG. Asserting the flag's VALUE proves nothing about
+    whether anything reads it — a flag nobody consults is the shape this codebase keeps
+    finding. So this renders the CAPTURE surface with the flag forced off and checks the
+    optional rows disappear.
+    """
+    import dataclasses
+
+    from app.services.capture.rows import resolve_surface
+    from app.services.capture.schema import resolve_schema
+    from app.services.capture import template_for, SALES_ORDER
+    from app.services.capture.surfaces import CAPTURE_SALES_ORDER
+
+    fields = resolve_schema(
+        vault_product_id=None, personalization_config=None,
+        platform_fields=template_for(SALES_ORDER), answers={},
+    )
+    on = resolve_surface(CAPTURE_SALES_ORDER, fields, {})
+    off = resolve_surface(
+        dataclasses.replace(CAPTURE_SALES_ORDER, show_unmentioned_optional=False),
+        fields, {},
+    )
+    shown_on = {r.row_id for r in on.rows}
+    shown_off = {r.row_id for r in off.rows}
+    assert "cemetery_equipment" in shown_on
+    assert "cemetery_equipment" not in shown_off
+    # ⚠️ AND THE REQUIRED ROWS ARE IN BOTH — the flag touches only the optional ones.
+    assert {"funeral_home", "deceased_name", "vault"} <= shown_off
 
 
 def test_and_APPEARS_the_moment_something_is_captured_for_it(db, tenant, world, user_id):
@@ -257,11 +328,14 @@ def test_and_APPEARS_the_moment_something_is_captured_for_it(db, tenant, world, 
         ss.set_text(db, row.id, company_id=tenant, user_id=user_id,
                     text=HIS + " section 4 lot 12")
         st = ss.read_state(db, row.id, company_id=tenant, user_id=user_id)
-        burial = next(
-            (r for r in st["surface"]["rows"] if r["row_id"] == "burial"), None
+        # ⚠️ `burial` IS NOW `grave_location`, renamed for what it carries. The row
+        # sourced the grave location and nothing else, so a row called "Burial" was a
+        # label describing more than it held.
+        grave = next(
+            (r for r in st["surface"]["rows"] if r["row_id"] == "grave_location"), None
         )
-        assert burial is not None, [r["row_id"] for r in st["surface"]["rows"]]
-        assert burial["value"] == "Section 4, Lot 12", burial
+        assert grave is not None, [r["row_id"] for r in st["surface"]["rows"]]
+        assert grave["value"] == "Section 4, Lot 12", grave
     finally:
         db.execute(text("DELETE FROM capture_sessions WHERE id = :i"), {"i": row.id})
         db.commit()

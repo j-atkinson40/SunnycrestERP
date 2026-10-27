@@ -38,7 +38,7 @@
  * prototype ADVERTISES, not what it does. Worth knowing before someone "fixes" the
  * divergence by reading the prototype's display and changing this back.
  */
-import { useEffect, useMemo } from "react"
+import { useCallback, useEffect, useMemo, useRef } from "react"
 
 /** The prototype's `.side` column: `grid-template-columns:300px minmax(0,600px)`. */
 const SIDE_WIDTH = 300
@@ -48,6 +48,26 @@ const SIDE_GAP = 16
 const ROW_GAP = 12
 /** The prototype's own breakpoint: `@media (max-width:960px)`. */
 export const STACK_BELOW_PX = 960
+
+/** The bar's own inset from the bottom and right. */
+export const BAR_INSET = 24
+
+/**
+ * Where the capture pane's bottom edge goes: clear of the bar AND of the guided row.
+ *
+ * ⚠️ IT IS A FUNCTION SO THE TEST CAN READ THE REAL ONE. My first overlap test
+ * REPLICATED this arithmetic in its own helper, which is CLAUDE.md §11 shape 9 — a
+ * check written from the implementation, asserting the value the implementation
+ * produces. Changing the anchor in `OpasHost` would have left it green. Both the host
+ * and the test call this now, so the test watches the thing that ships.
+ *
+ * ⚠️ `guidedAbove` IS 0 WHEN THERE ARE NO PILLS, which keeps the pane TOUCHING the bar
+ * in that case — asked for on 2026-10-26, when `bottom: 96` was a guess against a
+ * ~46px bar and left it floating.
+ */
+export function paneBottomPx(barHeight: number, guidedAbove: number): number {
+  return BAR_INSET + barHeight + guidedAbove
+}
 
 /** `.opt{…background:linear-gradient(160deg,var(--glass-a),var(--glass-b));…}` */
 const PILL_GLASS: React.CSSProperties = {
@@ -70,7 +90,17 @@ export interface GuidedPill {
   readonly value: string
   readonly label: string
   readonly sub?: string
+  /** An ACTION rather than an answer — today only `"review"`.
+   *
+   *  ⚠️ IT IS WHY `onAnswer` CANNOT BE THE ONLY ROUTE. Every other pill stores a value
+   *  into a field; this one asks the pane to do what Enter does, and sending it through
+   *  `/answer` would try to store "review" into whatever field was being asked. The
+   *  prototype marks the same distinction — `{act:'review',label:'Review',sub:'Enter'}`. */
+  readonly act?: string
 }
+
+/** The one action a pill can carry today. */
+export const PILL_ACT_REVIEW = "review"
 
 export interface GuidedQuestionProps {
   /** The sentence. Absent means there is nothing to ask and nothing renders. */
@@ -94,6 +124,22 @@ export interface GuidedQuestionProps {
    *  `['time','dates','day'].includes(currentField())`. */
   readonly questionTakesNumbers: boolean
   readonly onAnswer: (fieldId: string, value: string) => void
+  /** Perform a pill's ACTION — review, today. Absent means action pills are inert,
+   *  which is a real state before the session exists. */
+  readonly onAct?: (act: string) => void
+  /**
+   * How much room this surface takes ABOVE the bar, so the capture pane can sit clear
+   * of it.
+   *
+   * ⚠️ IT IS REPORTED RATHER THAN ASSUMED BECAUSE IT WRAPS. Four pills at 1920px are
+   * one row; the same four at 1280px can be two, and a hard-coded 44px would put the
+   * pane back on top of the second row. The bar's height is already measured for
+   * exactly this reason (`barH`) and this is the same mechanism.
+   *
+   * ⚠️ AND IT INCLUDES THE OPAS PANE WHEN STACKED. Below 960px the pane is above the
+   * pills rather than left of the bar, so the room needed above the bar is both.
+   */
+  readonly onHeightAbove?: (px: number) => void
 }
 
 /**
@@ -127,7 +173,57 @@ export function GuidedQuestion({
   barIsEmpty,
   questionTakesNumbers: takesNumbers,
   onAnswer,
+  onAct,
+  onHeightAbove,
 }: GuidedQuestionProps) {
+  const pillsRef = useRef<HTMLDivElement | null>(null)
+  const paneRef = useRef<HTMLDivElement | null>(null)
+
+  /**
+   * ⚠️ MEASURED, NOT COMPUTED, AND A RESIZE OBSERVER RATHER THAN A LAYOUT EFFECT. The
+   * pills row wraps on width AND on content — a long cemetery name can push the fourth
+   * pill to a second line without the window changing — so an effect keyed on props
+   * would miss it. The bar's own height is observed the same way.
+   */
+  const report = useCallback(() => {
+    if (onHeightAbove === undefined) return
+    const pills = pillsRef.current
+    const pane = paneRef.current
+    let above = 0
+    if (pills !== null && pills.offsetHeight > 0) {
+      // ⚠️ TWO GAPS, NOT ONE, AND ONE GAP IS NOT ENOUGH. `guidedH` is measured from
+      // the BAR'S TOP EDGE, so the room the pills need is the gap BELOW them (bar to
+      // pills) plus their height plus the gap ABOVE them (pills to pane). With a
+      // single gap the pane's bottom landed exactly on the pills' top — touching
+      // rather than clear, which is not "nothing overlapping" with a shadow and a
+      // border in play. The prototype's `.dock{gap:12px}` puts a gap between EVERY
+      // row: bar, 12, chips, 12, pane.
+      above += ROW_GAP + pills.offsetHeight + ROW_GAP
+    }
+    // ⚠️ ONLY WHEN STACKED. Wide, the Opas pane is in the column LEFT of the bar and
+    // takes no room above it; adding its height there would push the capture pane up
+    // by 100px of nothing.
+    if (stacked && pane !== null && pane.offsetHeight > 0) {
+      // ⚠️ ONE GAP HERE, because the gap BELOW the Opas pane is the one already added
+      // above the pills. Rows stack bar, 12, chips, 12, side, 12, pane.
+      above += pane.offsetHeight + ROW_GAP
+    }
+    onHeightAbove(above)
+  }, [onHeightAbove, stacked])
+
+  useEffect(() => {
+    report()
+    if (typeof ResizeObserver === "undefined") return
+    const ro = new ResizeObserver(report)
+    if (pillsRef.current !== null) ro.observe(pillsRef.current)
+    if (paneRef.current !== null) ro.observe(paneRef.current)
+    return () => ro.disconnect()
+  }, [report, question, pills, stacked])
+
+  // ⚠️ AND IT REPORTS ZERO ON THE WAY OUT. Without this the capture pane keeps the
+  // room reserved for a pills row that is no longer rendered, leaving a gap above the
+  // bar for the rest of the session.
+  useEffect(() => () => onHeightAbove?.(0), [onHeightAbove])
   // ⚠️ CAPPED AT NINE BECAUSE THERE ARE NINE DIGITS. The server caps at four; this is
   // independence from that number rather than a second opinion about it — a tenth pill
   // would be unreachable by keyboard and labelled with a key that does not exist.
@@ -145,7 +241,10 @@ export function GuidedQuestion({
    * question and eat a character.
    */
   useEffect(() => {
-    if (fieldId === null || shown.length === 0) return
+    // ⚠️ NO FIELD IS NOT NO PILLS. In the ready state `fieldId` is null and the only
+    // pill is Review — so guarding on the field would make ⌥1 dead at exactly the
+    // moment the office wants it. The branch below uses the field only for answers.
+    if (shown.length === 0) return
     const options = shown
     const field = fieldId
     function onKeyDown(e: KeyboardEvent) {
@@ -164,11 +263,16 @@ export function GuidedQuestion({
       if (bare && !(barIsEmpty && !takesNumbers)) return
       e.preventDefault()
       e.stopImmediatePropagation()
-      onAnswer(field, options[index].value)
+      // ⚠️ ONE BRANCH, IN ONE PLACE, SHARED WITH THE CLICK. An action pill reached by
+      // ⌥N and the same pill reached by a click must do the same thing; two call sites
+      // deciding separately is how one of them ends up storing "review" into a field.
+      const pill = options[index]
+      if (pill.act !== undefined) onAct?.(pill.act)
+      else if (field !== null) onAnswer(field, pill.value)
     }
     document.addEventListener("keydown", onKeyDown, true)
     return () => document.removeEventListener("keydown", onKeyDown, true)
-  }, [fieldId, shown, barIsEmpty, takesNumbers, onAnswer])
+  }, [fieldId, shown, barIsEmpty, takesNumbers, onAnswer, onAct])
 
   if (question === null) return null
 
@@ -195,6 +299,7 @@ export function GuidedQuestion({
     <>
       <div
         data-testid="opas-guided-pane"
+        ref={paneRef}
         data-stacked={stacked ? "true" : "false"}
         style={{
           position: "fixed",
@@ -284,6 +389,7 @@ export function GuidedQuestion({
       {shown.length > 0 ? (
         <div
           data-testid="opas-guided-pills"
+          ref={pillsRef}
           style={{
             position: "fixed",
             zIndex: 44,
@@ -302,7 +408,10 @@ export function GuidedQuestion({
               key={`${pill.value}-${i}`}
               type="button"
               data-testid={`opas-guided-pill-${i + 1}`}
-              onClick={() => fieldId !== null && onAnswer(fieldId, pill.value)}
+              onClick={() => {
+                if (pill.act !== undefined) onAct?.(pill.act)
+                else if (fieldId !== null) onAnswer(fieldId, pill.value)
+              }}
               style={{
                 display: "inline-flex",
                 alignItems: "center",

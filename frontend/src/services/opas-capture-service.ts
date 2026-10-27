@@ -36,7 +36,13 @@ export interface CaptureRow {
   readonly missing_field_ids?: readonly string[]
   /** ⚠️ EVERY field this row sources, not just the missing ones — the handle for the
    *  row -> span link. Optional because an older server does not send it. */
-  readonly field_ids?: readonly string[]
+  readonly field_ids?: readonly string[]  /** Which FIELD a click on this row should re-ask.
+   *
+   *  ⚠️ THE SERVER NAMES IT, and that is why the pane does not derive it from
+   *  `field_ids[0]`. The Cemetery row sources the name, the town and the ETA; its
+   *  `edit_target` is `cemetery`, so clicking it asks "Which cemetery?" rather than
+   *  "Which town is the cemetery in?". */
+  readonly edit_target?: string | null
 }
 
 /** An ambiguous resolution awaiting a numbered pick. */
@@ -311,8 +317,17 @@ export async function setCaptureText(
   sessionId: string,
   text: string,
   seq: number,
+  asking?: string | null,
 ): Promise<CaptureState> {
-  const r = await apiClient.put<CaptureState>(`${BASE}/${sessionId}/text`, { text, seq })
+  const r = await apiClient.put<CaptureState>(
+    `${BASE}/${sessionId}/text`,
+    { text, seq },
+    // ⚠️ THE FOCUS RIDES THE EXTRACTION TOO, not only the plain read. A director who
+    // clicks a row and then TYPES the answer gets a `setCaptureText` response, and
+    // without this that response would compose the question for the server's next
+    // field and the clicked row would lose its outline mid-answer.
+    { ...(asking ? { params: { asking } } : {}) },
+  )
   return r.data
 }
 
@@ -425,8 +440,28 @@ export async function approveCapture(sessionId: string): Promise<CaptureState> {
 
 /** ⚠️ THE TUCK-SURVIVAL CALL. A tucked pane is re-read from the server rather than kept
  *  in client memory, so reopening cannot lose a half-typed order. */
-export async function readCapture(sessionId: string): Promise<CaptureState> {
-  const r = await apiClient.get<CaptureState>(`${BASE}/${sessionId}`)
+/**
+ * Re-read a session.
+ *
+ * ⚠️ `asking` IS THE OFFICE HAVING CLICKED A ROW. "Clicking a row asks that question
+ * again" — and the question, its hint and its pills are composed on the SERVER, so the
+ * field has to go back there. My first version changed only which row was outlined
+ * while Opas went on asking the previous question.
+ *
+ * ⚠️ IT IS A QUERY PARAMETER AND NOT STORED. Nothing about the order changes when a
+ * row is clicked, so there is nothing to persist — and stored focus would survive a
+ * reload and hold the pane on a question the office had moved past.
+ */
+export async function readCapture(
+  sessionId: string,
+  asking?: string | null,
+): Promise<CaptureState> {
+  const r = await apiClient.get<CaptureState>(`${BASE}/${sessionId}`, {
+    // ⚠️ OMITTED WHEN ABSENT rather than sent as an empty string, because the server
+    // validates `asking` against the fields it is actually asking about and an empty
+    // string would be a value it has to reject rather than a question it was not asked.
+    ...(asking ? { params: { asking } } : {}),
+  })
   return r.data
 }
 

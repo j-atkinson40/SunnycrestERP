@@ -3742,3 +3742,75 @@ The server write is unchanged: `choose` stores `options[index-1][0]` into
 `resolutions` and the new `answer` stores the value directly. Two handles on one
 resolution, which is why ⌘1–9 from the bar can keep using the old path while the pills
 use the new one.
+
+---
+
+## 2026-10-27 — The capture pane is one row per question, and the pills get their own row
+
+**Two fixes from James's walk of the guided-capture screen, and both change what the
+pane IS rather than how it looks.**
+
+The pane was grouped by SUBJECT — one "Service" row carrying location, day and time —
+which worked while the pane was the only surface and the office read it as a summary.
+Guided capture outlines the row Opas is asking about, and a row that answers three
+questions has no single question to be outlined for. So the rows are now one per
+question, in the engine's `CALL_ORDER`, each clickable to ask that question again.
+
+⚠️ **AND THE PILLS OVERLAPPED THE PANE BECAUSE THE PANE'S ANCHOR PREDATED THEM.** It
+sat at the bar's top edge; the pills sit above that edge, so they were drawn over the
+pane's footer and covered the Complete order button. The pills row now takes its own
+space, measured — it wraps on content as well as width, so a constant would be wrong at
+some width — and the pane is anchored clear of it.
+
+⚠️ **TWO EARLIER RULINGS HAD TO BE SCOPED RATHER THAN OVERTURNED, AND BOTH ARE STILL
+RIGHT ABOUT THEIR OWN SURFACE.**
+
+*2026-10-14, "only needed rows and things you've actually said are shown"* — nine empty
+rows read as work outstanding. That holds for the REVIEW, where there is no asking and
+no clicking. On the capture pane an empty Equipment row now reads as "a question you
+will be asked", and a row that is not rendered cannot be clicked, so the capture surface
+shows every applicable question. One per-surface flag, not a global change.
+
+*2026-10-14, "a control that is always there cannot be the thing nobody found"* — which
+is why the Complete order button existed. The requirement is now met by the **Review
+pill**, which sits beside the bar where the office is already looking and carries its own
+key. The button was a second control, in the pane, which the pills then covered. The
+ACTION is unchanged and still has three entrances: Enter, ⌘Enter, and the pill.
+
+**"RULES" is gone from the pane.** It was an internal label for how Opas read the
+sentence — accurate, and not something the office should see. The decision log already
+carries it: every row has a `source` (`catalog/rules/…`, `bar/model/asked`).
+
+---
+
+## 2026-10-27 — Opas asks the optional questions too, after the required ones
+
+**A defect, recorded as a decision because the fix is a choice rather than a repair.**
+
+The guided walk asked `state.missing` — required-and-unanswered. Four fields are
+`required_when=Never()`: `cemetery_equipment`, `legacy_series`, `legacy_print_name` and
+`lifes_reflections_symbol`. So **Opas never asked about equipment or the Legacy print at
+all**, and two clauses of the guided-capture dispatch were unreachable through the flow.
+
+The prototype does not filter by required — `ORDER.find(f=>applicable(f)&&!S.f[f])` —
+because its model has no optional fields, which is how the distinction was lost in
+translation.
+
+So the walk now asks the required questions first and then the optional ones, both in
+call order. Required-first is not the prototype's rule and is the right one here: a
+director who has not named the cemetery should be asked for the cemetery before being
+asked about chairs.
+
+⚠️ **`missing` IS UNTOUCHED, AND THAT SEPARATION IS THE DECISION.** It still decides what
+blocks approval, what turns amber, and whether the order can be reviewed — so asking an
+optional question never makes an order unreviewable. Two conditions that were conflated
+in one function are now two: one says WHAT TO ASK, the other says WHETHER IT CAN BE
+REVIEWED. The Review pill appears as soon as the second is true, which is why the office
+is never trapped on a question about chairs.
+
+⚠️ **AND A FIELD ABSENT FROM `CALL_ORDER` IS TREATED DIFFERENTLY DEPENDING ON WHETHER IT
+IS REQUIRED.** For a required field, absence means nobody thought to prioritise it and it
+is still a gap, so it is asked last and asked plainly. For an optional field, absence
+means nobody wants it asked — `burial_date` is the case that proves it, ruled away on
+2026-10-13 ("the burial is always the same day as the service") and reinstated by a
+fallback in the first version of this walk.

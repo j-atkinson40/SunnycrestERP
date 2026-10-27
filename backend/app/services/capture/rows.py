@@ -270,6 +270,31 @@ class Surface:
     #: The word this surface uses for unanswered-required. Measured: the capture
     #: list says "needed" and the summary says "missing", for the same set.
     unanswered_word: str = "needed"
+    #: Render a row for every APPLICABLE question, including optional ones nobody has
+    #: mentioned.
+    #:
+    #: ⚠️ THIS EXISTS BECAUSE TWO RULINGS CONFLICT AND BOTH ARE RIGHT ABOUT THEIR OWN
+    #: SURFACE. James, 2026-10-14: "only needed rows and things you've actually said
+    #: are shown… nine empty rows on a fresh order is a wall of grey that reads as work
+    #: outstanding." James, 2026-10-27: "a two-column row per question in call order
+    #: (Funeral home, Deceased, Vault, … Cemetery, Equipment)" — and `cemetery_equipment`
+    #: is optional, so the first ruling hides a row the second one lists.
+    #:
+    #: What changed between them is what the pane IS. In October it was the only
+    #: surface, and an empty row was indistinguishable from outstanding work. Now the
+    #: pills ask one question at a time and the pane is the MAP, with the asked row
+    #: outlined — so an empty Equipment row reads as "a question you will be asked",
+    #: and the fixes also say "clicking a row asks that question again", which a row
+    #: that is not rendered cannot do.
+    #:
+    #: ⚠️ SO IT IS PER-SURFACE AND ON FOR THE CAPTURE PANE ONLY. The summary surface
+    #: keeps the 10-14 behaviour: the Review has no asking and no clicking, and there
+    #: an empty optional row is exactly the wall of grey he objected to.
+    #:
+    #: ⚠️ FLAGGED TO JAMES RATHER THAN RULED HERE. If he wants the 10-14 rule to hold
+    #: on the capture pane too, this flag is the one place to turn off — and Equipment
+    #: and Grave go back to appearing only once said.
+    show_unmentioned_optional: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -640,6 +665,11 @@ def resolve_surface(
             and value is None
             and secondary is None
             and not has_conflict
+            # ⚠️ THE FIFTH CONDITION, AND IT IS PER-SURFACE. See
+            # `Surface.show_unmentioned_optional` for why two rulings disagree here
+            # and why the capture pane takes the newer one while the summary keeps
+            # the older.
+            and not surface.show_unmentioned_optional
         ):
             continue
 

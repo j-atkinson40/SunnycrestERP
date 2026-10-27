@@ -382,6 +382,26 @@ def pills_for(
         ]))
 
     if field_id == "funeral_home":
+        # ⚠️ ONLY CUSTOMERS WHO HAVE ORDERED, AND THAT IS THE FIX FOR WHAT JAMES SAW.
+        # The screenshot had "St. Mary's Cemetery" and "Fairview Burial Services" under
+        # "Which funeral home?". Both are customers; neither has ever placed an order.
+        # They were there because this branch USED to pad the list from every active
+        # customer, which is a pad I added and the dispatch never asked for: clause 3
+        # says "this customer's usual first… then the tenant's most ordered", and a
+        # customer with zero orders is not among the tenant's most ordered at all.
+        #
+        # ⚠️ IT IS NOT THE `customer_type` FIX AND DOES NOT REPLACE IT. No ruling on
+        # `customer_type` has reached me; measured on production, the column is NULL on
+        # all five of Sunnycrest's customers, so nothing can tell a funeral home from a
+        # cemetery today. Order history is a different discriminator that happens to
+        # give the right answer here — Hopkins (3 live orders) and Riverside (1) are the
+        # two real funeral homes, and the three with none are a cemetery and two seeds.
+        #
+        # ⚠️ AND IT HAS A KNOWN COST, STATED RATHER THAN DISCOVERED LATER: a genuinely
+        # NEW funeral home has no orders either, so it is not offered until its first
+        # one is typed. That is survivable — a name typed in full always works, pills
+        # are an accelerator and never the only route — and it is exactly the case the
+        # `customer_type` ruling is needed for.
         ordered = _habit_then_tenant(
             mine=[], mine_total=0, everyone=column(facts, "funeral_home"),
         )
@@ -392,8 +412,6 @@ def pills_for(
         ).all():
             if name:
                 towns[name] = city
-                if name not in ordered:
-                    ordered.append(name)
         return tuple(_dedupe([
             Pill(value=name, label=name, sub=towns.get(name))
             for name in ordered[:MAX_PILLS]

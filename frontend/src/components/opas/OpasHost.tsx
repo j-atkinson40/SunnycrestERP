@@ -62,7 +62,13 @@ import { contextIntent, type ContextIntent } from "./context-phrases"
 import { EXTRACT_DEBOUNCE_MS } from "./capture-sequence"
 
 import { consumePickDigit } from "./pick-digit"
-import { GuidedQuestion, STACK_BELOW_PX, questionTakesNumbers } from "./GuidedQuestion"
+import {
+  GuidedQuestion,
+  PILL_ACT_REVIEW,
+  STACK_BELOW_PX,
+  paneBottomPx,
+  questionTakesNumbers,
+} from "./GuidedQuestion"
 import { resolvePhrase } from "@/services/opas-catalog-service"
 import {
   askOrderList,
@@ -215,6 +221,21 @@ export function OpasHost() {
    *  Held on the host rather than the pane because the BAR is what completes. */
   const [vocab, setVocab] = useState<readonly VocabTerm[]>([])
   const [barH, setBarH] = useState(0)
+  /** How much room the guided question + pills take above the bar.
+   *
+   *  ⚠️ THE CAPTURE PANE'S ANCHOR READS THIS, and that is the whole fix for what James
+   *  saw: the pane was at `bottom: 24 + barH` — the bar's top edge — and the pills sit
+   *  12px above that edge, so the pills were drawn over the pane's footer, covering
+   *  "Complete order" and its hint. Measured rather than assumed because the row wraps
+   *  on content as well as width. */
+  const [guidedH, setGuidedH] = useState(0)
+  /** A row the office clicked, whose question is shown instead of the next one.
+   *
+   *  ⚠️ IT IS CLEARED THE MOMENT THAT FIELD IS ANSWERED, not on a timer and not on the
+   *  next render. The prototype does the same — `if(S.focus===f)S.focus=null` inside
+   *  `setField` — because a focus that outlived its answer would hold the pane on a
+   *  question the office had just finished with. */
+  const [focusField, setFocusField] = useState<string | null>(null)
   const [text, setText] = useState("")
   const [busy, setBusy] = useState(false)
   /** ⚠️ WHAT EACH ENTRY PANE IS DOING, keyed by pane id. The bar renders the FRONT
@@ -649,10 +670,10 @@ export function OpasHost() {
     const question = status?.guidedQuestion ?? null
     if (question === null || question === "") return null
     const fieldId = status?.guidedFieldId ?? null
-    // ⚠️ NO FIELD MEANS NOTHING IS MISSING. The sentence is then the ready line, which
-    // is about pressing Enter rather than about answering anything, so there is no
-    // question to put options under.
-    if (fieldId === null) return null
+    // ⚠️ NO FIELD IS NOT NO QUESTION, AND MY FIRST VERSION RETURNED NULL HERE. In the
+    // ready state the server sends `question_field_id: null`, "That's everything." and
+    // a single Review pill — so bailing out on a null field hid exactly the state
+    // James asked for in clause 3, and left the reply line to say it instead.
     return {
       question,
       hint: status?.guidedHint ?? null,
@@ -660,7 +681,7 @@ export function OpasHost() {
       pills: status?.guidedPills ?? [],
       cremation: status?.cremation ?? null,
     }
-  }, [
+  }, [  // eslint-disable-line react-hooks/exhaustive-deps
     entryMode,
     status?.guidedQuestion,
     status?.guidedHint,
@@ -1142,6 +1163,90 @@ export function OpasHost() {
     const n = completeNonce.current
     setCompleteRequest((prev) => ({ ...prev, [entryPane.id]: n }))
   }, [entryPane])
+
+
+  /**
+   * A pill's ACTION. Today the only one is Review, which is what Enter does.
+   *
+   * ⚠️ IT GOES THROUGH `requestComplete`, THE SAME ENTRANCE AS ENTER AND ⌘ENTER, and
+   * that is the whole reason removing the Complete button was safe. One action behind
+   * three entrances was the 2026-10-14 arrangement; this replaces the button with a
+   * pill and leaves the action alone.
+   */
+  const actGuided = useCallback(
+    (act: string) => {
+      if (act === PILL_ACT_REVIEW) requestComplete()
+    },
+    [requestComplete],
+  )
+
+  /**
+   * Ask a question again, because the office clicked its row.
+   *
+   * ⚠️ IT IS A CLIENT-SIDE FOCUS, NOT A SERVER CALL, AND THAT IS THE CHEAP CORRECT
+   * VERSION. "Clicking a row asks that question again" means the question line and the
+   * pills show that field; nothing about the ORDER changes, so there is nothing to
+   * write. The server keeps deciding what is asked NEXT, and this overrides which
+   * question is on screen until it is answered — the same shape as the prototype's
+   * `S.focus`, which `currentField()` prefers over `nextField()`.
+   */
+  const focusNonce = useRef(0)
+  const [focusRequest, setFocusRequest] = useState<
+    Record<string, { fieldId: string; nonce: number }>
+  >({})
+  const askAgain = useCallback(
+    (fieldId: string) => {
+      setFocusField(fieldId)
+      // ⚠️ THE OUTLINE AND THE QUESTION ARE TWO EFFECTS OF ONE CLICK. `focusField`
+      // moves the outline immediately, with no round trip; the request asks the server
+      // for that question's sentence, hint and pills, which only it composes.
+      const paneId = entryPane?.id
+      if (paneId === undefined) return
+      focusNonce.current += 1
+      setFocusRequest((cur) => ({
+        ...cur,
+        [paneId]: { fieldId, nonce: focusNonce.current },
+      }))
+    },
+    [entryPane?.id],
+  )
+
+  /**
+   * Which field is being asked about — the clicked row if there is one, else the
+   * server's next question.
+   *
+   * ⚠️ THE CLICKED ROW WINS, AND ONLY UNTIL IT IS ANSWERED. That is the prototype's
+   * `currentField()`:
+   *     if(S.focus&&applicable(S.focus)&&!S.f[S.focus])return S.focus;
+   *     return nextField();
+   * — the focus is preferred while it is still unanswered, and the walk resumes the
+   * moment it is not.
+   *
+   * ⚠️ IT READS `answered` FROM THE SERVER RATHER THAN CLEARING ON THE CLICK'S OWN
+   * RESPONSE. A click can be followed by typing instead of a pill, and the answer then
+   * arrives through re-extraction with nothing to hang a clear on.
+   */
+  const askedField = useMemo(() => {
+    const next = status?.guidedFieldId ?? null
+    if (focusField === null) return next
+    // ⚠️ THIS FALLBACK IS DEFENSIVE, NOT LOAD-BEARING, AND A BREAK TEST PROVED IT.
+    // Disabling it turned nothing red: the effect below CLEARS `focusField` once the
+    // field is answered, so by the time this would matter the state is already null.
+    // Kept for independence from that effect's timing — a render between the server's
+    // answer and the effect running would otherwise outline a finished question — and
+    // recorded as defensive so nobody cites it as the mechanism.
+    const answered = new Set(status?.answeredFieldIds ?? [])
+    if (answered.has(focusField)) return next
+    return focusField
+  }, [focusField, status?.guidedFieldId, status?.answeredFieldIds])
+
+  /** ⚠️ CLEARED AS STATE, NOT JUST IGNORED. `askedField` already falls back once the
+   *  field is answered; without this the stale id would sit in state for the rest of
+   *  the session and win again if the office later cleared that answer. */
+  useEffect(() => {
+    if (focusField === null) return
+    if ((status?.answeredFieldIds ?? []).includes(focusField)) setFocusField(null)
+  }, [focusField, status?.answeredFieldIds])
 
   const endEntryCaptures = useCallback(() => {
     for (const pane of opas.panes) {
@@ -2022,7 +2127,19 @@ export function OpasHost() {
               ...(placed !== undefined && !placed.anchored
                 ? { left: placed.x, top: placed.y }
                 : isEntryPane(pane.kind)
-                  ? { right: 24, bottom: 24 + (barH || 46) }
+                  ? {
+                      right: 24,
+                      // ⚠️ THE PILLS GET THEIR OWN ROW (James, 2026-10-27): "The pills
+                      // row takes its own space: pane, then pills, then bar, with
+                      // nothing overlapping at any width." `guidedH` already carries
+                      // its own gap, and is 0 when there are no pills — which keeps
+                      // the pane TOUCHING the bar in that case, as asked for last
+                      // round ("`bottom: 96` was a guess … and left it floating").
+                      //
+                      // ⚠️ THE ARITHMETIC IS A SHARED FUNCTION so the overlap test can
+                      // read the real one rather than a copy of it.
+                      bottom: paneBottomPx(barH || 46, guidedH),
+                    }
                   // ⚠️ FIRST FREE SPACE, NOT AN INDEX CASCADE (James, 2026-10-19: "A new
                   // pane is placed in the first free space, not on top of another"). This
                   // read `{ right: 24 + i * 18, top: 72 + i * 22 }` — so a second pane sat
@@ -2161,6 +2278,13 @@ export function OpasHost() {
                   )}
                   pickRequest={pickRequest[pane.id]}
                   answerRequest={answerRequest[pane.id]}
+                  // ⚠️ THE OUTLINED ROW AND THE QUESTION ABOVE THE BAR READ THE SAME
+                  // VALUE. Passing the server's field down rather than letting the
+                  // pane re-derive it is what stops the sentence and the outline
+                  // naming different fields.
+                  askedFieldId={askedField}
+                  onAskAgain={askAgain}
+                  focusRequest={focusRequest[pane.id]}
                   onApproved={(order) => onApproved(pane.id, order)}
                   completeRequest={completeRequest[pane.id]}
                 />
@@ -2514,6 +2638,8 @@ export function OpasHost() {
           barIsEmpty={text.trim() === ""}
           questionTakesNumbers={questionTakesNumbers(guided.fieldId)}
           onAnswer={answerGuided}
+          onAct={actGuided}
+          onHeightAbove={setGuidedH}
         />
       )}
 

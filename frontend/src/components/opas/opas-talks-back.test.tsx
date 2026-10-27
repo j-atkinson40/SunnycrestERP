@@ -620,7 +620,7 @@ describe("4 — context from the front pane", () => {
 // 5 — capture speaks in the same voice (James, 2026-10-20)
 // ───────────────────────────────────────────────────────────────────────────
 
-describe("5 — capture's question is in the reply line and stays while typing", () => {
+describe("5 — capture's question is in the Opas pane and stays while typing", () => {
   /**
    * ⚠️ IT WAS NEVER ON SCREEN BEFORE THIS, and that is the finding rather than the
    * feature. The question was rendered as the bar's textarea `placeholder`, which a
@@ -676,40 +676,76 @@ describe("5 — capture's question is in the reply line and stays while typing",
     await waitFor(() => expect(screen.getByTestId("capture-pane")).toBeTruthy())
   }
 
-  it("says the server's question above the bar, WITH TEXT IN THE BAR", async () => {
+  /**
+   * ⚠️ THE QUESTION MOVED AGAIN ON 2026-10-27, AND THESE FOUR MOVED WITH IT. They
+   * asserted `opas-said` — the reply line — which is where the 2026-10-20 ruling put
+   * it. Guided capture gives the question its own pane beside the bar, with a hint
+   * under it and the answers above the bar, so the reply line now stays quiet while a
+   * capture is open.
+   *
+   * ⚠️ AND THE REPLY LINE IS NOT RETIRED, which is why "one voice" rather than "moved
+   * once more" is the right description: it still speaks before the session exists
+   * ("Starting the order…"), and it is still the only speaker outside a capture. What
+   * changed is that two surfaces no longer say the same sentence at once.
+   *
+   * ⚠️ WHAT THESE TESTS ARE FOR IS UNCHANGED, and it is not the location. The defect
+   * they were written for was a question that could not appear ON SCREEN AT ALL — the
+   * bar's `placeholder` shows only when empty, while the question was supplied only
+   * when non-empty. So the load-bearing assertions are "the bar is not empty" and "the
+   * placeholder is a plain prompt", and both are kept verbatim.
+   */
+  it("says the server's question beside the bar, WITH TEXT IN THE BAR", async () => {
     await capturing("What day is the service?")
-    await waitFor(() => expect(screen.getByTestId("opas-said").textContent).toBe(
+    await waitFor(() => expect(screen.getByTestId("opas-guided-question").textContent).toBe(
       "What day is the service?",
     ))
     // ⚠️ THE BAR IS NOT EMPTY, which is the state the old surface could not render in.
     expect(bar().value).not.toBe("")
-    // and the question persists — it is a `question`, which never fades
-    expect(screen.getByTestId("opas-reply").getAttribute("data-reply-kind")).toBe("question")
+    // ⚠️ AND THE REPLY LINE IS SILENT — one voice. Two surfaces saying the same
+    // sentence is the thing the 2026-10-20 ruling was about, one layer along.
+    expect(screen.queryByTestId("opas-said")).toBeNull()
   })
 
   it("and it survives more typing", async () => {
     await capturing("What day is the service?")
-    await waitFor(() => expect(screen.getByTestId("opas-said")).toBeTruthy())
+    await waitFor(() => expect(screen.getByTestId("opas-guided-question")).toBeTruthy())
     fireEvent.change(bar(), { target: { value: "start an order for hopkins monticello" } })
     await act(async () => { await Promise.resolve() })
-    expect(screen.getByTestId("opas-said").textContent).toBe("What day is the service?")
+    expect(screen.getByTestId("opas-guided-question").textContent).toBe(
+      "What day is the service?",
+    )
   })
 
   it("the bar's own placeholder is a PLAIN PROMPT, not the question", async () => {
     await capturing("What day is the service?")
-    await waitFor(() => expect(screen.getByTestId("opas-said")).toBeTruthy())
+    await waitFor(() => expect(screen.getByTestId("opas-guided-question")).toBeTruthy())
     expect(bar().getAttribute("placeholder")).toBe("Say what the director said")
     expect(bar().getAttribute("placeholder")).not.toContain("service")
   })
 
   it("⚠️ AND THE QUESTION GOES WHEN THE CAPTURE DOES, without wiping what comes next", async () => {
     await capturing("What day is the service?")
-    await waitFor(() => expect(screen.getByTestId("opas-said")).toBeTruthy())
+    await waitFor(() => expect(screen.getByTestId("opas-guided-question")).toBeTruthy())
     const pane = screen.getByTestId("capture-pane").closest("[data-testid^='opas-pane-']")!
     await act(async () => {
       fireEvent.click(pane.querySelector("[data-testid^='opas-pane-close-']") as HTMLElement)
     })
-    await waitFor(() => expect(screen.queryByTestId("opas-said")).toBeNull())
+    await waitFor(() => expect(screen.queryByTestId("opas-guided-question")).toBeNull())
+    // ⚠️ AND THE PILLS GO WITH IT. A pills row left above a closed capture would be a
+    // row of answers to a question nobody can see.
+    expect(screen.queryByTestId("opas-guided-pills")).toBeNull()
+  })
+
+  it("falls back to the reply line when the server sends NO question at all", async () => {
+    /**
+     * ⚠️ THE FLOOR, AND IT HAS TO BE TESTED OR IT IS A CLAIM. `_guided` is allowed to
+     * fail rather than take the pane down, and a browser can be talking to an instance
+     * that predates these fields — in both cases there is no guided question, and the
+     * office must still be told what is happening.
+     */
+    await capturing("")
+    await waitFor(() => expect(screen.getByTestId("capture-pane")).toBeTruthy())
+    expect(screen.queryByTestId("opas-guided-question")).toBeNull()
   })
 })
 

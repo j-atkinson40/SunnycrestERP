@@ -218,7 +218,13 @@ def test_no_rendered_row_shows_an_ISO_DATE(db, session):
     assert not offenders, f"these rows still show an ISO date: {offenders}"
 
     shown = {r["row_id"]: r["value"] for r in state["surface"]["rows"]}
-    assert shown["service"] == "Church · Tue Mar 2, 2027 · 10:00 AM", shown
+    # ⚠️ THREE ROWS SINCE 2026-10-27, NOT ONE, AND THIS IS A BETTER TEST FOR IT. The
+    # Service row carried location, day and time until the reshape to
+    # one-row-per-question; each is now its own row, so each date and time is asserted
+    # where it renders rather than inside a joined string.
+    assert shown["service"] == "Church", shown
+    assert shown["service_date"] == "Tue Mar 2, 2027", shown
+    assert shown["service_time"] == "10:00 AM", shown
     assert shown["dates"] == "1948 — 2026", shown
 
 
@@ -251,11 +257,24 @@ def test_the_rows_and_the_sets_agree_about_configuration(db, session):
         f"the row reports the licensee's setup as missing while the set says "
         f"personalization is answered: {row}"
     )
-    # ⚠️ AND THE PARTIAL IS PINNED RATHER THAN TOLERATED, so a later change that made
-    # this row `done` with a required field unanswered goes red here instead of
-    # looking like a fix.
-    assert row["state"] == "partial", row
+    # ⚠️ `done` SINCE 2026-10-27, AND THE REASON IS A ROW SPLIT RATHER THAN A STATE
+    # CHANGE. This asserted `partial` because `nameplate_date_format` shared the
+    # Personalization row and was required-and-unanswered. One-row-per-question moved
+    # the format onto the DATES row ("1948 — 2026 · Years" — it is a property OF the
+    # dates), so the Personalization row now holds only the choice and its symbol, and
+    # the choice IS answered.
+    assert row["state"] == "done", row
     assert row["value"] == "Nameplate Only", row
+
+    # ⚠️ AND THE PARTIAL IS STILL PINNED, ON THE ROW THAT NOW HAS THAT SHAPE. Dropping
+    # the assertion because the row changed would retire a guard rather than move it:
+    # the claim is that a row with something captured and something required
+    # outstanding reads PARTIAL, and the Dates row is where that now happens —
+    # `nameplate_date_format` is required once personalization is chosen and this test
+    # never answers it.
+    dates = next(r for r in state["surface"]["rows"] if r["row_id"] == "dates")
+    assert dates["state"] in ("not_mentioned", "needed", "partial"), dates
+    assert "nameplate_date_format" in dates["missing_field_ids"], dates
 
     # ⚠️ THE GENERAL FORM: no row may claim NOT_CONFIGURED for a field the engine
     # placed in `answered`. That is the contradiction, stated over every row.

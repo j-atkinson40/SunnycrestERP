@@ -19,7 +19,9 @@ import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
 import {
+  BAR_INSET,
   GuidedQuestion,
+  paneBottomPx,
   questionTakesNumbers,
   type GuidedQuestionProps,
 } from "./GuidedQuestion"
@@ -266,10 +268,73 @@ describe("when a digit must be left alone", () => {
     expect(pressDigit(1, { alt: true })).toBe(true)
   })
 
-  it("no field means nothing is listening", () => {
-    const { onAnswer } = mount({ fieldId: null })
-    expect(pressDigit(1, { alt: true })).toBe(false)
+  it("no field still listens, because the ready state's only pill is an ACTION", () => {
+    /**
+     * ⚠️ THIS ASSERTED THE OPPOSITE UNTIL 2026-10-27, AND IT WAS RIGHT THEN. With only
+     * answer pills, a null field means nothing can be answered and the listener should
+     * stand down. Clause 3 of the fixes introduces a pill that is NOT an answer —
+     * "When everything needed is answered, Opas says 'That's everything.' with a
+     * Review pill (⌥1) and Enter" — and in that state `question_field_id` is null.
+     *
+     * So guarding on the field made ⌥1 dead at exactly the moment the office wants it.
+     * The listener now attaches whenever there are pills, and the field is used only
+     * by the answer branch.
+     */
+    const onAnswer = vi.fn()
+    const onAct = vi.fn()
+    render(
+      <GuidedQuestion
+        question="That’s everything."
+        hint="Press Enter to review, or click any line to change it."
+        fieldId={null}
+        pills={[{ value: "review", label: "Review", sub: "Enter", act: "review" }]}
+        barHeight={46}
+        barWidth="600px"
+        stacked={false}
+        barIsEmpty
+        questionTakesNumbers={false}
+        onAnswer={onAnswer}
+        onAct={onAct}
+      />,
+    )
+    expect(pressDigit(1, { alt: true })).toBe(true)
+    expect(onAct).toHaveBeenCalledWith("review")
+    // ⚠️ AND IT IS NOT ROUTED AS AN ANSWER. Through `onAnswer` it would try to store
+    // "review" into a field — and with a null field there is no field to store it in.
     expect(onAnswer).not.toHaveBeenCalled()
+  })
+
+  it("an action pill does not try to answer a field, even when one is being asked", () => {
+    /** ⚠️ THE MIXED STATE, WHICH IS THE COMMON ONE ONCE THE ORDER IS REVIEWABLE: an
+     *  optional question still being asked, its answers in the row, and Review at the
+     *  end. Routing by position rather than by `act` would store "review" into
+     *  `cemetery_equipment`. */
+    const onAnswer = vi.fn()
+    const onAct = vi.fn()
+    render(
+      <GuidedQuestion
+        question="What cremation setup?"
+        hint={null}
+        fieldId="cemetery_equipment"
+        pills={[
+          { value: "tent_only", label: "Tent Only" },
+          { value: "review", label: "Review", sub: "Enter", act: "review" },
+        ]}
+        barHeight={46}
+        barWidth="600px"
+        stacked={false}
+        barIsEmpty
+        questionTakesNumbers={false}
+        onAnswer={onAnswer}
+        onAct={onAct}
+      />,
+    )
+    expect(pressDigit(2, { alt: true })).toBe(true)
+    expect(onAct).toHaveBeenCalledWith("review")
+    expect(onAnswer).not.toHaveBeenCalled()
+    // ⚠️ AND THE ANSWER PILL BESIDE IT STILL ANSWERS — the control for the above.
+    expect(pressDigit(1, { alt: true })).toBe(true)
+    expect(onAnswer).toHaveBeenCalledWith("cemetery_equipment", "tent_only")
   })
 
   it("the listener is removed when the question goes", () => {
@@ -346,5 +411,221 @@ describe("the pane does not swallow the pointer", () => {
     expect(pills.style.pointerEvents).not.toBe("none")
     // and a click on a pill really does reach it
     fireEvent.click(screen.getByTestId("opas-guided-pill-1"))
+  })
+})
+
+describe("it reports the room it takes, so nothing overlaps", () => {
+  /**
+   * ⚠️ THE DEFECT THIS IS FOR IS WHAT JAMES SAW: "The pills sit on top of the order
+   * pane. They cover 'Complete order' and the text under it." The capture pane was
+   * anchored at `bottom: 24 + barH` — the bar's top edge — and the pills sit 12px
+   * above that edge, so the pills were drawn over the pane's footer.
+   *
+   * ⚠️ MEASURED, NOT COMPUTED, BECAUSE THE ROW WRAPS. Four pills at 1920px are one
+   * row; the same four at 1280px can be two, and a hard-coded 44px would put the pane
+   * back on top of the second row.
+   *
+   * ⚠️ `offsetHeight` IS STUBBED BECAUSE JSDOM DOES NO LAYOUT — every element reports
+   * 0, so without this the reported height would be 0 in every case and the test would
+   * pass against a component that never measured anything. Stating it because a
+   * stubbed measurement is weaker evidence than a real one, which is why the dispatch
+   * also asks for screenshots: this pins the ARITHMETIC, the screenshots pin the
+   * RENDER.
+   */
+  function stubHeights(pills: number, pane: number) {
+    const proto = HTMLElement.prototype
+    const original = Object.getOwnPropertyDescriptor(proto, "offsetHeight")
+    Object.defineProperty(proto, "offsetHeight", {
+      configurable: true,
+      get(this: HTMLElement) {
+        const id = this.getAttribute("data-testid")
+        if (id === "opas-guided-pills") return pills
+        if (id === "opas-guided-pane") return pane
+        return 0
+      },
+    })
+    return () => {
+      if (original !== undefined) Object.defineProperty(proto, "offsetHeight", original)
+      else Reflect.deleteProperty(proto, "offsetHeight")
+    }
+  }
+
+  it("the pills' height plus the gap, when wide", () => {
+    const restore = stubHeights(44, 120)
+    try {
+      const onHeightAbove = vi.fn()
+      mount({ onHeightAbove, stacked: false })
+      // 12 (bar -> pills) + 44 (the pills row) + 12 (pills -> pane) = 68. The Opas
+      // pane is in the column LEFT of the bar when wide and takes no room above it.
+      //
+      // ⚠️ TWO GAPS, AND MY FIRST VERSION HAD ONE — 56, which put the pane's bottom
+      // exactly on the pills' top. Touching is not clear, with a shadow and a border
+      // in play, and the prototype's `.dock{gap:12px}` is between EVERY row.
+      expect(onHeightAbove).toHaveBeenCalledWith(68)
+    } finally {
+      restore()
+    }
+  })
+
+  it("the pills AND the Opas pane, when stacked", () => {
+    const restore = stubHeights(44, 120)
+    try {
+      const onHeightAbove = vi.fn()
+      mount({ onHeightAbove, stacked: true })
+      // 12 + 44 + 12 (the pills with a gap each side) + 120 + 12 (the Opas pane and
+      // the gap above it) = 200. Below 960px the pane is above the pills, so the room
+      // needed above the bar is both.
+      expect(onHeightAbove).toHaveBeenCalledWith(200)
+    } finally {
+      restore()
+    }
+  })
+
+  it("two rows of pills take twice the room — the wrapping case", () => {
+    const restore = stubHeights(88, 120)
+    try {
+      const onHeightAbove = vi.fn()
+      mount({ onHeightAbove, stacked: false })
+      // ⚠️ THE CASE A CONSTANT WOULD GET WRONG. Same pills, narrower window, two
+      // rows: 12 + 88 + 12 = 112.
+      expect(onHeightAbove).toHaveBeenCalledWith(112)
+    } finally {
+      restore()
+    }
+  })
+
+  it("zero when there are no pills, so the pane keeps touching the bar", () => {
+    /** ⚠️ ZERO IS LOAD-BEARING. The pane touching the bar with no pills was asked for
+     *  last round — "`bottom: 96` was a guess against a ~46px bar and left it
+     *  floating" — so reserving room for a row that is not rendered would undo it. */
+    const restore = stubHeights(0, 120)
+    try {
+      const onHeightAbove = vi.fn()
+      mount({ onHeightAbove, pills: [], stacked: false })
+      expect(onHeightAbove).toHaveBeenCalledWith(0)
+    } finally {
+      restore()
+    }
+  })
+
+  it("reports zero on the way out", () => {
+    /** ⚠️ WITHOUT THIS THE PANE KEEPS THE ROOM RESERVED for a pills row that is no
+     *  longer rendered, leaving a gap above the bar for the rest of the session. */
+    const restore = stubHeights(44, 120)
+    try {
+      const onHeightAbove = vi.fn()
+      const { unmount } = render(
+        <GuidedQuestion
+          question="Which funeral home?"
+          hint={null}
+          fieldId="funeral_home"
+          pills={PILLS}
+          barHeight={46}
+          barWidth="600px"
+          stacked={false}
+          barIsEmpty
+          questionTakesNumbers={false}
+          onAnswer={vi.fn()}
+          onHeightAbove={onHeightAbove}
+        />,
+      )
+      onHeightAbove.mockClear()
+      unmount()
+      expect(onHeightAbove).toHaveBeenCalledWith(0)
+    } finally {
+      restore()
+    }
+  })
+})
+
+describe("nothing overlaps, at 1280 and at 1920", () => {
+  /**
+   * James's fixes, clause 1: "The pills row takes its own space: pane, then pills,
+   * then bar, with nothing overlapping at any width. Screenshot at 1280 and 1920 to
+   * prove it."
+   *
+   * ⚠️ I COULD NOT TAKE THE SCREENSHOTS — the Chrome extension is not connected in
+   * this environment, so there is no browser to drive. Stated plainly rather than
+   * skipped: this test proves the ARITHMETIC at both widths and NOT the render, and
+   * those are different things. A CSS rule I have not thought of could still overlap
+   * two boxes whose numbers clear each other.
+   *
+   * ⚠️ WHAT IT DOES PROVE IS THE THING THAT WAS WRONG. The pane was anchored at
+   * `bottom: 24 + barH` — the bar's top edge — while the pills sit above that edge, so
+   * the two rectangles genuinely intersected. That is an arithmetic fact and this is
+   * where it is now checked, at both widths, with the pills wrapping at the narrow one.
+   */
+  const BAR_H = 46
+
+  /** The three boxes as `bottom` / `height` pairs, measured up from the viewport floor.
+   *
+   * ⚠️ THE PANE'S ANCHOR COMES FROM `paneBottomPx`, THE FUNCTION THE HOST CALLS, not
+   * from a copy of its arithmetic. My first version wrote `BAR_INSET + BAR_H +
+   * guidedAbove` here — a check derived from the implementation, which would have
+   * stayed green if the host's anchor changed. Importing it is what makes this test
+   * watch the thing that ships.
+   */
+  function boxes(viewportWidth: number, pillsHeight: number, guidedAbove: number) {
+    const barWidth = Math.min(600, viewportWidth - 48)
+    return {
+      barWidth,
+      bar: { bottom: BAR_INSET, height: BAR_H },
+      pills: { bottom: BAR_INSET + BAR_H + 12, height: pillsHeight },
+      pane: { bottom: paneBottomPx(BAR_H, guidedAbove), height: 300 },
+    }
+  }
+
+  function overlaps(
+    a: { bottom: number; height: number },
+    b: { bottom: number; height: number },
+  ) {
+    return a.bottom < b.bottom + b.height && b.bottom < a.bottom + a.height
+  }
+
+  it("at 1920 — four pills on one row", () => {
+    // one row of pills: 12 + 44 + 12
+    const { bar, pills, pane, barWidth } = boxes(1920, 44, 68)
+    expect(barWidth).toBe(600)
+    expect(overlaps(pills, bar)).toBe(false)
+    expect(overlaps(pane, pills)).toBe(false)
+    expect(overlaps(pane, bar)).toBe(false)
+    // ⚠️ AND THE ORDER IS PANE, PILLS, BAR going up the screen, which is the clause's
+    // own words. Asserting the order as well as the absence of overlap, because three
+    // boxes can clear each other in the wrong sequence.
+    expect(bar.bottom).toBeLessThan(pills.bottom)
+    expect(pills.bottom).toBeLessThan(pane.bottom)
+  })
+
+  it("at 1280 — the same pills wrap to two rows", () => {
+    // ⚠️ THE WRAPPING CASE IS THE ONE A CONSTANT GETS WRONG, and 1280 is where James
+    // asked for it. Two rows: 12 + 88 + 12.
+    const { bar, pills, pane, barWidth } = boxes(1280, 88, 112)
+    expect(barWidth).toBe(600)
+    expect(overlaps(pills, bar)).toBe(false)
+    expect(overlaps(pane, pills)).toBe(false)
+    expect(bar.bottom).toBeLessThan(pills.bottom)
+    expect(pills.bottom).toBeLessThan(pane.bottom)
+  })
+
+  it("⚠️ THE OLD ANCHOR OVERLAPPED — the positive control for all of the above", () => {
+    /**
+     * ⚠️ WITHOUT THIS THE TESTS ABOVE PROVE NOTHING. "These boxes do not overlap" is
+     * satisfied by arithmetic that could never overlap; the question is whether the
+     * check can see the defect that was there. `bottom: 24 + barH` with no room for
+     * the pills is exactly what shipped, and it must come out as an overlap.
+     */
+    const { pills, pane } = boxes(1920, 44, 0)
+    expect(pane.bottom).toBe(BAR_INSET + BAR_H)
+    expect(overlaps(pane, pills)).toBe(true)
+  })
+
+  it("at 640 — stacked, and the Opas pane is in the column too", () => {
+    /** Below the prototype's 960px breakpoint the Opas pane moves above the pills, so
+     *  the room above the bar is both: 12 + 44 + 12 + 120 + 12 = 200. */
+    const { bar, pills, pane } = boxes(640, 44, 200)
+    expect(overlaps(pane, pills)).toBe(false)
+    expect(overlaps(pills, bar)).toBe(false)
+    // and the bar narrows with the viewport
+    expect(boxes(640, 44, 200).barWidth).toBe(640 - 48)
   })
 })

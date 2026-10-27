@@ -1150,8 +1150,34 @@ CALL_QUESTIONS: dict[str, str] = {
     "nameplate_date_format": "How should the dates read?",
 }
 
-#: What it says when nothing is missing. ⚠️ HIS WORDING, VERBATIM.
-READY_TO_REVIEW = "Ready. Press Enter to review."
+#: What it says when nothing is missing.
+#:
+#: ⚠️ CHANGED 2026-10-27 BY RULING, AND THE OLD WORDING WAS ALSO HIS. It read "Ready.
+#: Press Enter to review." — correct, and it was the line beside a Complete order
+#: BUTTON. The fixes remove that button: "When everything needed is answered, Opas says
+#: 'That's everything.' with a Review pill (⌥1) and Enter, as in the prototype."
+#:
+#: ⚠️ SO THE SENTENCE NO LONGER CARRIES THE INSTRUCTION — the pill does. The prototype's
+#: own split: `ask:"That's everything."`, `hint:'Press Enter to review, or click any
+#: line to change it.'`, `options:[{act:'review',label:'Review',sub:'Enter'}]`. A
+#: sentence that says "press Enter" above a pill labelled Enter says it twice.
+READY_TO_REVIEW = "That\u2019s everything."
+
+#: The one line under it. ⚠️ THE PROTOTYPE'S, VERBATIM, and the second half is the half
+#: that matters: a director who has answered everything needs to know that a line they
+#: got wrong is still reachable.
+READY_HINT = "Press Enter to review, or click any line to change it."
+
+#: ⚠️ AN ACTION, NOT AN ANSWER, which is why it carries `act` rather than a field value.
+#: Every other pill answers a question by storing a value; this one asks the pane to do
+#: what Enter does. The prototype marks it the same way — `{act:'review',...}` — and the
+#: distinction is load-bearing at the client: an action pill routed through `/answer`
+#: would try to store "review" into a field.
+REVIEW_ACTION = "review"
+REVIEW_PILL_LABEL = "Review"
+#: ⚠️ "Enter" RATHER THAN "⌥1", because both work and Enter is the one a director
+#: already knows. The ⌥1 chord is rendered by the pill itself, as it is on every pill.
+REVIEW_PILL_SUB = "Enter"
 
 
 #: The one line under the question — what the prototype calls `hint`.
@@ -1196,6 +1222,14 @@ CREMATION_EQUIPMENT_HINT = (
 #: in ten is chrome that says what the rest of the pane already says.
 CREMATION_CHIP = "Cremation"
 
+#: What the Equipment ROW is called once the vault makes it a cremation.
+#:
+#: ⚠️ THE PROTOTYPE'S OWN FLIP: `f==='equip'&&k==='urn'?'Cremation setup':LABEL[f]`. It
+#: lives here beside the question's wording so the row and the question cannot drift —
+#: a pane whose row says "Equipment" above a question asking "What cremation setup?" is
+#: one response contradicting itself.
+CREMATION_EQUIPMENT_ROW_LABEL = "Cremation setup"
+
 
 def next_field(missing: object) -> str | None:
     """WHICH field is being asked about, or None when nothing is missing.
@@ -1217,6 +1251,76 @@ def next_field(missing: object) -> str | None:
     return sorted(outstanding)[0]
 
 
+def guided_field(state: object) -> str | None:
+    """The question the GUIDED flow asks next — required first, then the optional ones.
+
+    ⚠️ THIS EXISTS BECAUSE `next_field(missing)` CANNOT REACH FOUR QUESTIONS, AND I
+    REPORTED THEM AS WORKING. `missing` is required-and-unanswered, and
+    `cemetery_equipment`, `legacy_series`, `legacy_print_name` and
+    `lifes_reflections_symbol` are all `required_when=Never()` — so they never enter
+    `missing`, `next_field` never returns them, and Opas never asked them. Measured by
+    walking a whole order: the asked sequence is funeral_home, deceased_name, vault,
+    service_date, service_location, service_time, cemetery, and then ready.
+
+    That made two clauses of the 2026-10-27 dispatch unreachable: "the equipment
+    question offers the cremation setups from the catalog" and "Legacy asks which
+    print". I had verified both by calling `pills_for` on those fields directly, which
+    tested the pills and not whether the flow gets there — CLAUDE.md §11's complete
+    machinery behind an unprovisioned entrance, at the scale of one function argument.
+
+    ⚠️ THE PROTOTYPE DOES NOT FILTER BY REQUIRED EITHER:
+        const nextField=()=>ORDER.find(f=>applicable(f)&&!S.f[f])||null;
+    Applicable and unanswered. Its model has no optional fields, so "required" never
+    came up — which is exactly how the distinction got lost in translation.
+
+    ⚠️ REQUIRED STILL COMES FIRST, and that is not the prototype's rule but it is the
+    right one here. A director who has not named the cemetery should be asked for the
+    cemetery before being asked about chairs; `CALL_ORDER` alone would interleave them,
+    because `cemetery_equipment` sits above `personalization` in it.
+
+    ⚠️ AND `missing` IS UNTOUCHED. It still decides what blocks approval, what turns
+    amber, and whether Enter can review — so asking an optional question never makes an
+    order unreviewable. The two conditions were conflated in one function and are now
+    two: this says WHAT TO ASK, `state.is_complete` says WHETHER IT CAN BE REVIEWED.
+    """
+    missing = set(getattr(state, "missing", ()) or ())
+    for field_id in CALL_ORDER:
+        if field_id in missing:
+            return field_id
+    # ⚠️ NOT IN `CALL_ORDER` AT ALL — asked last and asked plainly, as `next_field` does.
+    outside = sorted(missing - set(CALL_ORDER))
+    if outside:
+        return outside[0]
+
+    # ── nothing required is outstanding; the optional questions are next ─────────────
+    #
+    # ⚠️ `unanswered_optional` IS THE ENGINE'S OWN SET and it is exactly this: optional,
+    # APPLICABLE, unanswered. `CaptureState` added it on 2026-10-05 for the surface
+    # layer, and its docstring says why it needs a name — "absent from all three sets is
+    # indistinguishable from the engine forgot about it". It is the right input here and
+    # needed no new derivation.
+    optional = set(getattr(state, "unanswered_optional", ()) or ())
+    for field_id in CALL_ORDER:
+        if field_id in optional:
+            return field_id
+
+    # ⚠️ NO FALLBACK FOR THE OPTIONAL ONES, AND THAT IS THE OPPOSITE OF THE REQUIRED
+    # CASE ABOVE — deliberately. For a REQUIRED field, absence from `CALL_ORDER` means
+    # nobody thought to prioritise it and it is still a gap, so it is asked last and
+    # asked plainly. For an OPTIONAL field, absence from `CALL_ORDER` means nobody
+    # wants it asked.
+    #
+    # ⚠️ AND `burial_date` IS THE CASE THAT PROVES IT. My first version ended
+    # `return sorted(optional)[0] if optional else None`, and the walk asked "Burial
+    # date?" — a question ruled away on 2026-10-13: "the burial is always the same day
+    # as the service. When it isn't, it is a graveside service." The field is kept and
+    # still extracted so a contradictory date becomes a visible conflict, but it is
+    # DERIVED at approve and must never be asked. It is absent from `CALL_ORDER` for
+    # exactly that reason, and a fallback that ignores `CALL_ORDER` reinstated the
+    # question the ruling removed.
+    return None
+
+
 def question_for(field_id: str | None, *, cremation: bool = False) -> str:
     """The sentence for one field, or the ready line.
 
@@ -1235,7 +1339,10 @@ def question_for(field_id: str | None, *, cremation: bool = False) -> str:
 def hint_for(field_id: str | None, *, cremation: bool = False) -> str | None:
     """The one line under the question, or None when there is nothing worth saying."""
     if field_id is None:
-        return None
+        # ⚠️ THE READY STATE HAS A HINT NOW, and it is the only reason this branch is
+        # not still `return None`. "That's everything." on its own does not say what to
+        # do next; the old wording carried that and no longer does.
+        return READY_HINT
     if cremation and field_id == "cemetery_equipment":
         return CREMATION_EQUIPMENT_HINT
     return CALL_HINTS.get(field_id)

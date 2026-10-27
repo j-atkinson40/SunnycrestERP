@@ -273,12 +273,28 @@ def test_the_burial_row_shows_ONLY_the_grave_location(db, tenant):
         state = session_service.read_state(
             db, row.id, company_id=tenant, user_id=uid
         )
+        # ⚠️ `burial` BECAME `grave_location` ON 2026-10-27, renamed for what it
+        # carries. The row sourced the grave location and nothing else, so a row
+        # called "Burial" was a label describing more than it held. The ruling this
+        # test pins — no burial DATE on it, ever — is unchanged.
         burial = next(
-            r for r in state["surface"]["rows"] if r["row_id"] == "burial"
+            r for r in state["surface"]["rows"] if r["row_id"] == "grave_location"
         )
         assert burial["value"] == "Section 4, Lot 12", burial
         # ⚠️ NO DATE AND NO LABEL. Asserted as absence, which is the whole ruling.
         assert burial["secondary_value"] is None, burial
+        # ⚠️ AND STRUCTURALLY, BECAUSE THE RENDERED ABSENCE ABOVE IS WEAKER THAN IT
+        # READS — a break test found it. Adding `burial_date` back as this row's
+        # secondary left the line above green, because this session never captures a
+        # separate burial date and so the secondary renders None either way. The claim
+        # is that the ROW CANNOT SHOW A DATE, which is about its sources.
+        from app.services.capture.rows import row_field_ids
+        from app.services.capture.surfaces import CAPTURE_SALES_ORDER
+
+        row_def = next(
+            r for r in CAPTURE_SALES_ORDER.rows if r.id == "grave_location"
+        )
+        assert row_field_ids(row_def) == ("grave_location",), row_field_ids(row_def)
         assert "same day" not in str(burial), burial
         # ⚠️ AND NEVER NEEDED, so it carries no missing field and cannot go amber.
         assert burial["missing_field_ids"] == [], burial

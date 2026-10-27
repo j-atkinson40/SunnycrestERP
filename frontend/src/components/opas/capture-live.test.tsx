@@ -216,7 +216,12 @@ describe("the debounce", () => {
     await settle()
 
     expect(setCaptureText).toHaveBeenCalledTimes(1)
-    expect(setCaptureText).toHaveBeenCalledWith("sess-1", "tent only", expect.any(Number))
+    expect(setCaptureText).toHaveBeenCalledWith(
+      // ⚠️ A FOURTH ARGUMENT SINCE 2026-10-27 — the field a clicked row focused, so the
+      // response composes that question rather than the server's next. It is `null`
+      // while nothing is focused, which is the ordinary case and the one asserted here.
+      "sess-1", "tent only", expect.any(Number), null,
+    )
   })
 
   it("SENDS AN EMPTY STRING when the bar is cleared", async () => {
@@ -231,7 +236,7 @@ describe("the debounce", () => {
     await user.clear(bar)
     await settle()
 
-    expect(setCaptureText).toHaveBeenCalledWith("sess-1", "", expect.any(Number))
+    expect(setCaptureText).toHaveBeenCalledWith("sess-1", "", expect.any(Number), null)
   })
 
   it("sends STRICTLY INCREASING sequence numbers", async () => {
@@ -681,7 +686,9 @@ describe("⌘1..9 settles a pick", () => {
 
     expect(choosePick).not.toHaveBeenCalled()
     expect(bar).toHaveValue("depth 34")
-    expect(setCaptureText).toHaveBeenCalledWith("sess-1", "depth 34", expect.any(Number))
+    expect(setCaptureText).toHaveBeenCalledWith(
+      "sess-1", "depth 34", expect.any(Number), null,
+    )
   })
 
   it("A NUMBER AFTER A PLACE WORD STAYS IN THE TEXT", async () => {
@@ -784,7 +791,7 @@ describe("under StrictMode, as the app actually mounts", () => {
     )
     await settle()
     expect(setCaptureText).toHaveBeenCalledWith(
-      "sess-1", "Order for hopkins", expect.any(Number),
+      "sess-1", "Order for hopkins", expect.any(Number), null,
     )
   })
 })
@@ -854,7 +861,7 @@ describe("an order pane opens from TYPING, with no Enter", () => {
     await settle()
 
     expect(setCaptureText).toHaveBeenCalledWith(
-      "sess-1", "order for hopkins", expect.any(Number),
+      "sess-1", "order for hopkins", expect.any(Number), null,
     )
   })
 

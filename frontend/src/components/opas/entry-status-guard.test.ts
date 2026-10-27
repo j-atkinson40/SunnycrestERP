@@ -40,6 +40,7 @@ const BASE: EntryPaneStatus = {
   cremation: null,
   clearedNote: null,
   sessionId: "sess-1",
+  answeredFieldIds: ["funeral_home"],
 }
 
 /**
@@ -68,6 +69,9 @@ const VARIANTS: { [K in keyof EntryPaneStatus]-?: EntryPaneStatus[K] } = {
   cremation: "Cremation",
   clearedNote: "Full Equipment cleared: an urn vault means a cremation setup.",
   sessionId: "sess-2",
+  // ⚠️ A DIFFERENT SET, same length — "the vault is now answered instead" is the
+  // change that retires a clicked row, and a length comparison would miss it.
+  answeredFieldIds: ["vault"],
 }
 
 describe("sameEntryStatus", () => {

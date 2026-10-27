@@ -81,12 +81,26 @@ def session(db):
     sp.rollback()
 
 
-def _service_row(db, session, lines):
+def _composed_row(db, session, lines, row_id="cemetery_equipment"):
+    """Render a COMPOSED row — one that answers several fields — after some lines.
+
+    ⚠️ REPOINTED 2026-10-27 FROM THE `service` ROW, which is no longer composed. The
+    reshape to one-row-per-question split it into Service day, Service and Time, so a
+    row that could be PARTIAL — something captured, something required outstanding —
+    is not among them any more.
+
+    ⚠️ THE EQUIPMENT ROW IS THE CLOSEST ANALOGUE AND IT WAS CHOSEN BY MEASUREMENT, not
+    by reading the surface. Rendered with `cemetery_equipment="extra_chairs"` and no
+    count it reads `('partial', 'Extra Chairs (Over 8)', ('extra_chairs_count',))` —
+    the same shape the Service row had, because choosing chairs makes the count
+    required. Three rows can still be PARTIAL (equipment, cemetery, dates); this is the
+    one reachable from one typed line.
+    """
     cid, uid, sid = session
     for line in lines:
         session_service.add_line(db, sid, company_id=cid, user_id=uid, line=line)
     state = session_service.read_state(db, sid, company_id=cid, user_id=uid)
-    return next(r for r in state["surface"]["rows"] if r["row_id"] == "service"), state
+    return next(r for r in state["surface"]["rows"] if r["row_id"] == row_id), state
 
 
 # ── the five states exist and are distinct ──────────────────────────────
@@ -101,15 +115,19 @@ def test_partial_is_a_fifth_state_and_not_an_alias():
 def test_a_row_that_captured_something_is_PARTIAL_not_not_mentioned(db, session):
     """⚠️ THE REPORTED DEFECT. One field of a composed row answered, another still
     required: the row holds a value, so it cannot claim nothing was mentioned."""
-    row, _ = _service_row(db, session, ["service at the church"])
-    assert row["value"] == "Church", row
+    row, _ = _composed_row(db, session, ["extra chairs"])
+    assert row["value"] == "Extra Chairs (Over 8)", row
     assert row["state"] == RowState.PARTIAL.value, row
+    # ⚠️ AND THE OUTSTANDING FIELD IS NAMED, which is what makes PARTIAL different from
+    # a row that merely looks half-filled: the count is required BECAUSE chairs were
+    # chosen.
+    assert row["missing_field_ids"] == ["extra_chairs_count"], row
 
 
 def test_a_row_with_NOTHING_is_still_not_mentioned(db, session):
     """⚠️ THE CONTROL ON THE FIX. If PARTIAL leaked into rows holding nothing, every
     untouched row would stop reading as untouched and the pane would look full."""
-    row, state = _service_row(db, session, ["34 inch Continental"])
+    row, state = _composed_row(db, session, ["34 inch Continental"])
     assert row["value"] is None, row
     assert row["state"] == RowState.NOT_MENTIONED.value, row
     others = [r for r in state["surface"]["rows"] if r["value"] is None]
@@ -120,15 +138,16 @@ def test_a_row_with_NOTHING_is_still_not_mentioned(db, session):
 
 
 def test_a_complete_row_is_done(db, session):
-    row, _ = _service_row(db, session, [
-        "service at the church", "service on March 2 2027", "service at 10am",
-    ])
+    row, _ = _composed_row(db, session, ["extra chairs 4"])
     assert row["state"] == RowState.DONE.value, row
-    # ⚠️ UPDATED 2026-10-12 WITH THE RENDERING, NOT AROUND IT. This asserted
-    # "Church · 2027-03-02 · 10:00" until James read that date off a report and
-    # ruled that rows show dates the way the office writes them, never ISO. The
-    # STORED values are unchanged — `2027-03-02` and `10:00`; only this line moved.
-    assert row["value"] == "Church · Tue Mar 2, 2027 · 10:00 AM", row
+    # ⚠️ THE VALUE AND ITS SECONDARY, which is what "complete" means on this row: the
+    # package chosen and the count it needs. The old assertion read
+    # "Church · Tue Mar 2, 2027 · 10:00 AM" on the Service row — those three facts are
+    # three rows now, and each is asserted in `test_date_display.py` where the
+    # rendering rules live.
+    assert row["value"] == "Extra Chairs (Over 8)", row
+    assert row["secondary_value"] == "4 chairs", row
+    assert row["missing_field_ids"] == [], row
 
 
 def test_PARTIAL_holds_after_the_done_signal_rather_than_becoming_NEEDED(db, session):
@@ -139,15 +158,17 @@ def test_PARTIAL_holds_after_the_done_signal_rather_than_becoming_NEEDED(db, ses
     is blocking is carried by the `missing` set and rendered in the header; what the
     ROW must not do is deny the director typed something."""
     cid, uid, sid = session
-    session_service.add_line(db, sid, company_id=cid, user_id=uid,
-                             line="service at the church")
+    # ⚠️ THE EQUIPMENT ROW, for the reason `_composed_row` records: the Service row is
+    # no longer composed and cannot be PARTIAL.
+    session_service.add_line(db, sid, company_id=cid, user_id=uid, line="extra chairs")
     session_service.add_line(db, sid, company_id=cid, user_id=uid,
                              line="that's everything")
     state = session_service.read_state(db, sid, company_id=cid, user_id=uid)
-    row = next(r for r in state["surface"]["rows"] if r["row_id"] == "service")
+    row = next(r for r in state["surface"]["rows"]
+               if r["row_id"] == "cemetery_equipment")
     assert state["missing"], "the done signal did not report anything missing"
     assert row["state"] == RowState.PARTIAL.value, row
-    assert row["value"] == "Church", row
+    assert row["value"] == "Extra Chairs (Over 8)", row
 
 
 def test_an_EMPTY_row_does_become_NEEDED_after_the_done_signal(db, session):
@@ -172,13 +193,34 @@ def test_the_location_is_not_lost_when_the_date_arrives(db, session):
     With two overlapping ComposedSources this row showed "Church", then "2027-03-02"
     — a field the director had given, gone, with nothing reported."""
     cid, uid, sid = session
-    session_service.add_line(db, sid, company_id=cid, user_id=uid,
-                             line="service at the church")
-    session_service.add_line(db, sid, company_id=cid, user_id=uid,
-                             line="service on March 2 2027")
-    state = session_service.read_state(db, sid, company_id=cid, user_id=uid)
-    row = next(r for r in state["surface"]["rows"] if r["row_id"] == "service")
-    assert row["value"] == "Church · Tue Mar 2, 2027", row
+    # ⚠️ THE CEMETERY ROW AND THE ROW LAYER DIRECTLY, SINCE 2026-10-27. The defect was
+    # on the Service row's two overlapping ComposedSources, and that row now carries
+    # one question. The cemetery row still composes three fields, and the claim —
+    # a field the director gave must not vanish when another arrives — is unchanged.
+    #
+    # ⚠️ RENDERED RATHER THAN TYPED, because that is where the defect was. One line
+    # ("st marys cemetery") sets the name AND the town together, so typing cannot
+    # produce the middle step this test exists for; building the answers by hand can.
+    from app.services.capture import template_for, SALES_ORDER
+    from app.services.capture.rows import resolve_surface
+    from app.services.capture.schema import resolve_schema
+    from app.services.capture.surfaces import CAPTURE_SALES_ORDER
+
+    def cemetery_row(answers):
+        fields = resolve_schema(
+            vault_product_id=None, personalization_config=None,
+            platform_fields=template_for(SALES_ORDER), answers=answers,
+        )
+        out = resolve_surface(CAPTURE_SALES_ORDER, fields, answers)
+        return next(r for r in out.rows if r.row_id == "cemetery")
+
+    # the name alone
+    assert cemetery_row({"cemetery": "St. Mary's Cemetery"}).value == "St. Mary's Cemetery"
+    # ⚠️ THE MIDDLE STEP, WHICH IS THE WHOLE TEST: the town arrives and the NAME is
+    # still there. The original defect showed "Church", then "2027-03-02" — a field the
+    # director had given, gone, with nothing reported.
+    both = cemetery_row({"cemetery": "St. Mary's Cemetery", "cemetery_city": "Skaneateles"})
+    assert both.value == "St. Mary's Cemetery · Skaneateles", both
 
 
 def test_firstof_renders_the_first_child_that_yields():
