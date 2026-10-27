@@ -118,6 +118,43 @@ export interface CaptureState {
    *  defect was a required key an older server omitted; every field added since is
    *  optional at the type level for that reason. */
   readonly next_question?: string | null
+  /** WHICH field the question is about. Guided capture, slice 1.
+   *
+   *  ⚠️ THE SERVER'S ANSWER, NOT DERIVED FROM `next_question`. Two fields can share a
+   *  phrasing, so reading the field back out of the sentence would be a reverse
+   *  lookup that breaks silently. `null` means nothing is missing. */
+  readonly question_field_id?: string | null
+  /** The question again, from the same walk as `question_field_id` — and the one that
+   *  carries the cremation wording. ⚠️ `next_question` STAYS because every existing
+   *  caller reads it and it is the same sentence for every non-cremation field; this
+   *  is the one the guided pane renders. */
+  readonly question?: string | null
+  /** The one line under the question. Absent when there is nothing worth saying,
+   *  which is normal — see `CALL_HINTS` in `schema.py`. */
+  readonly question_hint?: string | null
+  /** The three or four answers to offer. Empty for a free-text question, which is a
+   *  real state and means "type it", not "the server forgot". */
+  readonly pills?: readonly {
+    readonly value: string
+    readonly label: string
+    /** The one thing that tells this answer from another: a town, a date, or the
+     *  word "cremation". ⚠️ NEVER A PRICE — by ruling, and `Pill` has no price field. */
+    readonly sub?: string
+  }[]
+  /** Present only once the vault has made this order a cremation.
+   *
+   *  ⚠️ `via` IS HOW THE CREMATION WAS ESTABLISHED, and the four ways are not equally
+   *  strong — on sunnycrest today it is the product's own NAME, because
+   *  `products.variant_template_id` is populated on 0 of 39 rows. The pane shows the
+   *  chip; a reader who needs the provenance can have it. */
+  readonly cremation?: { readonly label: string; readonly via: string | null }
+  /** Why something was just cleared, in one line. Present only on the response to the
+   *  answer that caused it.
+   *
+   *  ⚠️ TRANSIENT AND NOT STORED, the same as `completion_attempt`. It answers "what
+   *  just happened", not "what is this order" — a column for it would leave a stale
+   *  sentence explaining a change made yesterday. */
+  readonly cleared_note?: string | null
   /** Claimed spans over `spans_for_text`, in whole-text coordinates. */
   readonly spans?: readonly CaptureSpan[]
   /** ⚠️ THE TEXT THE SPANS WERE COMPUTED FOR. James: "Spans apply only to the exact
@@ -290,6 +327,31 @@ export async function choosePick(
   const r = await apiClient.post<CaptureState>(`${BASE}/${sessionId}/choose`, {
     field_id: fieldId,
     index,
+  })
+  return r.data
+}
+
+/**
+ * Answer the question Opas is asking — by pill, by ⌥-digit, or by click.
+ *
+ * ⚠️ IT SENDS THE VALUE, NOT AN INDEX, AND THAT IS THE DIFFERENCE FROM `choosePick`.
+ * A numbered pick indexes into options the SERVER stored on the session, so an index
+ * is unambiguous. Pills are recomputed on every read — they are ranked from live
+ * order history — so an index into a list the next response may have reordered would
+ * settle whichever answer happened to be third.
+ *
+ * ⚠️ IT WRITES A RESOLUTION, which is what makes the pick survive the next keystroke.
+ * "A pick is a durable answer like today's click-made picks" (James, 2026-10-27), and
+ * a plain value would be erased when the whole text is re-read ~350 ms later.
+ */
+export async function answerCapture(
+  sessionId: string,
+  fieldId: string,
+  value: string,
+): Promise<CaptureState> {
+  const r = await apiClient.post<CaptureState>(`${BASE}/${sessionId}/answer`, {
+    field_id: fieldId,
+    value,
   })
   return r.data
 }

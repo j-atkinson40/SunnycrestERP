@@ -56,6 +56,11 @@ vi.mock("@/services/opas-capture-service", () => ({
   // `undefined is not a function`, which surfaces as a pane that renders nothing.
   fetchVocabulary: vi.fn(async () => []),
   abandonCapture: vi.fn(),
+  // ⚠️ ADDED 2026-10-27 WITH THE PILLS, and this file's own comment above says why it
+  // has to be: a double that omits what the component imports fails at CALL time, not
+  // import time — which surfaces as a click that throws mid-handler and a question
+  // that never gets answered.
+  answerCapture: vi.fn(),
 }))
 vi.mock("@/services/opas-catalog-service", () => ({
   resolvePhrase: vi.fn(async () => ({ candidates: [], discriminators: [] })),
@@ -69,6 +74,7 @@ vi.mock("@/core/CommandBarProvider", () => ({
 vi.mock("@/contexts/focus-context", () => ({ useFocus: () => ({ isOpen: false }) }))
 
 import {
+  answerCapture,
   choosePick,
   readCapture,
   setCaptureText,
@@ -514,15 +520,48 @@ describe("⌘1..9 settles a pick", () => {
     discriminator: "size",
   }
 
-  it("shows the NUMBER next to each option, because the shortcut needs it visible", async () => {
-    vi.mocked(startCapture).mockResolvedValue(state({ pending_picks: [PICK] }) as never)
+  /** ⚠️ WHAT THE SERVER SENDS ALONGSIDE A PENDING PICK, AS OF 2026-10-27. `_guided`
+   *  turns the first pending pick into the SAME pills any other question gets —
+   *  "The ambiguity choice list becomes these same pills" (James) — so a fixture with
+   *  `pending_picks` and no `pills` describes a response the server cannot produce.
+   *
+   *  ⚠️ AND THE OPTIONS ARE NOT RE-ORDERED. A pick's options are the candidates the
+   *  extractor found for a phrase the director typed; ranking them by what this home
+   *  usually orders would reorder an answer to "which of these two did you mean". */
+  const PICK_STATE = {
+    pending_picks: [PICK],
+    question_field_id: "vault",
+    question: "Which one did you mean by “Continental”?",
+    question_hint:
+      "More than one matches. Pick one, and the rest of what you typed stays put.",
+    pills: PICK.options.map(([value, label]) => ({ value, label })),
+  }
+
+  it("shows ⌥ AND THE NUMBER on each pill, because the shortcut needs it visible", async () => {
+    /**
+     * ⚠️ REWRITTEN 2026-10-27 WHEN THE CHOICE LIST MOVED. It asserted
+     * `capture-pick-number-vault-N` inside the pane; the options are now pills above
+     * the bar, by ruling ("The ambiguity choice list becomes these same pills"), and
+     * the pane can be tucked — a choice list that disappears with it takes the only
+     * way to answer with it.
+     *
+     * ⚠️ AND THE KEY IS ⌥, NOT A BARE NUMBER. James, 2026-10-27: "Chrome keeps ⌘1–8
+     * for switching tabs, so ⌘ would only ever work in a desktop app." The label has
+     * to name the chord that actually works, in the one place a director reads to
+     * learn it.
+     */
+    vi.mocked(startCapture).mockResolvedValue(state(PICK_STATE) as never)
     await openOrder()
+    await waitFor(() =>
+      expect(screen.getByTestId("opas-guided-pill-1")).toBeInTheDocument(),
+    )
     for (const n of [1, 2, 3]) {
-      expect(screen.getByTestId(`capture-pick-number-vault-${n}`)).toHaveTextContent(
-        String(n),
-      )
+      expect(screen.getByTestId(`opas-guided-pill-key-${n}`)).toHaveTextContent(`⌥${n}`)
     }
-    expect(screen.getByTestId("capture-pick-hint-vault")).toBeInTheDocument()
+    // the server's hint, carried through rather than re-worded by the client
+    expect(screen.getByTestId("opas-guided-hint")).toHaveTextContent(
+      "the rest of what you typed stays put",
+    )
   })
 
   it("⌘2 chooses the SECOND option, one-based", async () => {
@@ -553,7 +592,7 @@ describe("⌘1..9 settles a pick", () => {
     // pick guard produced no named red for exactly that reason — the handler threw on
     // `picks[0].options` and the absence assertion still held. `defaultPrevented`
     // distinguishes them: only an attached, working listener claims the event.
-    vi.mocked(startCapture).mockResolvedValue(state({ pending_picks: [PICK] }) as never)
+    vi.mocked(startCapture).mockResolvedValue(state(PICK_STATE) as never)
     vi.mocked(choosePick).mockResolvedValue(state() as never)
     await openOrder()
 
@@ -570,7 +609,7 @@ describe("⌘1..9 settles a pick", () => {
     // renders from the same `pending_picks` the listener's effect depends on, so its
     // presence is evidence about the listener rather than about the clock.
     await waitFor(() =>
-      expect(screen.getByTestId("capture-pick-number-vault-2")).toBeInTheDocument(),
+      expect(screen.getByTestId("opas-guided-pill-2")).toBeInTheDocument(),
     )
 
     expect(pressMetaDigit("2")).toBe(true)
@@ -659,13 +698,26 @@ describe("⌘1..9 settles a pick", () => {
   })
 
   it("a CLICK settles the same pick — both routes, per the ruling", async () => {
-    vi.mocked(startCapture).mockResolvedValue(state({ pending_picks: [PICK] }) as never)
-    vi.mocked(choosePick).mockResolvedValue(state() as never)
+    /**
+     * ⚠️ IT GOES THROUGH `answerCapture` NOW, NOT `choosePick`, AND THE DIFFERENCE IS
+     * THE VALUE RATHER THAN THE INDEX. The options are pills, and pills are recomputed
+     * from live order history on every read — an index into a list the next response
+     * may have reordered would settle whichever answer happened to be third.
+     *
+     * ⚠️ THE SERVER WRITE IS THE SAME WRITE. `choose` stores `options[index-1][0]` into
+     * `resolutions`; `answer` stores the value directly. Two handles, one resolution —
+     * which is why ⌘1..9 can keep using `choosePick` while the pills use this.
+     */
+    vi.mocked(startCapture).mockResolvedValue(state(PICK_STATE) as never)
+    vi.mocked(answerCapture).mockResolvedValue(state() as never)
     await openOrder()
 
-    await user.click(screen.getByTestId("capture-pick-option-vault-3"))
+    await waitFor(() =>
+      expect(screen.getByTestId("opas-guided-pill-3")).toBeInTheDocument(),
+    )
+    await user.click(screen.getByTestId("opas-guided-pill-3"))
 
-    await waitFor(() => expect(choosePick).toHaveBeenCalledWith("sess-1", "vault", 3))
+    await waitFor(() => expect(answerCapture).toHaveBeenCalledWith("sess-1", "vault", "c"))
   })
 })
 

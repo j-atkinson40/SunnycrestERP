@@ -46,7 +46,13 @@ def test_nothing_missing_reads_READY():
         ({"service_date", "cemetery"}, "What day is the service?"),
         ({"cemetery"}, "Which cemetery?"),
         ({"service_location"}, "Where's the service?"),
-        ({"deceased_name", "cemetery"}, "Who is the decedent?"),
+        # ⚠️ REWORDED BY RULING, 2026-10-27: James gave this sentence verbatim in the
+        # guided-capture dispatch — 'question "What is the name of the deceased?"' —
+        # superseding "Who is the decedent?", which was this module's own shaping. The
+        # old wording is kept in this comment because the test is the only record that
+        # it changed, and a reader comparing the dispatch to the code should be able to
+        # see that the change was ordered rather than drifted.
+        ({"deceased_name", "cemetery"}, "What is the name of the deceased?"),
     ],
 )
 def test_it_asks_the_FIRST_thing_in_call_order(missing, expect):

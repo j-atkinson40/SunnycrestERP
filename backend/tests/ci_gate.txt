@@ -661,6 +661,7 @@ tests/test_cemetery_pane.py
 # choice list with the town shown, tenant isolation, and the ask door trying the cemetery
 # rule BEFORE the customer rule — which changed a shipped behaviour for "st marys".
 tests/test_cemetery_pane_reads.py
+tests/test_guided_capture_slice1.py
 # Opas asks "why?" (James, 2026-10-26), first slice. The rules: what counts as a change
 # (a field Opas filled that the person then changed), what does NOT (a first fill, an
 # answer to a pick, churn while typing), and which single change is asked about.

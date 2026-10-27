@@ -470,7 +470,7 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
     # SUPERSEDING "display as given" from 2026-10-13. A director typing fast gives
     # "smith"; the pane shows "Smith". The STORED value stays exactly as typed, so
     # nothing downstream inherits a guess about capitalisation.
-    FieldDefinition("deceased_name", "Deceased name", display="name"),
+    FieldDefinition("deceased_name", "Deceased", display="name"),
     # ⚠️ `vault_size` REMOVED 2026-10-05 BY RULING. It was here, required, with a
     # warrant explaining why it stayed. Both halves of that warrant have now
     # resolved:
@@ -1130,7 +1130,7 @@ CALL_ORDER: tuple[str, ...] = (
 #: asked about awkwardly rather than not at all.
 CALL_QUESTIONS: dict[str, str] = {
     "funeral_home": "Which funeral home?",
-    "deceased_name": "Who is the decedent?",
+    "deceased_name": "What is the name of the deceased?",
     "vault": "Which vault?",
     "service_date": "What day is the service?",
     "service_location": "Where's the service?",
@@ -1154,6 +1154,93 @@ CALL_QUESTIONS: dict[str, str] = {
 READY_TO_REVIEW = "Ready. Press Enter to review."
 
 
+#: The one line under the question — what the prototype calls `hint`.
+#:
+#: ⚠️ ONE LINE, AND IT TELLS THE DIRECTOR SOMETHING THEY CANNOT SEE. The prototype's
+#: hints are of exactly two kinds: how to answer in words when the pills do not cover
+#: it ("Type a name or pick one"), and a fact about the answer set ("Chairs come with
+#: every setup except the device alone"). Neither restates the question, and a field
+#: with nothing worth saying has no entry rather than a filler one.
+#:
+#: ⚠️ A FIELD WITH NO HINT IS NORMAL. `CALL_QUESTIONS` falls back to a label because a
+#: question is required; a hint is not, so this map is deliberately sparse and
+#: `hint_for` returns None.
+CALL_HINTS: dict[str, str] = {
+    "funeral_home": "Type a name or pick one.",
+    "deceased_name": "The family name is enough, like \u201cSmith\u201d.",
+    "vault": "Type any other, like \u201cvenetian\u201d or \u201csalute\u201d.",
+    "service_date": "Or type it: \u201cthursday\u201d, \u201ctomorrow\u201d.",
+    "service_time": "Or type it: \u201c10am\u201d, \u201c1:30pm\u201d.",
+    "cemetery_city": "Two cemeteries can share a name; the town tells them apart.",
+    "cemetery_equipment": "Chairs come with every setup except the device alone.",
+    "date_of_birth": "Years only is fine.",
+    "date_of_death": "Years only is fine.",
+}
+
+#: ⚠️ WHAT THE EQUIPMENT QUESTION ASKS WHEN THE VAULT IS AN URN VAULT, and the hint
+#: says why the answers changed. James, 2026-10-27: "An urn vault marks the order a
+#: cremation… the equipment question offers the cremation setups from the catalog."
+#:
+#: ⚠️ THE SENTENCE CHANGES BECAUSE THE ANSWER SET CHANGED. Leaving it as "What
+#: equipment?" over three cremation setups would read as the same question with
+#: options missing, rather than as a different question.
+CREMATION_EQUIPMENT_QUESTION = "What cremation setup?"
+CREMATION_EQUIPMENT_HINT = (
+    "It\u2019s an urn vault, so these are the cremation setups."
+)
+
+#: The chip the pane shows once the vault settles the kind.
+#:
+#: ⚠️ ONLY FOR A CREMATION. The prototype shows `Burial` too — `k==='urn'?'Cremation':'Burial'`
+#: — and the dispatch asks only for the Cremation chip. A "Burial" chip on nine orders
+#: in ten is chrome that says what the rest of the pane already says.
+CREMATION_CHIP = "Cremation"
+
+
+def next_field(missing: object) -> str | None:
+    """WHICH field is being asked about, or None when nothing is missing.
+
+    ⚠️ EXTRACTED 2026-10-27, AND IT IS THE SAME WALK `next_question` ALWAYS DID. The
+    guided-capture slice needs the field's IDENTITY as well as its sentence — pills are
+    the answers to a particular field, and deriving the field a second time from the
+    question TEXT would be a reverse lookup that breaks the moment two fields share a
+    phrasing. One walk, two readings off it.
+    """
+    outstanding = set(missing or ())
+    if not outstanding:
+        return None
+    for field_id in CALL_ORDER:
+        if field_id in outstanding:
+            return field_id
+    # ⚠️ NOT IN `CALL_ORDER` AT ALL. Asked last and asked plainly, rather than
+    # silently skipped — a field nobody thought to prioritise is still a gap.
+    return sorted(outstanding)[0]
+
+
+def question_for(field_id: str | None, *, cremation: bool = False) -> str:
+    """The sentence for one field, or the ready line.
+
+    ⚠️ `cremation` CHANGES EXACTLY ONE QUESTION and is threaded rather than inferred,
+    because this module cannot see the vault. `capture.vault_form` decides what a
+    cremation is, off the catalogue; the schema only knows that the answer changes the
+    wording.
+    """
+    if field_id is None:
+        return READY_TO_REVIEW
+    if cremation and field_id == "cemetery_equipment":
+        return CREMATION_EQUIPMENT_QUESTION
+    return CALL_QUESTIONS.get(field_id, _fallback_question(field_id))
+
+
+def hint_for(field_id: str | None, *, cremation: bool = False) -> str | None:
+    """The one line under the question, or None when there is nothing worth saying."""
+    if field_id is None:
+        return None
+    if cremation and field_id == "cemetery_equipment":
+        return CREMATION_EQUIPMENT_HINT
+    return CALL_HINTS.get(field_id)
+
+
 def next_question(missing: object) -> str:
     """The one thing to ask for next, or the ready line.
 
@@ -1167,16 +1254,10 @@ def next_question(missing: object) -> str:
     "never re-asks something answered" both come from using that set rather than from
     a rule here.
     """
-    outstanding = set(missing or ())
-    if not outstanding:
-        return READY_TO_REVIEW
-    for field_id in CALL_ORDER:
-        if field_id in outstanding:
-            return CALL_QUESTIONS.get(field_id, _fallback_question(field_id))
-    # ⚠️ NOT IN `CALL_ORDER` AT ALL. Asked last and asked plainly, rather than
-    # silently skipped — a field nobody thought to prioritise is still a gap.
-    field_id = sorted(outstanding)[0]
-    return CALL_QUESTIONS.get(field_id, _fallback_question(field_id))
+    # ⚠️ ONE WALK, TWO READINGS. This used to repeat `next_field`'s loop; the two
+    # could then disagree about which field was being asked while both looked right,
+    # and the pills would answer a different question from the sentence above them.
+    return question_for(next_field(missing))
 
 
 def _fallback_question(field_id: str) -> str:

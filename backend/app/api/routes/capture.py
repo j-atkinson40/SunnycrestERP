@@ -137,6 +137,20 @@ class ChooseRequest(BaseModel):
     index: int = Field(ge=1, le=9)
 
 
+class AnswerRequest(BaseModel):
+    """A picked answer to the question Opas is asking.
+
+    ⚠️ THE VALUE, NOT AN INDEX, AND THAT IS THE DIFFERENCE FROM `ChooseRequest`. A
+    numbered pick indexes into options the SERVER produced and stored on the session,
+    so an index is unambiguous. A pill is an answer to a question about a missing
+    field, and the pills are recomputed on every read — an index into a list the next
+    response may have reordered would settle whichever answer happened to be third.
+    """
+
+    field_id: str = Field(min_length=1, max_length=64)
+    value: str = Field(min_length=1, max_length=200)
+
+
 def _state(
     db: Session, session_id: str, user: User, *, completion_attempt: bool = False
 ) -> dict:
@@ -282,6 +296,38 @@ def choose(
         raise HTTPException(status_code=400, detail=str(e))
     db.commit()
     return _state(db, session_id, current_user)
+
+
+@router.post("/sessions/{session_id}/answer")
+def answer(
+    session_id: str,
+    body: AnswerRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Answer the question Opas is asking, by pill or by click.
+
+    ⚠️ THE CLEARED NOTE RIDES THIS RESPONSE AND IS NOT STORED. "says why in one line
+    in the pane footer" (James, 2026-10-27) is the answer to "what just happened",
+    not a property of the order — the same arrangement as `completion_attempt`. A
+    column for it would mean a stale sentence surviving a reload and explaining a
+    change made yesterday.
+    """
+    try:
+        _row, note = session_service.answer(
+            db, session_id,
+            company_id=current_user.company_id, user_id=current_user.id,
+            field_id=body.field_id, value=body.value,
+        )
+    except session_service.SessionNotFound:
+        raise HTTPException(status_code=404, detail="capture session not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    db.commit()
+    state = _state(db, session_id, current_user)
+    if note is not None:
+        state = {**state, "cleared_note": note}
+    return state
 
 
 @router.post("/sessions/{session_id}/switch")

@@ -51,6 +51,7 @@ its job, not a defect. Reported rather than worked around: the remedy is data.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import date
 from decimal import Decimal
 
@@ -344,6 +345,55 @@ def _people(db: Session, company_id: str, entity_id: str | None) -> list[dict]:
     return out
 
 
+def rank_habits(
+    values: Iterable[str | None], *, total: int
+) -> list[tuple[str, int]]:
+    """THE habit rule, in one place: at least 2 orders AND at least 25%, max 3.
+
+    James's ruling of 2026-10-24: *"show a vault or cemetery only if it's on at least
+    2 orders and at least 25% of the customer's orders, max 3… A 1-of-10 is history,
+    not a habit."*
+
+    ⚠️ EXTRACTED 2026-10-27 BECAUSE GUIDED CAPTURE NEEDS THE SAME ANSWER. The pills
+    dispatch says the order is *"this customer's usual first (counted from their
+    orders, the same rule as the Customer Pane's 'What Opas knows')"* — and "the same
+    rule" implemented twice is two rules that agree until one is tuned. This function
+    is the rule; `what_opas_knows` and `capture.pills` are both callers.
+
+    ⚠️ TIES BREAK BY NAME, so the same data always renders in the same order. An
+    unstable order would read as the rulebook changing its mind.
+
+    ⚠️ FILTERED BEFORE THE CAP — AND A BREAK TEST PROVED MY REASON FOR IT FALSE. I
+    wrote that capping first "would let a qualifying fourth habit be dropped by three
+    that do not qualify". It cannot happen, and the ranking is why: `ranked` is by
+    count descending, and a habit that FAILS the bar can never outrank one that
+    passes. A larger count over the same denominator is a larger share, so anything
+    above a qualifying habit qualifies too. The two orderings are equivalent in
+    output, which is why the break for it turned nothing red.
+
+    The order is kept because the equivalence is a property of the SORT, not of this
+    line — change the ranking and filter-after-cap starts dropping habits while this
+    comment still explains why it could not. Stated rather than silently relied on.
+
+    ⚠️ `total` IS PASSED RATHER THAN COUNTED FROM `values`, and the difference is the
+    denominator. The share is "of the customer's orders", not "of the orders that
+    record this field". A customer with 10 orders of which 2 name a cemetery, both the
+    same, is 2/10 = 20% — not a habit — and counting only the recorded ones would make
+    it 2/2 = 100%. `what_opas_knows` reports the recorded count separately for exactly
+    this reason.
+    """
+    counts: dict[str, int] = {}
+    for value in values:
+        if value:
+            counts[value] = counts.get(value, 0) + 1
+    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    kept = [
+        (name, n) for name, n in ranked
+        if n >= MIN_HABIT_ORDERS and (n / total) >= MIN_HABIT_SHARE
+    ]
+    return kept[:MAX_HABITS]
+
+
 def what_opas_knows(orders: list[OrderFacts]) -> dict:
     """Usual vault and usual cemeteries, counted from this customer's own orders.
 
@@ -361,34 +411,12 @@ def what_opas_knows(orders: list[OrderFacts]) -> dict:
         return sum(1 for o in live if getattr(o, field, None))
 
     def tally(field: str) -> list[dict]:
-        counts: dict[str, int] = {}
-        for order in live:
-            value = getattr(order, field, None)
-            if value:
-                counts[value] = counts.get(value, 0) + 1
-        # ⚠️ TIES BREAK BY NAME, so the same data always renders in the same order. An
-        # unstable order would read as the rulebook changing its mind.
-        ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
-        # ⚠️ FILTERED BEFORE THE CAP — AND A BREAK TEST PROVED MY REASON FOR IT FALSE.
-        # I wrote that capping first "would let a qualifying fourth habit be dropped by
-        # three that do not qualify". It cannot happen, and the ranking is why: `ranked`
-        # is by count descending, and a habit that FAILS the bar can never outrank one
-        # that passes. A larger count over the same denominator is a larger share, so
-        # anything above a qualifying habit qualifies too. The two orderings are
-        # equivalent in output, which is why the break for it turned nothing red.
-        #
-        # The order is kept because the equivalence is a property of the SORT, not of
-        # this line — change the ranking and filter-after-cap starts dropping habits
-        # while this comment still explains why it could not. Stated rather than
-        # silently relied on; `/tmp/break_rulings.py` keeps it as a green equivalence.
-        kept = [
-            (name, n) for name, n in ranked
-            if n >= MIN_HABIT_ORDERS and (n / total) >= MIN_HABIT_SHARE
-        ]
         return [
             {"name": name, "count": n, "of": total,
              "line": f"{name} · {n} of {total} orders"}
-            for name, n in kept[:MAX_HABITS]
+            for name, n in rank_habits(
+                (getattr(order, field, None) for order in live), total=total
+            )
         ]
 
     vault, cemeteries = tally("vault"), tally("cemetery")

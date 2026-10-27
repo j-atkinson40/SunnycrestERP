@@ -25,6 +25,7 @@ vi.mock("@/services/opas-capture-service", () => ({
   startCapture: vi.fn(),
   addLine: vi.fn(),
   choosePick: vi.fn(),
+  answerCapture: vi.fn(),
   readCapture: vi.fn(),
   // ⚠️ ADDED WHEN THE PANE MOVED TO WHOLE-TEXT EXTRACTION. A mock that omits a
   // function the component imports does not fail at import — it fails when the
@@ -68,6 +69,7 @@ import {
   addLine,
   approveCapture,
   completeCapture,
+  answerCapture,
   choosePick,
   readCapture,
   setCaptureText,
@@ -112,13 +114,31 @@ describe("the pick hint", () => {
             discriminator: "size",
           },
         ],
+        // ⚠️ WHAT THE SERVER ACTUALLY SENDS WITH A PENDING PICK. `_guided` turns the
+        // first pick into the same pills any other question gets, so a fixture with
+        // `pending_picks` and no `pills` describes a response that cannot occur.
+        question_field_id: "vault",
+        question: "Which one did you mean by “Continental”?",
+        question_hint:
+          "More than one matches. Pick one, and the rest of what you typed stays put.",
+        pills: [{ value: "a", label: "A" }, { value: "b", label: "B" }],
       }) as never,
     )
     openOverlay()
     await type(user, "start an order for Hopkins")
 
-    const hint = await screen.findByTestId("capture-pick-hint-vault")
-    expect(hint).toHaveTextContent(/type the number/i)
+    /**
+     * ⚠️ THE HINT IS THE SERVER'S NOW, AND THAT IS THE REAL FIX FOR THE DEFECT THIS
+     * TEST WAS WRITTEN FOR. The copy shipped wrong because it lived in the client,
+     * where nothing related it to the behaviour it described. `PICK_HINT` in
+     * `session_service.py` is composed beside the rule it explains, which is the
+     * standing arrangement for every other sentence Opas says.
+     */
+    const hint = await screen.findByTestId("opas-guided-hint")
+    expect(hint).toHaveTextContent(/pick one/i)
+    // ⚠️ STILL ASSERTING THE SUPERSEDED SENTENCE IS ABSENT, not merely that the new
+    // one is present. Both could be on screen at once, which is the state that
+    // confuses somebody.
     expect(hint.textContent).not.toMatch(/go into the text/i)
   })
 })
@@ -534,8 +554,18 @@ describe("the rows", () => {
   })
 })
 
-describe("numbered picks", () => {
-  it("renders a one-based numbered list and sends the chosen index", async () => {
+describe("the ambiguity choices, as pills above the bar", () => {
+  /**
+   * ⚠️ THESE TWO MOVED OUT OF THE PANE ON 2026-10-27, BY RULING. James: "The ambiguity
+   * choice list becomes these same pills." They asserted
+   * `capture-pick-option-vault-N` and a "2 matches" sentence inside the pane; both
+   * were real behaviour and both are now the pills row's.
+   *
+   * ⚠️ AND THE CHANGE IS NOT COSMETIC — THE PANE CAN BE TUCKED. A choice list that
+   * disappears with the pane takes the only way to answer with it, which is the same
+   * reasoning that moved the QUESTION out of the pane on 2026-10-20.
+   */
+  it("sends the VALUE, not the index, because pills are reranked on every read", async () => {
     const user = userEvent.setup()
     vi.mocked(startCapture).mockResolvedValue(
       state({
@@ -546,23 +576,32 @@ describe("numbered picks", () => {
                     ["Bronze Triune Urn Vault", "UV-BTRI — Bronze Triune Urn Vault"]],
           discriminator: "form",
         }],
+        question_field_id: "vault",
+        question: "Which one did you mean by “Bronze Triune”?",
+        pills: [
+          { value: "Bronze Triune Burial Vault", label: "BV-BTRI — Bronze Triune Burial Vault" },
+          { value: "Bronze Triune Urn Vault", label: "UV-BTRI — Bronze Triune Urn Vault" },
+        ],
       }) as never,
     )
+    vi.mocked(answerCapture).mockResolvedValue(state() as never)
     openOverlay()
     await type(user, "start an order")
 
-    await waitFor(() => expect(screen.getByTestId("capture-pick-vault")).toBeInTheDocument())
-    expect(screen.getByTestId("capture-pick-vault")).toHaveTextContent("2 matches")
-    expect(screen.getByTestId("capture-pick-vault")).toHaveTextContent("form")
+    await waitFor(() =>
+      expect(screen.getByTestId("opas-guided-pill-2")).toBeInTheDocument(),
+    )
+    await user.click(screen.getByTestId("opas-guided-pill-2"))
 
-    await user.click(screen.getByTestId("capture-pick-option-vault-2"))
-
-    // ⚠️ ONE-BASED, matching the prototype's digit keys (`:622`) and the server's
-    // validation. Zero-basing here would settle the wrong candidate silently.
-    await waitFor(() => expect(choosePick).toHaveBeenCalledWith("sess-1", "vault", 2))
+    // ⚠️ THE VALUE. An index would settle whichever answer happened to be second by
+    // the time it arrived — pills are ranked from live order history and recomputed on
+    // every read, unlike a pending pick's stored options.
+    await waitFor(() =>
+      expect(answerCapture).toHaveBeenCalledWith("sess-1", "vault", "Bronze Triune Urn Vault"),
+    )
   })
 
-  it("shows the TOWN in a party pick, because two identical labels are not a choice", async () => {
+  it("shows the TOWN, because two identical labels are not a choice", async () => {
     const user = userEvent.setup()
     vi.mocked(startCapture).mockResolvedValue(
       state({
@@ -573,17 +612,26 @@ describe("numbered picks", () => {
                     ["St. Mary's Cemetery", "St. Mary's Cemetery — Skaneateles"]],
           discriminator: "city",
         }],
+        question_field_id: "cemetery",
+        question: "Which one did you mean by “St Mary's”?",
+        pills: [
+          { value: "St. Mary's Cemetery", label: "St. Mary's Cemetery — Auburn" },
+          { value: "St. Mary's Cemetery", label: "St. Mary's Cemetery — Skaneateles" },
+        ],
       }) as never,
     )
     openOverlay()
     await type(user, "start an order")
 
-    await waitFor(() =>
-      expect(screen.getByTestId("capture-pick-cemetery")).toBeInTheDocument(),
-    )
-    expect(screen.getByTestId("capture-pick-cemetery")).toHaveTextContent("Auburn")
-    expect(screen.getByTestId("capture-pick-cemetery")).toHaveTextContent("Skaneateles")
-    expect(screen.getByTestId("capture-pick-cemetery")).toHaveTextContent("city")
+    // ⚠️ THE TOWN IS IN THE LABEL, NOT IN THE `sub`, AND THAT IS THE SERVER'S CHOICE
+    // RATHER THAN AN OVERSIGHT. `CapturePick.options` is `[value, label]` and its own
+    // comment says "the label carries the town for a party" — so a pick's pills carry
+    // it inside the label, while a RANKED cemetery pill carries the town in `sub`
+    // because its label is the bare name. Two shapes, both correct, and this test is
+    // the record that the difference is deliberate.
+    const row = await screen.findByTestId("opas-guided-pills")
+    expect(row).toHaveTextContent("Auburn")
+    expect(row).toHaveTextContent("Skaneateles")
   })
 })
 
@@ -1335,5 +1383,63 @@ describe("the Approve button", () => {
     expect(fg).not.toBe(bg)
     // the prototype's primary: a near-white pill with near-black text
     expect(fg).toMatch(/#0a0a0a|rgb\(10, 10, 10\)/)
+  })
+})
+
+describe("why something was just cleared", () => {
+  it("says it once, in the pane footer, in the server's words", async () => {
+    /**
+     * James's dispatch of 2026-10-27, clause 4: "clears what no longer fits (urn after
+     * burial clears equipment; a vault without that personalization clears it) and says
+     * why in one line in the pane footer."
+     *
+     * ⚠️ THE SENTENCE IS THE SERVER'S. `clears.py` composes it beside the rule it
+     * explains — the arrangement that the pick hint's wrong-for-a-round copy is the
+     * argument for.
+     *
+     * ⚠️ AND IT ARRIVES ON THE ANSWER THAT CAUSED IT, not on a plain read. It is the
+     * answer to "what just happened", so a read with no `cleared_note` must not show
+     * one — asserted below, because a latched note that survives a reload would explain
+     * a change made yesterday.
+     */
+    const user = userEvent.setup()
+    // ⚠️ THE OPENING STATE MUST HAVE A QUESTION WITH ANSWERS, or there is no pill to
+    // click and the test fails on the fixture rather than on the behaviour. Found that
+    // way: `state()` alone renders no guided surface at all.
+    vi.mocked(startCapture).mockResolvedValue(
+      state({
+        question_field_id: "cemetery_equipment",
+        question: "What equipment?",
+        pills: [{ value: "full_equipment", label: "Full Equipment" }],
+      }) as never,
+    )
+    vi.mocked(answerCapture).mockResolvedValue(
+      state({
+        cleared_note: "Full Equipment cleared: an urn vault means a cremation setup.",
+        question_field_id: "cemetery_equipment",
+        question: "What cremation setup?",
+        pills: [{ value: "tent_only", label: "Tent Only" }],
+      }) as never,
+    )
+    openOverlay()
+    await type(user, "start an order")
+
+    // ⚠️ THE CONTROL: nothing cleared yet, so no note. Without this the assertion
+    // below is satisfied by a note that is always on screen.
+    await waitFor(() => expect(screen.getByTestId("capture-rows")).toBeInTheDocument())
+    expect(screen.queryByTestId("capture-cleared-note")).toBeNull()
+
+    await waitFor(() =>
+      expect(screen.getByTestId("opas-guided-pill-1")).toBeInTheDocument(),
+    )
+    await user.click(screen.getByTestId("opas-guided-pill-1"))
+
+    const note = await screen.findByTestId("capture-cleared-note")
+    expect(note.textContent).toBe(
+      "Full Equipment cleared: an urn vault means a cremation setup.",
+    )
+    // ⚠️ IN THE PANE, NOT BESIDE THE QUESTION. One voice: the same sentence in two
+    // places is two things to read and two to keep in step.
+    expect(screen.queryByTestId("opas-cleared-note")).toBeNull()
   })
 })

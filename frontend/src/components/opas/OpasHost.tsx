@@ -62,6 +62,7 @@ import { contextIntent, type ContextIntent } from "./context-phrases"
 import { EXTRACT_DEBOUNCE_MS } from "./capture-sequence"
 
 import { consumePickDigit } from "./pick-digit"
+import { GuidedQuestion, STACK_BELOW_PX, questionTakesNumbers } from "./GuidedQuestion"
 import { resolvePhrase } from "@/services/opas-catalog-service"
 import {
   askOrderList,
@@ -225,6 +226,13 @@ export function OpasHost() {
     Record<string, { fieldId: string; index: number; nonce: number }>
   >({})
   const pickNonce = useRef(0)
+  /** A pill answered — by click or by ⌥-digit — as a counter-stamped intent, the same
+   *  shape as `pickRequest`. The pane turns it into the call because the pane owns the
+   *  session; the pills render up here because they belong above the bar. */
+  const [answerRequest, setAnswerRequest] = useState<
+    Record<string, { fieldId: string; value: string; nonce: number }>
+  >({})
+  const answerNonce = useRef(0)
   // ⚠️ PANE IDS THAT HOLD A CREATED ORDER. The opening effect reads this so the next
   // phrase closes the receipt instead of being typed into a finished order.
   const approvedPanes = useRef<Set<string>>(new Set())
@@ -624,6 +632,60 @@ export function OpasHost() {
   const picks = status?.picks ?? []
 
   /**
+   * WHAT THE GUIDED SURFACE SHOWS — the server's question, its hint and its pills.
+   *
+   * ⚠️ NULL WHEN THERE IS NOTHING TO ASK, and that is what makes the one-voice rule
+   * above expressible: the reply line speaks only when this does not. It is null
+   * before the session exists (nothing has been asked yet) and null when the order is
+   * complete (`question_field_id` comes back null and the sentence is the ready line,
+   * which belongs to the bar's own flow, not to a question with answers under it).
+   *
+   * ⚠️ AND IT IS DERIVED, NEVER LATCHED, like `captureVoice` and for the same reason:
+   * a question stored on an event survives the thing that caused it, including the
+   * director deleting the text it was asked about.
+   */
+  const guided = useMemo(() => {
+    if (!entryMode) return null
+    const question = status?.guidedQuestion ?? null
+    if (question === null || question === "") return null
+    const fieldId = status?.guidedFieldId ?? null
+    // ⚠️ NO FIELD MEANS NOTHING IS MISSING. The sentence is then the ready line, which
+    // is about pressing Enter rather than about answering anything, so there is no
+    // question to put options under.
+    if (fieldId === null) return null
+    return {
+      question,
+      hint: status?.guidedHint ?? null,
+      fieldId,
+      pills: status?.guidedPills ?? [],
+      cremation: status?.cremation ?? null,
+    }
+  }, [
+    entryMode,
+    status?.guidedQuestion,
+    status?.guidedHint,
+    status?.guidedFieldId,
+    status?.guidedPills,
+    status?.cremation,
+  ])
+
+  /** ⚠️ KEYED BY THE FRONT ENTRY PANE, because that is whose question is on screen.
+   *  Routing an answer to the last pane to report would settle a field on an order the
+   *  director is not looking at. */
+  const answerGuided = useCallback(
+    (fieldId: string, value: string) => {
+      const paneId = entryPane?.id
+      if (paneId === undefined) return
+      answerNonce.current += 1
+      setAnswerRequest((cur) => ({
+        ...cur,
+        [paneId]: { fieldId, value, nonce: answerNonce.current },
+      }))
+    },
+    [entryPane?.id],
+  )
+
+  /**
    * ⌘1..9 AND A BARE DIGIT ANSWER THE REPLY'S QUESTION.
    *
    * ⚠️ A SECOND, SEPARATE HANDLER FROM CAPTURE'S BELOW, AND THEY CANNOT BOTH BE LIVE.
@@ -708,6 +770,24 @@ export function OpasHost() {
   const lastCaptureVoice = useRef<string | null>(null)
   useEffect(() => {
     if (entryMode) {
+      // ⚠️ THE GUIDED PANE CARRIES THE QUESTION WHEN IT HAS ONE, AND THE REPLY LINE
+      // GOES QUIET — otherwise the same question is on screen twice, in two different
+      // wordings, which is the opposite of the one-voice ruling that moved it out of
+      // the bar in the first place.
+      //
+      // ⚠️ THE REPLY LINE IS NOT RETIRED, AND THE REMAINING CASES ARE REAL. Before the
+      // session exists the server has said nothing — `captureVoice` is the only thing
+      // that can say "Starting the order…" — and the same holds if the guided extras
+      // fail to compose, which `_guided` is explicitly allowed to do rather than take
+      // the pane down. So the reply line is the floor, not a duplicate.
+      if (guided !== null) {
+        if (lastCaptureVoice.current !== null) {
+          const stale = lastCaptureVoice.current
+          lastCaptureVoice.current = null
+          setReply((cur) => (cur !== null && cur.text === stale ? null : cur))
+        }
+        return
+      }
       const voice = status?.question
       if (voice === undefined || voice === "") return
       lastCaptureVoice.current = voice
@@ -718,7 +798,7 @@ export function OpasHost() {
     const stale = lastCaptureVoice.current
     lastCaptureVoice.current = null
     setReply((cur) => (cur !== null && cur.text === stale ? null : cur))
-  }, [entryMode, status?.question, say])
+  }, [entryMode, status?.question, guided, say])
 
   /**
    * ESCAPE CANCELS THE QUESTION, AND THE REPLY GOES WITH IT.
@@ -2080,6 +2160,7 @@ export function OpasHost() {
                     caret,
                   )}
                   pickRequest={pickRequest[pane.id]}
+                  answerRequest={answerRequest[pane.id]}
                   onApproved={(order) => onApproved(pane.id, order)}
                   completeRequest={completeRequest[pane.id]}
                 />
@@ -2408,6 +2489,32 @@ export function OpasHost() {
             </MirrorStack>
           </div>
         </div>
+      )}
+
+      {/* ── GUIDED CAPTURE — the question to the LEFT of the bar, pills ABOVE it ───
+          James's dispatch of 2026-10-27, clause 1. The geometry is the prototype's
+          `.dock` grid, computed from the bar's own fixed box rather than re-parenting
+          the bar into a grid — see `GuidedQuestion.tsx` for why.
+
+          ⚠️ IT RENDERS OUTSIDE THE ENTRY PANE, which is the whole point of putting it
+          here. The pane can be tucked; the question and its answers must not go with
+          it, exactly as the question itself was moved out of the pane on 2026-10-20. */}
+      {opas.isOpen && guided !== null && (
+        <GuidedQuestion
+          question={guided.question}
+          hint={guided.hint}
+          fieldId={guided.fieldId}
+          pills={guided.pills}
+          cremation={guided.cremation}
+          barHeight={barH || 46}
+          barWidth={BAR_WIDTH}
+          stacked={stageWidth < STACK_BELOW_PX}
+          // ⚠️ THE BAR'S EMPTINESS DECIDES WHETHER A BARE DIGIT ANSWERS. Mid-phrase a
+          // digit is part of what is being typed — "monticello 28" names a size.
+          barIsEmpty={text.trim() === ""}
+          questionTakesNumbers={questionTakesNumbers(guided.fieldId)}
+          onAnswer={answerGuided}
+        />
       )}
 
       {/* ── OPAS'S VOICE — one place, directly above the bar ─────────────────

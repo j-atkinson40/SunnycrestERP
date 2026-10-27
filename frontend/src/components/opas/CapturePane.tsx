@@ -43,6 +43,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import {
+  answerCapture,
   completeCapture,
   approveCapture,
   choosePick,
@@ -53,6 +54,7 @@ import {
   type CaptureState,
 } from "@/services/opas-capture-service"
 import type { CaptureSpan } from "@/services/opas-capture-service"
+import type { GuidedPill } from "./GuidedQuestion"
 import { EXTRACT_DEBOUNCE_MS, createSequencer } from "./capture-sequence"
 
 /** What the pane tells the command line about itself.
@@ -86,6 +88,26 @@ export interface EntryPaneStatus {
   readonly spansForText?: string | null
   /** Fields whose span should light up — the row the pointer is over. */
   readonly hoveredFieldIds?: readonly string[]
+  /** ── guided capture, slice 1 ──────────────────────────────────────────────────
+   *
+   *  ⚠️ THESE TRAVEL UPWARD FOR THE SAME REASON THE SPANS DO: the pane owns the server
+   *  state and the surface that renders them sits beside the BAR, not inside the pane.
+   *  Fetching capture state in a second place to get them would be a second thing that
+   *  can disagree about what Opas is asking.
+   *
+   *  ⚠️ AND THEY ARE THE SERVER'S WORDS, UNTOUCHED. `question` above is composed by
+   *  `captureVoice` — a client-side sentence for the bar — and these are not. The
+   *  dispatch is explicit: "THE NEXT QUESTION comes from the engine (server-side, the
+   *  capture schema), not the client." */
+  readonly guidedQuestion?: string | null
+  readonly guidedHint?: string | null
+  readonly guidedFieldId?: string | null
+  readonly guidedPills?: readonly GuidedPill[]
+  readonly cremation?: string | null
+  /** Why something was just cleared. ⚠️ TRANSIENT — set by the answer that caused it
+   *  and dropped by the next one, because it answers "what just happened". */
+  readonly clearedNote?: string | null
+  readonly sessionId?: string | null
 }
 
 /** The placeholder, derived from what is true right now.
@@ -144,8 +166,16 @@ export function captureVoice(args: {
 }): string {
   if (!args.ready) return "Starting the order…"
   if (args.picks.length > 0) {
+    // ⚠️ ⌥ AND NOT ⌘, BY RULING (James, 2026-10-27): "Chrome keeps ⌘1–8 for switching
+    // tabs, so ⌘ would only ever work in a desktop app. ⌥ works in every browser."
+    // This sentence advertised a chord the browser eats, in the one place a director
+    // would read to learn it.
+    //
+    // ⚠️ AND IT IS THE FLOOR, NOT THE AFFORDANCE. The options themselves are now pills
+    // above the bar, each carrying its own ⌥-number — this line is what the bar says
+    // when the guided surface is not up, which is why it still names the keys at all.
     const n = args.picks[0].options.length
-    return `Which one? 1–${Math.min(n, 9)}, or ⌘ and the number`
+    return `Which one? 1–${Math.min(n, 9)}, or ⌥ and the number`
   }
   if (args.reviewing) return "Ready to review"
   if (args.inFlight) return "Reading what you typed…"
@@ -314,6 +344,7 @@ export function CapturePane({
   text = "",
   onStatus,
   pickRequest,
+  answerRequest,
   onApproved,
   onAskWhy,
   completeRequest,
@@ -333,6 +364,14 @@ export function CapturePane({
    *  rather than hover -> row because the textarea owns the pointer over its own
    *  text (James, 2026-10-16). */
   readonly caretFieldIds?: readonly string[]
+  /** ⚠️ AN ANSWER REQUESTED FROM THE BAR — a pill click or a ⌥-digit — counter-stamped
+   *  for the same reason `pickRequest` is: the same answer picked twice is two events,
+   *  and an effect keyed on the VALUE would fire once. */
+  readonly answerRequest?: {
+    readonly fieldId: string
+    readonly value: string
+    readonly nonce: number
+  }
   /** ⚠️ A PICK REQUESTED FROM THE BAR (⌘1..9), as a counter-stamped value so the same
    *  option chosen twice still fires. A bare `{field_id, index}` object would be
    *  compared by identity and the second identical press would be a no-op. */
@@ -366,6 +405,12 @@ export function CapturePane({
   const [state, setState] = useState<CaptureState | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // ⚠️ LATCHED, UNLIKE EVERY OTHER PIECE OF PANE STATE, and the exception is deliberate.
+  // `captureVoice`'s whole design is "a pure function of what is true right now, so no
+  // stored message can outlive its cause". This one has no current-state form to be
+  // derived from: the server sends it once, on the response to the answer that caused
+  // the clearing, and nothing afterwards remembers that it happened.
+  const [clearedNote, setClearedNote] = useState<string | null>(null)
   // ⚠️ CLIENT-SIDE AND NOT PERSISTED. "Somebody just tried to finish this" is a fact
   // about this moment, not about the order; a tuck and a re-read must not come back
   // amber. The server reports the same thing for a TYPED phrase, which the client
@@ -572,6 +617,41 @@ export function CapturePane({
     [state],
   )
 
+  /**
+   * Answer the question Opas is asking — a pill, a ⌥-digit, or a click.
+   *
+   * ⚠️ IT IS NOT `pick`, AND THE DIFFERENCE IS THE SHAPE OF WHAT IS BEING SETTLED. A
+   * pick settles an AMBIGUITY the extractor raised, by index into options the server
+   * stored. A pill answers a field that is simply MISSING, by value — and the pills
+   * are recomputed from live order history on every read, so an index into them would
+   * settle whichever answer happened to be third by the time it arrived.
+   *
+   * ⚠️ THE CLEARED NOTE IS LATCHED HERE AND NOWHERE ELSE, because this is the only
+   * moment it exists: the server returns it on the response to the answer that caused
+   * the clearing and never again. Deriving it from state would be impossible, and
+   * storing it server-side would leave a stale sentence surviving a reload.
+   */
+  const answer = useCallback(
+    async (fieldId: string, value: string) => {
+      if (!state) return
+      setBusy(true)
+      try {
+        const next = await answerCapture(state.session_id, fieldId, value)
+        // ⚠️ THE SEQUENCE IS ADVANCED, exactly as a pick and a switch do. An extraction
+        // issued before this answer would otherwise land on top of it and put the
+        // question straight back.
+        seqRef.current.accept(seqRef.current.issue())
+        setState(next)
+        setClearedNote(next.cleared_note ?? null)
+      } catch {
+        setError("That answer did not reach the server")
+      } finally {
+        setBusy(false)
+      }
+    },
+    [state],
+  )
+
   /** ⚠️ ⌘1..9 ARRIVES FROM THE BAR, because the bar holds the focus. The pane is the
    *  only thing that knows which picks are pending and how to settle one, so the bar
    *  sends an INTENT and this turns it into the call. */
@@ -580,6 +660,15 @@ export function CapturePane({
     void pick(pickRequest.fieldId, pickRequest.index)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickRequest?.nonce])
+
+  /** ⚠️ THE SAME ARRANGEMENT FOR THE SAME REASON: the pills render beside the bar, so
+   *  the click and the keystroke both happen up there, and the pane is the only thing
+   *  that can perform the call. */
+  useEffect(() => {
+    if (answerRequest === undefined) return
+    void answer(answerRequest.fieldId, answerRequest.value)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [answerRequest?.nonce])
 
   /**
    * Tell the bar what to say and what it can settle.
@@ -611,6 +700,16 @@ export function CapturePane({
     onStatus?.({
       question,
       picks: livePicks,
+      // ⚠️ THE SERVER'S OWN FOUR, PASSED THROUGH RATHER THAN RE-DERIVED. `question`
+      // above is `captureVoice`'s client-side sentence for the bar; these are the
+      // engine's, and the dispatch says the engine decides.
+      guidedQuestion: state?.question ?? state?.next_question ?? null,
+      guidedHint: state?.question_hint ?? null,
+      guidedFieldId: state?.question_field_id ?? null,
+      guidedPills: state?.pills ?? [],
+      cremation: state?.cremation?.label ?? null,
+      clearedNote,
+      sessionId: state?.session_id ?? null,
       capturing: state !== null && state.status === "capturing",
       ready: state !== null,
       spans: state?.spans,
@@ -619,7 +718,13 @@ export function CapturePane({
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [question, livePicks, state?.status, state !== null, state?.spans,
-      state?.spans_for_text, hoveredFields])
+      state?.spans_for_text, hoveredFields,
+      // ⚠️ THE GUIDED FIELDS ARE IN THE DEPENDENCIES ON PURPOSE. Without them the
+      // status reported upward would only refresh when one of the ABOVE changed —
+      // so answering a question whose next question has the same `captureVoice`
+      // sentence would leave the old question and the old pills on screen.
+      state?.question, state?.question_hint, state?.question_field_id,
+      state?.pills, state?.cremation?.label, clearedNote, state?.session_id])
 
   // ⚠️ DECLARED WITH THE OTHER HOOKS, ABOVE THE EARLY RETURNS. Placed after them it
   // ran conditionally and React reported "a change in the order of Hooks called by
@@ -980,70 +1085,22 @@ export function CapturePane({
             ))}
           </div>
 
-          {/* numbered picks — the prototype's `pending` mechanism (`:583`, `:606`, `:622`).
-              ⚠️ ONE-BASED LABELS because the prototype's digit keys are 1..9. */}
-          {state.pending_picks.map((p) => (
-            <div
-              key={p.field_id}
-              data-testid={`capture-pick-${p.field_id}`}
-              className="rounded-base border border-border-accent bg-accent-subtle p-2"
-            >
-              <div className="text-body-sm text-content-strong">
-                {p.options.length} matches for “{p.phrase}”. Which one?
-                {p.discriminator ? (
-                  <span className="ml-1 text-micro text-content-muted">
-                    ({p.discriminator})
-                  </span>
-                ) : null}
-              </div>
-              <ol className="mt-1 flex flex-col gap-1">
-                {p.options.map(([value, label], i) => (
-                  <li key={value}>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void pick(p.field_id, i + 1)}
-                      data-testid={`capture-pick-option-${p.field_id}-${i + 1}`}
-                      className="flex w-full items-center gap-2 rounded-base px-2 py-1 text-left text-body-sm hover:bg-surface-sunken focus-ring-accent"
-                    >
-                      {/* ⚠️ THE NUMBER IS VISIBLE BECAUSE ⌘N IS ONLY AVAILABLE WHILE IT
-                          IS, by ruling. A keyboard shortcut whose number is not on
-                          screen is a shortcut nobody can use and a key nobody can
-                          predict. Past 9 the number is dropped rather than shown
-                          un-pressable — ⌘0 is not a pick and labelling it "10" would
-                          promise a key that does nothing. */}
-                      {i < 9 ? (
-                        <kbd
-                          data-testid={`capture-pick-number-${p.field_id}-${i + 1}`}
-                          className="flex h-5 min-w-5 items-center justify-center rounded-[4px] border border-border-base px-1 text-micro text-content-muted"
-                        >
-                          {i + 1}
-                        </kbd>
-                      ) : (
-                        <span aria-hidden className="h-5 min-w-5" />
-                      )}
-                      <span className="min-w-0 flex-1">{label}</span>
-                    </button>
-                  </li>
-                ))}
-              </ol>
-              {/* ⚠️ THE SHORTCUT IS ADVERTISED WHERE THE NUMBERS ARE, and this copy
-                  WAS WRONG ON PRODUCTION for a round. It read "Typed digits go into
-                  the text" — the ruling of 2026-10-12, superseded on 10-13 by "a
-                  plain number picks". The behaviour changed and the sentence
-                  telling the office the opposite stayed, which is worse than no
-                  hint at all. Found by reading the pane in a real browser; no test
-                  asserted the sentence, so nothing went red.
+          {/* ⚠️ THE AMBIGUITY LIST MOVED OUT OF THIS PANE ON 2026-10-27, BY RULING.
+              James: "The ambiguity choice list becomes these same pills." So the
+              options now render in the pills row above the bar, from the server's
+              `pills` — one place answers Opas, whether the question is "which of these
+              two did you mean" or "which cemetery".
 
-                  ⚠️ IT NO LONGER PROMISES WHAT HAPPENS TO OTHER NUMBERS. The old
-                  copy made a blanket claim about digits; the rule is narrower than
-                  a sentence this size can carry (see `pick-digit.ts`), and a
-                  half-stated rule is what just misled everybody. */}
-              <div className="mt-1 text-micro text-content-subtle" data-testid={`capture-pick-hint-${p.field_id}`}>
-                Click, or type the number.
-              </div>
-            </div>
-          ))}
+              ⚠️ AND THE PANE IS THE WRONG PLACE FOR IT FOR THE SAME REASON THE QUESTION
+              WAS MOVED OUT ON 2026-10-20: this pane can be TUCKED. A choice list that
+              disappears with the pane takes the only way to answer with it, and the
+              bar then sits there asking a question with no visible options.
+
+              ⚠️ THE SETTLING PATH IS UNCHANGED AT THE SERVER. A pill answers through
+              `/answer`, which writes the same resolution `/choose` wrote — `choose`
+              stores `options[index-1][0]` and `answer` stores the value directly, so
+              the two are the same write by different handles. `choosePick` and the
+              `pickRequest` channel stay because ⌘1..9 from the bar still uses them. */}
 
           {/* ⚠️ A SWITCH IS NOT A PICK, AND IT IS RENDERED DIFFERENTLY ON PURPOSE.
               The field is already captured — the row above shows the value with a
@@ -1183,6 +1240,37 @@ export function CapturePane({
                 : "Or type \u201cdone\u201d. \u2318\u21a9 also works."}
             </span>
           </div>
+
+          {/* ── why something was just cleared ─────────────────────────────
+              ⚠️ IN THE PANE FOOTER, BY THE DISPATCH'S OWN WORDS: "clears what no
+              longer fits … and says why in one line in the pane footer". I first put it
+              in the Opas pane beside the question, reasoning that the capture pane can
+              be tucked — but the note explains why a ROW emptied, and the rows are
+              here. A sentence about rows the reader cannot see is worse than one that
+              is tucked along with them.
+
+              ⚠️ AND IT IS IN THE CAPTURING BRANCH, NOT THE REVIEW ONE. I put it beside
+              the Review's totals first and the test could not find it: the two branches
+              are `{!reviewing && …}` and `{reviewing && …}` and are MUTUALLY
+              EXCLUSIVE, so a note rendered in the second cannot appear while the
+              director is still answering — which is the only time an answer gets
+              cleared. Second time that pair has caught me.
+
+              ⚠️ ONE LINE, AND IT IS THE SERVER'S. `clears.py` composes it beside the
+              rule it explains, which is the standing arrangement for every sentence
+              Opas says — and the reason the pick hint shipped wrong for a round when
+              it lived in the client.
+
+              ⚠️ AMBER, LIKE THE PROTOTYPE'S `.pf .note{color:var(--need)}`. Nothing
+              went wrong; something stopped applying. */}
+          {clearedNote !== null && (
+            <div
+              data-testid="capture-cleared-note"
+              className="border-t border-border-subtle pt-1 text-micro text-status-warning"
+            >
+              {clearedNote}
+            </div>
+          )}
         </>
       )}
 

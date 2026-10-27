@@ -1,0 +1,818 @@
+<!doctype html><html><head><!-- frame-runtime --><script>window.__FRAME_PREAMBLE={"v":1,"cred":"query","capabilities":{"artifact":"artifact.BBvTDtAn.js","assets":"assets.DOAjpBS9.js","comments":"comments.ZN89XxKU.js","db":"db.zFlAA4qL.js","desktop":"desktop.DhZqHbmS.js","dictation":"dictation.f3j7VXQ8.js","downloads":"downloads.axDW2QAi.js","embed":"embed.SWCZLzn6.js","endpoints":"endpoints.BPfoKaE1.js","files":"files.IkpCjcgM.js","mcp":"mcp.kl0G36TA.js","network":"network.B5UA9Su4.js","paste":"paste.DeKNLIxx.js","permissions":"permissions.6yWoDecA.js","reads":"reads.Bgov9hIw.js","room":"room.BYRHiLCc.js","sample":"sample.ydkZ82FT.js","self":"artifact.BBvTDtAn.js","tts":"tts.iS74i_mi.js","user":"user.uKicftX-.js"},"transforms":"_transforms.mzjWN-mf.js","comments":"_comments.AKhddNYY.js","translate":"_translate.DqxC5ek1.js","ldx":"_ldx.B4FSryPi.js"}                                                                                                                                                                                                                                                                                                                 </script><script>(function(){"use strict";function dr(t){return t==="cookie"||t==="query"?t:void 0}function hr(t){return typeof t=="number"&&Number.isSafeInteger(t)&&t>0?t:void 0}var no=3e5;function pr(t,e){try{const r=t("navigation")[0],n=[r.responseStart,r.redirectEnd-r.redirectStart,r.domContentLoadedEventStart,e(),r.connectEnd-r.domainLookupStart,r.responseStart-r.requestStart];r.requestStart>0||(n.length=4);for(let a=0;a<n.length;a++)if(n[a]>=0&&n[a]<=3e5)n[a]=n[a]|0;else{if(a<4)return;n.length=4}return n}catch{return}}var mr=["light","dark","system"],vr=/^[A-Za-z0-9_-]{1,64}$/,Mt=/^[a-zA-Z_:][a-zA-Z0-9_:.-]{0,127}$/,_r=new Set(["class","hidden","value","checked","style","title","alt","placeholder","lang","dir","role","tabindex","disabled","readonly","contenteditable","open","colspan","rowspan"]);function yr(t){const e=t.toLowerCase();return e.startsWith("data-")||e.startsWith("aria-")||_r.has(e)}var Pt="data-ldx-props";function gr(t,e){if(e.toLowerCase()===Pt)return!0;const r=t.getAttribute(Pt);if(r===null)return!1;try{const n=JSON.parse(r);if(n===null||typeof n!="object"||Array.isArray(n))return!0;const a=e.toLowerCase();return Object.keys(n).some(s=>s.toLowerCase()===a)}catch{return!0}}var oo="http://www.w3.org/1999/xhtml",wr="http://www.w3.org/2000/svg",br=new Set(["script","style","iframe","noscript","noframes","noembed","xmp","plaintext","template","title","textarea","object","embed"]),Er=new Set(["script","style"]);function Sr(t){const e=t.localName.toLowerCase();return t.namespaceURI==="http://www.w3.org/1999/xhtml"?!br.has(e):t.namespaceURI===wr?!Er.has(e):!1}function ot(t,e){return t===e||(t===160||t===32)&&(e===160||e===32)}function kr(t,e){const r=t.length,n=e.length;let a=0;for(;a<r&&a<n&&ot(t.charCodeAt(a),e.charCodeAt(a));)a++;let s=0;for(;s<r-a&&s<n-a&&ot(t.charCodeAt(r-1-s),e.charCodeAt(n-1-s));)s++;return{p:a,s}}function Ar(t,e){const r=t.firstChild;if(t.childNodes.length!==1||r===null||r.nodeType!==Node.TEXT_NODE){t.textContent=e;return}const n=r.data,a=n.length,s=e.length,{p:l,s:u}=kr(n,e);l===a&&u===0&&a===s||r.replaceData(l,a-l-u,e.slice(l,s-u));const R=r.data,b=t.ownerDocument.getSelection?.()??null,g=b!==null&&b.rangeCount>0&&(b.anchorNode===r||b.focusNode===r)?{anchor:b.anchorNode,anchorOffset:b.anchorOffset,focus:b.focusNode,focusOffset:b.focusOffset}:null;let p=-1,k=-1;for(let m=0;m<R.length&&m<e.length;m++){const j=R.charCodeAt(m),A=e.charCodeAt(m);j!==A&&ot(j,A)&&(p<0&&(p=m),k=m)}const L=p>=0;if(L&&r.replaceData(p,k-p+1,e.slice(p,k+1)),L&&g!==null&&g.anchor!==null&&g.focus!==null)try{b.setBaseAndExtent(g.anchor,g.anchorOffset,g.focus,g.focusOffset)}catch{}}var Rr=new Set(["html","head","body","frameset"]);function Tr(t){return t.namespaceURI==="http://www.w3.org/1999/xhtml"&&Rr.has(t.localName)}function Lr(t){if(t===null||typeof t!="object")return!1;const e=t;if(typeof e.target!="string"||!vr.test(e.target)||e.text!==void 0&&typeof e.text!="string")return!1;if(e.attrsSet!==void 0){if(e.attrsSet===null||typeof e.attrsSet!="object")return!1;for(const[r,n]of Object.entries(e.attrsSet))if(!Mt.test(r)||typeof n!="string")return!1}if(e.attrsRemoved!==void 0){if(!Array.isArray(e.attrsRemoved))return!1;for(const r of e.attrsRemoved)if(typeof r!="string"||!Mt.test(r))return!1}return!0}function Or(t,e){if(t===null||typeof t!="object")return!1;const{seq:r,elements:n}=t;if(typeof r!="number"||!Number.isSafeInteger(r)||!Array.isArray(n)||n.length===0||n.length>64)return!1;for(let a=0;a<n.length;a++)if(!e(n[a]))return!1;return!0}function Mr(t){return t===null||typeof t!="object"?!1:Or(t.__frame_patch,Lr)}function Pr(t){if(t===null||typeof t!="object")return!1;const e=t.__frame_init;return e!==null&&typeof e=="object"}function Nr(t){return t!==null&&typeof t=="object"&&t.__frame_size_poke===!0}function Cr(t){if(t===null||typeof t!="object")return!1;const e=t.__frame_host_visible;return e!==null&&typeof e=="object"&&typeof e.visible=="boolean"}function Fr(t){if(t===null||typeof t!="object")return!1;const e=t.__frame_theme;if(e===null||typeof e!="object")return!1;const r=e.theme;return typeof r=="string"&&mr.includes(r)}var Ir=["ok","empty","snapshot_error","snapshot_timeout","unclonable","oversize","unavailable","restore_error","withheld"],jr=["TypeError","RangeError","ReferenceError","SyntaxError","DataCloneError","QuotaExceededError","AbortError","TimeoutError","SecurityError","Error","other"];function xr(t){return typeof t=="string"&&jr.includes(t)?t:"other"}var Dr=Object.freeze({until:null,now:!1}),Hr="__claude_hot",Br="__claude_hot_in",qr=/^__claude_hot(?:_in)?(?::|$)/,Nt=/^[0-9a-z]{1,32}$/,at=t=>t===void 0?Hr:"__claude_hot:"+t,Oe=t=>t===void 0?Br:"__claude_hot_in:"+t;function Ur(t,e){const r=[];for(let n=0;n<t.length;n++){const a=t.key(n);a!==null&&a!==e&&qr.test(a)&&r.push(a)}for(const n of r)t.removeItem(n)}function $r(t){let e=null;try{e=q(JSON.parse(t)?.hot)}catch{return null}return e===null||typeof e.k!="string"||!Nt.test(e.k)?null:he(e.g)?{k:e.k,g:e.g}:{k:e.k}}var ao=262144,Kr=3e3,zr=5e3,Ct=/^[a-z0-9._:-]{1,64}$/,Gr=["none","hot-restart","hard-reload"],Wr=["asset","doc","added","removed"],Vr=1500,Xr=/^[0-9a-f]{64}$/;function q(t){return t!==null&&typeof t=="object"?t:null}function he(t){return typeof t=="number"&&Number.isInteger(t)&&t>=0&&t<2**31}function Ft(t){return t===void 0||typeof t=="number"&&Number.isFinite(t)}function Yr(t){return t===void 0||typeof t=="string"&&Ct.test(t)}function It(t){const e=q(t);return e!==null&&(e.until===null||typeof e.until=="number"&&Number.isFinite(e.until))&&typeof e.now=="boolean"}function st(t){const e=q(t);return e!==null&&typeof e.ver=="string"&&e.ver.length<=128&&Ft(e.seq)&&typeof e.handoff=="string"&&Ir.includes(e.handoff)&&Yr(e.note)}function jt(t){const e=q(t);return e!==null&&he(e.gen)&&(e.phase==="final"||e.phase==="pending")&&(e.from===null||st(e.from))}function Jr(t){const e=q(t);return e!==null&&e.kv===1&&he(e.gen)&&st(e.from)&&Object.hasOwn(e,"data")}function Zr(t){const e=q(t);return e!==null&&e.__frame_hot_snapshot===!0&&he(e.gen)&&typeof e.timeoutMs=="number"&&e.timeoutMs>=0&&e.timeoutMs<=6e4&&(e.handoff===void 0||typeof e.handoff=="boolean")&&(e.deadline===void 0||It(e.deadline))&&Ft(e.seq)&&(e.note===void 0||typeof e.note=="string")&&(e.key===void 0||typeof e.key=="string")}function Qr(t){const e=q(t);return e!==null&&e.__frame_hot_start===!0&&he(e.gen)&&st(e.from)}function en(t){return typeof t=="string"&&t.length>=1&&t.length<=128}function xt(t){return q(t)!==null&&!Array.isArray(t)}function tn(t){const e=q(t);return e!==null&&e.__frame_cap_grant===!0&&typeof e.cap=="string"&&en(e.ver)&&(e.grant===void 0||xt(e.grant))&&(e.budgets===void 0||xt(e.budgets)&&Object.values(e.budgets).every(Number.isFinite))&&(e.brokerGen===void 0||he(e.brokerGen))}function rn(t){const e=q(t);return e!==null&&e.__frame_cap_rewired===!0&&(e.caps===void 0||Array.isArray(e.caps)&&e.caps.every(r=>typeof r=="string"))&&(e.brokerGen===void 0||he(e.brokerGen))}function Ke(t){const e=q(t);return e!==null&&typeof e.ver=="string"&&e.ver.length<=128&&Number.isFinite(e.seq)}function Dt(t){if(t==null||typeof t=="string")return!0;const e=q(t);return e!==null&&typeof e.doc=="string"&&typeof e.profile=="string"}function nn(t){const e=q(t);return e!==null&&typeof e.path=="string"&&Wr.includes(e.kind)&&Dt(e.from)&&Dt(e.to)}function on(t){return t===null?null:Object.freeze(t.filter(nn))}function an(t){const e=q(t);return e!==null&&e.__frame_hot_update===!0&&Number.isFinite(e.id)&&Ke(e.from)&&Ke(e.to)&&(e.changed===null||Array.isArray(e.changed))&&Gr.includes(e.required)&&It(e.deadline)&&typeof e.verdictTimeoutMs=="number"&&e.verdictTimeoutMs>=0&&e.verdictTimeoutMs<=6e4&&(e.preflight===void 0||typeof e.preflight=="string"&&Xr.test(e.preflight))}function sn(t){const e=q(t);return e!==null&&e.__frame_hot_readdress===!0&&Ke(e.from)&&Ke(e.to)}var pe=/^[\w.-]+\.js$/;function ln(t,e,r){return r?"inert":typeof e=="string"&&pe.test(e)?t?[e]:"inert":t?"inert":"framed"}var Ht=Object.freeze({[Symbol("claude.hot.restart")]:!0});function Bt(t,e){let r;try{r=t??sessionStorage}catch{return null}const n=at(e?.k),a=Oe(e?.k);let s=null;try{s=r.getItem(n)}catch{}try{r.removeItem(n)}catch{}try{Ur(r,a)}catch{}let l=null;if(s!==null&&!(e!==null&&e.g===void 0))try{const u=JSON.parse(s);Jr(u)&&(e===null||u.gen===e.g)&&(l=u)}catch{}if(l===null)try{r.removeItem(a)}catch{}return l}function qt(){const t=/^\/_f\/([^/]{1,128})\//.exec(location.pathname);return t?t[1]:""}var cn=/^[^/\\?#]{1,128}$/,it=t=>cn.test(t)&&t!=="."&&t!=="..";function Ut(t,e,r){const n=new URL(t),a="/_f/"+e+"/";if(!e||!n.pathname.startsWith(a)||!it(r))return null;const s=n.search.slice(1).split("&").filter(l=>!/^__frame_t(?:=|$)/.test(l)).join("&");return n.origin+"/_f/"+r+"/"+n.pathname.slice(a.length)+(s?"?"+s:"")+n.hash}var ze="{}";function Me(t){if(!t)return null;const e={ver:t.ver,handoff:t.handoff};return t.seq!==void 0&&(e.seq=t.seq),t.note!==void 0&&(e.note=t.note),e}function $t(t,e){return t!==null&&t.note===void 0&&e?.note!==void 0?{...t,note:e.note}:t}function Kt(t){const e=t?.k;return e!==null&&typeof e=="object"?e:void 0}function un(t,e,r,n=null){const a=setTimeout,s=clearTimeout,l=queueMicrotask,u=performance.now.bind(performance),R=new TextEncoder;let b=null,g=null;try{b=history,g=b.replaceState.bind(b)}catch{}const p=(...o)=>{try{console.warn(...o)}catch{}};let k=qt(),L=null;try{L=sessionStorage}catch{}const m={storage:L,fetch:typeof fetch=="function"?fetch.bind(globalThis):null,entry:location.origin+location.pathname+location.search,ver:k,priors:[],key:n?.k};let j=n?.k;const A=typeof requestAnimationFrame=="function"?requestAnimationFrame:o=>a(()=>o(u()),16);let _=e?.data??{},E=Me(e?.from),x=e?.gen??0,D=e!==null,B=!1,W=!1,H=null,Ie=!1;const be=new AbortController;let je=null,U=null,Ee=null,xe=!1,ce=()=>{};const te=new Promise(o=>{ce=o});let ve=!1,Je=!1,Se=!1,c,h=null,y=!1,O=!1,F=!1,$=!1,K=!1,Z=!1;const ue=o=>{for(const f of[at(o),Oe(o)])try{L?.removeItem(f)}catch{}},G=(o,f)=>{try{f!==null&&r.post(o,f)}catch{}},_e=()=>K||=F&&(U===null||$),Q=()=>{const o={__frame_hot:!0,ready:U!==null,accept:Ee!==null,demand:!0};Z=!K,Z&&(o.booting=!0),ve&&(o.readData=!0),Se&&(o.threw=!0),h?.assess&&(o.preflight=!0),G(o,H)};let De=!1,He=!1,fe=!1,re=!1;const Be=()=>{De||!Ie||fe||(De=!0,G({__frame_reveal_hold:!0},"*"))},ke=()=>new Promise(o=>{let f,d=0;const v=P=>{if(f===void 0)f=P;else if(P!==f||++d>=8){o();return}try{A(v)}catch{o()}};try{A(v)}catch{o()}}),Ze=()=>{fe=!0,G({__frame_reveal_ready:!0},"*")},ye=o=>{He||(He=!0,o.then(f=>{if(f===!1)return;let d=null;try{d=h?.settle?.()??null}catch{}return(d===null?ke():new Promise(v=>{a(v,50),Promise.resolve(d).then(v,v)}).then(ke)).then(Ze)}))},Qe=()=>{if(re||!fe)return;re=!0;const o=()=>{try{h?.afterReveal?.()}catch{}};o(),ke().then(()=>{o(),Ze()})},ge=(o=!1)=>{if(xe||U===null||!D||!W)return;xe=!0;const f=U,d=_;l(()=>{let v;try{v=f(d)}catch(N){throw ce(!1),N}let P=!1;try{P=typeof v?.then=="function"}catch{}if(!P){ce(!0);return}Promise.resolve(v).then(()=>ce(!0),N=>{ce(!1),l(()=>{throw N})})}),ye(o?te:r.dcl.then(()=>te))},Ae=o=>typeof o=="string"&&Ct.test(o)?o:void 0,qe=o=>{const f={__frame_hot_restart:!0},d=Ae(o?.note);d!==void 0&&(f.note=d),o?.required==="hard-reload"&&(f.required="hard-reload"),G(f,H)},ne=Object.freeze({get data(){return W||(Je=!0),!D&&!ve&&(ve=!0,W&&Q()),_},get from(){return E},get gen(){return x},signal:be.signal,snapshot(o){typeof o=="function"&&(je=o)},ready(o){typeof o!="function"||U!==null||(U=o,Be(),Q(),B&&G({__frame_hot_ready:!0,gen:x},H),ge())},accept(o){typeof o=="function"&&(Ee=o,Q())},restart(o){const f={note:o?.note,required:o?.required};if(W){qe(f);return}const d=c;c={note:Ae(d?.note)??f.note,required:d?.required==="hard-reload"||f.required==="hard-reload"?"hard-reload":void 0}}});let de=null,Ue=()=>{};const et=new Promise(o=>{Ue=o});let i=null;const S=()=>i??=r.dcl.then(()=>{let o=!1;try{o=de!==null&&de.expect()}catch{}if(!o)return;const f=de.maxMs;return new Promise(d=>{et.then(d),a(d,f)})}),w=()=>{if(!y||O||h===null)return;O=!0;const o=h;S().then(()=>{try{fe||o.afterStart(Kt(e),!1)}catch{}})},M=o=>{e!==null&&Je&&(ve=!0),_={},E=null,x=0;try{L?.removeItem(Oe(n?.k))}catch{}e!==null&&!o&&ye(r.dcl.then(()=>U!==null?te:void 0))},ee=()=>{y=!0,ye(S().then(()=>U!==null?te:void 0)),w()};try{addEventListener("error",()=>{Se||U!==null||(Se=!0,Q())})}catch{}const V=()=>{a(()=>{!K&&_e()&&Z&&Q()},0)};try{F=document.readyState==="complete",F||addEventListener("load",()=>{F=!0,V()},{once:!0})}catch{F=!0}_e(),te.then(()=>{$=!0,V()});let z=-1,Et,St,$e=!0,kt=!1,At,tt=null;const Rt=o=>{const f=tt===null;tt=$e&&o[0]!=="withheld"?o:["withheld",o[1],ze];let d=o[0];if($e&&d!=="withheld"){const P={ver:k,handoff:d};Et!==void 0&&(P.seq=Et),St!==void 0&&(P.note=St);try{if(L===null)throw new Error("no storage");L.setItem(at(j),'{"kv":1,"gen":'+z+',"from":'+JSON.stringify(P)+(At!==void 0?',"k":'+JSON.stringify(At):"")+',"data":'+(d==="ok"?o[2]:ze)+"}")}catch{d="unavailable"}}else{d="withheld",ue(j);try{h?.release?.()}catch{}}const v={__frame_hot_snapshotted:!0,gen:z,handoff:d,bytes:o[1]};o[3]!==void 0&&(v.errName=o[3]),G(v,H),f&&(d==="snapshot_error"||d==="unclonable"||d==="oversize")&&p("claude.hot: snapshot",d,o[3])},Re=o=>{try{return xr(o?.name)}catch{return"other"}},Te=(o,f,d=0)=>Rt(f===void 0?[o,d,ze]:[o,d,ze,Re(f)]),Vn=o=>{if(o.gen<=z)return;const f=z>=0;if(z=o.gen,Et=o.seq,St=Ae(o.note),typeof o.key=="string"&&Nt.test(o.key)&&o.key!==j&&(ue(j),j=o.key),$e&&=o.handoff!==!1,f){tt!==null?Rt(tt):kt&&G({__frame_hot_held:!0,gen:z},H);return}be.abort();const d=Object.freeze({handoff:$e,timeoutMs:o.timeoutMs,deadline:o.deadline??Dr}),v=je,P=()=>{if($e)try{At=h?.capture()}catch{}if(v===null){Te("empty");return}let T=!1;const X=a(()=>{T||(T=!0,Te("snapshot_timeout"))},Math.max(0,d.timeoutMs));Promise.resolve().then(()=>v(d)).then(Le=>{if(T)return;T=!0,s(X);let oe;try{oe=JSON.stringify(Le)}catch(Tt){Te("unclonable",Tt);return}if(typeof oe!="string"){Te("unclonable");return}let ae=oe.length;try{ae=R.encode(oe).length}catch{}if(ae>262144){Te("oversize",void 0,ae);return}Rt(["ok",ae,oe])},Le=>{T||(T=!0,s(X),Te("snapshot_error",Le))})};let N=null;try{N=h?.holdForIme()??null}catch{}if(N===null)P();else{kt=!0,G({__frame_hot_held:!0,gen:z},H);const T=()=>{kt=!1,P()};N.then(T,T)}},Xn=o=>{if(!B||D||U===null||o.gen!==x)return;let f=null;try{f=Bt(L,n&&{k:n.k,g:o.gen})}catch{}if(f!==null&&f.gen!==o.gen){f=null;try{L?.removeItem(Oe(n?.k))}catch{}}_=f?.data??{},E=$t(Me(f?.from??o.from),Me(o.from)),f!==null&&(x=f.gen),D=!0,B=!1;const d=Kt(f);te.then(v=>{try{v&&h?.afterStart(d,!0)}catch{}}),ge(!0)},lr=o=>{const f=k,d=m.entry;let v="",P,N=null;try{if(v=location.href,P=b.state,N=Ut(v,f,o),N!==null)if(g(P,"",N),location.pathname.startsWith("/_f/"+o+"/"))N=location.href;else return{failed:"navigate event canceled"}}catch(T){return{failed:Re(T)}}k=m.ver=o,m.priors.push(f)>8&&m.priors.splice(1,1);try{m.entry=Ut(d,f,o)??d}catch{}return[N,f,d,v,P]},Yn=({from:o,to:f})=>{let d,v;if(!it(f.ver))d="adopt_failed",v="not a version path segment";else if(f.ver===k)d="adopted";else if(!k||o.ver!==k)d="stale";else{const N=lr(f.ver);"failed"in N?(d="adopt_failed",v=N.failed):d=N[0]===null?"adopt_skipped":"adopted"}v!==void 0&&p(`claude.hot: could not move this page's URL to its new version folder /_f/${f.ver}/ (${v})`);const P={__frame_hot_readdressed:!0,to:f.ver,at:k,outcome:d};G(P,H)};let rt=0;const Jn=o=>{const f=Ee;if(f===null||o.id<=rt)return;rt=o.id;const d=h?.assess;if(o.preflight===void 0||d===void 0){cr(o,f);return}let v=!1;const P=X=>{v||(v=!0,s(T),o.id===rt&&cr(o,f,X))},N=()=>P(d.timeout(o)),T=a(N,Vr+100);d.run(o,window).then(P,N)},cr=(o,f,d)=>{let v,P=!1,N=!1,T,X,Le=null;const oe=I=>{if(N)return!1;if(T!==void 0&&T!==I)return p(`claude.hot: u.${I}() ignored - u.${T}() was called first`),!1;const se=T===void 0;return T=I,se},ae=I=>{T="restart",p(`claude.hot: ${I} - restarting`)},Tt=()=>{if(!oe("adopt")||o.id!==rt)return;const I=o.to.ver;if(nt.required!=="none"){ae(`u.adopt() needs required 'none', it is '${nt.required}'`);return}if(!it(I)){ae("u.adopt() cannot address this version");return}if(!k||I===k)return;const se=lr(I);if("failed"in se){X="adopt_failed",ae(`adopt_failed ${se.failed}; URL not changed`);return}const[J,Ot,eo,fr,to]=se;J===null?(X="adopt_skipped",p(`claude.hot: adopt_skipped - page already left /_f/${Ot}/; URL not changed, update still applied`)):X="adopted",Le=()=>{if(k===I){if(J!==null)try{if(location.href!==J)p("claude.hot: adopt_revert_skipped - update not applied; URL left where the page navigated");else{if(g(to,"",fr),location.href!==fr){p("claude.hot: adopt_revert_failed navigate event canceled - URL still at the new version");return}X="adopt_reverted",p("claude.hot: adopt_reverted - adopt() was called but the handler threw; URL restored")}}catch(ro){p(`claude.hot: adopt_revert_failed ${Re(ro)} - URL still at the new version`);return}k=m.ver=Ot,m.entry=eo,m.priors[m.priors.length-1]===Ot&&m.priors.pop(),J===null&&(X=void 0)}}},nt=Object.freeze({from:{ver:o.from.ver,seq:o.from.seq},to:{ver:o.to.ver,seq:o.to.seq},changed:on(o.changed),required:o.required,deadline:o.deadline,adopt:Tt,defer(){return oe("defer")&&nt.deadline.now&&ae("u.defer() past the deadline"),Ht},restart(I){return oe("restart"),T==="restart"&&!N&&(v??=Ae(I?.note),P||=I?.required==="hard-reload"),Ht},...d?.update}),Zn=(I,se)=>{N=!0,I==="threw"?(Le?.(),v??=Re(se).toLowerCase()):T===void 0&&p(I==="timeout"?"claude.hot: accept handler did not answer in time - restarting":"claude.hot: accept handler settled without defer/restart/adopt - restarting");const J={__frame_hot_verdict:!0,id:o.id};J.verdict=I==="threw"||T===void 0||T==="restart"?"restart":T==="adopt"?"applied":"deferred",J.verdict==="restart"&&(P&&(J.required="hard-reload"),v!==void 0&&(J.note=v)),X!==void 0&&(J.verdict==="applied"||X!=="adopted")&&(J.adopt=X),G(Object.assign(J,d?.verdict),H)};let ur=!1;const Lt=(I,se)=>ur?!1:(ur=!0,s(Qn),Zn(I,se),!0),Qn=a(()=>Lt("timeout"),o.verdictTimeoutMs);Promise.resolve().then(()=>f(nt)).then(()=>Lt("settled"),I=>{!Lt("threw",I)&&T==="adopt"&&qe({note:Re(I).toLowerCase()}),p("claude.hot: accept",Re(I))})};try{t.hot===void 0&&Object.defineProperty(t,"hot",{value:ne,writable:!1,configurable:!1,enumerable:!1})}catch{}return{hot:ne,boot:m,afterConnect(){Ie=!0,(e!==null||U!==null)&&Be()},onInit(o,f){H=f,W=!0;const d=jt(o)?o:null;d?.phase==="final"&&e!==null&&e.gen===d.gen?(D=!0,E=$t(E,Me(d.from)),ee()):(B=d?.phase==="pending",M(B),D=!B,x=d?.gen??0,E=Me(d?.from)),Q(),Z&&a(()=>{K||(K=!0,Q())},zr),B&&U!==null&&G({__frame_hot_ready:!0,gen:x},f),c!==void 0&&(qe(c),c=void 0),ge()},onNoInit(){W=!0,M(!1),D=!0,ge()},onShell(o){return o?.__frame_revealed===!0?(Qe(),!1):Zr(o)?(Vn(o),!0):Qr(o)?(Xn(o),!0):an(o)?(Jn(o),!0):sn(o)?(Yn(o),!0):!1},attachExtras(o){h=o,w(),o.assess&&Q()},inSlot:()=>Oe(j),hydration(o,f){de??={expect:o,maxMs:f}},hydrated(){Ue()},carried(){return D?_:{}},presented:()=>fe}}var so="frame_ldx_runtime",fn="frame_ldx_build",io="script#an-form",dn=256;function lt(t,e,r){for(const n of t)r(n)&&t.delete(n);t.size>=dn&&!t.has(e)&&t.delete(t.values().next().value),t.add(e)}function Pe(t,e,r,n){try{const a=t[e];if(typeof a!="function")return;t[e]=function(...s){if(n){let u;try{u=n(this)}catch{}if(u!==void 0)return u}const l=a.apply(this,s);try{r?.(this)}catch{}return l}}catch{}}var hn=()=>{},ct;function pn(){if(ct)return ct;const t={media:new Set,contexts:new Set,wakeLocks:new Set,gate:null,refuse:null,onStart:null,onStop:null};ct=t;const e=l=>t.gate?.(l),r=l=>{t.onStop?.(l)},n=window.HTMLMediaElement?.prototype;n&&(Pe(n,"play",l=>{lt(t.media,l,u=>u.paused),t.onStart?.(l)},e),Pe(n,"pause",r));const a=window.AudioContext,s=window.AudioNode?.prototype;a&&s&&(Pe(s,"connect",l=>{const u=l.context;u instanceof a&&(lt(t.contexts,u,R=>R.state==="closed"),t.onStart?.(u))}),Pe(a.prototype,"resume",void 0,e),Pe(a.prototype,"suspend",r));try{const l=window.WakeLock?.prototype,u=l?.request;l&&typeof u=="function"&&(l.request=function(...R){if(t.refuse)return t.refuse();const b=u.apply(this,R);return Promise.resolve(b).then(g=>{lt(t.wakeLocks,g,p=>p.released),t.onStart?.(g)},hn),b})}catch{}return t}function mn(t){let e=window;for(let r=0;e.parent&&e.parent!==e&&r<8;r++)if(e=e.parent,t(e))return!0;return!1}function vn(){let t=null;const e=()=>t??parent,r=n=>t?n===t:mn(a=>a===n);return{post(n,a){if(t){e().postMessage(n,a);return}let s=parent;for(let l=0;l<8&&(s.postMessage(n,a),!(!s.parent||s.parent===s));l++)s=s.parent},on(n){const a=s=>{const l=s.source;r(l)&&n(s.data,s.origin,s.isTrusted,()=>{t??=l})};return addEventListener("message",a),()=>removeEventListener("message",a)},port:n=>({post(a,s){if(s?.activation){e().postMessage(a,{targetOrigin:n,includeUserActivation:!0});return}if(s?.transfer){e().postMessage(a,n,s.transfer);return}e().postMessage(a,n)},on(a,s){const l=u=>{r(u.source)&&u.origin===n&&a(u.data,u)};return addEventListener("message",l,s),()=>removeEventListener("message",l,s)}})}}function _n(){const t={post:()=>{},on:()=>()=>{}};return{...t,port:()=>t}}var yn=500,gn=2e4,wn="data-token-reads",bn="data-frame-refused-watch",En="data-frame-unsupported",Sn=/(?:^|\s)stylesheet(?:\s|$)/i;function kn(t,e){let r="";if(t instanceof HTMLScriptElement?r=t.src:t instanceof HTMLLinkElement&&Sn.test(t.rel)&&(r=t.href),!r)return null;try{const n=new URL(r);return n.origin===location.origin&&n.pathname.startsWith(e)?n.origin+n.pathname:null}catch{return null}}function An(t,e,r){if(!t||e!=="query")return;const n="/_f/"+t+"/";document.documentElement.setAttribute(bn,"");const a=location.href,s=fetch,l=setTimeout,u={method:"HEAD",cache:"no-store",credentials:"same-origin"},R=m=>m.ok||m.status===304;let b=!1,g=!1;const p=()=>removeEventListener("error",L,!0),k=async m=>{const j=await s(m,u);if(R(j))g=!0;else if(j.status===403){const A=await s(a,u);if(R(A)){const _=(await s(m,u)).status;_===403?(g=!0,document.documentElement.setAttribute(En,""),r()):_<500&&(g=!0)}else A.status>=400&&A.status<500&&(g=!0)}},L=m=>{if(g||b)return;if(document.documentElement.hasAttribute(wn)){g=!0,p();return}const j=kn(m.target,n);j&&(b=!0,l(()=>{k(j).catch(()=>{}).finally(()=>{b=!1,g&&p()})},yn))};addEventListener("error",L,!0),addEventListener("load",p,{once:!0}),l(p,gn)}var ut="__frame_scroll",Rn=150,Tn=310,Ln=160,On=3e4,zt="p,h1,h2,h3,h4,h5,h6,li,pre,blockquote,tr,dt,dd,figcaption,summary",Gt=()=>innerWidth<=Tn&&innerHeight<=Ln,Wt=t=>{const e=document.createTreeWalker(t,NodeFilter.SHOW_TEXT);let r="";for(;r.length<600&&e.nextNode();)r+=e.currentNode.nodeValue.slice(0,600-r.length);const n=r.replace(/\s+/g," ").trim().slice(0,120);let a=2166136261;for(let s=0;s<n.length;s++)a=Math.imul(a^n.charCodeAt(s),16777619);return n.length>11?a>>>0||1:0},Vt=t=>{for(let e=t;e&&e!==document.scrollingElement;e=e.parentElement){const r=getComputedStyle(e).position;if(r==="fixed"||r==="sticky"||e!==t&&e.scrollTop)return!1}return!0},Mn=()=>{const t=[],e=[];try{for(let r=0;r<16;r++){const n=document.elementFromPoint(innerWidth/(r%2?4:2),innerHeight*(r>>1)/8+1);let a=n?.closest(zt)??n;for(;a&&!a.matches(zt)&&![...a.childNodes].some(l=>l.nodeType===3&&l.nodeValue?.trim());)a=a.parentElement;const s=a&&!e.includes(a)?Wt(a):0;s&&!t.some(l=>l[0]===s&&l[2]===a.tagName)&&Vt(a)&&(e.push(a),t.push([s,Math.round(a.getBoundingClientRect().top),a.tagName]))}}catch{}return t.sort((r,n)=>+(r[1]<0)-+(n[1]<0)),t.length?t.slice(0,3):void 0},Pn=t=>{try{for(const[e,r,n]of t.a??[]){const a=document.getElementsByTagName(n);let s;for(let u=0;u<a.length&&a.length<5e3;u++)Wt(a[u])===e&&(s=s===void 0||s?.contains(a[u])?a[u]:null);const l=s?.getBoundingClientRect();if(l?.height&&s.checkVisibility?.()!==!1&&Vt(s)&&isFinite(r))return Math.max(0,Math.round(scrollY+l.top-r))}}catch{}return t.y};function Nn(){let t=0,e=!1,r=!1,n=!1,a={y:0},s=null;const l=E=>{try{sessionStorage.setItem(ut,JSON.stringify(E))}catch{}},u=E=>{if(clearTimeout(t),s===null)return;const x=s;s=null,l({y:x,a:E&&x>0?Mn():void 0})},R=()=>{if(e){e=!1;return}r=!0,s=scrollY,clearTimeout(t),t=setTimeout(u,Rn,!0)};try{addEventListener("scroll",R,{passive:!0}),addEventListener("pagehide",()=>u())}catch{}const b=()=>{let E;try{E=sessionStorage.getItem(ut)}catch{return null}if(E===null)return null;let x;try{x=JSON.parse(E)}catch{x=null}const{y:D,a:B}=x??{};if(!(typeof D=="number"&&Number.isFinite(D)&&D>=0)){try{sessionStorage.removeItem(ut)}catch{}return null}const W=H=>Array.isArray(H)&&typeof H[0]=="number"&&Number.isFinite(H[1])&&typeof H[2]=="string";return{y:D,a:Array.isArray(B)&&B.length<4&&B.every(W)?B:void 0}};let g=!1,p=-1;const k=E=>{try{const x=scrollY,D=Pn(E);scrollTo({top:D,left:0,behavior:"instant"}),a=Gt()?E:{y:D,a:E.a},n=!0,clearTimeout(t),s=null,l(a),p=scrollY,p!==x&&(e=!0);const B=D!==E.y&&document.readyState!=="complete";(p!==D||B)&&!g&&(g=!0,addEventListener("load",()=>{try{scrollY===p&&k(b()??a)}catch{}},{once:!0}))}catch{}},L=()=>{try{return!!location.hash}catch{return!0}};let m=!1;const j=()=>{try{if(m||!Gt())return;m=!0;const E=Date.now(),x=()=>{try{removeEventListener("resize",x)}catch{}Date.now()-E>On||r||L()||k(b()??a)};addEventListener("resize",x)}catch{}};let A=!1,_=!1;return{restore(){if(A||(A=!0,L()))return;const E=b();E!==null&&(k(E),j())},promoted(){if(_||(_=!0,L()))return;const E=b();E!==null?(k(E),j()):n&&k(a)}}}function Cn(t,e,r,n){let a=null;try{a=window.trustedTypes?.createPolicy("frame-runtime",{createScriptURL:R=>R})??null}catch{}const s=window.Worker,l=s?.prototype,u=Object.freeze({Worker:s,workerOn:l?.addEventListener,workerPost:l?.postMessage,workerTerminate:l?.terminate,fetch:window.fetch.bind(window),preventDefault:Event.prototype.preventDefault,now:Date.now,policy:a,origins:e});r(t).then(R=>R?.bootTopLevel?R.bootTopLevel(u,n):n.settle()).catch(()=>n.settle())}var lo="modulepreload",co=function(t){return"/"+t},uo={},Fn=function(e,r,n){let a=Promise.resolve();function s(l){const u=new Event("vite:preloadError",{cancelable:!0});if(u.payload=l,window.dispatchEvent(u),!u.defaultPrevented)throw l}return a.then(l=>{for(const u of l||[])u.status==="rejected"&&s(u.reason);return e().catch(s)})},In=window===top,Xt=Object.getOwnPropertyDescriptor(window,"claude"),Ge=ln(In,window.__FRAME_PREAMBLE?.topLevel,Xt?.writable===!1),ft=typeof Ge=="object"&&Ge[0],C=ft?_n():vn();(function(){const t=Object.defineProperty,e=globalThis,r=["RTCPeerConnection","webkitRTCPeerConnection","RTCDataChannel","RTCIceCandidate","RTCSessionDescription","RTCRtpSender","RTCRtpReceiver"];let n=0;for(let a=0;a<r.length;a++){const s=r[a];try{t(e,s,{value:void 0,writable:!1,configurable:!1})}catch{try{delete e[s]}catch{}try{t(e,s,{value:void 0,writable:!1,configurable:!0})}catch{}}typeof e[s]=="function"&&n++}if(n&&Ge==="framed")try{C.post({__frame_rtc_lockdown_failed:n},"*")}catch{}})();var Yt=1e4,jn=2e3,dt=2e3,ht=Object.freeze([...window.__FRAME_PREAMBLE?.origins??["https://claude.ai","https://preview.claude.ai"]]),xn="https://*.";function Jt(t){for(const e of ht)if(e.endsWith(":*"))try{const r=new URL(t);if(`${r.protocol}//${r.hostname}:*`===e)return!0}catch{}else if(e.startsWith(xn)){if(Dn(e.slice(10),t))return!0}else if(t===e)return!0;return!1}function Dn(t,e){if(!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(t))return!1;let r;try{r=new URL(e)}catch{return!1}if(r.protocol!=="https:"||r.port!==""||r.origin!==e)return!1;const n=r.hostname;if(!n.endsWith(`.${t}`))return!1;const a=n.slice(0,n.length-t.length-1);return/^[a-z0-9-]+$/.test(a)}var Ne=Object.freeze({...window.__FRAME_PREAMBLE?.capabilities}),Ce=window.__FRAME_PREAMBLE?.transforms,pt=window.__FRAME_PREAMBLE?.comments,mt=window.__FRAME_PREAMBLE?.translate,me=window.__FRAME_PREAMBLE?.ldx,We=dr(window.__FRAME_PREAMBLE?.cred),Zt=(()=>{try{const[t]=performance.getEntriesByType("navigation"),e=t?.serverTiming?.find(r=>r.name==="frame-cred-exp");return e!==void 0&&/^\d{1,15}$/.test(e.description)?hr(Number(e.description)):void 0}catch{return}})();function Qt(t){return Fn(()=>import("/_runtime/"+t),void 0)}var Fe=new Set,er=setTimeout,Hn=fetch,Bn=AbortController,qn=800+800*Math.random(),Un=3e3,Ve=null,tr=new Map;function $n(t,e){let r=tr.get(t);return r||tr.set(t,r=Kn(t,e)),r}function Kn(t,e){if(Ve?.has(t))return Promise.resolve("csp");if(navigator.onLine===!1)return Promise.resolve("offline");const r=new Bn;let n=!1;return er(()=>{n=!0,r.abort()},Un),Hn("/_runtime/"+t,{signal:r.signal}).then(a=>(r.abort(),a.ok?/javascript/i.test(a.headers.get("content-type")??"")?e instanceof Error&&/:\d+:\d+\)?$/m.test(e.stack??"")?"eval":"served":"mime":"http"),()=>n?"timeout":Ve?.has(t)?"csp":"net")}function ie(t){if(!Ve){const e=Ve=new Set;try{document.addEventListener("securitypolicyviolation",r=>{const n=/\/_runtime\/([^/?#]+)/.exec(r.blockedURI);n&&r.disposition!=="report"&&e.add(n[1])})}catch{}}return Qt(t).catch(()=>new Promise(e=>er(e,qn)).then(()=>Qt(t+"?r=1")).then(e=>(e!==void 0&&Fe.add(t),e)))}function rr(t,e,r){return{contract:t.contract,changes:new Set(t.changes??[]),flags:new Set(t.flags??[]),capabilities:t.capabilities??{},capBudgets:t.capBudgets??{},brokerGen:t.brokerGen,transforms:new Map,shellOrigin:e,shell:r,mount:bt,hooks:Xe,pipe:()=>({wrap:(n,a)=>(...s)=>{try{return a(...s)}catch(l){return Promise.reject(l)}}})}}var we=null,Y=null;function nr(t,e,r){try{Object.defineProperty(t,e,{value:r,writable:!1,configurable:!1,enumerable:!0})}catch{try{Object.defineProperty(t,e,{value:r,writable:!1,configurable:!0,enumerable:!0})}catch{}}}var vt=!1,Xe={editBefore:null,edit:null};function zn(t,e,r=!1){const n=[];let a;if(r)try{Xe.editBefore?.(t)}catch{}for(const s of t.elements){const l=document.querySelector(`[data-id="${s.target}"]`);if(!l){a=s.target;break}if([...Object.keys(s.attrsSet??{}),...s.attrsRemoved??[]].some(u=>!yr(u)||gr(l,u))){a=s.target;break}if(s.text!==void 0&&(!Sr(l)||Tr(l))){a=s.target;break}for(const[u,R]of Object.entries(s.attrsSet??{}))if(!ar(l,u)){try{l.setAttribute(u,R)}catch{}or(l,u,R)}for(const u of s.attrsRemoved??[])ar(l,u)||(l.removeAttribute(u),or(l,u,null));typeof s.text=="string"&&Ar(l,s.text),n.push(s.target)}if(r)try{Xe.edit?.(t.seq,n,a)}catch{}if(a!==void 0){C.post({__frame_patch_miss:{seq:t.seq}},e);return}try{document.dispatchEvent(new CustomEvent("claude:edit",{detail:{seq:t.seq,targets:n}}))}catch{}}function or(t,e,r){if(!(t instanceof HTMLInputElement))return;const n=e.toLowerCase();n==="checked"?t.checked=r!==null:n==="value"&&t.type!=="file"&&(t.value=r??"")}function ar(t,e){const r=e.toLowerCase(),n=t;return r==="data-id"||(r==="value"||r==="checked")&&(n.__artifactSecret===!0||/^(password|hidden|file)$/.test(n.type??"")||/(^|\s)(cc-|one-time-code|current-password|new-password)/i.test(`${t.getAttribute("autocomplete")??""} ${n.autocomplete??""}`))}function sr(t){const e=document.documentElement;t==="light"||t==="dark"?(e.dataset.theme=t,e.style.colorScheme=t,vt=!0):vt&&(delete e.dataset.theme,e.style.colorScheme="",vt=!1)}var le=new Map,_t=null;function yt(){let t;const e={u:new Promise(r=>{t=r}),r:r=>{e.done=!0,t(r)},done:!1,nulled:!1};return e}function Ye(t,e){t.nulled=!0,t.ver=e,t.r(null)}function gt(t,e){for(const[r,n]of le)n.done||(e&&n.asked?e(r,n):Ye(n,t))}function Gn(){for(const t of le.values())if(t.asked&&!t.done)return!0;return!1}var Wn=Object.freeze(Object.assign(Object.create(null),{call:Function.prototype.call,apply:Function.prototype.apply,bind:Function.prototype.bind})),wt=!1,bt=(t,e)=>{let r=le.get(t);if(r?.nulled&&wt)r=yt(),le.set(t,r);else if(!r||r.done){r?.nulled&&Y&&C.post({__frame_cap_telemetry:{kind:"cap-load-error",cap:t,phase:"install"}},Y);return}const n=typeof e=="function"?Object.setPrototypeOf(e,Wn):Object.assign(Object.create(null),e);typeof n.then=="function"&&delete n.then,r.want=void 0,r.r(Object.freeze(n))};function ir(){const t=Xt?.value??{};nr(window,"claude",t);for(const e of Object.keys(Ne)){if(t[e]!==void 0){nr(t,e,t[e]);continue}le.set(e,yt())}if(t.use===void 0){const e=r=>{if(typeof r!="string"||!Object.hasOwn(Ne,r))return Promise.resolve(null);let n=le.get(r);return n?(_t&&(n.nulled||n.want!==void 0)&&(n=_t(r,n)),n.asked=!0,n.u):Promise.resolve(t[r]??null)};try{Object.defineProperty(t,"use",{value:e,writable:!0,configurable:!0,enumerable:!1})}catch{}}return t}if(Ge==="framed"){let t;const e=Ce&&pe.test(Ce)?ie(Ce).catch(c=>{t={f:Ce,e:c}}):Promise.resolve(void 0),r=c=>{if(c.type==="auxclick"&&c.button!==1)return;const h=c.target,y=h&&h.closest?h.closest("a[href],area[href]"):null;if(!y)return;const O=y.getAttribute("href");if(!O)return;let F;try{F=new URL(O,document.baseURI)}catch{return}if((F.protocol==="http:"||F.protocol==="https:")&&F.origin!==location.origin){c.preventDefault();const $=(y.getAttribute("target")??"").toLowerCase(),K=c.type==="auxclick"||c.metaKey||c.ctrlKey||c.shiftKey||c.altKey||!["","_self","_top","_parent"].includes($);C.post({__frame_nav:!0,url:F.href,newTab:K},"*")}};addEventListener("click",r,!0),addEventListener("auxclick",r,!0);const n={},a=c=>{c.isTrusted&&(n.pointer=!0)},s=c=>{c.isTrusted&&(n.click=!0)};addEventListener("pointermove",a,{capture:!0,passive:!0}),addEventListener("click",s,{capture:!0,passive:!0});const l={cb:null};addEventListener("keydown",c=>l.cb?.(c),!0);const u={cb:null};addEventListener("keydown",c=>u.cb?.(c));const R=pn();e.then(c=>c?.installEscapeForward?.(l,h=>{Y&&C.post(h,Y)})),e.then(c=>{try{c?.installFocusKeep?.()}catch{}}),e.then(c=>{if(!c?.wireNav)return;const h=C.port("*");c.wireNav(h),removeEventListener("click",r,!0),removeEventListener("auxclick",r,!0),removeEventListener("pointermove",a,!0),removeEventListener("click",s,!0),c.wireEngagement?.(n,h,R)});let b=null;try{b=Nn()}catch{}const g=document.readyState==="loading"?new Promise(c=>document.addEventListener("DOMContentLoaded",()=>c(),{once:!0})):Promise.resolve();let p="dcl",k=!1;g.then(()=>{k=!0});let L=null,m=null;try{m=$r(window.name),L=Bt(null,m)}catch{}const j=ir();let A=null;try{A=un(j,L,{post:(c,h)=>C.post(c,h),dcl:g},m)}catch{}e.then(c=>{try{A&&c?.installHotExtras?.(A)}catch{}});let _=null;const E=()=>Array.isArray(_?.flags)&&_.flags.includes("frame_ldx_runtime")&&!!me&&pe.test(me)&&document.querySelector("script#an-form")!==null;try{A?.hydration(E,Kr)}catch{}let x=null,D=0;const B=C.on((c,h,y,O)=>{Jt(h)&&Pr(c)&&(O(),_=c.__frame_init,Y=h,B(),clearTimeout(D),x?.())});if(We){const c=Zt===void 0?{__frame_cred:We}:{__frame_cred:We,exp:Zt};for(const h of ht)try{h.includes("*")||C.post(c,h)}catch{}}C.post({__frame_connect:!0},"*");try{A?.afterConnect()}catch{}const W=setTimeout,H=clearTimeout,Ie=()=>new Promise(c=>W(c,0));let be=()=>NaN,je=()=>[];try{be=performance.now.bind(performance),je=performance.getEntriesByType.bind(performance)}catch{}let U=0;const Ee=()=>{try{C.post({__frame_alive:!0},"*")}catch{}U=W(Ee,jn)},xe=()=>H(U);Ee(),addEventListener("load",xe,{once:!0});const ce=new Promise(c=>{x=c,D=setTimeout(()=>{B(),c()},Yt)}),te=new WeakSet;addEventListener("error",c=>{c.target&&te.add(c.target)},!0);try{An(qt(),We,()=>{e.then(c=>{try{c?.drawRefusedNotice?.()}catch{}})})}catch{}const ve=()=>{let c=[];try{c=[...document.querySelectorAll("link[rel~=stylesheet]:not([rel~=alternate])")].filter(y=>!y.sheet&&!y.disabled&&!te.has(y)&&y.getAttribute("href")&&URL.canParse(y.href)&&(!y.media||matchMedia(y.media).matches))}catch{}let h=c.length;return h===0?Promise.resolve():new Promise(y=>{try{const O=dt-be();O>0&&(p="sheets");const F=W(y,O>0?O<dt?O:dt:0),$=()=>{--h===0&&(H(F),y())};for(const K of c)K.addEventListener("load",$,{once:!0}),K.addEventListener("error",$,{once:!0})}catch{y()}})};g.then(()=>{try{b?.restore()}catch{}});const Je=Promise.all([ce,g,e]).then(c=>{if(_?.hostOverlays!==!0||!Y)return;const h=c[2],y=$=>{try{return $?.()===!0}catch{return!1}},O={cover:y(h?.declaresCover),..._.hostSides===!0&&{sides:y(h?.declaresSides)},...h?.answerLayoutCheck&&{checks:!0}};if(C.post({__frame_layout:O},Y),_.hostBackground!==!0)return;const F=Y;return Ie().then(ve).then(()=>{try{h?.watchBackground?.($=>C.post({__frame_layout:{...O,background:$}},F))}catch{}})}),Se={cb:null};C.on((c,h)=>{if(Jt(h)&&Nr(c)){try{b?.promoted()}catch{}Se.cb?.()}}),ce.then(async()=>{if(!_||!Y){gt();try{A?.onNoInit()}catch{}return}if(sr(_.theme),_.hostVisible===!1&&e.then(i=>i?.applyHostVisible?.(!1,R)),_.hostKeys!==void 0){const i=Y,S=_.hostKeys;e.then(w=>w?.installHostKeyForward?.(u,S,M=>C.post(M,i)))}try{A?.onInit(_.hot,Y)}catch{}let c;const h=()=>{try{!c&&me&&E()&&(c=ie(me),c.then(i=>i?.prefetch?.()).catch(()=>{}))}catch{}};h(),g.then(h);const y=Y,O=C.port(y),F=(i,S)=>C.post({__frame_cap_telemetry:{kind:"cap-load-error",cap:i,phase:S}},y),$=(i,S,w)=>{new Promise(M=>M($n(S,w))).then(M=>F(i,M),()=>F(i))},K=i=>C.post({__frame_cap_recovered:{cap:i}},y);let Z=_.brokerGen;const ue=()=>A?.boot.ver??"",G=ue(),_e=(i,S)=>{const w=ue();H(S.t),S.want=w,S.t=W(()=>{S.done||Ye(S,w)},Yt),C.post({__frame_cap_want:!0,cap:i,ver:w},y)},Q=(i,S)=>{const w=le.get(i.cap),M=Ne[i.cap];if(!S||!w||w.done||w.want!==i.ver||!pe.test(M))return;if(H(w.t),w.want=void 0,Z=i.brokerGen??Z,i.ver!==ue()){_e(i.cap,w);return}if(!i.grant||i.cap==="network"){Ye(w,i.ver);return}const ee=we,V=we={...ee,capabilities:{...ee.capabilities,[i.cap]:i.grant},capBudgets:{...ee.capBudgets,[i.cap]:{...ee.capBudgets[i.cap],...i.budgets}}};ie(M).then(z=>{Fe.has(M)&&K(i.cap),V.brokerGen=Z,wt=!0;try{z?.install?.(V)}catch{F(i.cap,"install")}finally{wt=!1}},z=>$(i.cap,M,z)).then(()=>{w.done||Ye(w,i.ver)})};let De=!1,He=!1;C.on((i,S,w)=>{if(S!==y)return;try{if(A?.onShell(i))return}catch{}if(Fr(i)&&sr(i.__frame_theme.theme),tn(i)&&Q(i,w),w&&rn(i)&&(Z=i.brokerGen??Z),Cr(i)){const V=i.__frame_host_visible.visible;e.then(z=>z?.applyHostVisible?.(V,R))}i?.__frame_layout_check&&e.then(V=>V?.answerLayoutCheck?.(i,z=>C.post({__frame_layout_verdict:z},y))),Mr(i)&&zn(i.__frame_patch,y,w);const M=i?.__fc_mode;M&&typeof M=="object"&&!De&&pt&&pe.test(pt)&&(De=!0,ie(pt).then(V=>V.install?.(y,M.on===!0,O)).catch(()=>{}));const ee=i?.__ft_cmd;ee&&typeof ee=="object"&&!He&&mt&&pe.test(mt)&&(He=!0,ie(mt).then(V=>V.install?.(y,ee,O)).catch(()=>{}))});const fe=Object.keys(_.capabilities??{}).filter(i=>Object.hasOwn(Ne,i)).map(i=>[i,Ne[i]]).filter(i=>typeof i[1]=="string"&&pe.test(i[1])),re=y;let Be=!1,ke=()=>{};const Ze=new Promise(i=>{ke=()=>{Be=!0,i()}}),ye=()=>(Be||(p="caps"),Ze),Qe=L!==null||jt(_.hot)||_.hostVisible===!1||_.hostOverlays===!0;k&&(p="init");const ge=_.hostBackground===!0,Ae=g.then(()=>(ge&&ye(),ge?Je:void 0)).then(()=>Qe?ye():Ie()).then(ve).then(()=>{let i=!0;try{i=Qe||Gn()}catch{}return i?ye():void 0}).then(()=>{xe();const i=pr(je,be);C.post(i?{__frame_ready:!0,nav:i,gate:p}:{__frame_ready:!0,gate:p},re),e.then(S=>{S?.installSizeReporter?.(re,Se,O),S?.installPaintReporter?.(O)})}),qe=await Promise.allSettled(fe.map(([,i])=>ie(i))),ne=await e;if(ne?.buildBoot||(t?$("_transforms",t.f,t.e):F("_transforms")),ne?.buildBoot)try{we=ne.buildBoot(_,ne.TRANSFORMS??{},{shellOrigin:re,mount:bt,hooks:Xe,shell:O},i=>C.post({__frame_cap_telemetry:i},re))}catch{F("_transforms","install"),we=rr(_,re,O)}else we=rr(_,re,O);ne?.buildBoot&&Fe.has(Ce??"")&&K("_transforms");const de=we;de.brokerGen=Z;try{ne?.installAnchorMirror?.(O)}catch{}qe.forEach((i,S)=>{const[w,M]=fe[S];if(i.status!=="fulfilled"){$(w,M,i.reason);return}Fe.has(M)&&K(w);try{i.value?.install?.(de)}catch{F(w,"install")}});const Ue=_.capWants===!0;Ue&&(_t=(i,S)=>{const w=ue();if(!w)return S;if(!S.nulled)return S.want!==w&&_e(i,S),S;if(w===S.ver)return S;const M=yt();return le.set(i,M),_e(i,M),M}),gt(G,Ue&&ue()!==G?_e:void 0),ke(),await Ae;let et=!1;try{et=E()}catch{}me&&et?(c??ie(me)).then(i=>i?.boot?.({shellOrigin:y,build:de.flags.has(fn),hot:A?.hot??null,carried:A?.carried(),presented:()=>A?.presented()??!0})).catch(()=>!1).then(i=>{A?.hydrated(),i!==!0?F("_ldx"):Fe.has(me)&&K("_ldx")}):A?.hydrated()})}else ft&&(ir(),Cn(ft,ht,ie,{settle:gt,mount:bt}))})();</script><!-- /frame-runtime --><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Guided Order Capture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&family=IBM+Plex+Serif:wght@400&display=swap">
+<style>
+/* Layout: Opas on a blurred workday. Bottom-right dock: the bar sits bottom right, the order pane grows up out of it, and Opas's question pane sits to the left of the bar (stacks between them when narrow). Single dark look, matching Bridgeable's glass. */
+:root{
+  color-scheme:dark;
+  --bg:#09090a;--ink:#f1f1ee;--ink2:#a3a39f;--ink3:#64645f;
+  --rule:rgba(255,255,255,.08);--rule2:rgba(255,255,255,.16);
+  --ok:#4aa673;--need:#e3ab4f;--steel:#8fb0cf;--steel-a:rgba(143,176,207,.16);--steel-b:rgba(143,176,207,.5);
+  --glass-a:rgba(48,48,52,.66);--glass-b:rgba(16,16,18,.7);
+  --sans:"IBM Plex Sans",ui-sans-serif,system-ui,-apple-system,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  --serif:"IBM Plex Serif",Georgia,serif;
+  --ease:cubic-bezier(.2,0,.1,1);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;overflow:hidden}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:1px solid var(--ink2);outline-offset:2px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* prototype strip */
+.proto{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));border-bottom:1px dashed var(--rule2);font-size:12.5px;color:var(--ink3)}
+.proto b{color:var(--ink2);font-weight:500}
+.proto .tip{flex:1 1 18em;min-width:0}
+.pbtn{border:1px solid var(--rule2);background:rgba(255,255,255,.05);border-radius:999px;padding:5px 12px;font-size:12.5px;color:var(--ink2);cursor:pointer}
+.pbtn:hover{background:rgba(255,255,255,.1);color:var(--ink)}
+.pbtn[disabled]{opacity:.5;cursor:default}
+
+/* stage */
+.stage{position:relative;flex:1;min-height:0;overflow:hidden}
+.backdrop{position:absolute;inset:0;padding:2.4em max(16px,6vw);display:flex;flex-direction:column;gap:1.1em;filter:blur(5px);opacity:.55;pointer-events:none}
+.backdrop h1{margin:0;font-weight:300;font-size:2.2em;letter-spacing:-.02em}
+.backdrop .eb{font-size:.72em;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3)}
+.backdrop .ln{display:flex;justify-content:space-between;max-width:38em;padding:.7em 0;border-bottom:1px solid var(--rule);color:var(--ink2)}
+.veil{position:absolute;inset:0;background:rgba(6,6,7,.42)}
+
+.glass{background:linear-gradient(160deg,var(--glass-a),var(--glass-b));-webkit-backdrop-filter:blur(24px) saturate(1.4);backdrop-filter:blur(24px) saturate(1.4);box-shadow:inset 0 1px 0 rgba(255,255,255,.14),inset 0 0 0 1px rgba(255,255,255,.06),0 24px 60px rgba(0,0,0,.55),0 6px 16px rgba(0,0,0,.35)}
+
+/* dock */
+.dock{position:absolute;left:0;right:0;bottom:0;max-height:100%;display:grid;grid-template-columns:300px minmax(0,600px);grid-template-areas:"side pane" "side chips" "side bar";gap:12px 16px;justify-content:end;align-items:end;padding-top:16px;padding-bottom:max(16px,env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+@media (max-width:960px){.dock{grid-template-columns:minmax(0,600px);grid-template-areas:"pane" "side" "chips" "bar"}}
+
+/* the order pane */
+.pane{grid-area:pane;border-radius:22px;padding:16px 18px 14px;display:flex;flex-direction:column;gap:12px;max-height:min(64vh,580px);overflow:auto;transform-origin:50% 100%}
+.pane.grow{animation:grow .38s var(--ease)}
+@keyframes grow{from{opacity:0;transform:translateY(14px) scaleY(.94)}}
+.ph{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.eb{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink3)}
+.pt{font-size:19px;font-weight:400;letter-spacing:-.01em;margin-top:2px}
+.pills{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-size:12px;padding:3px 10px;border-radius:999px;border:1px solid var(--rule2);color:var(--ink2);white-space:nowrap}
+.chip.need{color:var(--need);border-color:rgba(227,171,79,.45)}
+.chip.kind{color:var(--steel);border-color:var(--steel-b)}
+.chip.kind.pop{animation:pop .5s var(--ease)}
+@keyframes pop{0%{transform:scale(.8);opacity:0}60%{transform:scale(1.06)}}
+.rows{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+@media (max-width:560px){.rows{grid-template-columns:minmax(0,1fr)}}
+.row{display:grid;grid-template-columns:18px minmax(0,1fr);gap:1px 10px;align-items:start;text-align:left;background:rgba(255,255,255,.025);border:1px solid var(--rule);border-radius:12px;padding:8px 12px 9px;cursor:pointer;transition:border-color .25s,box-shadow .25s,background .25s}
+.row:hover{background:rgba(255,255,255,.05)}
+.row .mk{grid-row:1/span 2;width:16px;height:16px;margin-top:2px;border-radius:50%;border:1.5px solid var(--ink3);position:relative}
+.row.filled .mk{background:var(--ok);border-color:var(--ok)}
+.row.filled .mk::after{content:"";position:absolute;left:4.5px;top:1.5px;width:4px;height:8px;border:solid #0b0b0b;border-width:0 1.8px 1.8px 0;transform:rotate(45deg)}
+.row .lab{font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink3)}
+.row .v{font-size:15px;line-height:1.35;min-width:0;overflow-wrap:anywhere;transition:opacity .2s}
+.row .v.in{opacity:0}
+.row .v .sub{color:var(--ink2);font-size:13px}
+.row .v.empty{color:var(--ink3);font-style:italic;font-size:14px}
+.row .v .name{font-family:var(--serif);font-size:16px}
+.row.current{border-color:var(--steel-b);box-shadow:0 0 0 3px var(--steel-a)}
+.row.current .mk{border-color:var(--steel)}
+.row.current .v.empty{color:var(--steel);font-style:normal}
+.row.landed{animation:landed .9s var(--ease)}
+@keyframes landed{0%{background:rgba(74,166,115,.28);border-color:rgba(74,166,115,.6)}100%{background:rgba(255,255,255,.025)}}
+.pf{display:flex;justify-content:space-between;align-items:baseline;gap:12px;border-top:1px solid var(--rule);padding-top:10px;font-size:12.5px;color:var(--ink3)}
+.pf .note{color:var(--need)}
+.pf .tot{font-size:15px;color:var(--ink);font-variant-numeric:tabular-nums}
+.held{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 10px;border:1px dashed rgba(227,171,79,.45);border-radius:12px}
+.held .hl{font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--need);margin-right:4px}
+.hchip{display:inline-flex;align-items:center;border:1px solid rgba(227,171,79,.4);border-radius:999px;background:rgba(227,171,79,.08)}
+.hchip .ht{background:none;border:0;font-family:var(--mono);font-size:13px;padding:2px 4px 2px 10px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+.hchip .hx{background:none;border:0;color:var(--ink2);font-size:15px;line-height:1;padding:2px 9px 2px 5px;cursor:pointer}
+.hchip .ht:hover,.hchip .hx:hover{color:var(--ink)}
+.hchip.editing{padding:2px 10px;border-color:var(--need);box-shadow:0 0 0 3px rgba(227,171,79,.15)}
+.hedit{background:transparent;border:0;font-family:var(--mono);font-size:13px;color:var(--ink);padding:0;min-width:4ch;max-width:100%}
+.hedit:focus{outline:none}
+.held .hhint{font-size:12px;color:var(--ink3);margin-left:auto}
+.held-ghost{background:rgba(227,171,79,.22);border-color:rgba(227,171,79,.6)}
+.pane.dragging .row{border-style:dashed}
+.pane.dragging .row.drop{border-style:solid;border-color:var(--ok);box-shadow:0 0 0 3px rgba(74,166,115,.22);background:rgba(74,166,115,.1)}
+.done{display:flex;flex-direction:column;gap:6px;padding:6px 0 4px}
+.done .dn{font-family:var(--mono);font-size:13px;color:var(--ok)}
+.done .dl{font-size:18px;font-weight:300;line-height:1.4;text-wrap:balance}
+.done .ds{font-size:13px;color:var(--ink2)}
+
+/* Opas's question pane */
+.side{grid-area:side;align-self:end;border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.op{display:flex;align-items:center;gap:7px;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink3)}
+.op .dot{width:9px;height:9px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#d8d8d8,#4a4a4a 55%,#111);box-shadow:0 0 8px rgba(255,255,255,.25)}
+.ask{font-size:17px;line-height:1.35;font-weight:400;text-wrap:balance}
+.ask.new{animation:askIn .35s var(--ease)}
+@keyframes askIn{from{opacity:0;transform:translateY(4px)}}
+.hint{font-size:12.5px;color:var(--ink2);line-height:1.45}
+.flash{font-size:12.5px;color:var(--need)}
+/* quick answers: pills in a row above the bar */
+.chips{grid-area:chips;display:flex;flex-wrap:wrap;gap:6px;min-width:0}
+.chips:empty{display:none}
+.chips.new .opt{animation:askIn .3s var(--ease) backwards}
+.chips.new .opt:nth-child(2){animation-delay:.04s}.chips.new .opt:nth-child(3){animation-delay:.08s}.chips.new .opt:nth-child(4){animation-delay:.12s}
+.opt{display:inline-flex;align-items:center;gap:8px;max-width:100%;text-align:left;background:linear-gradient(160deg,var(--glass-a),var(--glass-b));-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border:1px solid var(--rule2);border-radius:999px;padding:5px 13px 5px 6px;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.4)}
+.opt:hover{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.28)}
+.opt kbd{font-family:var(--mono);font-size:11px;color:var(--ink2);border:1px solid var(--rule2);border-radius:999px;padding:1px 7px;white-space:nowrap}
+.opt .ol{font-size:13.5px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.opt .os{font-size:12px;color:var(--ink2);white-space:nowrap}
+.free{font-size:12px;color:var(--steel)}
+
+/* the bar */
+.bar{grid-area:bar;display:flex;align-items:center;gap:10px;border-radius:30px;padding:7px 14px 7px 8px}
+.bar.shake{animation:shake .35s}
+@keyframes shake{25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+.orb{flex:none;width:34px;height:34px;border-radius:50%;background:radial-gradient(circle at 36% 30%,#3d3d3d 0,#191919 42%,#060606 78%);box-shadow:inset 0 0 0 1px rgba(255,255,255,.07),0 6px 14px rgba(0,0,0,.6)}
+.bar input{flex:1;min-width:0;background:transparent;border:0;font-family:var(--mono);font-size:16px;padding:8px 0}
+.bar input:focus{outline:none}
+.bar input::placeholder{color:var(--ink3)}
+.bar kbd{font-family:var(--mono);font-size:11px;color:var(--ink3);border:1px solid var(--rule2);border-radius:5px;padding:1px 6px}
+
+/* a recognized word on its way into the order */
+.fly{position:fixed;left:0;top:0;z-index:60;font-family:var(--mono);font-size:16px;color:var(--ink);background:rgba(143,176,207,.2);border:1px solid var(--steel-b);border-radius:8px;padding:1px 7px;pointer-events:none;white-space:nowrap;box-shadow:0 6px 18px rgba(0,0,0,.45)}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:1ms!important;transition-duration:1ms!important}}
+</style>
+
+<header class="proto">
+  <span><b>Guided capture</b> · prototype</span>
+  <span class="tip">Type <b>order for hopkins</b>, or pick “New order” and follow Opas. Words Opas understands fly into the order. <b>Tab</b> places what you've typed and moves on; anything Opas can't place waits under the order. Example customers and prices; nothing is saved.</span>
+  <button class="pbtn" id="demo" type="button">Watch a power user</button>
+  <button class="pbtn" id="reset" type="button">Reset</button>
+</header>
+
+<main class="stage">
+  <div class="backdrop" aria-hidden="true">
+    <div><div class="eb">Sunnycrest · Office</div><h1>Today</h1></div>
+    <div class="ln"><span>Hart · Riverside · St. Joseph's, Auburn</span><span>10:00 graveside</span></div>
+    <div class="ln"><span>Keller · NewComer · Oakwood, Syracuse</span><span>11:30 church</span></div>
+    <div class="ln"><span>Dunn · Hopkins · Lake View, Skaneateles</span><span>1:00 graveside</span></div>
+  </div>
+  <div class="veil"></div>
+  <div class="dock">
+    <section id="pane" class="pane glass" hidden aria-label="The order"></section>
+    <aside id="side" class="side glass" aria-live="polite" aria-label="Opas"></aside>
+    <div id="chips" class="chips" aria-label="Quick answers"></div>
+    <div class="bar glass" id="bar">
+      <span class="orb" aria-hidden="true"></span>
+      <label class="sr" for="inp">Ask Opas</label>
+      <input id="inp" autocomplete="off" spellcheck="false" autocapitalize="off" autocorrect="off" placeholder="Type “order for hopkins”…">
+      <kbd>esc</kbd>
+    </div>
+  </div>
+</main>
+
+<script>
+(()=>{
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const norm=s=>s.toLowerCase().replace(/&/g,' and ').replace(/[.'’`,;!?()]/g,'').replace(/\s+/g,' ').trim();
+const money=n=>'$'+n.toLocaleString('en-US');
+const titleCase=s=>s.replace(/\b([a-z])([a-z']*)/gi,(m,a,b)=>a.toUpperCase()+b.toLowerCase());
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const MAC=/Mac|iPhone|iPad/.test(navigator.platform||navigator.userAgent);
+const MOD=MAC?'⌘':'Ctrl+';
+const REDUCE=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const inp=$('#inp'),pane=$('#pane'),side=$('#side'),bar=$('#bar'),chips=$('#chips');
+
+/* ---------- example tenant data ---------- */
+const FH={
+  hopkins:{label:'Hopkins Funeral Home',sub:'Skaneateles',keys:['hopkins','hopkins funeral home','hopkins fh'],
+    usual:{vault:['monticello','continental','urn_mont'],cemetery:['stmary_sk','lakeview','stjoseph']},
+    vnote:'Hopkins usually orders the Monticello: 7 of their last 12.'},
+  riverside:{label:'Riverside Memorial Chapel',sub:'Auburn',keys:['riverside','riverside memorial','riverside memorial chapel'],
+    usual:{vault:['continental','monticello','urn_std'],cemetery:['stjoseph','stmary_au','oakwood']},
+    vnote:'Riverside usually orders the Continental: 5 of their last 9.'},
+  brown:{label:'Brown & Sons Funeral Home',sub:'Auburn',keys:['brown','brown and sons','brown and sons funeral home'],usual:null},
+  newcomer:{label:'NewComer Funeral Home',sub:'Syracuse',keys:['newcomer','newcomer funeral home'],usual:null}
+};
+const POPULAR={fh:['hopkins','riverside','brown'],vault:['monticello','continental','urn_std'],cemetery:['stmary_sk','oakwood','stjoseph']};
+const VAULT={
+  monticello:{label:'Monticello Burial Vault',short:'Monticello',price:1405,kind:'burial',pers:['legacy','nameplate','vinyl'],keys:['monticello','monti','monticello burial vault','monticello vault']},
+  continental:{label:'Continental Burial Vault',short:'Continental',price:1607,kind:'burial',pers:['legacy','nameplate','vinyl'],keys:['continental','conti','continental burial vault']},
+  venetian_w:{label:'White Venetian Burial Vault',short:'White Venetian',price:2290,kind:'burial',pers:['legacy','nameplate'],keys:['white venetian','venetian','venet']},
+  venetian_g:{label:'Gold Venetian Burial Vault',short:'Gold Venetian',price:2390,kind:'burial',pers:['legacy','nameplate'],keys:['gold venetian','venetian','venet']},
+  graveliner:{label:'Graveliner',short:'Graveliner',price:895,kind:'burial',pers:[],keys:['graveliner','liner','rough box']},
+  urn_mont:{label:'Monticello Urn Vault',short:'Monticello Urn',price:640,kind:'urn',pers:['legacy','nameplate'],keys:['monticello urn','monti urn','monticello urn vault']},
+  urn_salute:{label:'Salute Urn Vault',short:'Salute Urn',price:595,kind:'urn',pers:['nameplate'],keys:['salute','salute urn','salute urn vault']},
+  urn_std:{label:'Urn Vault · Standard',short:'Standard Urn',price:425,kind:'urn',pers:[],keys:['urn','urn vault','standard urn']}
+};
+const PERS={
+  none:{label:'No personalization',price:0,keys:['no personalization','none','no'],ctxKeys:['none','no']},
+  legacy:{label:'Legacy print',price:185,keys:['legacy','legacy print']},
+  nameplate:{label:'Nameplate & emblem',price:120,keys:['nameplate','name plate']},
+  vinyl:{label:"Life's Reflections (vinyl)",price:95,keys:['vinyl','lifes reflections']}
+};
+const PRINT={
+  flag:{label:'American Flag',keys:['american flag','flag']},
+  home:{label:'Going Home',keys:['going home']},
+  serenity:{label:'Serenity',keys:['serenity']},
+  hands:{label:'Praying Hands',keys:['praying hands']}
+};
+const CEM={
+  stmary_sk:{label:"St. Mary's Cemetery",sub:'Skaneateles',keys:['st marys','saint marys','st marys cemetery','st marys skaneateles','skaneateles st marys']},
+  stmary_au:{label:"St. Mary's Cemetery",sub:'Auburn',keys:['st marys','saint marys','st marys cemetery','st marys auburn','auburn st marys']},
+  lakeview:{label:'Lake View Cemetery',sub:'Skaneateles',keys:['lake view','lakeview']},
+  stjoseph:{label:"St. Joseph's Cemetery",sub:'Auburn',keys:['st josephs','st joseph','saint josephs']},
+  oakwood:{label:'Oakwood Cemetery',sub:'Syracuse',keys:['oakwood']}
+};
+const PLACE={
+  graveside:{label:'Graveside',keys:['graveside','grave side']},
+  church:{label:'Church',keys:['church','mass','funeral mass']},
+  home:{label:'Funeral home',keys:['at the funeral home','funeral home service']}
+};
+const EQUIP={
+  full:{label:'Full equipment',sub:'Tent, chairs, lowering device, grass',price:300,kind:'burial',keys:['full equipment','full','full setup']},
+  tent:{label:'Tent only',sub:'Tent and chairs',price:225,kind:'burial',keys:['tent','tent only']},
+  device:{label:'Lowering device & grass',sub:'No family at the grave',price:185,kind:'burial',keys:['device','lowering device','device and grass']},
+  none_b:{label:'No equipment',sub:'Vault only',price:0,kind:'burial',keys:['no equipment','vault only','none','no'],ctxKeys:['none','no']},
+  crem_full:{label:'Full cremation setup',sub:'Tent, chairs, urn stand',price:250,kind:'urn',keys:['full cremation','full cremation setup','full','full setup']},
+  crem_chairs:{label:'Chairs and urn stand',sub:'No tent',price:120,kind:'urn',keys:['chairs','urn stand','chairs and urn stand']},
+  none_u:{label:'No setup',sub:'Urn vault only',price:0,kind:'urn',keys:['no equipment','no setup','none','no'],ctxKeys:['none','no']}
+};
+const SRC={fh:FH,vault:VAULT,pers:PERS,print:PRINT,cemetery:CEM,place:PLACE,equip:EQUIP};
+const LEX=[];
+for(const [field,map] of Object.entries(SRC))for(const [id,v] of Object.entries(map))for(const k of v.keys)
+  LEX.push({field,id,key:norm(k),ctx:(v.ctxKeys||[]).includes(k)});
+
+const ORDER=['fh','decedent','vault','pers','print','dates','day','time','place','cemetery','equip'];
+const LABEL={fh:'Funeral home',decedent:'Deceased',vault:'Vault',pers:'Personalization',print:'Legacy print',dates:'Dates',day:'Service day',time:'Time',place:'Service',cemetery:'Cemetery',equip:'Equipment'};
+
+/* ---------- dates and times ---------- */
+const WD={sun:0,sunday:0,mon:1,monday:1,tue:2,tues:2,tuesday:2,wed:3,weds:3,wednesday:3,thu:4,thur:4,thurs:4,thursday:4,fri:5,friday:5,sat:6,saturday:6};
+function at(n){const d=new Date();d.setHours(12,0,0,0);d.setDate(d.getDate()+n);return d}
+function dayObj(d){return {iso:d.toISOString().slice(0,10),weekday:d.toLocaleDateString('en-US',{weekday:'long'}),short:d.toLocaleDateString('en-US',{month:'short',day:'numeric'}),label:d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}}
+function nextDays(n){const out=[];for(let i=1;out.length<n;i++){const d=at(i);if(d.getDay()!==0)out.push({d:dayObj(d),tomorrow:i===1})}return out}
+function parseDay(t){if(t==='tomorrow')return dayObj(at(1));if(t==='today')return dayObj(at(0));if(t in WD){const now=new Date().getDay();let n=(WD[t]-now+7)%7;if(n===0)n=7;return dayObj(at(n))}return null}
+function fmtTime(h,mm,ap){if(!ap)ap=(h>=7&&h<=11)?'a':'p';if(h>12)h-=12;return `${h}:${mm||'00'} ${ap[0]==='a'?'AM':'PM'}`}
+
+/* ---------- state ---------- */
+let S=fresh(),SO=12,QN=31,HID=0;
+function fresh(){return {mode:'idle',type:null,f:{},pending:null,focus:null,incoming:new Set(),note:null,flash:null,num:null,held:[],editing:null,editDraft:null,suggest:null}}
+const kind=()=>S.f.vault?VAULT[S.f.vault.id].kind:null;
+function applicable(f){
+  const v=S.f.vault&&VAULT[S.f.vault.id],p=S.f.pers;
+  if(f==='pers')return !!(v&&v.pers.length);
+  if(f==='print')return !!(p&&p.id==='legacy');
+  if(f==='dates')return !!(p&&p.id!=='none');
+  return true;
+}
+const nextField=()=>ORDER.find(f=>applicable(f)&&!S.f[f])||null;
+function currentField(){
+  if(S.pending)return S.pending.field;
+  if(S.focus&&applicable(S.focus)&&!S.f[S.focus])return S.focus;
+  return nextField();
+}
+function valueFor(field,id){
+  const s=SRC[field][id];
+  const v={id,label:s.label};
+  if(s.sub)v.sub=s.sub;
+  if(field==='vault')v.price=s.price;
+  if(field==='pers'||field==='equip')v.price=s.price;
+  return v;
+}
+function total(){return (S.f.vault?S.f.vault.price:0)+(S.f.pers?S.f.pers.price:0)+(S.f.equip?S.f.equip.price:0)}
+
+function setField(f,v){
+  S.note=null;S.flash=null;
+  if(f==='vault'){
+    const nv=VAULT[v.id],old=S.f.vault&&VAULT[S.f.vault.id];
+    if(old&&old.kind!==nv.kind&&S.f.equip){delete S.f.equip;S.note=nv.kind==='urn'?'Equipment cleared: an urn vault means a cremation setup.':'Equipment cleared: a burial vault needs burial equipment.'}
+    if(S.f.pers&&S.f.pers.id!=='none'&&!nv.pers.includes(S.f.pers.id)){S.note=`${S.f.pers.label} cleared: the ${nv.short} doesn't offer it.`;delete S.f.pers;delete S.f.print;delete S.f.dates}
+    if(!nv.pers.length){delete S.f.pers;delete S.f.print;delete S.f.dates}
+  }
+  if(f==='pers'){if(v.id!=='legacy')delete S.f.print;if(v.id==='none')delete S.f.dates}
+  S.f[f]=v;S.incoming.add(f);
+  if(S.pending&&S.pending.field===f)S.pending=null;
+  if(S.focus===f)S.focus=null;
+}
+function clearField(f){
+  delete S.f[f];
+  if(f==='vault'){delete S.f.pers;delete S.f.print;delete S.f.dates}
+  if(f==='pers'){delete S.f.print;delete S.f.dates}
+}
+
+/* ---------- reading the bar ---------- */
+function tokens(text){const out=[],re=/\S+/g;let m;while((m=re.exec(text))){const n=norm(m[0]);if(n)out.push({raw:m[0],n,s:m.index,e:m.index+m[0].length})}return out}
+const isLexWord=w=>w.length>=3&&LEX.some(l=>l.key.split(' ').some(k=>k===w||(w.length>=4&&k.startsWith(w))));
+function lev(a,b){if(Math.abs(a.length-b.length)>2)return 9;const d=Array.from({length:a.length+1},(_,i)=>[i]);for(let j=1;j<=b.length;j++)d[0][j]=j;for(let i=1;i<=a.length;i++)for(let j=1;j<=b.length;j++)d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a[i-1]===b[j-1]?0:1));return d[a.length][b.length]}
+const WORDS=[...new Set(LEX.flatMap(l=>l.key.split(' ')).filter(w=>w.length>=5))];
+const nearMiss=w=>w.length>=5&&WORDS.some(k=>k!==w&&lev(w,k)<=2);
+const STOP=new Set(['for','the','a','an','at','on','and','with','family','order','quote','in','to','of','mr','mrs','ms','dr']);
+// A run of words that reads as a person's name, not a typo of something Opas sells.
+function nameFrom(run){
+  const words=run.filter(t=>!STOP.has(t.n));
+  if(!words.length||words.length>3)return null;
+  if(!words.every(t=>/^[a-z][a-z'-]*$/i.test(t.raw.replace(/[.,]$/,''))&&!isLexWord(t.n)&&!nearMiss(t.n)))return null;
+  return titleCase(words.map(t=>t.raw.replace(/[.,]$/,'')).join(' '));
+}
+
+function fieldOK(l,cur){
+  if(l.ctx&&l.field!==cur)return false;
+  if(l.field==='equip')return EQUIP[l.id].kind===(kind()||'burial');
+  if(l.field==='pers')return !!S.f.vault&&(l.id==='none'||VAULT[S.f.vault.id].pers.includes(l.id));
+  if(l.field==='print')return !!(S.f.pers&&S.f.pers.id==='legacy');
+  return true;
+}
+function matchAt(T,i,cur){
+  const n=k=>T[i+k]&&T[i+k].n;
+  // "for the smith family", "the smith family", "smith family", "mrs smith"
+  const fam=[[['for','the',null,'family'],2],[['the',null,'family'],1],[[null,'family'],0]];
+  for(const [pat,xi] of fam){
+    if(pat.every((w,k)=>n(k)&&(w===null?/^[a-z][a-z-]+$/.test(n(k))&&!isLexWord(n(k)):n(k)===w)))
+      return {len:pat.length,field:'decedent',val:titleCase(T[i+xi].raw.replace(/[^a-z'-]/gi,'')),waitable:false};
+  }
+  if(/^(mr|mrs|ms|dr)$/.test(n(0))&&n(1)&&/^[a-z][a-z-]+$/.test(n(1)))
+    return {len:2,field:'decedent',val:titleCase(T[i+1].raw.replace(/[^a-z'-]/gi,'')),waitable:false};
+  // dates for personalization
+  if(S.f.pers&&S.f.pers.id!=='none'){
+    let m=n(0).match(/^(\d{4})[-–](\d{4})$/);
+    if(m)return {len:1,field:'dates',val:`${m[1]} – ${m[2]}`};
+    if(/^\d{4}$/.test(n(0))&&n(1)&&/^[-–]$/.test(n(1))&&n(2)&&/^\d{4}$/.test(n(2)))return {len:3,field:'dates',val:`${n(0)} – ${n(2)}`};
+    if(/^\d{4}$/.test(n(0))&&n(1)&&/^\d{4}$/.test(n(1)))return {len:2,field:'dates',val:`${n(0)} – ${n(1)}`};
+  }
+  // time
+  let m=n(0).match(/^(\d{1,2})(?::(\d{2}))?(am|pm|a|p)$/);
+  if(m&&+m[1]<=12)return {len:1,field:'time',val:fmtTime(+m[1],m[2],m[3])};
+  if(n(0)==='noon')return {len:1,field:'time',val:'12:00 PM'};
+  m=n(0).match(/^(\d{1,2})(?::(\d{2}))?$/);
+  if(m&&+m[1]>=1&&+m[1]<=12){
+    if(n(1)&&/^(am|pm|a|p)$/.test(n(1)))return {len:2,field:'time',val:fmtTime(+m[1],m[2],n(1))};
+    if(cur==='time'||m[2])return {len:1,field:'time',val:fmtTime(+m[1],m[2],null),bareNum:true};
+  }
+  // day
+  const d=parseDay(n(0));if(d)return {len:1,field:'day',val:d};
+  // the catalog, customers, cemeteries, answers
+  for(let len=Math.min(5,T.length-i);len>=1;len--){
+    const phrase=T.slice(i,i+len).map(t=>t.n).join(' ');
+    let hits=LEX.filter(l=>l.key===phrase&&fieldOK(l,cur));
+    if(!hits.length&&len===1&&phrase.length>=3)
+      hits=LEX.filter(l=>!l.key.includes(' ')&&!l.ctx&&l.key.length>phrase.length&&l.key.startsWith(phrase)&&(phrase.length>=4||l.field==='fh')&&fieldOK(l,cur));
+    if(hits.length){
+      const fields=[...new Set(hits.map(h=>h.field))];
+      if(fields.length>1)hits=hits.filter(h=>h.field===(fields.includes(cur)?cur:fields[0]));
+      return {len,field:hits[0].field,ids:[...new Set(hits.map(h=>h.id))]};
+    }
+  }
+  return null;
+}
+// Has the person moved past this match? (a space after it, and no longer phrase still forming)
+function settled(T,i,c,text){
+  if(c.e>=text.length)return false;
+  if(c.waitable===false)return true;
+  const phrase=T.slice(i,i+c.len).map(t=>t.n).join(' ');
+  const nx=T[i+c.len];
+  if(!nx){
+    if(c.bareNum)return false;
+    return !LEX.some(l=>l.key.startsWith(phrase+' '));
+  }
+  if(i+c.len===T.length-1&&!/\s$/.test(text)){
+    if(c.bareNum&&/^(a|am|p|pm)$/.test(nx.n))return false;
+    return !LEX.some(l=>l.key.startsWith(phrase+' '+nx.n));
+  }
+  return true;
+}
+
+const OPENER=/^\s*(?:new\s+)?(order|quote)\s+(?:for\s+)?(?=\S)/i;
+function process(final){
+  let text=inp.value;
+  const flies=[];
+  if(S.mode==='idle'||S.mode==='done'){
+    const m=text.match(OPENER);
+    if(!m)return;
+    const rest=text.slice(m[0].length),nt=rest.match(/^\S+/);
+    if(!final&&nt&&/^f(o(r)?)?$/i.test(nt[0])&&!/\s/.test(rest.slice(nt[0].length,nt[0].length+1)))return;
+    const rect=spanRect(0,m[0].trimEnd().length);
+    start(m[1].toLowerCase());
+    flies.push({text:m[0].trim(),rect,target:'#pane .pt'});
+    text=rest;inp.value=text;
+  }
+  if(S.mode!=='capture'){runFlies(flies);return}
+  const T=tokens(text),cuts=[];
+  let i=0,run=[];
+  while(i<T.length){
+    const cur=currentField();
+    const c=matchAt(T,i,cur);
+    if(!c){run.push(T[i]);i++;continue}
+    c.s=T[i].s;c.e=T[i+c.len-1].e;c.text=text.slice(c.s,c.e);
+    if(final||settled(T,i,c,text)){
+      // Opas is waiting on the deceased and unknown words came right before something it recognized: that's the name.
+      if(run.length&&cur==='decedent'&&c.field!=='decedent'){
+        const nm=nameFrom(run);
+        if(nm){const s=run[0].s,e=run[run.length-1].e;setField('decedent',nm);cuts.push({s,e});flies.push({field:'decedent',text:text.slice(s,e),rect:spanRect(s,e,text)})}
+      }
+      if(c.ids&&c.ids.length>1){
+        if(!S.pending||S.pending.text!==c.text)S.pending={field:c.field,ids:c.ids,text:c.text};
+      }else{
+        setField(c.field,c.val!==undefined?c.val:valueFor(c.field,c.ids[0]));
+        cuts.push(c);
+        flies.push({field:c.field,text:c.text,rect:spanRect(c.s,c.e,text)});
+      }
+    }
+    run=[];
+    i+=c.len;
+  }
+  if(cuts.length){
+    for(const c of cuts.slice().reverse())text=text.slice(0,c.s)+text.slice(c.e);
+    text=text.replace(/\s{2,}/g,' ').replace(/^\s+/,'');
+    inp.value=text;
+    inp.setSelectionRange(text.length,text.length);
+  }
+  runFlies(flies);
+}
+function leftover(){
+  const text=inp.value.trim();
+  if(!text)return;
+  if(S.mode!=='capture'){
+    if(/^(new\s+)?(order|quote)(\s+for)?$/i.test(text)){const r=spanRect(0,inp.value.length);start(text.toLowerCase().includes('quote')?'quote':'order');inp.value='';runFlies([{text,rect:r,target:'#pane .pt'}]);return}
+    S.flash='Start with “order” or “quote”, or pick one below.';renderSide();shake();return;
+  }
+  if(S.pending){S.flash='Pick one of these first.';renderSide();shake();return}
+  const cur=currentField(),r=spanRect(0,inp.value.length);
+  const nm=nameFrom(tokens(text));
+  let f=null,val=null;
+  if(nm&&(cur==='decedent'||!S.f.decedent)){f='decedent';val=nm}
+  else if(cur==='dates'){f='dates';val=text}
+  else if(cur==='print'){f='print';val={id:'other',label:titleCase(text)}}
+  if(f&&val){setField(f,val);inp.value='';runFlies([{field:f,text,rect:r}]);return}
+  hold(text,r);
+}
+// Park what Opas can't place yet; it lands by itself once a later answer makes sense of it.
+function hold(text,rect){
+  const id=++HID;
+  S.held.push({id,text});inp.value='';
+  S.flash=`Holding “${text}” under the order. Drag it onto a line, or click it to fix a typo.`;
+  runFlies([{text,rect,target:`.hchip[data-h="${id}"]`}]);
+}
+function retryHeld(){
+  const out=[];let changed=true,guard=0;
+  while(changed&&guard++<4){
+    changed=false;
+    for(const h of S.held.slice()){
+      const T=tokens(h.text),ms=[];let i=0,ok=true;
+      while(i<T.length){const c=matchAt(T,i,currentField());if(!c||(c.ids&&c.ids.length>1)){ok=false;break}ms.push(c);i+=c.len}
+      if(!ok||!ms.length)continue;
+      const el=document.querySelector(`.hchip[data-h="${h.id}"]`),rect=el?rectOf(el):null;
+      for(const c of ms){setField(c.field,c.val!==undefined?c.val:valueFor(c.field,c.ids[0]));out.push({field:c.field,text:h.text,rect})}
+      S.held=S.held.filter(x=>x!==h);changed=true;
+    }
+  }
+  return out;
+}
+
+/* ---------- motion ---------- */
+const ctx2d=document.createElement('canvas').getContext('2d');
+function spanRect(s,e,text){
+  text=text??inp.value;
+  const cs=getComputedStyle(inp),r=inp.getBoundingClientRect();
+  ctx2d.font=`${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+  const x=r.left+parseFloat(cs.paddingLeft)+ctx2d.measureText(text.slice(0,s)).width-inp.scrollLeft;
+  return {x:Math.max(r.left,Math.min(x,r.right-40)),y:r.top+r.height/2};
+}
+const rectOf=el=>{const r=el.getBoundingClientRect();return {x:r.left+12,y:r.top+r.height/2}};
+// A held word that's one or two letters off exactly one thing Opas knows: offer the fix.
+function suggestFor(h){
+  if(h.noSuggest)return null;
+  const n=norm(h.text);if(n.length<4)return null;
+  const hits=new Map();
+  for(const [field,map] of Object.entries(SRC))for(const [id,v] of Object.entries(map)){
+    if(field==='print'&&!(S.f.pers&&S.f.pers.id==='legacy'))continue;
+    if(field==='pers'&&!S.f.vault)continue;
+    if(!okFor(field,id))continue;
+    if(v.keys.some(k=>{k=norm(k);return k.length>=5&&k!==n&&lev(n,k)<=2}))hits.set(field+':'+id,{field,id,label:v.short||v.label});
+  }
+  return hits.size===1?[...hits.values()][0]:null;
+}
+function refreshSuggest(){
+  if(S.suggest&&S.held.some(x=>x.id===S.suggest.heldId))return;
+  S.suggest=null;
+  if(S.pending)return;
+  for(const h of S.held){const g=suggestFor(h);if(g){S.suggest={heldId:h.id,...g};return}}
+}
+function answerSuggest(yes,src){
+  const g=S.suggest;if(!g)return;
+  const h=S.held.find(x=>x.id===g.heldId);
+  S.suggest=null;S.flash=null;
+  if(!h){runFlies([]);return}
+  if(!yes){h.noSuggest=true;runFlies([]);return}
+  const chip=document.querySelector(`.hchip[data-h="${h.id}"]`),rect=chip?rectOf(chip):(src?rectOf(src):null);
+  S.held=S.held.filter(x=>x!==h);
+  setField(g.field,valueFor(g.field,g.id));
+  runFlies([{field:g.field,text:g.label,rect}]);
+}
+function runFlies(flies){
+  if(S.mode==='capture'&&S.held.length)flies.push(...retryHeld());
+  if(S.mode==='capture')refreshSuggest();
+  renderAll();
+  flies.forEach(fl=>fly(fl));
+}
+function fly({field,text,rect,target}){
+  const tgt=document.querySelector(target||`.row[data-field="${field}"] .v`);
+  if(REDUCE||!tgt||!rect){land(field);return}
+  const el=document.createElement('div');el.className='fly';el.textContent=text;document.body.appendChild(el);
+  const h=el.offsetHeight,x0=rect.x,y0=rect.y-h/2;
+  el.style.transform=`translate(${x0}px,${y0}px)`;
+  const tr=tgt.getBoundingClientRect();
+  const x1=tr.left,y1=tr.top+Math.min(tr.height,24)/2-h/2;
+  const mx=x0+(x1-x0)*.55,my=Math.min(y0,y1)-(field?26:12)+(y1-y0)*.5;
+  const a=el.animate([
+    {transform:`translate(${x0}px,${y0}px) scale(1)`,opacity:1},
+    {transform:`translate(${mx}px,${my}px) scale(1.05)`,opacity:1,offset:.5},
+    {transform:`translate(${x1}px,${y1}px) scale(.94)`,opacity:.1}
+  ],{duration:580,easing:'cubic-bezier(.35,.55,.2,1)',fill:'forwards'});
+  a.onfinish=()=>{el.remove();land(field)};
+}
+function land(field){
+  if(!field)return;
+  S.incoming.delete(field);renderPane();
+  const r=document.querySelector(`.row[data-field="${field}"]`);
+  if(r){r.classList.add('landed');setTimeout(()=>r.classList.remove('landed'),950)}
+}
+function shake(){bar.classList.remove('shake');void bar.offsetWidth;bar.classList.add('shake')}
+
+/* ---------- what Opas asks ---------- */
+const opt=(field,id,label,sub,val)=>({field,id,label,sub,val});
+function currentQ(){
+  if(S.mode==='idle')return {ask:'What do you need?',hint:'Or just type it: “order for hopkins monti thursday 10am”.',options:[{act:'order',label:'New order'},{act:'quote',label:'New quote'}]};
+  if(S.mode==='done')return {ask:S.type==='quote'?'Quote saved.':'Order confirmed.',hint:'Type the next one, or pick below.',options:[{act:'order',label:'Start another order'},{act:'quote',label:'New quote'}]};
+  if(S.mode==='review')return {ask:'Look it over.',hint:S.held.length?`${S.held.length} not placed yet, under the order. Click to edit it, or × to drop it.`:'Click any line to change it.',options:[{act:'approve',label:S.type==='quote'?'Save the quote':'Approve the order',sub:'Enter'},{act:'back',label:'Keep editing',sub:'Esc'}]};
+  if(S.pending){
+    const p=S.pending,src=SRC[p.field];
+    return {ask:`Which one did you mean by “${p.text}”?`,hint:'More than one matches. Pick one, and the rest of what you typed stays put.',options:p.ids.map(id=>opt(p.field,id,src[id].label,p.field==='equip'?'':(src[id].sub||'')))};
+  }
+  if(S.suggest){
+    const g=S.suggest,h=S.held.find(x=>x.id===g.heldId);
+    return {ask:`Did you mean ${g.label}?`,hint:`You typed “${h?h.text:''}”. Yes fixes it and puts it in the order.`,options:[{act:'sugyes',label:`Yes, ${g.label}`},{act:'sugno',label:'No, keep it held'}]};
+  }
+  const f=currentField();
+  const fh=S.f.fh&&FH[S.f.fh.id];
+  const fhShort=fh?fh.label.split(' ')[0]:null;
+  switch(f){
+    case null:return {ask:"That's everything.",hint:'Press Enter to review, or click any line to change it.',options:[{act:'review',label:'Review',sub:'Enter'}]};
+    case 'fh':return {ask:'Which funeral home?',hint:'Type a name or pick one.',options:POPULAR.fh.map(id=>opt('fh',id,FH[id].label,FH[id].sub))};
+    case 'decedent':return {ask:'What is the name of the deceased?',hint:'The family name is enough, like “Smith”. Tab or Enter places it.',free:true};
+    case 'vault':{
+      const ids=fh&&fh.usual?fh.usual.vault:POPULAR.vault;
+      return {ask:'What vault has the family selected?',hint:(fh&&fh.vnote?fh.vnote+' ':'Most ordered at Sunnycrest. ')+'Type any other, like “venetian” or “salute”.',options:ids.map(id=>opt('vault',id,VAULT[id].label,VAULT[id].kind==='urn'?'cremation':''))};
+    }
+    case 'pers':{
+      const v=VAULT[S.f.vault.id];
+      return {ask:`The ${v.short} can be personalized. Any personalization?`,hint:v.pers.length<3?`The ${v.short} offers ${v.pers.map(p=>PERS[p].label.toLowerCase()).join(' or ')}.`:'',options:['none',...v.pers].map(id=>opt('pers',id,PERS[id].label,''))};
+    }
+    case 'print':return {ask:'Which Legacy print?',hint:'By its name on the Wilbert print poster. Type any other.',options:['flag','home','serenity'].map(id=>opt('print',id,PRINT[id].label,''))};
+    case 'dates':return {ask:`Dates for the ${S.f.pers.label.toLowerCase().replace(/ \(.*\)/,'')}?`,hint:'Birth and death, like “1942–2026”. Years only is fine.',free:true};
+    case 'day':return {ask:kind()==='urn'?'What day is the committal?':'What day is the service?',hint:'Or type it: “thursday”, “tomorrow”.',options:nextDays(3).map(({d,tomorrow})=>opt('day',d.iso,tomorrow?'Tomorrow':d.weekday,d.short,d))};
+    case 'time':return {ask:'What time?',hint:'Or type it: “10am”, “1:30pm”.',options:['10:00 AM','11:00 AM','1:00 PM'].map(t=>opt('time',t,t,'',t))};
+    case 'place':return {ask:"Where's the service?",hint:'',options:['graveside','church','home'].map(id=>opt('place',id,PLACE[id].label,''))};
+    case 'cemetery':{
+      const ids=fh&&fh.usual?fh.usual.cemetery:POPULAR.cemetery;
+      return {ask:'Which cemetery?',hint:fh&&fh.usual?`${fhShort}'s usual cemeteries.`:'The most used. Type any other.',options:ids.map(id=>opt('cemetery',id,CEM[id].label,CEM[id].sub))};
+    }
+    case 'equip':{
+      const urn=kind()==='urn',ids=urn?['crem_full','crem_chairs','none_u']:['full','tent','device','none_b'];
+      return {ask:urn?'Cremation setup?':'Graveside equipment?',hint:urn?"It's an urn vault, so these are the cremation setups.":'Chairs come with every setup except the device alone.',options:ids.map(id=>opt('equip',id,EQUIP[id].label,''))};
+    }
+  }
+}
+
+/* ---------- drawing ---------- */
+function disp(f,v){
+  switch(f){
+    case 'fh':case 'cemetery':return `${esc(v.label)} <span class="sub">· ${esc(v.sub)}</span>`;
+    case 'vault':return `${esc(v.label)} <span class="sub">· ${money(v.price)}</span>`;
+    case 'equip':return `${esc(v.label)} <span class="sub">· ${esc(v.sub)}</span>`;
+    case 'pers':return esc(v.label)+(v.price?` <span class="sub">· ${money(v.price)}</span>`:'');
+    case 'decedent':return `<span class="name">${esc(v)}</span>`;
+    case 'day':return esc(v.label);
+    case 'time':case 'dates':return esc(v);
+    default:return esc(v.label);
+  }
+}
+let lastKind=null;
+function renderPane(){
+  if(S.mode==='idle'){pane.hidden=true;return}
+  pane.hidden=false;
+  const k=kind();
+  const fields=ORDER.filter(applicable);
+  const filled=fields.filter(f=>S.f[f]).length,cur=S.mode==='capture'?currentField():null;
+  const title=S.mode==='review'?'Review':S.mode==='done'?(S.type==='quote'?'Quote saved':'Confirmed'):(S.type==='quote'?'New quote':'New order');
+  let h=`<div class="ph"><div><div class="eb">${S.type==='quote'?'Quote':'Order'}</div><div class="pt">${title}</div></div><div class="pills">`;
+  if(k)h+=`<span class="chip kind${k!==lastKind?' pop':''}">${k==='urn'?'Cremation':'Burial'}</span>`;
+  if(S.mode!=='done'){h+=`<span class="chip">${filled} captured</span>`;if(fields.length>filled)h+=`<span class="chip need">${fields.length-filled} to go</span>`}
+  h+=`</div></div>`;
+  lastKind=k;
+  if(S.mode==='done'){
+    h+=`<div class="done"><div class="dn">${S.num}</div><div class="dl">${S.type==='quote'?'Saved as a quote. Nothing goes to the funeral home until you send it.':`Confirmed for ${esc(S.f.day.label)}. Marked delivered that night, invoiced with the month-end statement.`}</div><div class="ds">${esc(S.f.fh.label)} · ${esc(S.f.decedent)} · ${esc(S.f.vault.label)} · ${money(total())}</div></div>`;
+    pane.innerHTML=h;return;
+  }
+  h+=`<div class="rows">${fields.map(f=>{
+    const v=S.f[f],isCur=f===cur;
+    const val=v?`<span class="v${S.incoming.has(f)?' in':''}">${disp(f,v)}</span>`:`<span class="v empty">${isCur?'Opas is asking':'Not yet'}</span>`;
+    const lab=f==='equip'&&k==='urn'?'Cremation setup':LABEL[f];
+    return `<button type="button" class="row${v?' filled':''}${isCur?' current':''}" data-field="${f}" title="${v?'Change this':'Answer this next'}"><span class="mk"></span><span class="lab">${lab}</span>${val}</button>`;
+  }).join('')}</div>`;
+  if(S.held.length)h+=`<div class="held"><span class="hl">Not placed yet</span>${S.held.map(x=>{
+    if(S.editing===x.id){const v=S.editDraft??x.text;return `<span class="hchip editing" data-h="${x.id}"><label class="sr" for="hedit">Fix the typo</label><input class="hedit" id="hedit" value="${esc(v)}" spellcheck="false" autocomplete="off" style="width:${Math.max(4,v.length+1)}ch"></span>`}
+    return `<span class="hchip" data-h="${x.id}"><button type="button" class="ht" title="Drag onto a line, or click to fix it">${esc(x.text)}</button><button type="button" class="hx" aria-label="Drop ${esc(x.text)}">×</button></span>`;
+  }).join('')}<span class="hhint">Drag onto a line, or click to fix it</span></div>`;
+  const t=total();
+  h+=`<div class="pf"><span${S.note?' class="note"':''}>${S.note?esc(S.note):S.mode==='review'?'Enter approves. Esc goes back.':'Click any line to change it.'}</span><span class="tot">${t?money(t):''}</span></div>`;
+  pane.innerHTML=h;
+  if(S.editing){const ed=$('#hedit');if(ed){ed.focus();ed.setSelectionRange(ed.value.length,ed.value.length)}}
+}
+let lastAsk='';
+function renderSide(){
+  const q=currentQ();
+  side._opts=q.options||[];
+  const isNew=q.ask!==lastAsk;lastAsk=q.ask;
+  let h=`<div class="op"><span class="dot"></span>Opas</div><div class="ask${isNew?' new':''}">${esc(q.ask)}</div>`;
+  if(q.hint)h+=`<div class="hint">${esc(q.hint)}</div>`;
+  if(S.flash)h+=`<div class="flash">${esc(S.flash)}</div>`;
+  if(side._opts.length)h+=`<div class="free">Pick an answer above the bar, or type it.</div>`;
+  if(q.free)h+=`<div class="free">Type it in the bar, then press Tab or Enter.</div>`;
+  side.innerHTML=h;
+  chips.innerHTML=side._opts.map((o,i)=>`<button type="button" class="opt" data-i="${i}"><kbd>${MOD}${i+1}</kbd><span class="ol">${esc(o.label)}</span>${o.sub?`<span class="os">${esc(o.sub)}</span>`:''}</button>`).join('');
+  chips.classList.toggle('new',isNew);
+}
+function renderAll(){renderPane();renderSide()}
+
+/* ---------- actions ---------- */
+function start(type){S=fresh();S.mode='capture';S.type=type;lastKind=null;renderAll();pane.classList.remove('grow');void pane.offsetWidth;pane.classList.add('grow')}
+function review(){S.mode='review';S.focus=null;renderAll()}
+function approve(){S.mode='done';S.num=S.type==='quote'?`Q-2026-00${QN++}`:`SO-2026-00${SO++}`;renderAll()}
+function reset(msg){S=fresh();inp.value='';S.flash=msg||null;renderAll();inp.focus()}
+function choose(i,src){
+  const o=(side._opts||[])[i];if(!o)return;
+  if(o.act){
+    if(o.act==='order'||o.act==='quote')start(o.act);
+    else if(o.act==='approve')approve();
+    else if(o.act==='back'){S.mode='capture';renderAll()}
+    else if(o.act==='review')review();
+    else if(o.act==='sugyes')answerSuggest(true,src);
+    else if(o.act==='sugno')answerSuggest(false,src);
+    inp.focus();return;
+  }
+  const rect=src?rectOf(src):null;
+  if(S.pending&&S.pending.heldId)S.held=S.held.filter(x=>x.id!==S.pending.heldId);
+  if(S.pending&&S.pending.field===o.field){
+    const t=S.pending.text,idx=inp.value.toLowerCase().indexOf(t.toLowerCase());
+    if(idx>=0)inp.value=(inp.value.slice(0,idx)+inp.value.slice(idx+t.length)).replace(/\s{2,}/g,' ').replace(/^\s+/,'');
+  }
+  setField(o.field,o.val!==undefined?o.val:valueFor(o.field,o.id));
+  runFlies([{field:o.field,text:o.label,rect}]);
+  inp.focus();
+}
+function yesNo(){
+  if(!S.suggest)return false;
+  const t=inp.value.trim().toLowerCase();
+  if(/^(y|yes|yeah|yep|yup|correct)$/.test(t)){inp.value='';answerSuggest(true);return true}
+  if(/^(n|no|nope)$/.test(t)){inp.value='';answerSuggest(false);return true}
+  return false;
+}
+function enter(){
+  if(S.mode==='review'){approve();return}
+  if(yesNo())return;
+  if(!inp.value.trim()){
+    if(S.mode==='capture'&&!S.pending&&!currentField())review();
+    else if(S.mode==='done')start(S.type||'order');
+    return;
+  }
+  process(true);
+  leftover();
+}
+function escape(){
+  if(S.pending){S.pending=null;renderAll();return}
+  if(S.mode==='review'){S.mode='capture';renderAll();return}
+  if(S.mode==='capture'){reset(S.type==='quote'?'Quote discarded.':'Order discarded.');return}
+  inp.value='';renderAll();
+}
+
+inp.addEventListener('input',()=>{S.flash=null;process(false);if(S.mode!=='capture')renderSide()});
+inp.addEventListener('keydown',e=>{
+  if(e.key==='Enter'){e.preventDefault();enter();return}
+  if(e.key==='Tab'&&!e.shiftKey&&S.mode!=='idle'){
+    e.preventDefault();
+    if(!inp.value.trim())return;
+    if(yesNo())return;
+    S.flash=null;process(true);
+    if(S.mode==='capture')leftover();
+  }
+});
+document.addEventListener('keydown',e=>{
+  if(e.target.classList&&e.target.classList.contains('hedit'))return;
+  const d=/^Digit([1-9])$/.exec(e.code);
+  if(d){
+    const i=+d[1]-1,opts=side._opts||[];
+    if(i>=opts.length)return;
+    const mod=e.metaKey||e.ctrlKey||e.altKey;
+    const typingNumber=['time','dates','day'].includes(S.mode==='capture'?currentField():'');
+    const bareOK=document.activeElement!==inp||(!inp.value.trim()&&!typingNumber);
+    if(mod||bareOK){e.preventDefault();choose(i,chips.querySelectorAll('.opt')[i])}
+    return;
+  }
+  if(e.key==='Escape'){e.preventDefault();escape()}
+});
+chips.addEventListener('click',e=>{const b=e.target.closest('.opt');if(b)choose(+b.dataset.i,b)});
+pane.addEventListener('click',e=>{
+  const hc=e.target.closest('.hchip');
+  if(hc){
+    if(e.target.closest('.hx')){S.held=S.held.filter(x=>x.id!==+hc.dataset.h);S.flash=null;renderAll();inp.focus()}
+    return;
+  }
+  const r=e.target.closest('.row');if(!r||S.mode==='done')return;
+  const f=r.dataset.field;
+  if(S.f[f])clearField(f);
+  S.focus=f;S.note=null;if(S.mode==='review')S.mode='capture';
+  renderAll();inp.focus();
+});
+$('#reset').onclick=()=>reset();
+
+/* ---------- held words: drag onto a line, or click to fix ---------- */
+function okFor(field,id){
+  if(field==='equip')return EQUIP[id].kind===(kind()||'burial');
+  if(field==='pers')return !!S.f.vault&&(id==='none'||VAULT[S.f.vault.id].pers.includes(id));
+  return true;
+}
+// What a held word means once the person says which line it belongs to. Close spellings count here.
+function resolveFor(field,text){
+  const n=norm(text);
+  if(field==='decedent')return {val:titleCase(text.trim())};
+  if(field==='dates')return {val:text.trim()};
+  if(field==='day'){const d=parseDay(n.split(' ')[0]);return d?{val:d}:null}
+  if(field==='time'){const m=n.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)?$/);return m&&+m[1]>=1&&+m[1]<=12?{val:fmtTime(+m[1],m[2],m[3])}:null}
+  const src=SRC[field];if(!src)return null;
+  const ids=Object.entries(src).filter(([id,v])=>okFor(field,id)&&v.keys.some(k=>{k=norm(k);return k===n||(n.length>=3&&k.startsWith(n))||(n.length>=5&&k.length>=5&&lev(n,k)<=2)})).map(([id])=>id);
+  if(!ids.length)return field==='print'?{val:{id:'other',label:titleCase(text.trim())}}:null;
+  return {ids};
+}
+function dropHeld(id,field,rect){
+  const h=S.held.find(x=>x.id===id);if(!h)return;
+  const r=resolveFor(field,h.text);
+  S.flash=null;
+  if(!r){S.flash=`“${h.text}” isn't a ${LABEL[field].toLowerCase()} Opas knows. Click it to fix the spelling, or pick from the answers.`;S.focus=S.f[field]?S.focus:field;renderAll();shake();return}
+  if(r.ids&&r.ids.length>1){S.pending={field,ids:r.ids,text:h.text,heldId:id};renderAll();return}
+  S.held=S.held.filter(x=>x!==h);
+  setField(field,r.val!==undefined?r.val:valueFor(field,r.ids[0]));
+  runFlies([{field,text:h.text,rect}]);
+  inp.focus();
+}
+function startEdit(id){S.editing=id;S.editDraft=null;S.flash=null;renderPane()}
+function commitEdit(){
+  if(S.editing==null)return;
+  const h=S.held.find(x=>x.id===S.editing),text=(S.editDraft??(h?h.text:'')).trim();
+  S.editing=null;S.editDraft=null;
+  if(h){if(text)h.text=text;else S.held=S.held.filter(x=>x!==h)}
+  runFlies([]);
+  inp.focus();
+}
+function cancelEdit(){S.editing=null;S.editDraft=null;renderPane();inp.focus()}
+pane.addEventListener('input',e=>{if(e.target.id==='hedit'){S.editDraft=e.target.value;e.target.style.width=Math.max(4,e.target.value.length+1)+'ch'}});
+pane.addEventListener('keydown',e=>{
+  if(e.target.id!=='hedit')return;
+  if(e.key==='Enter'){e.preventDefault();commitEdit()}
+  else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();cancelEdit()}
+});
+pane.addEventListener('focusout',e=>{if(e.target.id==='hedit'&&S.editing!=null)commitEdit()});
+pane.addEventListener('pointerdown',e=>{
+  const ht=e.target.closest('.ht');if(!ht||e.button!==0)return;
+  e.preventDefault();
+  const id=+ht.closest('.hchip').dataset.h;
+  const d={x:e.clientX,y:e.clientY,ghost:null,over:null};
+  const move=ev=>{
+    if(!d.ghost){
+      if(Math.hypot(ev.clientX-d.x,ev.clientY-d.y)<5)return;
+      const h=S.held.find(x=>x.id===id);if(!h)return;
+      d.ghost=document.createElement('div');d.ghost.className='fly held-ghost';d.ghost.textContent=h.text;document.body.appendChild(d.ghost);
+      pane.classList.add('dragging');
+    }
+    d.ghost.style.transform=`translate(${ev.clientX+12}px,${ev.clientY-16}px)`;
+    const el=document.elementFromPoint(ev.clientX,ev.clientY),row=el&&el.closest('.row');
+    if(row!==d.over){if(d.over)d.over.classList.remove('drop');d.over=row;if(row)row.classList.add('drop')}
+  };
+  const up=ev=>{
+    removeEventListener('pointermove',move);removeEventListener('pointerup',up);removeEventListener('pointercancel',up);
+    pane.classList.remove('dragging');
+    if(!d.ghost){if(ev.type==='pointerup')startEdit(id);return}
+    d.ghost.remove();
+    if(d.over){d.over.classList.remove('drop');dropHeld(id,d.over.dataset.field,{x:ev.clientX+12,y:ev.clientY})}
+  };
+  addEventListener('pointermove',move);addEventListener('pointerup',up);addEventListener('pointercancel',up);
+});
+
+/* ---------- the power-user demo ---------- */
+let demoing=false;
+async function typeText(t){for(const ch of t){if(!demoing)return;inp.value+=ch;process(false);await sleep(ch===' '?85:46)}}
+$('#demo').onclick=async()=>{
+  if(demoing)return;demoing=true;$('#demo').disabled=true;
+  reset();await sleep(350);
+  await typeText('order for hopkins monti thursday 10am graveside st marys skaneateles full equipment for the smith family');
+  await sleep(600);enter();await sleep(1500);
+  await typeText('legacy flag 1942-2026');await sleep(500);enter();await sleep(1500);
+  enter();await sleep(1800);enter();
+  demoing=false;$('#demo').disabled=false;
+};
+
+renderAll();inp.focus();
+})();
+</script>
+
+</body></html>

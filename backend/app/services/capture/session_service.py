@@ -27,7 +27,7 @@ import logging
 import re
 import uuid
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException, status
@@ -561,6 +561,89 @@ def choose(
     return row
 
 
+def answer(
+    db: Session, session_id: str, *, company_id: str, user_id: str,
+    field_id: str, value: str,
+) -> tuple[CaptureSession, str | None]:
+    """Record a picked answer, and clear whatever it just made wrong.
+
+    Returns the session and the one-line note, or None when nothing was cleared.
+
+    ⚠️ A PILL PICK IS A RESOLUTION, THE SAME AS A NUMBERED PICK. James, 2026-10-27:
+    "A pick is a durable answer like today's click-made picks." So this writes to
+    `resolutions` for exactly the reason `choose` does — under whole-text
+    re-extraction a value written into `values` is erased by the next keystroke,
+    because the next read rebuilds `values` from the text.
+
+    ⚠️ AND IT IS A SEPARATE ENTRY POINT FROM `choose` RATHER THAN A WIDENING OF IT.
+    `choose` settles a PENDING PICK: it validates the index against options the
+    extractor produced, and a pill is not one of those — it is an answer to a question
+    about a field that is simply MISSING, with no ambiguity to settle. Folding them
+    together would mean `choose` accepting an index with no pick to index into, which
+    is the path that would silently accept anything.
+
+    ⚠️ THE FIELD MUST BE ONE THE SCHEMA ASKS FOR. An unknown field_id is refused
+    rather than stored: `resolutions` is read by `extract_text` on every re-read, and a
+    key nothing consumes would sit there permanently, invisible and inert.
+    """
+    row = _load(db, session_id, company_id=company_id, user_id=user_id)
+
+    known = {f.field_id for f in capture.template_for(capture.SALES_ORDER)}
+    if field_id not in known:
+        raise ValueError(f"{field_id} is not a field this capture asks for")
+
+    resolutions = dict(row.resolutions or {})
+    resolutions[field_id] = value
+
+    # ⚠️ CLEARED BEFORE THE RE-EXTRACTION, not after, so the extraction runs against
+    # the resolutions the order actually has. Clearing afterwards would re-extract with
+    # the stale answer in force, and the response would carry values the note says
+    # were removed.
+    from app.services.capture.clears import clear_what_no_longer_fits
+
+    before = set(resolutions)
+    resolutions, note = clear_what_no_longer_fits(
+        db, company_id=company_id, resolutions=resolutions, changed_field=field_id,
+    )
+    # ⚠️ WHICH KEYS WENT, CAPTURED BEFORE `row.resolutions` IS REASSIGNED. My first
+    # version computed this from `row.resolutions` AFTER the assignment below, which is
+    # a symmetric difference of a dict with itself — always empty, so the line path
+    # silently cleared nothing while the note said it had. Found by re-reading rather
+    # than by a test, because no test exercises the line path's clearing.
+    cleared_keys = before - set(resolutions)
+    row.resolutions = resolutions
+
+    # ⚠️ ANSWERING A FIELD RETIRES ITS SWITCH, the same as `choose`. An offer surviving
+    # its own resolution would invite the director to undo the click they just made.
+    row.switches = [
+        sw for sw in (row.switches or []) if sw.get("field_id") != field_id
+    ]
+
+    if row.full_text is not None:
+        # ⚠️ RE-EXTRACTED THROUGH THE SAME CALL THE NEXT PAUSE WILL MAKE, exactly as
+        # `choose` does, so the response cannot disagree with what the pane is about
+        # to be sent.
+        ex = extract_text(
+            db, tenant_id=company_id, text=row.full_text, resolutions=resolutions,
+            prefill=row.prefill,
+        )
+        row.values = dict(ex.values)
+        row.unrecognized = list(ex.unrecognized)
+        row.pending_picks = [asdict(pk) for pk in ex.picks]
+    else:
+        # ⚠️ THE LINE PATH, which has no whole text to re-extract from — a session
+        # captured line by line. E6 says that path does not change, so this writes the
+        # value directly and removes exactly the keys the clearing removed.
+        values = dict(row.values or {})
+        values[field_id] = value
+        for cleared in cleared_keys:
+            values.pop(cleared, None)
+        row.values = values
+
+    db.flush()
+    return row, note
+
+
 def trailing_signal(text: str, pattern: re.Pattern) -> str | None:
     """The order text with a trailing signal phrase removed, or None if there isn't one.
 
@@ -852,6 +935,16 @@ def read_state(
         # bar is a conversation and asks for one thing. Both read the same `missing`
         # set, so the bar cannot ask for something the pane is not highlighting.
         "next_question": _next_question(state.missing),
+        # ⚠️ EVERYTHING GUIDED CAPTURE NEEDS, COMPOSED IN ONE PLACE AND READ ONCE.
+        # The question's FIELD, its one-line hint, the answers to offer, and whether
+        # the vault has made this a cremation. James, 2026-10-27: "THE NEXT QUESTION
+        # comes from the engine (server-side, the capture schema), not the client".
+        #
+        # ⚠️ ONE CALL, NOT FOUR, because all four readings must describe the SAME
+        # field. Composed separately they could disagree — a sentence about the
+        # cemetery over pills for the vault — and nothing would be obviously wrong
+        # on either side.
+        **_guided(db, company_id, row, state),
         # ⚠️ THE SPANS, IN WHOLE-TEXT COORDINATES, WITH THEIR SEQUENCE. James: "Spans
         # apply only to the exact text they were computed for (sequence number).
         # While typing, stale spans are hidden, never misplaced." The sequence is the
@@ -958,6 +1051,111 @@ def assess_approval(db: Session, row: CaptureSession):
         # answer the vault cannot take did not stop the order being approved.
         conflicts=tuple(c.message for c in conflicts),
     )
+
+
+#: What Opas asks when a phrase matched more than one thing.
+#:
+#: ⚠️ THE PROTOTYPE'S OWN WORDING: `ask:\`Which one did you mean by \u201c${p.text}\u201d?\``.
+#: It quotes the phrase back because the director typed something ambiguous and needs
+#: to see WHICH word is in question — unlike a miss, where quoting reads as "that is
+#: not a thing" and was ruled out on 2026-10-23.
+DID_YOU_MEAN_BY = "Which one did you mean by \u201c{phrase}\u201d?"
+
+#: ⚠️ THE SECOND HALF IS THE PART THAT MATTERS AND IT IS THE PROTOTYPE'S: "the rest of
+#: what you typed stays put". A director who sees a choice list mid-sentence has to know
+#: that answering it will not discard the rest of the order.
+PICK_HINT = "More than one matches. Pick one, and the rest of what you typed stays put."
+
+
+def _guided(db, company_id: str, row, state) -> dict:
+    """The question's field, its hint, its pills, and the cremation chip.
+
+    ⚠️ IT DOES NOT READ THE ORDER HISTORY ITSELF, AND MY FIRST VERSION DID. `pills_for`
+    needs that history to rank the answers for four fields and needs nothing for the
+    rest — `deceased_name`, the dates, `grave_location` can never carry a pill. This is
+    called from `read_state` on a ~350ms debounce while the director types, and
+    `load_facts` is a full pass over the tenant's sales orders with a correlated
+    subquery per row, so an eager read here charged every keystroke for a question that
+    could not use it. `pills_for` decides and returns early.
+
+    ⚠️ FAILS OPEN, AND THAT IS A DELIBERATE CHOICE RATHER THAN DEFENSIVENESS. These
+    four keys are an ADDITION to a response the pane already renders without them —
+    `next_question` and the five sets are what the pane needs to work. A pill query
+    that raises must not take the capture pane down with it, so the question still
+    goes out and the pills are simply absent. The 2026-10-12 blank-pane defect was the
+    other arrangement: one key an older server omitted, and nothing rendered.
+
+    ⚠️ IT LOGS. An exception swallowed silently here would make missing pills
+    indistinguishable from a question that has no pills — which is a real state for
+    `deceased_name` — so the two must be told apart in the log if nowhere else.
+    """
+    from app.services.capture.schema import next_field, question_for, hint_for
+    from app.services.capture.schema import CREMATION_CHIP
+
+    field_id = next_field(state.missing)
+
+    # ⚠️ AN AMBIGUITY OUTRANKS A GAP, AND THE PILLS ARE THE SAME PILLS. James,
+    # 2026-10-27: "The ambiguity choice list becomes these same pills." A pending pick
+    # is the one thing that needs the director's hand — the same ordering
+    # `captureVoice` already uses, where the pick comes before everything else.
+    #
+    # ⚠️ AND ITS OPTIONS ARE THE SERVER'S OWN, NOT RANKED. A pick's options are the
+    # candidates the extractor found for a phrase the director actually typed; ranking
+    # them by what this home usually orders would reorder an answer to "which of these
+    # two did you mean" by popularity, which is a different question.
+    picks = list(row.pending_picks or [])
+    if picks:
+        pick = picks[0]
+        return {
+            "question_field_id": pick["field_id"],
+            "question": DID_YOU_MEAN_BY.format(phrase=pick.get("phrase") or ""),
+            "question_hint": PICK_HINT,
+            "pills": [
+                {"value": value, "label": label}
+                for value, label in pick.get("options", [])
+            ],
+        }
+
+    out: dict = {"question_field_id": field_id}
+    try:
+        from app.services.capture.pills import pills_for
+        from app.services.capture.vault_form import form_of
+
+        values = dict(row.values or {})
+        form = form_of(db, tenant_id=company_id, vault=values.get("vault"))
+        if form.is_cremation:
+            # ⚠️ THE CHIP IS A SENTENCE FROM THE SERVER like every other label, and
+            # `via` travels with it because the four ways of establishing a cremation
+            # are not equally strong — on sunnycrest today it is the product's own
+            # name. A reader who needs to know can; the pane just shows the chip.
+            out["cremation"] = {"label": CREMATION_CHIP, "via": form.via}
+        out["question"] = question_for(field_id, cremation=form.is_cremation)
+        hint = hint_for(field_id, cremation=form.is_cremation)
+        if hint:
+            out["question_hint"] = hint
+        if field_id is not None:
+            # ⚠️ `facts` IS NOT PASSED, DELIBERATELY, AND THAT IS A CHANGE FROM MY FIRST
+            # VERSION. It read `load_facts(db, company_id)` here and handed it down —
+            # correct for a caller asking about SEVERAL fields, and this one asks about
+            # exactly one. So the eager read made every keystroke pay for a full pass
+            # over the tenant's sales orders even when the question was `deceased_name`,
+            # which can never have a pill. `pills_for` now decides, and returns early
+            # for the fields that cannot use history.
+            out["pills"] = [
+                pill.as_dict()
+                for pill in pills_for(
+                    db,
+                    tenant_id=company_id,
+                    field_id=field_id,
+                    values=values,
+                    resolved_fields=state.resolved_fields,
+                    today=date.today(),
+                )
+            ]
+    except Exception:
+        logger.warning("guided capture extras unavailable for field %r", field_id,
+                       exc_info=True)
+    return out
 
 
 def _next_question(missing) -> str:

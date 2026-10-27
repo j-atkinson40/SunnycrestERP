@@ -3671,3 +3671,74 @@ This is recorded partly because the wrong version shipped for one commit. The ho
 The reasoning is asymmetric risk. Narrowing the filter to `status != 'void'` would let the batch re-bill automatically after a void, which is the one direction that can produce a second invoice against a single order without anyone asking for it — and voiding is often the first half of a correction whose second half is a human decision about what to charge. Leaving the batch out of it means the only way an order gets re-billed is that someone chose to.
 
 So the office gets an explicit path instead: the order detail page offers **"Create new invoice"** for an order whose only invoice is void, distinct from the plain "Create Invoice" on a never-invoiced order and from the link shown when a live invoice already exists. `create_invoice_from_order`'s existing guard already permitted this — it refuses only a *non-void* existing invoice — so the backend needed no change; what was missing was that the page had no view of its own order's invoices and therefore offered one unconditional button whose 409 came back as "Failed to create invoice." Three cases, three controls, and the server's refusal now names the invoice to void.
+
+---
+
+## 2026-10-27 — Follow widely used UI patterns so muscle memory works
+
+**STANDING PRINCIPLE.** Where a convention already exists for an interaction, Bridgeable
+uses it rather than inventing a better one. Pills above a text field, Tab to accept and
+move on, click-to-edit chips, "Did you mean…". The office does not arrive empty-handed:
+they have used a browser, a phone keyboard, a search box, and a form with
+autocomplete, and every one of those has taught them something this platform can
+either honour or contradict. A novel interaction has to be *better by enough* to repay
+the cost of being learned, and that bar is higher than it looks — the thing it competes
+with is not "nothing", it is "what they already know".
+
+This sits under the Apple-Pro quality bar rather than beside it. Convention is where
+the restraint goes: a surface earns its distinctiveness in typography, density, and
+the quality of what it says, not in making the reader work out how to answer a
+question.
+
+⚠️ **AND IT CUTS AGAINST THE PROTOTYPE SOMETIMES, WHICH IS THE POINT OF WRITING IT
+DOWN.** The guided-capture prototype labels its answer pills ⌘1–⌘9. Chrome keeps ⌘1–8
+for switching tabs, so that chord would only ever work in a desktop app — the
+convention is real, it belongs to the browser, and the platform does not get to take
+it. The pills use ⌥ instead (James, 2026-10-27), which works in every browser, with a
+plain digit when the bar is empty.
+
+*Added at James's explicit instruction in the guided-capture slice-1 dispatch
+("STANDING PRINCIPLE (James, add to DECISIONS)"). CLAUDE.md's write permissions
+otherwise forbid this file to a build session, so the authorisation is recorded here
+rather than assumed.*
+
+---
+
+## 2026-10-27 — The next capture question comes from the engine, not the client
+
+The question Opas asks during capture, the one-line hint under it, and the three or
+four answers offered beside it are all composed server-side, from the capture schema
+and from real order history. The client lays them out and does not phrase them.
+
+This is the same rule already in force for row labels, date and time rendering,
+`approve_effect`, and every pane's sentences — and it is here for the reason that rule
+keeps being re-learned: a sentence composed in the client has nothing relating it to
+the behaviour it describes. The pick hint shipped reading "Typed digits go into the
+text" for a round *after* that ruling was superseded, because the copy lived in the
+pane and the rule lived in the server, and nothing could notice they disagreed.
+
+⚠️ **THE CONSEQUENCE WORTH NAMING: `next_question` AND THE PILLS COME FROM ONE WALK OF
+THE CALL ORDER, NOT TWO.** Deriving the field from the question's TEXT would be a
+reverse lookup that breaks silently the moment two fields share a phrasing, and two
+separate walks could name different fields while both looked right — a question about
+the cemetery over pills for the vault, with nothing obviously wrong on either side.
+
+---
+
+## 2026-10-27 — The ambiguity choice list is the same pills as every other question
+
+"Which of these two did you mean?" and "Which cemetery?" are answered in one place,
+with one affordance, above the bar. The ambiguity list moved out of the capture pane
+to get there.
+
+Two reasons, and the second is the load-bearing one. First, a director should not have
+to learn that one kind of question is answered in the pane and another beside the bar.
+Second, **the pane can be tucked** — and a choice list that disappears with it takes
+the only way to answer with it, leaving the bar asking a question whose options are not
+on screen. That is the same reasoning that moved the question itself out of the pane on
+2026-10-20, applied to the answers.
+
+The server write is unchanged: `choose` stores `options[index-1][0]` into
+`resolutions` and the new `answer` stores the value directly. Two handles on one
+resolution, which is why ⌘1–9 from the bar can keep using the old path while the pills
+use the new one.
