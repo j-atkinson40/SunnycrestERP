@@ -1208,3 +1208,64 @@ def test_the_capture_surface_RENDERS_the_optional_equipment_row():
     # below is what fails if the surface stops hiding INAPPLICABLE rows.
     assert {"funeral_home", "deceased_name", "vault"} <= shown, sorted(shown)
     assert "legacy_print" not in shown, "inapplicable rows must still be absent"
+
+
+def test_a_clicked_row_changes_the_QUESTION_and_an_unknown_field_is_IGNORED(
+    db, a_real_user, canonical_tenant,
+):
+    """'clicking a row asks that question again' — and `asking` is validated.
+
+    ⚠️ THIS EXISTS BECAUSE I HAD ONLY A PROBE. I verified the override by running a
+    script against production data once and reported it as working. `asking` arrives
+    from a QUERY STRING and decides which question Opas composes, so "I ran it and it
+    looked right" is the weakest evidence in this file — and a probe cannot fail in CI.
+
+    ⚠️ THE VALIDATION IS THE HALF THAT MATTERS. An unchecked value would let a stale
+    client, a bookmarked URL or a hand-typed parameter put the pane on a question this
+    order does not have — "Which Legacy print?" on an order with no personalization.
+    """
+    from app.services.capture import session_service
+
+    row = session_service.start(db, company_id=TESTCO_ID, user_id=a_real_user)
+    try:
+        session_service.set_text(
+            db, row.id, company_id=TESTCO_ID, user_id=a_real_user,
+            text="order for hopkins",
+        )
+
+        # what Opas asks on its own
+        plain = session_service.read_state(
+            db, row.id, company_id=TESTCO_ID, user_id=a_real_user,
+        )
+        assert plain["question_field_id"] is not None
+        assert plain["question_field_id"] != "cemetery", plain["question_field_id"]
+
+        # the office clicks the Cemetery row
+        clicked = session_service.read_state(
+            db, row.id, company_id=TESTCO_ID, user_id=a_real_user, asking="cemetery",
+        )
+        assert clicked["question_field_id"] == "cemetery", clicked["question_field_id"]
+        # ⚠️ AND THE SENTENCE FOLLOWS, which is what "asks that question again" means.
+        # The outline alone was my first version and was not enough.
+        assert clicked["question"] == "Which cemetery?", clicked["question"]
+
+        # ⚠️ A FIELD THIS ORDER DOES NOT ASK ABOUT IS IGNORED, not honoured and not an
+        # error: the pane falls back to the question Opas was already asking.
+        for junk in ("legacy_print_name", "'; DROP TABLE--", "made_up_field", ""):
+            got = session_service.read_state(
+                db, row.id, company_id=TESTCO_ID, user_id=a_real_user, asking=junk,
+            )
+            assert got["question_field_id"] == plain["question_field_id"], (junk, got)
+
+        # ⚠️ AND AN ALREADY-ANSWERED FIELD IS HONOURED, because changing an answer is
+        # exactly why somebody clicks a filled row. That is the prototype's rule
+        # (`S.focus` is preferred while applicable) read the other way round.
+        assert "funeral_home" in plain["answered"], plain["answered"]
+        again = session_service.read_state(
+            db, row.id, company_id=TESTCO_ID, user_id=a_real_user,
+            asking="funeral_home",
+        )
+        assert again["question_field_id"] == "funeral_home"
+        assert again["question"] == "Which funeral home?"
+    finally:
+        db.rollback()
