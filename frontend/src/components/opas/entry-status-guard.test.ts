@@ -32,6 +32,14 @@ const BASE: EntryPaneStatus = {
   spans: [{ start: 0, end: 5, state: "captured", field_ids: ["vault"] }],
   spansForText: "order",
   hoveredFieldIds: [],
+  // ── guided capture, 2026-10-27 ──────────────────────────────────────────────────
+  guidedQuestion: "Which funeral home?",
+  guidedHint: "Type a name or pick one.",
+  guidedFieldId: "funeral_home",
+  guidedPills: [{ value: "hopkins", label: "Hopkins Funeral Home", sub: "Skaneateles" }],
+  cremation: null,
+  clearedNote: null,
+  sessionId: "sess-1",
 }
 
 /**
@@ -47,6 +55,19 @@ const VARIANTS: { [K in keyof EntryPaneStatus]-?: EntryPaneStatus[K] } = {
   spans: [],
   spansForText: "order for",
   hoveredFieldIds: ["vault"],
+  // ⚠️ ONE ALTERED VALUE EACH, and every one of these is a change the office would
+  // SEE: a different question, a different hint, a different field, re-ranked answers,
+  // the cremation chip appearing, a cleared note arriving, a new session. The guard
+  // dropping any of them leaves the pane showing the previous one.
+  guidedQuestion: "Which vault?",
+  guidedHint: "Type any other, like \u201cvenetian\u201d.",
+  guidedFieldId: "vault",
+  // ⚠️ THE SAME LENGTH, DIFFERENT CONTENT — which is what re-ranking looks like, and
+  // what a length-only comparison would miss.
+  guidedPills: [{ value: "riverside", label: "Riverside Memorial Chapel", sub: "Auburn" }],
+  cremation: "Cremation",
+  clearedNote: "Full Equipment cleared: an urn vault means a cremation setup.",
+  sessionId: "sess-2",
 }
 
 describe("sameEntryStatus", () => {

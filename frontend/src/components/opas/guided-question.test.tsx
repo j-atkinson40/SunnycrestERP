@@ -18,7 +18,11 @@ import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
-import { GuidedQuestion, questionTakesNumbers } from "./GuidedQuestion"
+import {
+  GuidedQuestion,
+  questionTakesNumbers,
+  type GuidedQuestionProps,
+} from "./GuidedQuestion"
 
 const PILLS = [
   { value: "hopkins", label: "Hopkins Funeral Home", sub: "Skaneateles" },
@@ -26,9 +30,18 @@ const PILLS = [
   { value: "brown", label: "Brown & Sons", sub: "Auburn" },
 ]
 
-function mount(over: Record<string, unknown> = {}) {
+/**
+ * ⚠️ TYPED AS THE COMPONENT'S OWN PROPS, NOT CAST TO `never`, AND CI IS WHY. My first
+ * version spread `props as never`, which `tsc -b` rejects — "Spread types may only be
+ * created from object types" — and which `tsc --noEmit` never reached, because the gate
+ * builds the test projects and that command does not. The cast was there to let `over`
+ * be a loose bag; `Partial<GuidedQuestionProps>` does the same job and keeps the
+ * fixtures honest, so a test passing a prop the component does not have fails here
+ * rather than agreeing with my reading of it.
+ */
+function mount(over: Partial<GuidedQuestionProps> = {}) {
   const onAnswer = vi.fn()
-  const props = {
+  const props: GuidedQuestionProps = {
     question: "Which funeral home?",
     hint: "Type a name or pick one.",
     fieldId: "funeral_home",
@@ -41,7 +54,7 @@ function mount(over: Record<string, unknown> = {}) {
     onAnswer,
     ...over,
   }
-  render(<GuidedQuestion {...(props as never)} />)
+  render(<GuidedQuestion {...props} />)
   return { onAnswer }
 }
 
