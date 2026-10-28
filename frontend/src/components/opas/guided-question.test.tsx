@@ -14,7 +14,7 @@
  * at all" — the exact pair `capture-live` already records for ⌘-digits. So each refusal
  * test is followed by a press that MUST land.
  */
-import { fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
@@ -58,6 +58,36 @@ function mount(over: Partial<GuidedQuestionProps> = {}) {
   }
   render(<GuidedQuestion {...props} />)
   return { onAnswer }
+}
+
+/**
+ * `mount`, but able to re-render with new props.
+ *
+ * ⚠️ A SEPARATE HELPER RATHER THAN CHANGING `mount`'s RETURN, because `mount` is used
+ * by thirty-odd tests above and widening what it returns is the kind of edit that
+ * reads as harmless and makes every one of them a little less legible.
+ */
+function renderWithRerender(over: Partial<GuidedQuestionProps> = {}) {
+  const onAnswer = vi.fn()
+  const base: GuidedQuestionProps = {
+    question: "Which funeral home?",
+    hint: "Type a name or pick one.",
+    fieldId: "funeral_home",
+    pills: PILLS,
+    barHeight: 46,
+    barWidth: "600px",
+    stacked: false,
+    barIsEmpty: true,
+    questionTakesNumbers: false,
+    onAnswer,
+    ...over,
+  }
+  const view = render(<GuidedQuestion {...base} />)
+  return {
+    onAnswer,
+    rerender: (next: Partial<GuidedQuestionProps>) =>
+      view.rerender(<GuidedQuestion {...base} {...next} />),
+  }
 }
 
 /**
@@ -627,5 +657,245 @@ describe("nothing overlaps, at 1280 and at 1920", () => {
     expect(overlaps(pills, bar)).toBe(false)
     // and the bar narrows with the viewport
     expect(boxes(640, 44, 200).barWidth).toBe(640 - 48)
+  })
+})
+
+// ── JAMES'S RULING OF 2026-10-28: THE PICK SHORTCUT IS A PER-USER SETTING ─────────
+//
+// "A preference on the user: pick modifier = Option (default) | Control | Command.
+//  Pill labels show the chosen key (⌥1 / ⌃1 / ⌘1). Read the key by e.code, as now."
+//
+// ⚠️ EVERY TEST BELOW BUILDS ITS OWN `KeyboardEvent` RATHER THAN USING
+// `userEvent.keyboard`. `userEvent.keyboard("{Control>}1{/Control}")` sets `key: "1"`,
+// so it would pass against a handler that read `e.key` — and on a Mac ⌥1 really is "¡".
+// The helper above exists for that reason and these extend it.
+
+/** Dispatch a digit with an arbitrary modifier, the way a browser would. */
+function pressDigitWith(
+  n: number,
+  mods: { alt?: boolean; ctrl?: boolean; meta?: boolean; shift?: boolean } = {},
+): boolean {
+  const MAC_ALT_DIGITS = ["¡", "™", "£", "¢", "∞", "§", "¶", "•", "ª"]
+  const e = new KeyboardEvent("keydown", {
+    code: `Digit${n}`,
+    key: mods.alt ? MAC_ALT_DIGITS[n - 1] : String(n),
+    altKey: mods.alt ?? false,
+    ctrlKey: mods.ctrl ?? false,
+    metaKey: mods.meta ?? false,
+    shiftKey: mods.shift ?? false,
+    bubbles: true,
+    cancelable: true,
+  })
+  // ⚠️ `act` BECAUSE THESE KEYSTROKES CHANGE REACT STATE. The digit helper above does
+  // not need it — it only calls a mock — but the highlight is `useState`, so without
+  // `act` the state updates and the DOM this test reads has not re-rendered yet. The
+  // symptom is `data-highlighted` reading null while the component is correct.
+  act(() => {
+    document.dispatchEvent(e)
+  })
+  return e.defaultPrevented
+}
+
+function pressKey(key: string, mods: { shift?: boolean; alt?: boolean } = {}): boolean {
+  const e = new KeyboardEvent("keydown", {
+    key,
+    code: key.startsWith("Arrow") ? key : undefined,
+    shiftKey: mods.shift ?? false,
+    altKey: mods.alt ?? false,
+    bubbles: true,
+    cancelable: true,
+  })
+  act(() => {
+    document.dispatchEvent(e)
+  })
+  return e.defaultPrevented
+}
+
+describe("the pick modifier is a per-user setting", () => {
+  it("labels every pill with the chosen glyph, not a hard-coded ⌥", () => {
+    mount({ pickModifier: "control", pickModifierGlyph: "⌃" })
+    for (const n of [1, 2, 3]) {
+      expect(screen.getByTestId(`opas-guided-pill-key-${n}`).textContent).toBe(`⌃${n}`)
+    }
+    // ⚠️ THE CONTROL: the old glyph must be GONE, not merely joined. A label reading
+    // "⌥1 ⌃1" would satisfy a `toContain` and instruct two different keys.
+    expect(screen.queryByText("⌥1")).toBeNull()
+  })
+
+  it("falls back to this file's table when the server sent no glyph", () => {
+    // ⚠️ THE WINDOW BEFORE THE PREFERENCE READ LANDS IS A REAL STATE, and the pills
+    // must be labelled correctly in it rather than blank or wrong.
+    mount({ pickModifier: "command" })
+    expect(screen.getByTestId("opas-guided-pill-key-1").textContent).toBe("⌘1")
+  })
+
+  // ⚠️ `barIsEmpty: false` ON EVERY CHORD TEST, AND A BREAK TEST IS WHY. With the bar
+  // EMPTY a plain digit picks, so these tests passed with the chord hard-coded back to
+  // ⌥ — the bare-digit path was answering and the modifier preference was untested.
+  // CLAUDE.md §11 shape 6: a check passing for a reason unrelated to what it claims.
+  // Mid-phrase, the chord is the ONLY route in, so it is the only thing under test.
+  const MIDPHRASE = { barIsEmpty: false } as const
+
+  it("Control picks when Control is the preference", () => {
+    const { onAnswer } = mount({ ...MIDPHRASE, pickModifier: "control" })
+    expect(pressDigitWith(2, { ctrl: true })).toBe(true)
+    expect(onAnswer).toHaveBeenCalledWith("funeral_home", "riverside")
+  })
+
+  it("⌥ does NOT pick when Control is the preference", () => {
+    // ⚠️ THE HALF THAT MAKES THE SETTING REAL. Without this, a handler that accepted
+    // any modifier would pass the test above and the preference would be decoration.
+    const { onAnswer } = mount({ ...MIDPHRASE, pickModifier: "control" })
+    expect(pressDigitWith(2, { alt: true })).toBe(false)
+    expect(onAnswer).not.toHaveBeenCalled()
+  })
+
+  it("Command picks when Command is the preference, and ⌥ does not", () => {
+    const { onAnswer } = mount({ ...MIDPHRASE, pickModifier: "command" })
+    expect(pressDigitWith(1, { meta: true })).toBe(true)
+    expect(onAnswer).toHaveBeenCalledWith("funeral_home", "hopkins")
+    onAnswer.mockClear()
+    expect(pressDigitWith(1, { alt: true })).toBe(false)
+    expect(onAnswer).not.toHaveBeenCalled()
+  })
+
+  it("Option still picks by default, which is the 2026-10-27 ruling", () => {
+    const { onAnswer } = mount(MIDPHRASE)
+    expect(pressDigitWith(3, { alt: true })).toBe(true)
+    expect(onAnswer).toHaveBeenCalledWith("funeral_home", "brown")
+  })
+
+  it("Control does NOT pick when Option is the preference", () => {
+    // ⚠️ THE OTHER DIRECTION, because a handler that accepted ctrl unconditionally
+    // would pass every test above.
+    const { onAnswer } = mount({ ...MIDPHRASE, pickModifier: "option" })
+    expect(pressDigitWith(1, { ctrl: true })).toBe(false)
+    expect(onAnswer).not.toHaveBeenCalled()
+  })
+
+  it("Shift never picks, whatever the preference", () => {
+    for (const m of ["option", "control", "command"] as const) {
+      const { onAnswer } = mount({ barIsEmpty: false, pickModifier: m })
+      expect(pressDigitWith(1, { alt: m === "option", ctrl: m === "control",
+                                 meta: m === "command", shift: true })).toBe(false)
+      expect(onAnswer).not.toHaveBeenCalled()
+      cleanup()
+    }
+  })
+
+  it("a plain digit still picks while the bar is empty — clause 2, unchanged", () => {
+    const { onAnswer } = mount({ pickModifier: "control", barIsEmpty: true })
+    expect(pressDigitWith(1)).toBe(true)
+    expect(onAnswer).toHaveBeenCalledWith("funeral_home", "hopkins")
+  })
+
+  it("a plain digit does NOT pick while the question takes numbers — unchanged", () => {
+    const { onAnswer } = mount({
+      pickModifier: "control", barIsEmpty: true, questionTakesNumbers: true,
+    })
+    expect(pressDigitWith(1)).toBe(false)
+    expect(onAnswer).not.toHaveBeenCalled()
+    // ⚠️ AND THE CHORD STILL WORKS THERE, which is the point of having one.
+    expect(pressDigitWith(1, { ctrl: true })).toBe(true)
+    expect(onAnswer).toHaveBeenCalledWith("funeral_home", "hopkins")
+  })
+})
+
+describe("the arrow highlight — clause 3", () => {
+  function highlighted(): number | null {
+    for (const n of [1, 2, 3, 4, 5, 6, 7, 8, 9]) {
+      const el = screen.queryByTestId(`opas-guided-pill-${n}`)
+      if (el?.getAttribute("data-highlighted") === "true") return n
+    }
+    return null
+  }
+
+  it("starts with NOTHING highlighted, and Enter is not claimed", () => {
+    // ⚠️ THE MOST IMPORTANT TEST IN THIS BLOCK. If a fresh question highlighted pill 1,
+    // Enter — which the bar uses to finish the order — would silently answer instead.
+    mount({ barIsEmpty: true })
+    expect(highlighted()).toBeNull()
+    expect(pressKey("Enter")).toBe(false)
+  })
+
+  it("→ moves the highlight forward and ← moves it back", () => {
+    mount({ barIsEmpty: true })
+    expect(pressKey("ArrowRight")).toBe(true)
+    expect(highlighted()).toBe(1)
+    pressKey("ArrowRight")
+    expect(highlighted()).toBe(2)
+    pressKey("ArrowLeft")
+    expect(highlighted()).toBe(1)
+  })
+
+  it("↓ and ↑ do the same as → and ←", () => {
+    mount({ barIsEmpty: true })
+    pressKey("ArrowDown")
+    expect(highlighted()).toBe(1)
+    pressKey("ArrowDown")
+    expect(highlighted()).toBe(2)
+    pressKey("ArrowUp")
+    expect(highlighted()).toBe(1)
+  })
+
+  it("clamps at both ends rather than wrapping", () => {
+    // ⚠️ WRAPPING WOULD MEAN → AT THE LAST PILL LANDS ON THE FIRST, so somebody
+    // holding → to reach the end cycles past it forever.
+    mount({ barIsEmpty: true })
+    for (let i = 0; i < 8; i += 1) pressKey("ArrowRight")
+    expect(highlighted()).toBe(3)
+    for (let i = 0; i < 8; i += 1) pressKey("ArrowLeft")
+    expect(highlighted()).toBe(1)
+  })
+
+  it("Enter picks the highlighted pill", () => {
+    const { onAnswer } = mount({ barIsEmpty: true })
+    pressKey("ArrowRight")
+    pressKey("ArrowRight")
+    expect(pressKey("Enter")).toBe(true)
+    expect(onAnswer).toHaveBeenCalledWith("funeral_home", "riverside")
+  })
+
+  it("typing clears the highlight, and Enter goes back to submitting text", () => {
+    const { onAnswer } = mount({ barIsEmpty: true })
+    pressKey("ArrowRight")
+    expect(highlighted()).toBe(1)
+    // one printable character
+    pressKey("h")
+    expect(highlighted()).toBeNull()
+    // ⚠️ AND ENTER IS NO LONGER CLAIMED, which is the half that matters: the bar's own
+    // Enter finishes the order, and intercepting it here would break that.
+    expect(pressKey("Enter")).toBe(false)
+    expect(onAnswer).not.toHaveBeenCalled()
+  })
+
+  it("the arrows do nothing while the bar holds text", () => {
+    // ⚠️ ← AND → ARE HOW YOU MOVE THE CARET. Stealing them mid-phrase makes the bar
+    // uneditable, which is a worse defect than the feature is a benefit.
+    mount({ barIsEmpty: false })
+    expect(pressKey("ArrowRight")).toBe(false)
+    expect(highlighted()).toBeNull()
+  })
+
+  it("a modified arrow is left alone", () => {
+    // ⚠️ ⌥← AND ⇧← ARE WORD-WISE AND SELECTING MOVEMENTS. Claiming them would break
+    // text editing in a textarea that is usually holding a sentence.
+    mount({ barIsEmpty: true })
+    expect(pressKey("ArrowRight", { shift: true })).toBe(false)
+    expect(pressKey("ArrowRight", { alt: true })).toBe(false)
+    expect(highlighted()).toBeNull()
+  })
+
+  it("the highlight resets when the question changes", () => {
+    // ⚠️ INDEX 2 OF FOUR CEMETERIES IS NOT INDEX 2 OF THREE EQUIPMENT PACKAGES. A
+    // highlight carried across questions points at a pill that may not exist.
+    const { rerender } = renderWithRerender({ barIsEmpty: true })
+    pressKey("ArrowRight")
+    pressKey("ArrowRight")
+    expect(highlighted()).toBe(2)
+    rerender({ barIsEmpty: true, fieldId: "cemetery", pills: [
+      { value: "St. Mary's", label: "St. Mary's" },
+    ] })
+    expect(highlighted()).toBeNull()
   })
 })

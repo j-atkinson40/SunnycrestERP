@@ -27,7 +27,9 @@ import { useOpas, type OpasPaneKind } from "@/contexts/opas-context"
 import {
   abandonCapture,
   answerWhy,
+  fetchCapturePreferences,
   fetchVocabulary,
+  setCapturePickModifier,
   type CaptureState,
 } from "@/services/opas-capture-service"
 import { CapturePane, ENTRY_PLACEHOLDER, type EntryPaneStatus } from "./CapturePane"
@@ -63,12 +65,16 @@ import { EXTRACT_DEBOUNCE_MS } from "./capture-sequence"
 
 import { consumePickDigit } from "./pick-digit"
 import {
+  DEFAULT_PICK_MODIFIER,
   GuidedQuestion,
+  MODIFIER_GLYPH,
   PILL_ACT_REVIEW,
   STACK_BELOW_PX,
   paneBottomPx,
   questionTakesNumbers,
 } from "./GuidedQuestion"
+import type { PickModifier } from "./GuidedQuestion"
+import { shortcutRequest } from "./shortcut-request"
 import { resolvePhrase } from "@/services/opas-catalog-service"
 import {
   askOrderList,
@@ -229,6 +235,29 @@ export function OpasHost() {
    *  "Complete order" and its hint. Measured rather than assumed because the row wraps
    *  on content as well as width. */
   const [guidedH, setGuidedH] = useState(0)
+
+  // ── the pill-pick modifier, a per-user preference (James, 2026-10-28) ───────────
+  //
+  // ⚠️ READ ONCE PER MOUNT, NOT PER QUESTION. It is a preference, not session state,
+  // and threading it through the capture read would have meant adding a field to
+  // `EntryPaneStatus` — whose equality guard must then compare it, which is the exact
+  // gap that turned CI red on 2026-10-27 when seven new fields went uncompared.
+  //
+  // ⚠️ AND THE DEFAULT IS THE PRE-RULING BEHAVIOUR, so the window before the read
+  // lands is indistinguishable from how the bar worked yesterday.
+  const [pickModifier, setPickModifier] = useState<PickModifier>(DEFAULT_PICK_MODIFIER)
+  const [pickGlyph, setPickGlyph] = useState<string>(MODIFIER_GLYPH[DEFAULT_PICK_MODIFIER])
+  useEffect(() => {
+    let live = true
+    void fetchCapturePreferences().then((p) => {
+      if (!live) return
+      setPickModifier(p.pick_modifier)
+      setPickGlyph(p.pick_modifier_glyph)
+    })
+    return () => {
+      live = false
+    }
+  }, [])
   /** A row the office clicked, whose question is shown instead of the next one.
    *
    *  ⚠️ IT IS CLEARED THE MOMENT THAT FIELD IS ANSWERED, not on a timer and not on the
@@ -1744,6 +1773,33 @@ export function OpasHost() {
         return
       }
 
+      // ⚠️ ALSO BEFORE THE CAPTURE ENTRANCE, AND FOR THE SAME REASON AS "close". "set
+      // my shortcut to control" is a sentence about the keyboard, not about an order,
+      // and it has to work while an entry pane holds the bar — which is precisely when
+      // the office is looking at the pills and notices the wrong glyph on them.
+      //
+      // ⚠️ THE WRITE IS REPORTED, NOT ASSUMED. `setCapturePickModifier` deliberately
+      // does not swallow its error, so a failed PATCH says so instead of answering
+      // "done" and leaving the chord unchanged.
+      const wanted = shortcutRequest(phrase)
+      if (wanted !== null) {
+        setText("")
+        try {
+          const saved = await setCapturePickModifier(wanted)
+          setPickModifier(saved.pick_modifier)
+          setPickGlyph(saved.pick_modifier_glyph)
+          // ⚠️ THE CONFIRMATION SHOWS THE GLYPH, not the word, because the glyph is
+          // what the pills now print and is the thing to check.
+          // ⚠️ `"ack"` IS "Opas did something" AND IT FADES, which is right here: the
+          // confirmation is a receipt, and the pills themselves now carry the answer
+          // on every label. `"question"` would pin a line that needs no reply.
+          say("ack", `Pills pick with ${saved.pick_modifier_glyph} now.`)
+        } catch {
+          say("miss", "Could not save that shortcut.")
+        }
+        return
+      }
+
       // ⚠️ AN OUTSTANDING QUESTION GETS FIRST REFUSAL ON WHAT WAS TYPED (James's third
       // rule, 2026-10-20): "typing words that match one option ('smith', 'friday', 'the
       // confirmed one'). One match -> chosen. Still ambiguous -> the list narrows and
@@ -2637,6 +2693,8 @@ export function OpasHost() {
           // digit is part of what is being typed — "monticello 28" names a size.
           barIsEmpty={text.trim() === ""}
           questionTakesNumbers={questionTakesNumbers(guided.fieldId)}
+          pickModifier={pickModifier}
+          pickModifierGlyph={pickGlyph}
           onAnswer={answerGuided}
           onAct={actGuided}
           onHeightAbove={setGuidedH}

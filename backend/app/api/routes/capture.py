@@ -30,9 +30,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
+from sqlalchemy.orm.attributes import flag_modified
+
 from app.api.deps import get_current_user, get_db
 from app.models.user import User
-from app.services.capture import session_service
+from app.services.capture import pick_modifier, session_service
 from app.services.capture import rule_draft, why
 from app.services.order_list import decision_log, rulebook
 
@@ -540,6 +542,88 @@ def read_session(
 ):
     """The session's current state. ⚠️ The pane re-reads this after a tuck."""
     return _state(db, session_id, current_user, asking=asking)
+
+
+class PickModifierRequest(BaseModel):
+    #: ⚠️ A PLAIN STRING AND NOT AN ENUM, VALIDATED BELOW AGAINST ONE TABLE. A pydantic
+    #: Literal would reject an unknown value with a 422 whose body names the type rather
+    #: than the three choices, and the vocabulary already lives in `pick_modifier`.
+    #: One table, one error message.
+    pick_modifier: str
+
+
+class PickModifierResponse(BaseModel):
+    pick_modifier: str
+    pick_modifier_glyph: str
+    pick_modifier_event_flag: str
+
+
+@router.get("/preferences", response_model=PickModifierResponse)
+def get_capture_preferences(
+    current_user: User = Depends(get_current_user),
+) -> PickModifierResponse:
+    """The caller's own pill-pick modifier.
+
+    ⚠️ CROSS-USER ACCESS IS STRUCTURALLY IMPOSSIBLE, not merely unauthorised: the
+    identity comes from the JWT and there is no user parameter to pass. Same shape as
+    `edge_panel`'s preferences pair, which is the precedent this follows.
+    """
+    return PickModifierResponse(
+        **pick_modifier.describe(pick_modifier.modifier_of(current_user.preferences))
+    )
+
+
+@router.patch("/preferences", response_model=PickModifierResponse)
+def patch_capture_preferences(
+    body: PickModifierRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> PickModifierResponse:
+    """Set the caller's own pill-pick modifier.
+
+    ⚠️ AN UNRECOGNISED VALUE IS A 422, NOT A SILENT DEFAULT. The READ path falls back to
+    Option for anything it does not recognise, because the pills must work whatever is
+    in a JSONB blob — but a WRITE that accepted "ctrl" and stored it would leave the
+    user believing they had chosen Control while the pills kept using Option. The two
+    paths differ on purpose; `pick_modifier.normalise` returning None rather than the
+    default is what lets them.
+    """
+    chosen = pick_modifier.normalise(body.pick_modifier)
+    if chosen is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"pick_modifier must be one of "
+                f"{', '.join(pick_modifier.ALLOWED)}"
+            ),
+        )
+
+    # ⚠️ `flag_modified` IS DEFENSIVE HERE, NOT LOAD-BEARING, AND A BREAK TEST IS HOW I
+    # KNOW. I wrote the comment that used to sit here claiming both the new dict and
+    # `flag_modified` were REQUIRED. Removing `flag_modified` leaves all 20 tests in
+    # `test_pick_modifier.py` green, because the line below is an ATTRIBUTE ASSIGNMENT
+    # — SQLAlchemy sees that perfectly well. `flag_modified` is only required for
+    # IN-PLACE mutation (`current_user.preferences["k"] = v`).
+    #
+    # ⚠️ IT STAYS, AND THE REASON IS WORTH STATING RATHER THAN IMPLYING. It costs
+    # nothing and it becomes load-bearing the moment somebody "tidies" the two lines
+    # below into one in-place write — at which point the commit would silently store
+    # nothing while this endpoint returned the new value. But no test is watching it
+    # today, so it must not be described as though one were: CLAUDE.md §11, a guard
+    # whose protection is supplied by a layer beneath it.
+    #
+    # The shape is `edge_panel.patch_preferences`'s, which has the same property.
+    prefs = dict(current_user.preferences or {})
+    prefs[pick_modifier.PREFERENCE_KEY] = chosen
+    current_user.preferences = prefs
+    flag_modified(current_user, "preferences")
+    db.add(current_user)
+    db.commit()
+    db.refresh(current_user)
+
+    return PickModifierResponse(
+        **pick_modifier.describe(pick_modifier.modifier_of(current_user.preferences))
+    )
 
 
 @router.get("/vocabulary")

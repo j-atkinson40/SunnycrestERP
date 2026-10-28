@@ -1,8 +1,8 @@
 {
-  "files": 378,
-  "tests": 5365,
-  "measured_on": "2026-10-27",
-  "measured_by": "CI=true npm run test:ci (the instrument CI uses), full suite, 0 failures; raised by guided capture slice 1 and then its fixes (the pane's new look, the overlap arithmetic at 1280/1920, the clickable rows, the Review action pill, and the two service-route tests for the `asking` parameter). `tests` is numTotalTests \u2014 it counts the skipped and todo that the 'passed' line does not.",
+  "files": 379,
+  "tests": 5394,
+  "measured_on": "2026-10-28",
+  "measured_by": "CI=true npm run test:ci (the instrument CI uses), full suite, 0 failures; raised by James's pick-modifier ruling of 2026-10-28 \u2014 the per-user modifier (18 tests in guided-question.test.tsx) and the bar phrase (10 in shortcut-request.test.ts), plus one new file. `tests` is numTotalTests \u2014 it counts the skipped and todo that the 'passed' line does not.",
   "_what_this_is": "A FLOOR, not an equality. A run that executes fewer files or tests than this has not tested what this number says it tests. Growth passes and prints a reminder to raise these. Removing tests on purpose means lowering these IN THE SAME DIFF -- the number may only move in a reviewed commit, never by drift.",
   "_why_it_exists": "2026-10-07, run cap6_10 of a worker-cap experiment: vitest printed 'Test Files 338 passed (338)' while six files never ran, because [vitest-pool-runner] timed out starting their workers. The denominator fell from 344 and the summary line still read complete. vitest cannot catch this alone -- the six were never counted, so its own collected total was already 338. Only a number written down earlier can disagree.",
   "_files_is": "len(summary.testResults) -- NOT numTotalTestSuites, which counts describe blocks (a 2-file subset reported 4)."

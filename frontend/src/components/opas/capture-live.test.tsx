@@ -40,6 +40,23 @@ import { BAR_WIDTH, OpasHost } from "./OpasHost"
 import { EXTRACT_DEBOUNCE_MS } from "./capture-sequence"
 
 vi.mock("@/services/opas-capture-service", () => ({
+  // ⚠️ THE THIRD INSTANCE OF THE LESSON THIS FILE ALREADY RECORDS TWICE: a double that
+  // omits what the component imports fails at CALL time, not import time. `OpasHost`
+  // reads the pick-modifier preference in an effect and calls `.then` on the result,
+  // so omitting this here throws inside the effect and the pane renders nothing.
+  //
+  // ⚠️ AND IT MUST RESOLVE A VALUE, NOT JUST BE A `vi.fn()`. A bare mock returns
+  // `undefined`, and `undefined.then` is the same crash one line later.
+  fetchCapturePreferences: vi.fn(async () => ({
+    pick_modifier: "option" as const,
+    pick_modifier_glyph: "⌥",
+    pick_modifier_event_flag: "altKey" as const,
+  })),
+  setCapturePickModifier: vi.fn(async () => ({
+    pick_modifier: "control" as const,
+    pick_modifier_glyph: "⌃",
+    pick_modifier_event_flag: "ctrlKey" as const,
+  })),
   startCapture: vi.fn(),
   addLine: vi.fn(),
   choosePick: vi.fn(),

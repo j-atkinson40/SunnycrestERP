@@ -38,7 +38,7 @@
  * prototype ADVERTISES, not what it does. Worth knowing before someone "fixes" the
  * divergence by reading the prototype's display and changing this back.
  */
-import { useCallback, useEffect, useMemo, useRef } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 /** The prototype's `.side` column: `grid-template-columns:300px minmax(0,600px)`. */
 const SIDE_WIDTH = 300
@@ -102,6 +102,33 @@ export interface GuidedPill {
 /** The one action a pill can carry today. */
 export const PILL_ACT_REVIEW = "review"
 
+/**
+ * Which modifier picks a pill — James's per-user ruling of 2026-10-28.
+ *
+ * ⚠️ THE GLYPH AND THE EVENT FLAG BOTH COME FROM THE SERVER, and this table exists
+ * only as the fallback for a read that has not landed yet. `pick_modifier.py` holds
+ * the one authoritative copy; duplicating the mapping as the primary source would be
+ * two answers to one question, which is the shape this codebase keeps paying for.
+ */
+export type PickModifier = "option" | "control" | "command"
+
+/** The `KeyboardEvent` boolean each modifier sets. */
+export const MODIFIER_EVENT_FLAG: Record<PickModifier, "altKey" | "ctrlKey" | "metaKey"> = {
+  option: "altKey",
+  control: "ctrlKey",
+  command: "metaKey",
+}
+
+/** ⚠️ `⌃` IS U+2303, THE CONTROL GLYPH. A literal "^" reads as an exponent beside a
+ *  digit; `⌃1` is what the key is called on the keyboard. */
+export const MODIFIER_GLYPH: Record<PickModifier, string> = {
+  option: "⌥",
+  control: "⌃",
+  command: "⌘",
+}
+
+export const DEFAULT_PICK_MODIFIER: PickModifier = "option"
+
 export interface GuidedQuestionProps {
   /** The sentence. Absent means there is nothing to ask and nothing renders. */
   readonly question: string | null
@@ -123,6 +150,12 @@ export interface GuidedQuestionProps {
    *  start of an answer, not a pick. The prototype's own list:
    *  `['time','dates','day'].includes(currentField())`. */
   readonly questionTakesNumbers: boolean
+  /** The user's chosen pick modifier. Absent means the preference has not been read
+   *  yet, and Option — the 2026-10-27 default — applies until it has. */
+  readonly pickModifier?: PickModifier
+  /** The glyph to print, served alongside the modifier so the client does not map it
+   *  a second time. Absent falls back to this file's table. */
+  readonly pickModifierGlyph?: string
   readonly onAnswer: (fieldId: string, value: string) => void
   /** Perform a pill's ACTION — review, today. Absent means action pills are inert,
    *  which is a real state before the session exists. */
@@ -172,6 +205,8 @@ export function GuidedQuestion({
   stacked,
   barIsEmpty,
   questionTakesNumbers: takesNumbers,
+  pickModifier = DEFAULT_PICK_MODIFIER,
+  pickModifierGlyph,
   onAnswer,
   onAct,
   onHeightAbove,
@@ -229,6 +264,12 @@ export function GuidedQuestion({
   // would be unreachable by keyboard and labelled with a key that does not exist.
   const shown = useMemo(() => pills.slice(0, 9), [pills])
 
+  // ⚠️ THE SERVED GLYPH WINS, THIS FILE'S TABLE IS THE FALLBACK. The server holds the
+  // one authoritative mapping; this keeps the pills labelled correctly in the window
+  // before the preference read lands, and would keep working if a future modifier were
+  // added server-side before this file knew about it.
+  const glyph = pickModifierGlyph ?? MODIFIER_GLYPH[pickModifier]
+
   /**
    * ⌥1-⌥9 ANYWHERE, A BARE DIGIT WHEN THE BAR IS EMPTY, OR A CLICK.
    *
@@ -240,39 +281,127 @@ export function GuidedQuestion({
    * "monticello 28" names a size, and consuming that 8 would both answer the wrong
    * question and eat a character.
    */
+  /**
+   * ⚠️ THE HIGHLIGHT IS SESSION-SHAPED STATE, NOT A HOVER. James's ruling of
+   * 2026-10-28, clause 3: with the bar empty, ← → (and ↑ ↓) move it across the pills
+   * and Enter picks the highlighted one; typing anything clears it and Enter goes back
+   * to submitting text.
+   *
+   * ⚠️ `null` IS NOT ZERO. "No pill highlighted" has to be distinct from "the first
+   * pill is highlighted", or Enter on a fresh question would pick ⌥1 without anyone
+   * having moved — which is the one outcome that silently puts a wrong answer on an
+   * order.
+   */
+  const [highlight, setHighlight] = useState<number | null>(null)
+
+  // ⚠️ CLEARED WHEN THE QUESTION CHANGES. A highlight left over from the previous
+  // question points at a pill that no longer exists, and index 2 of four cemeteries is
+  // not index 2 of three equipment packages.
+  useEffect(() => { setHighlight(null) }, [fieldId, shown])
+
+  // ⚠️ AND CLEARED WHEN THE BAR STOPS BEING EMPTY, which is the ruling's "typing
+  // anything clears the highlight" stated as a consequence rather than as a keystroke
+  // test. Watching `barIsEmpty` also covers paste, drag-and-drop and voice — none of
+  // which is a keydown, and all of which mean the person is composing text.
+  useEffect(() => { if (!barIsEmpty) setHighlight(null) }, [barIsEmpty])
+
   useEffect(() => {
     // ⚠️ NO FIELD IS NOT NO PILLS. In the ready state `fieldId` is null and the only
-    // pill is Review — so guarding on the field would make ⌥1 dead at exactly the
-    // moment the office wants it. The branch below uses the field only for answers.
+    // pill is Review — so guarding on the field would make the chord dead at exactly
+    // the moment the office wants it. The branch below uses the field only for answers.
     if (shown.length === 0) return
     const options = shown
     const field = fieldId
-    function onKeyDown(e: KeyboardEvent) {
-      // ⚠️ `e.code` RATHER THAN `e.key` FOR THE OPTION PATH. On macOS ⌥1 produces the
-      // character "¡" in `e.key`, so a `/^[1-9]$/` test on `key` never matches and the
-      // whole ruling would be silently dead. `code` is `Digit1` whatever the modifier
-      // does to the character. The prototype uses `e.code` for exactly this.
-      const digit = /^Digit([1-9])$/.exec(e.code)
-      if (digit === null) return
-      if (e.metaKey || e.ctrlKey || e.shiftKey) return
-      const index = Number(digit[1]) - 1
-      if (index >= options.length) return
-      // ⚠️ ⌥ WORKS WHEREVER THE FOCUS IS; a bare digit only when the bar is empty and
-      // the question is not asking for a number.
-      const bare = !e.altKey
-      if (bare && !(barIsEmpty && !takesNumbers)) return
-      e.preventDefault()
-      e.stopImmediatePropagation()
-      // ⚠️ ONE BRANCH, IN ONE PLACE, SHARED WITH THE CLICK. An action pill reached by
-      // ⌥N and the same pill reached by a click must do the same thing; two call sites
-      // deciding separately is how one of them ends up storing "review" into a field.
+    const chordFlag = MODIFIER_EVENT_FLAG[pickModifier]
+
+    /** Pick a pill by index — one branch, shared by every route in. */
+    function pick(index: number) {
+      // ⚠️ ONE BRANCH, IN ONE PLACE, SHARED WITH THE CLICK AND NOW WITH ENTER. An
+      // action pill reached by the chord, by Enter on a highlight, or by a click must
+      // do the same thing; separate call sites deciding separately is how one of them
+      // ends up storing "review" into a field.
       const pill = options[index]
+      if (pill === undefined) return
       if (pill.act !== undefined) onAct?.(pill.act)
       else if (field !== null) onAnswer(field, pill.value)
     }
+
+    function onKeyDown(e: KeyboardEvent) {
+      // ── Enter on a highlighted pill ───────────────────────────────────────────────
+      // ⚠️ BEFORE THE DIGIT BRANCH AND ONLY WHILE A HIGHLIGHT EXISTS. With no
+      // highlight this handler must not touch Enter at all — the bar's own Enter
+      // submits the text, finishes the order, and keeps a drafted rule, and
+      // intercepting it unconditionally would break all three.
+      if (e.key === "Enter") {
+        if (highlight === null || !barIsEmpty) return
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        pick(highlight)
+        setHighlight(null)
+        return
+      }
+
+      // ── arrows move the highlight ────────────────────────────────────────────────
+      // ⚠️ ONLY WHILE THE BAR IS EMPTY. ← and → are how you move the caret through
+      // text; stealing them mid-phrase would make the bar uneditable.
+      const forward = e.key === "ArrowRight" || e.key === "ArrowDown"
+      const back = e.key === "ArrowLeft" || e.key === "ArrowUp"
+      if (forward || back) {
+        if (!barIsEmpty) return
+        if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        // ⚠️ CLAMPED, NOT WRAPPED. Wrapping means → at the last pill lands on the
+        // first, so a person holding → to "get to the end" cycles past it forever.
+        setHighlight((at) => {
+          if (at === null) return forward ? 0 : options.length - 1
+          const next = forward ? at + 1 : at - 1
+          return Math.max(0, Math.min(options.length - 1, next))
+        })
+        return
+      }
+
+      // ── the digit chord, and a bare digit while the bar is empty ─────────────────
+      // ⚠️ `e.code` RATHER THAN `e.key`. On macOS ⌥1 produces the character "¡" in
+      // `e.key`, so a `/^[1-9]$/` test on `key` never matches and the Option default
+      // would be silently dead. `code` is `Digit1` whatever the modifier does to the
+      // character. James's ruling says "read the key by e.code, as now".
+      const digit = /^Digit([1-9])$/.exec(e.code)
+      if (digit === null) {
+        // ⚠️ TYPING CLEARS THE HIGHLIGHT, which is the ruling's clause 3. One printable
+        // character is the test; it deliberately does NOT preventDefault, because the
+        // character still belongs in the bar.
+        if (e.key.length === 1 && !e.altKey && !e.ctrlKey && !e.metaKey) {
+          setHighlight(null)
+        }
+        return
+      }
+      if (e.shiftKey) return
+      // ⚠️ EVERY MODIFIER EXCEPT THE CHOSEN ONE IS REFUSED, and it is computed rather
+      // than written out. The old line was `if (e.metaKey || e.ctrlKey || e.shiftKey)
+      // return` with Option hard-coded as the chord; that reads correctly and becomes
+      // wrong the moment the modifier is a preference.
+      const held = { option: e.altKey, control: e.ctrlKey, command: e.metaKey }
+      const chord = e[chordFlag]
+      const others = (Object.keys(held) as PickModifier[]).some(
+        (m) => m !== pickModifier && held[m],
+      )
+      if (others) return
+      const index = Number(digit[1]) - 1
+      if (index >= options.length) return
+      // ⚠️ THE CHORD WORKS WHEREVER THE FOCUS IS; a bare digit only when the bar is
+      // empty and the question is not asking for a number.
+      if (!chord && !(barIsEmpty && !takesNumbers)) return
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      pick(index)
+      setHighlight(null)
+    }
     document.addEventListener("keydown", onKeyDown, true)
     return () => document.removeEventListener("keydown", onKeyDown, true)
-  }, [fieldId, shown, barIsEmpty, takesNumbers, onAnswer, onAct])
+  }, [
+    fieldId, shown, barIsEmpty, takesNumbers, onAnswer, onAct, pickModifier, highlight,
+  ])
 
   if (question === null) return null
 
@@ -408,6 +537,11 @@ export function GuidedQuestion({
               key={`${pill.value}-${i}`}
               type="button"
               data-testid={`opas-guided-pill-${i + 1}`}
+              /* ⚠️ A DATA ATTRIBUTE AND `aria-current`, NOT A COLOUR ALONE. A highlight
+                 carried only by a border is unreadable to a screen reader and
+                 untestable without asserting on a style string. */
+              data-highlighted={highlight === i ? "true" : undefined}
+              aria-current={highlight === i ? "true" : undefined}
               onClick={() => {
                 if (pill.act !== undefined) onAct?.(pill.act)
                 else if (fieldId !== null) onAnswer(fieldId, pill.value)
@@ -424,10 +558,21 @@ export function GuidedQuestion({
                 cursor: "pointer",
                 color: "#f1f1ee",
                 font: "inherit",
+                // ⚠️ AFTER `PILL_GLASS` SO IT WINS. The glass sets its own box-shadow,
+                // and a highlight declared before it would be overwritten by the
+                // spread — green in a style test, invisible on screen.
+                ...(highlight === i
+                  ? {
+                      boxShadow:
+                        "inset 0 0 0 1px rgba(255,255,255,.55), 0 0 0 2px rgba(255,255,255,.22)",
+                    }
+                  : null),
               }}
             >
-              {/* ⚠️ ⌥ AND THE NUMBER, which is the affordance for all three ways in —
-                  the ⌥ chord, the bare digit, and the click. */}
+              {/* ⚠️ THE CHOSEN MODIFIER AND THE NUMBER, which is the affordance for
+                  all four ways in — the chord, the bare digit, the arrow highlight,
+                  and the click. The glyph is whatever the user picked; printing ⌥
+                  while their chord is ⌃ would be an instruction that does not work. */}
               <kbd
                 data-testid={`opas-guided-pill-key-${i + 1}`}
                 style={{
@@ -440,7 +585,8 @@ export function GuidedQuestion({
                   whiteSpace: "nowrap",
                 }}
               >
-                ⌥{i + 1}
+                {glyph}
+                {i + 1}
               </kbd>
               <span
                 style={{

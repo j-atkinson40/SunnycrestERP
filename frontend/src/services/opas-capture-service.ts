@@ -258,7 +258,11 @@ export interface CaptureState {
   }
 }
 
-const BASE = "/capture/sessions"
+//: ⚠️ THE ROOT IS SEPARATE BECAUSE `preferences` IS NOT A SESSION. Hanging it off
+//: `BASE` would address `/capture/sessions/preferences`, which the session routes
+//: would try to read as a session id.
+const BASE_ROOT = "/capture"
+const BASE = `${BASE_ROOT}/sessions`
 
 /**
  * The tenant's completable vocabulary, fetched ONCE when capture opens.
@@ -268,6 +272,49 @@ const BASE = "/capture/sessions"
  * rather than throwing: a bar that cannot complete is a bar; a bar that throws is a
  * pane that does not render.
  */
+/** The user's pill-pick modifier, as the server reports it. */
+export interface CapturePreferences {
+  readonly pick_modifier: "option" | "control" | "command"
+  readonly pick_modifier_glyph: string
+  readonly pick_modifier_event_flag: "altKey" | "ctrlKey" | "metaKey"
+}
+
+/**
+ * Read the caller's own pick modifier.
+ *
+ * ⚠️ IT FALLS BACK RATHER THAN THROWING, because a failed preference read must not
+ * stop the bar working. Option is the 2026-10-27 default and is what a user who has
+ * never chosen gets anyway, so the degraded state is the ordinary one.
+ */
+export async function fetchCapturePreferences(): Promise<CapturePreferences> {
+  try {
+    const r = await apiClient.get<CapturePreferences>(`${BASE_ROOT}/preferences`)
+    return r.data
+  } catch {
+    return {
+      pick_modifier: "option",
+      pick_modifier_glyph: "⌥",
+      pick_modifier_event_flag: "altKey",
+    }
+  }
+}
+
+/**
+ * Set the caller's own pick modifier.
+ *
+ * ⚠️ THIS ONE DOES NOT SWALLOW. A read that fails can degrade silently; a WRITE the
+ * person asked for must report whether it happened, or "set my shortcut to control"
+ * would answer "done" and change nothing.
+ */
+export async function setCapturePickModifier(
+  modifier: string,
+): Promise<CapturePreferences> {
+  const r = await apiClient.patch<CapturePreferences>(`${BASE_ROOT}/preferences`, {
+    pick_modifier: modifier,
+  })
+  return r.data
+}
+
 export async function fetchVocabulary(): Promise<readonly VocabTerm[]> {
   try {
     const r = await apiClient.get<{ terms: VocabTerm[] }>("/capture/vocabulary")

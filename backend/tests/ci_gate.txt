@@ -678,3 +678,4 @@ tests/test_rulebook.py
 # run on one. 12 of 398 shipped migrations are grandfathered as a ratchet that may only
 # shrink; the marker is read with `ast`, never grepped.
 tests/test_migration_safety.py
+tests/test_pick_modifier.py
