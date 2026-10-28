@@ -90,6 +90,11 @@ RANKED_FROM_HISTORY = frozenset({
     "service_time",
 })
 
+#: `customers.customer_type` for a funeral home. The column's own model comment
+#: declares the vocabulary: 'funeral_home', 'contractor', 'cemetery', 'individual',
+#: 'unknown'. There is no CHECK constraint, so the string is the contract.
+FUNERAL_HOME_TYPE = "funeral_home"
+
 BURIAL_ONLY_EQUIPMENT = frozenset({
     "full_equipment",
     "lowering_device_and_grass",
@@ -406,12 +411,58 @@ def pills_for(
             mine=[], mine_total=0, everyone=column(facts, "funeral_home"),
         )
         towns: dict[str, str | None] = {}
-        for name, city in db.execute(
-            text("SELECT name, city FROM customers WHERE company_id = :t AND is_active"),
+        funeral_homes: set[str] = set()
+        typed_any = False
+        for name, city, ctype in db.execute(
+            text("SELECT name, city, customer_type FROM customers "
+                 "WHERE company_id = :t AND is_active"),
             {"t": tenant_id},
         ).all():
-            if name:
-                towns[name] = city
+            if not name:
+                continue
+            towns[name] = city
+            if ctype:
+                typed_any = True
+            if (ctype or "").strip().lower() == FUNERAL_HOME_TYPE:
+                funeral_homes.add(name)
+
+        # ⚠️ THE FILTER APPLIES ONLY WHERE THE TENANT HAS SAID SOMETHING. A filter that
+        # ignored that would offer ZERO funeral homes on a tenant nobody has classified
+        # — turning "nobody has typed these yet" into "none of these is a funeral home".
+        #
+        # ⚠️ AND MY FIRST VERSION OF THIS COMMENT CLAIMED SUNNYCREST WAS THE ONLY TYPED
+        # TENANT. THAT WAS FALSE AND A TEST CONTROL CAUGHT IT. `seed_staging.py` has
+        # been setting `customer_type = 'funeral_home'` on the FH-001..FH-005 customers
+        # all along, so measured on dev testco is 261 customers, 5 typed funeral_home
+        # and 256 NULL — the NULLs being `Fixture …` / `Cert Fixture …` test litter.
+        # The real shape is therefore PARTIAL typing, not all-or-nothing, and that is
+        # the case the condition has to be right about.
+        #
+        # ⚠️ IT IS THE SAME NOT_CONFIGURED / NOT_OFFERED DISTINCTION THE AVAILABILITY
+        # RESOLVER ALREADY MAKES: an absent key means "nothing constrains this", an
+        # explicit value means "this is the constraint". `typed_any` is the
+        # key-presence test, read across the tenant rather than per row.
+        #
+        # ⚠️ STATED COST OF READING IT STRICTLY, which is what James's "funeral homes
+        # ONLY" asks for: on a PARTIALLY typed tenant, a real funeral home that has
+        # orders but has not been typed drops out of the pills until someone types it.
+        # Measured, nobody is in that position today — testco's five typed homes are
+        # exactly the five its orders name, and Sunnycrest's Hopkins and Riverside are
+        # both typed — but it is the first thing to look at if a licensee reports a
+        # missing pill. The name typed in full always works.
+        if typed_any:
+            ordered = [name for name in ordered if name in funeral_homes]
+
+        # ⚠️ NO PAD, AND THE OMISSION IS THE RULING'S WORDING. "Which funeral home?
+        # pills offer funeral homes ONLY" is a restriction, not an instruction to add
+        # zero-order funeral homes to the list — and the last time this branch padded
+        # from the customer table it was a pad the dispatch never asked for, which is
+        # what put St. Mary's under "Which funeral home?" in James's screenshot.
+        #
+        # ⚠️ STATED COST, UNCHANGED BY THIS RULING: a genuinely new funeral home still
+        # has no orders, so it is still not offered until its first one is typed. The
+        # type column now makes padding a one-line change if James wants it; this is
+        # not that change.
         return tuple(_dedupe([
             Pill(value=name, label=name, sub=towns.get(name))
             for name in ordered[:MAX_PILLS]

@@ -55,6 +55,7 @@ from app.services.order_list.customer import (
 )
 from app.services.order_list.stage import OrderFacts
 from app.services.personalization.questions import ANSWER_NONE
+from tests._ids import RUN_ID
 from tests._tenant import TESTCO_ID, make_canonical_tenant_fixture
 
 
@@ -761,6 +762,130 @@ def test_an_equipment_answer_that_fits_a_cremation_SURVIVES_the_change(db, canon
     assert note is None
 
 
+# ── JAMES'S RULING OF 2026-10-28: CUSTOMERS GET A TYPE ────────────────────────────
+#
+# "Which funeral home?" pills offer funeral homes only; a cemetery customer typed by
+# name is still accepted as the customer.
+#
+# ⚠️ THE TWO HALVES READ DIFFERENT TABLES, which is why they need separate tests and
+# why the second one is not merely belt-and-braces. The PILLS rank from order facts
+# and look names up in `customers`. The TYPED path goes through
+# `party_resolver.resolve_funeral_home`, which reads `company_entities` and
+# deliberately does not filter on any role flag. Adding a type filter to the first
+# must not be mistaken for having added one to the second.
+
+
+def _fh_pills(db, *, values=None):
+    from app.services.capture.pills import pills_for
+    from app.services.capture.schema import resolve_schema
+    resolved = resolve_schema(vault_product_id=None, personalization_config=None)
+    return pills_for(
+        db, tenant_id=TESTCO_ID, field_id="funeral_home", values=values or {},
+        resolved_fields=resolved, today=date(2026, 10, 28),
+    )
+
+
+def test_an_UNTYPED_tenant_still_gets_funeral_home_pills(db, canonical_tenant):
+    """⚠️ THE REGRESSION THE OBVIOUS IMPLEMENTATION SHIPS. A bare
+    `WHERE customer_type = 'funeral_home'` offers ZERO pills on a licensee nobody has
+    classified, turning "nobody has typed these yet" into "none of these is a funeral
+    home".
+
+    ⚠️ AND THIS TEST'S FIRST VERSION ASSERTED testco WAS THAT TENANT, WHICH WAS FALSE.
+    `seed_staging.py` types FH-001..FH-005 as funeral_home, so testco is PARTIALLY
+    typed: 5 typed, 256 NULL fixture rows. The control below caught the false premise
+    on the first run — which is why it is a control and not a comment.
+
+    So the untyped case has to be CONSTRUCTED, inside the test's own transaction.
+    """
+    from sqlalchemy import text as _text
+
+    before = [p.value for p in _fh_pills(db)]
+    assert before, "control: testco must offer pills at all, or nothing below means anything"
+
+    # ⚠️ CONSTRUCT the untyped tenant by clearing the types this tenant really has.
+    # Rolled back at the end — see the `db.rollback()`.
+    cleared = db.execute(_text(
+        "UPDATE customers SET customer_type = NULL WHERE company_id = :t "
+        "AND customer_type IS NOT NULL"
+    ), {"t": TESTCO_ID}).rowcount
+    db.flush()
+    assert cleared > 0, (
+        f"control: expected to clear at least one type, cleared {cleared} — if this is "
+        "zero the tenant was already untyped and the test is not testing the fallback"
+    )
+
+    after = [p.value for p in _fh_pills(db)]
+    # ⚠️ NON-EMPTY IS THE ASSERTION, and it is the reading the broken version cannot
+    # produce: a strict filter returns () once every type is NULL.
+    assert after, "an untyped tenant lost its funeral-home pills"
+    assert after == before, (
+        f"the fallback should reproduce the pre-ruling ranking exactly: {before} -> {after}"
+    )
+    db.rollback()
+
+
+def test_a_TYPED_tenant_offers_only_customers_typed_funeral_home(db, canonical_tenant):
+    """James's ruling: offer funeral homes only.
+
+    ⚠️ THE TEST TYPES THE DATA ITSELF rather than leaning on Sunnycrest's production
+    rows, because a test that depends on one tenant's live classification is a test
+    that goes red the next time somebody reclassifies a customer — and CLAUDE.md
+    already records a class of tests that passed only because a row was missing.
+    """
+    from sqlalchemy import text as _text
+
+    before = [p.value for p in _fh_pills(db)]
+    assert len(before) >= 2, (
+        f"control: need at least two offered homes to demote one and see it go, got {before}"
+    )
+
+    # ⚠️ DEMOTE A CUSTOMER THE PILLS CURRENTLY OFFER, rather than promoting one they do
+    # not. testco is already typed by `seed_staging`, so promoting would change nothing
+    # and the test would pass against a filter that does not exist. Taking a name OUT
+    # is the movement only a working filter can produce.
+    demoted = before[0]
+    db.execute(_text(
+        "UPDATE customers SET customer_type = 'cemetery' "
+        "WHERE company_id = :t AND name = :n"
+    ), {"t": TESTCO_ID, "n": demoted})
+    db.flush()
+
+    after = [p.value for p in _fh_pills(db)]
+    assert demoted not in after, (
+        f"a customer typed 'cemetery' is still offered under 'Which funeral home?': {after}"
+    )
+    # ⚠️ AND THE REST SURVIVE — without this, a filter that returned () would pass.
+    assert [n for n in before if n != demoted][:1][0] in after, after
+    db.rollback()
+
+
+def test_a_cemetery_typed_by_name_is_STILL_ACCEPTED_as_the_customer(db, canonical_tenant):
+    """The ruling's second clause, and it binds a DIFFERENT module.
+
+    ⚠️ `resolve_funeral_home` READS `company_entities`, NOT `customers`, and its
+    docstring records a measurement for why it filters on no role flag: the flags are
+    not populated uniformly, so requiring one answers "no such funeral home" about an
+    entity that is one. The pill filter must not leak into it.
+    """
+    from sqlalchemy import text as _text
+    from app.services.party_resolver import resolve_funeral_home
+
+    name = "Zzz Memorial Cemetery"
+    db.execute(_text(
+        "INSERT INTO company_entities (id, company_id, name, customer_type) "
+        "VALUES (:i, :t, :n, 'cemetery')"
+    ), {"i": f"{RUN_ID}-cem", "t": TESTCO_ID, "n": name})
+    db.flush()
+
+    r = resolve_funeral_home(db, TESTCO_ID, name)
+    names = [getattr(c, "name", None) for c in (getattr(r, "candidates", None) or ())]
+    assert name in names, (
+        f"a cemetery typed by name is no longer accepted as the customer: {names}"
+    )
+    db.rollback()
+
+
 # ── CLAUSE 4's SECOND HALF, WHICH I SHIPPED BROKEN AND REPORTED AS WORKING ────────
 #
 # ⚠️ FOUR GREEN TESTS COVERED CLAUSE 4 AND ALL FOUR TESTED THE URN/EQUIPMENT HALF.
@@ -1318,21 +1443,44 @@ def test_the_funeral_home_pills_offer_only_customers_who_have_ORDERED(db, canoni
     They were there because this branch padded the list from every ACTIVE customer — a
     pad I added that the dispatch never asked for.
 
-    ⚠️ IT IS NOT THE `customer_type` FIX. No ruling on that has reached me, and measured
-    on production the column is NULL on all five of Sunnycrest's customers, so nothing
-    can tell a funeral home from a cemetery today. Order history is a different
-    discriminator that happens to give the right answer here.
+    ⚠️ CORRECTED 2026-10-28. This docstring used to say "IT IS NOT THE `customer_type`
+    FIX. No ruling on that has reached me, and measured on production the column is NULL
+    on all five of Sunnycrest's customers." BOTH CLAUSES ARE NOW FALSE: the ruling
+    arrived on 2026-10-28 and the column is written. Order history and the type are now
+    two filters that COMPOSE — a pill must be a funeral-home-typed customer of this
+    tenant AND have ordered — so this test pins the second half and
+    `test_a_TYPED_tenant_offers_only_customers_typed_funeral_home` pins the first.
 
-    ⚠️ AND IT HAS A KNOWN COST: a genuinely NEW funeral home has no orders either, so it
-    is not offered until its first one is typed. Asserted below so the trade is visible
-    rather than discovered.
+    ⚠️ THE COST STANDS AND IS STILL ASSERTED BELOW: a genuinely new funeral home has no
+    orders, so it is not offered until its first one is typed. The ruling made padding
+    possible, not automatic, and no pad was added.
     """
+    from sqlalchemy import text as _text
+
     from app.services.capture.pills import pills_for
 
+    # ⚠️ NAMES READ FROM THE TENANT, NOT INVENTED — AND THE PREVIOUS VERSION'S FIXTURE
+    # IS WHY. It injected "Hopkins Funeral Home", a SUNNYCREST customer, against
+    # testco's tenant id, and passed only because the branch would offer any name the
+    # facts carried. Once the type filter required the name to be a funeral-home-typed
+    # customer OF THIS TENANT, the fixture named rows that do not exist here and the
+    # pills correctly returned nothing. The fixture was wrong, not the engine — exactly
+    # the fixtures-modelled-on-nothing-real shape CLAUDE.md §11 names, and the FULL gate
+    # caught it where my three-test subset run did not.
+    homes = list(db.execute(_text(
+        "SELECT name FROM customers WHERE company_id = :t AND is_active "
+        "AND customer_type = 'funeral_home' ORDER BY name"
+    ), {"t": TESTCO_ID}).scalars())
+    assert len(homes) >= 3, (
+        f"control: need three typed funeral homes — two to order and one to stay "
+        f"silent — got {homes}"
+    )
+    ordered_a, ordered_b, never_ordered = homes[0], homes[1], homes[2]
+
     facts = [
-        order(funeral_home="Hopkins Funeral Home"),
-        order(funeral_home="Hopkins Funeral Home"),
-        order(funeral_home="Riverside Memorial Chapel"),
+        order(funeral_home=ordered_a),
+        order(funeral_home=ordered_a),
+        order(funeral_home=ordered_b),
     ]
     values: dict = {}
     got = pills_for(
@@ -1340,11 +1488,17 @@ def test_the_funeral_home_pills_offer_only_customers_who_have_ORDERED(db, canoni
         resolved_fields=_resolved(db, values), today=date(2026, 10, 27), facts=facts,
     )
     offered = {p.value for p in got}
-    assert "Hopkins Funeral Home" in offered
-    assert "Riverside Memorial Chapel" in offered
-    # ⚠️ THE CONTROL AND THE POINT: a customer with no orders is NOT offered, whatever
-    # it is called. Testco's own customer list is seeded and wider than these two.
-    assert offered == {"Hopkins Funeral Home", "Riverside Memorial Chapel"}, offered
+    assert ordered_a in offered
+    assert ordered_b in offered
+    # ⚠️ THE ASSERTION THAT CARRIES THE TEST'S NAME, and it is stronger than it was.
+    # `never_ordered` IS a funeral-home-typed customer of this tenant, so the type
+    # filter alone would admit it; only the order-history half keeps it out. The old
+    # version compared against two invented names and could not make this distinction.
+    assert never_ordered not in offered, (
+        f"{never_ordered!r} is typed funeral_home but has no orders in these facts, "
+        f"and is still offered: {offered}"
+    )
+    assert offered == {ordered_a, ordered_b}, offered
 
 
 def test_a_customer_with_no_orders_is_not_offered_even_if_it_is_the_only_one(db, canonical_tenant):
