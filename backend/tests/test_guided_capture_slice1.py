@@ -762,6 +762,306 @@ def test_an_equipment_answer_that_fits_a_cremation_SURVIVES_the_change(db, canon
     assert note is None
 
 
+# ── JAMES'S RULING OF 2026-10-28: AN EXPLICIT LINK WINS OVER NAME RESOLUTION ──────
+#
+# "An explicit products.variant_template_id wins over name resolution wherever a
+#  vault's variant is resolved (form ladder AND availability). Unlinked products
+#  behave exactly as today."
+#
+# ⚠️ THE FILE ALREADY SAID SO AND THE CODE DID THE OPPOSITE, AND I AM THE ONE WHO
+# BROKE IT. `vault_form.py`'s module docstring has read, since it was written,
+# "putting it last … would mean a correct answer arriving and being overruled by a
+# name match" — and then the guided-capture slice added `_step_name_resolver` as a new
+# FIRST rung, in front of the link that sentence protects. So the ladder overruled the
+# link for a day while documenting that it must not. There was no test either way.
+#
+# ⚠️ AND MEASURED, ZERO PRODUCTS ARE LINKED ANYWHERE ON DEV. Every other test in this
+# suite therefore exercises the UNLINKED path, which is why the linked path has to be
+# constructed here and why "unlinked is unchanged" is worth asserting rather than
+# assuming.
+
+
+def _link_product(db, *, name: str, variant_template_id: str, sku: str) -> None:
+    """Create a testco product linked to a catalogue variant. Caller rolls back."""
+    from sqlalchemy import text as _text
+    db.execute(_text(
+        "INSERT INTO products (id, company_id, name, sku, price, is_active, "
+        "                      tax_class, variant_template_id) "
+        "VALUES (:i, :t, :n, :s, 100, true, 'inherit', :v)"
+    ), {"i": f"{RUN_ID}-{sku}", "t": TESTCO_ID, "n": name, "s": f"{RUN_ID}-{sku}",
+        "v": variant_template_id})
+    db.flush()
+
+
+def _a_variant_with_form(db, form: str) -> str:
+    """A real catalogue variant id whose template carries `form`. Never a literal."""
+    from sqlalchemy import text as _text
+    vid = db.execute(_text(
+        "SELECT v.id FROM product_variant_templates v "
+        "JOIN product_templates t ON t.id = v.product_template_id "
+        "WHERE t.form = :f ORDER BY v.sku LIMIT 1"
+    ), {"f": form}).scalar()
+    assert vid, f"control: the catalogue has no variant with form {form!r}"
+    return str(vid)
+
+
+def test_an_explicit_link_BEATS_the_name_resolver_in_the_form_ladder(db, canonical_tenant):
+    """⚠️ THE LINK AND THE NAME ARE MADE TO DISAGREE, which is the only arrangement
+    that can prove precedence. A test where both agree passes against either order.
+
+    `Wilbert Bronze` is a name the resolver places confidently as `burial_vault` — it
+    is one of the two testco products that reach a variant at all. Linked to an
+    URN-vault variant, the ladder must report `urn_vault`: the tenant's declaration,
+    not the name's.
+    """
+    from app.services.capture.vault_form import (
+        FORM_BURIAL_VAULT, FORM_URN_VAULT, VIA_NAME_RESOLVER, VIA_TENANT_LINK, form_of,
+    )
+
+    name = "Wilbert Bronze"
+    # ⚠️ THE CONTROL FIRST, and it is load-bearing: without it, a ladder that returned
+    # urn_vault for everything would pass the assertion below.
+    before = form_of(db, tenant_id=TESTCO_ID, vault=name)
+    assert before.form == FORM_BURIAL_VAULT, before
+    assert before.via == VIA_NAME_RESOLVER, before
+
+    urn_variant = _a_variant_with_form(db, FORM_URN_VAULT)
+    _link_product(db, name=name, variant_template_id=urn_variant, sku="wb")
+
+    after = form_of(db, tenant_id=TESTCO_ID, vault=name)
+    assert after.form == FORM_URN_VAULT, (
+        f"the name resolver overruled the tenant's explicit link: {after}"
+    )
+    assert after.via == VIA_TENANT_LINK, after
+    # ⚠️ AND THE CREMATION ANSWER FOLLOWS, which is what the ladder is FOR.
+    assert after.is_cremation is True
+    db.rollback()
+
+
+def test_an_UNLINKED_product_behaves_exactly_as_today_in_the_form_ladder(db, canonical_tenant):
+    """The ruling's second half, and the easier one to break while satisfying the first.
+
+    ⚠️ ASSERTED FOR BOTH A RESOLVING AND A NON-RESOLVING NAME, because the fallback has
+    two outcomes and a change could preserve one while losing the other.
+    """
+    from app.services.capture.vault_form import (
+        FORM_BURIAL_VAULT, FORM_URN_VAULT, VIA_NAME_RESOLVER, VIA_RECORDED_NAME, form_of,
+    )
+
+    # resolves by name
+    r = form_of(db, tenant_id=TESTCO_ID, vault="Wilbert Bronze")
+    assert (r.form, r.via) == (FORM_BURIAL_VAULT, VIA_NAME_RESOLVER), r
+
+    # reaches no catalogue row; answered by its own recorded name — the rung that
+    # carries Sunnycrest's `Urn Vault - Standard`
+    r2 = form_of(db, tenant_id=TESTCO_ID, vault="Urn Vault - Standard")
+    assert (r2.form, r2.via) == (FORM_URN_VAULT, VIA_RECORDED_NAME), r2
+
+    # and an empty vault is still UNKNOWN rather than a burial vault
+    assert form_of(db, tenant_id=TESTCO_ID, vault="").form is None
+
+
+def test_the_two_form_ladders_AGREE(db, canonical_tenant):
+    """⚠️ THERE ARE TWO IMPLEMENTATIONS OF THIS LADDER — the module `form_of` and
+    `FormResolver.form_of`, the memoised per-request one — and the ruling had to be
+    applied to both. Two answers to one question is the shape this codebase keeps
+    paying for, so they are compared directly, linked AND unlinked.
+    """
+    from app.services.capture.vault_form import FORM_URN_VAULT, FormResolver, form_of
+
+    names = ["Wilbert Bronze", "Urn Vault - Standard", "Monarch", "Graveliner", ""]
+
+    unlinked = [(form_of(db, tenant_id=TESTCO_ID, vault=n).form,
+                 form_of(db, tenant_id=TESTCO_ID, vault=n).via) for n in names]
+    fr = FormResolver(db, TESTCO_ID)
+    assert [(fr.form_of(n).form, fr.form_of(n).via) for n in names] == unlinked
+
+    _link_product(db, name="Wilbert Bronze",
+                  variant_template_id=_a_variant_with_form(db, FORM_URN_VAULT), sku="agree")
+    # ⚠️ A FRESH FormResolver, because the old one memoised the pre-link answer. That
+    # is correct for a per-request cache and would make this test lie if reused.
+    fr2 = FormResolver(db, TESTCO_ID)
+    linked = [(form_of(db, tenant_id=TESTCO_ID, vault=n).form,
+               form_of(db, tenant_id=TESTCO_ID, vault=n).via) for n in names]
+    assert [(fr2.form_of(n).form, fr2.form_of(n).via) for n in names] == linked
+    # the control: the link actually moved something, or this compares two no-ops
+    assert linked != unlinked, linked
+    db.rollback()
+
+
+def test_an_explicit_link_BEATS_the_name_resolver_for_AVAILABILITY(db, canonical_tenant, monkeypatch):
+    """The ruling's "AND availability" half — a different code path from the ladder.
+
+    ⚠️ THE DISCRIMINATING CASE IS A NAME THE RESOLVER ABSTAINS ON. `Continental Burial
+    Vault` returns TWO catalogue candidates, so `resolution.variant_template_id` is
+    None and availability was never read — personalization went unasked even on a
+    tenant that had declared which Continental it sells. That is the production
+    symptom this ruling fixes, reproduced here.
+    """
+    from app.services.capture import clears
+    from app.services.capture.vault_form import variant_for
+    from app.services.product_name_resolver import build_index
+    from app.services.product_name_resolver import resolve as resolve_vault
+
+    name = "Continental Burial Vault"
+    # ⚠️ THE CONTROL: the resolver must genuinely abstain, or this proves nothing.
+    assert getattr(resolve_vault(build_index(db), name), "variant_template_id", None) is None, (
+        "control: this name must be AMBIGUOUS to the resolver for the test to mean anything"
+    )
+
+    standard = db.execute(__import__("sqlalchemy").text(
+        "SELECT v.id FROM product_variant_templates v WHERE v.sku = 'BV-CON'"
+    )).scalar()
+    assert standard, "control: the catalogue must carry BV-CON"
+    _link_product(db, name=name, variant_template_id=str(standard), sku="con")
+
+    # the precedence function now answers where the resolver could not
+    v = variant_for(db, tenant_id=TESTCO_ID, vault=name)
+    assert v.variant_template_id == str(standard), v
+
+    # and the clear rule reads availability through it
+    monkeypatch.setattr(
+        clears, "resolve_availability_config",
+        lambda _db, _cid: {"availability": {str(standard): {"personalization": ["nameplate_only"]}}},
+    )
+    after, note = clears.clear_what_no_longer_fits(
+        db, company_id=TESTCO_ID,
+        resolutions={"vault": name, "personalization": "legacy_print"},
+        changed_field="vault",
+    )
+    assert "personalization" not in after, after
+    assert note and "Legacy Series" in note, note
+    db.rollback()
+
+
+def test_an_UNLINKED_product_still_resolves_AVAILABILITY_by_name(db, canonical_tenant):
+    """The second half again, on the availability path.
+
+    ⚠️ `Wilbert Bronze` is unlinked and resolves to exactly one candidate, so
+    `variant_for` must return the RESOLVER's id and say so — the same value the code
+    used before this ruling.
+    """
+    from app.services.capture.vault_form import VIA_NAME_RESOLVER, variant_for
+    from app.services.product_name_resolver import build_index
+    from app.services.product_name_resolver import resolve as resolve_vault
+
+    name = "Wilbert Bronze"
+    expected = getattr(resolve_vault(build_index(db), name), "variant_template_id", None)
+    assert expected, "control: this name must resolve for the test to mean anything"
+
+    v = variant_for(db, tenant_id=TESTCO_ID, vault=name)
+    assert v.variant_template_id == str(expected), v
+    assert v.via == VIA_NAME_RESOLVER, v
+
+
+def test_linked_variant_answers_ONLY_from_the_link(db, canonical_tenant):
+    """⚠️ `linked_variant` EXISTS SO `typed_extraction` DOES NOT RESOLVE TWICE, and the
+    thing that makes it worth having is that it NEVER consults the resolver. If it
+    fell through to the name resolver it would be `variant_for` under another name,
+    and the hot path would read the product tables twice per extraction.
+    """
+    from app.services.capture.vault_form import VIA_TENANT_LINK, linked_variant
+
+    # unlinked, but a name the RESOLVER places confidently -> must still be nothing
+    v = linked_variant(db, tenant_id=TESTCO_ID, vault="Wilbert Bronze")
+    assert v.via is None and v.variant_template_id is None and v.form is None, v
+
+    from app.services.capture.vault_form import FORM_URN_VAULT
+    urn = _a_variant_with_form(db, FORM_URN_VAULT)
+    _link_product(db, name="Wilbert Bronze", variant_template_id=urn, sku="lo")
+    v2 = linked_variant(db, tenant_id=TESTCO_ID, vault="Wilbert Bronze")
+    assert v2.via == VIA_TENANT_LINK and v2.variant_template_id == urn, v2
+    db.rollback()
+
+
+def test_the_TYPED_path_survives_a_linked_product(db, canonical_tenant):
+    """⚠️ THIS TEST EXISTS FOR A CRASH I INTRODUCED AND CAUGHT BEFORE SHIPPING, and it
+    is the kind no dev-database test would have found by accident.
+
+    `evaluate_typed` reads `resolution` at two sites AFTER the variant is decided — the
+    `vault_label` for a conflict message and the `_permitted_for` call. Putting the
+    link check in front of the resolver left `resolution` UNBOUND on the link path, so
+    the function raised `NameError` whenever a product WAS linked. Measured: zero
+    products are linked anywhere on dev, so every existing test took the else-branch
+    and nothing would have gone red. The only place it could fire is Sunnycrest
+    production — in James's walk.
+    """
+    from app.services.capture.typed_extraction import evaluate_typed
+    from app.services.capture.vault_form import FORM_URN_VAULT
+
+    name = "Wilbert Bronze"
+    _link_product(db, name=name,
+                  variant_template_id=_a_variant_with_form(db, FORM_URN_VAULT), sku="typed")
+
+    # ⚠️ THE ASSERTION IS THAT IT RETURNS AT ALL. A NameError here is the defect; the
+    # state's contents are the business of the other tests.
+    out = evaluate_typed(db, tenant_id=TESTCO_ID, answers={"vault": name})
+    assert out is not None
+    db.rollback()
+
+
+def test_the_CALL_path_prefers_the_link_for_availability(db, canonical_tenant, monkeypatch):
+    """⚠️ THE FOURTH SITE, AND IT WAS NEARLY MISSED. The form ladder and the two capture
+    call sites all live in `services/capture/`; `call_extraction_service` does not, so
+    a sweep of that package would have reported the ruling complete with this site
+    still resolving by name.
+
+    ⚠️ AND `resolution` IS STILL RETURNED UNCHANGED, asserted below. The caller
+    persists its candidate set so the capture can ask "which of these two?", and
+    suppressing that for a linked product is a different decision on a different
+    surface which the ruling did not make.
+    """
+    from sqlalchemy import text as _text
+
+    from app.services import call_extraction_service as ces
+
+    name = "Continental Burial Vault"
+    standard = db.execute(_text(
+        "SELECT id FROM product_variant_templates WHERE sku = 'BV-CON'"
+    )).scalar()
+    assert standard, "control: the catalogue must carry BV-CON"
+    _link_product(db, name=name, variant_template_id=str(standard), sku="call")
+
+    seen: list[dict] = []
+    real = ces.capture.evaluate
+
+    def recording(*a, **kw):
+        seen.append(kw)
+        return real(*a, **kw)
+
+    monkeypatch.setattr(ces.capture, "evaluate", recording)
+    resolution, _state = ces.resolve_and_evaluate(
+        db, {"vault_type": name}, tenant_id=TESTCO_ID
+    )
+
+    assert len(seen) == 1, seen
+    assert seen[0]["vault_product_id"] == str(standard), (
+        f"the call path ignored the tenant's link: {seen[0]['vault_product_id']}"
+    )
+    # ⚠️ THE CONTROL ON THE SCOPE DECISION: the ambiguity set is untouched, so the
+    # "which of these two?" question still has its candidates.
+    assert len(resolution.candidates or ()) == 2, resolution
+    db.rollback()
+
+
+def test_the_CALL_path_is_UNCHANGED_for_an_unlinked_product(db, canonical_tenant, monkeypatch):
+    """The ruling's second half on the fourth site."""
+    from app.services import call_extraction_service as ces
+    from app.services.product_name_resolver import build_index
+    from app.services.product_name_resolver import resolve as resolve_vault
+
+    name = "Wilbert Bronze"
+    expected = getattr(resolve_vault(build_index(db), name), "variant_template_id", None)
+    assert expected, "control: this name must resolve for the test to mean anything"
+
+    seen: list[dict] = []
+    real = ces.capture.evaluate
+    monkeypatch.setattr(ces.capture, "evaluate",
+                        lambda *a, **kw: (seen.append(kw), real(*a, **kw))[1])
+    ces.resolve_and_evaluate(db, {"vault_type": name}, tenant_id=TESTCO_ID)
+    assert seen[0]["vault_product_id"] == str(expected), seen[0]
+
+
 # ── JAMES'S RULING OF 2026-10-28: CUSTOMERS GET A TYPE ────────────────────────────
 #
 # "Which funeral home?" pills offer funeral homes only; a cemetery customer typed by

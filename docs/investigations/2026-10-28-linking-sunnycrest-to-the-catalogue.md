@@ -193,3 +193,174 @@ UPDATE customers SET customer_type = NULL, classification_method = NULL WHERE co
 UPDATE customers SET customer_type = NULL, classification_method = NULL WHERE company_id = '090e7eeb-…' AND account_number = 'DEMO2-C005';
 UPDATE customers SET customer_type = NULL, classification_method = NULL WHERE company_id = '090e7eeb-…' AND account_number = 'DEMO2-C002';
 ```
+
+---
+
+# Addendum, 2026-10-28 (second batch): both Continentals
+
+James's ruling: *"Sunnycrest sells both Continentals. Link the existing Continental product
+to BV-CON (Standard). Add a Continental 34" product linked to BV-CON34, priced from
+docs/catalog/2026-02-01-sunnycrest-funeral-price-list.pdf. If the price list doesn't show
+a 34" price, don't invent one; stop and ask."*
+
+## The price is measured, twice, not invented
+
+```
+docs/catalog/2026-02-01-sunnycrest-funeral-price-list.pdf
+sha256 b5f679c37a8efb40f4f833be811ac57cf3601c138352d2003ad701c122efde41
+298,155 bytes, 2 pages
+```
+
+The PDF puts names and prices in separate text blocks, so **list-order alignment would be
+an inference.** Aligned by coordinate instead:
+
+```
+y=627.0  ->  $2,179
+y=627.3  ->  Continental 34"        same y-band, ODD SIZED group, page 1
+
+y=474.1  ->  $1,607
+y=474.9  ->  Continental            same y-band, Single Reinforced
+```
+
+Independently, `docs/catalog/2026-10-03-price-list-to-catalog-map.md:158` records
+`Continental 34" | $2,179 | measured — p1`. Two methods, same figure.
+
+⚠️ **And the existing Continental already carries $1,607** — the price-list value — as do
+Monticello ($1,405), Full Equipment ($300), Lowering Device & Grass ($185), Lowering Device
+Only ($140), Tent Only ($225) and Extra Chairs ($5). Sunnycrest's products are priced from
+this list, so $2,179 sits consistently beside them rather than being the only real number
+among demo ones.
+
+## What was written
+
+| | |
+|---|---|
+| `DEMO2-P002` `Continental Burial Vault` $1,607 | `variant_template_id` NULL → **`7eddfbea`** (BV-CON, "Standard") |
+| **new** `BV-CON34` `Continental 34"` **$2,179** | `variant_template_id` = **`9e1bfebe`** (BV-CON34, "34 inch") |
+
+Every other field on the new product is **cloned from its sibling**, not chosen — a new row
+on a real tenant's books should differ in exactly the fields the ruling names. `sku` is
+`BV-CON34`, mirroring the catalogue variant; the ruling didn't specify one and it renames
+trivially.
+
+## ⚠️ The link is NOT what makes the rule fire — the NAME is
+
+This is the part that matters, because it is one step off the ruling's evident model.
+
+**`vault_product_id` — the thing that unlocks personalization availability — comes from the
+RESOLVER, not from `products.variant_template_id`.** Both call sites agree:
+
+```
+typed_extraction.py:2900   vault_product_id = resolution.variant_template_id
+clears.py:145              vault_product_id = resolution.variant_template_id
+```
+
+`products.variant_template_id` is read in exactly one place — `vault_form.py:204` and
+`:391`, the `_step_tenant_link` rung of the form ladder, which decides **urn vs burial**,
+not availability.
+
+Measured on production after the write:
+
+```
+'Continental Burial Vault'   resolver: 2 candidates -> vtid=None (abstains)
+                             personalization asked = False
+'Continental 34"'            resolver: 1 candidate  -> vtid=9e1bfebe
+                             personalization asked = True   permitted = ('nameplate_only',)
+```
+
+⚠️ **So linking the existing Continental changed nothing about whether personalization is
+asked on it.** The resolver still sees two candidates for that name and abstains — which is
+the ambiguity the link was written to resolve, and the link is not consulted.
+
+**The rule fires through the new product because `Continental 34"` resolves to one
+candidate on its own name.** No stand-in, read-only on production:
+
+```
+Triune permits six answers; the office answered 'Legacy Series Print'.
+Vault changed to the Continental 34", which permits only a nameplate:
+
+  personalization after = None
+  footer note = "Legacy Series™ Print cleared: the Continental 34" doesn’t offer it."
+
+CONTROL — an answer the vault DOES permit survives:
+  personalization = 'nameplate_only'  ->  after = 'nameplate_only', note = None
+```
+
+### The gap — RULED AND CLOSED, same day
+
+An explicit tenant link was ignored precisely where it would resolve the ambiguity it exists
+to resolve. James ruled on it within the hour:
+
+> *"An explicit products.variant_template_id wins over name resolution wherever a vault's
+> variant is resolved (form ladder AND availability). Unlinked products behave exactly as
+> today."*
+
+⚠️ **AND THE FILE HAD ALREADY SAID SO.** `vault_form.py`'s module docstring has read, since
+it was written, *"putting it last … would mean a correct answer arriving and being overruled
+by a name match"* — then the guided-capture slice added `_step_name_resolver` as a new FIRST
+rung, in front of the link that sentence protects. The ladder overruled the link while
+documenting that it must not, with no test either way. The ruling restored the documented
+intent rather than introducing a new one.
+
+**What changed.** The precedence now lives in ONE place — `variant_for` in `vault_form.py` —
+consumed by four sites that previously each resolved the name themselves:
+
+```
+form_of                                   the module ladder
+FormResolver.form_of                      the memoised per-request ladder
+clears.clear_what_no_longer_fits          availability for the clear rule
+call_extraction_service.resolve_and_evaluate   ⚠️ OUTSIDE services/capture/
+```
+
+⚠️ **The fourth was nearly missed** — a sweep of `services/capture/` would have reported the
+ruling complete with the call path still resolving by name.
+
+**Verified on production, read-only, after the change:**
+
+```
+'Continental Burial Vault'   via=tenant_variant_link  7eddfbea
+                             personalization asked=True  permitted=('nameplate_only',)
+'Continental 34"'            via=tenant_variant_link  9e1bfebe
+'Monticello Burial Vault'    via=tenant_variant_link  8a3c6253
+                             personalization asked=False — correct, its spec sheet says none
+'Urn Vault - Standard'       via=recorded_name        UNCHANGED
+'Full Equipment'             form=None                UNCHANGED
+
+clear on the name the office actually types:
+  "Legacy Series™ Print cleared: the Continental Burial Vault doesn’t offer it."
+```
+
+⚠️ **And the edit introduced a `NameError` reachable only on production.** `evaluate_typed`
+reads `resolution` at two sites after the variant is decided; putting the link check first
+left it unbound on the link path. **Zero products are linked anywhere on dev**, so every
+existing test takes the else-branch and nothing would have gone red — the only place it
+could fire is Sunnycrest, in the walk. Caught by reading the remaining `resolution.` uses
+rather than by a test, then pinned by one.
+
+## The walk, read-only on production, post both batches
+
+```
+1. "order for hopkins"
+     Which funeral home?        ⌥1 Hopkins Funeral Home   ⌥2 Riverside Memorial Chapel
+     What is the name of the deceased?   "The family name is enough, like “Smith”."
+
+2. Which vault?   ⌥1 Monticello Burial Vault   ⌥2 Continental 34"
+                  ⌥3 Continental Burial Vault  ⌥4 Urn Vault - Standard
+   pick Continental 34"  ->  burial_vault via name_resolver
+     Any personalization?   ⌥1 Nameplate Only   ⌥2 None      <- narrowed by the catalogue
+     What equipment?        ⌥1 Full Equipment   ⌥2 Lowering Device & Grass
+                            ⌥3 Tent Only        ⌥4 Lowering Device Only
+
+3. switch to "Urn Vault - Standard"  ->  urn_vault via recorded_name, cremation=True
+     chip "Cremation"
+     equipment cleared; footer: "Full Equipment cleared: an urn vault means a cremation setup."
+     equipment pills now:  ⌥1 Tent Only  ⌥2 Extra Chairs (Over 8)  ⌥3 None
+     personalization 'nameplate_only' SURVIVES — correctly: the urn vault resolves to no
+       variant, so permitted_answers is empty, and the "empty permits nothing" guard
+       abstains rather than wiping an answer it cannot judge.
+```
+
+⚠️ **The new vault appears at ⌥2, ahead of the Continental it was added beside**, because the
+vault pills rank by the tenant's order history and then fall back to the catalogue — and
+neither Continental has been ordered. Nothing is wrong; it is worth knowing the order is
+not alphabetical and not by price.

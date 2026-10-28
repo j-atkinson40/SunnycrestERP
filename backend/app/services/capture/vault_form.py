@@ -11,16 +11,31 @@ rather than a lookup because the designed path reaches nothing today.
 ⚠️ MEASURED ON PRODUCTION BEFORE IT WAS WRITTEN, AND THE MEASUREMENT IS THE DESIGN.
 `product_templates.form` is exactly the right column with exactly the right
 vocabulary (`urn_vault`, `burial_vault`, `grave_liner`, `urn`, `equipment`,
-`infant`), and `products.variant_template_id` is the declared way to reach it —
-**populated on 0 of 39 rows**. Both tenants: 0 of 10, 0 of 25 active products reach
-a form. `personalization_tier` is NULL everywhere; tenant SKUs use local prefixes
-(`DEMO2-P003`), not the platform's `UV-`/`BV-` scheme; sunnycrest has no product
-categories at all. See `docs/investigations/2026-10-27-is-this-vault-a-cremation.md`.
+`infant`), and `products.variant_template_id` is the declared way to reach it.
 
-⚠️ STEP 1 IS FIRST EVEN THOUGH IT ANSWERS NOTHING. It is the designed path. The
-moment a tenant's products are linked it becomes authoritative and the lower steps
-stop being consulted — so putting it last, or leaving it out because it is currently
-dead, would mean a correct answer arriving and being overruled by a name match.
+⚠️ CORRECTED 2026-10-28. This paragraph read **"populated on 0 of 39 rows. Both
+tenants: 0 of 10, 0 of 25"** — and the 39 never added up (10 + 25 = 35, and the 25
+are testco, which is dev, not production). It is also no longer the state: James's
+rulings of 2026-10-28 linked Sunnycrest's `Monticello Burial Vault`,
+`Continental Burial Vault` and a new `Continental 34"`, so the designed path now
+reaches three rows on production and zero on dev. `personalization_tier` is still
+NULL everywhere and sunnycrest still has no product categories. See
+`docs/investigations/2026-10-27-is-this-vault-a-cremation.md` and
+`docs/investigations/2026-10-28-linking-sunnycrest-to-the-catalogue.md`.
+
+⚠️ THE TENANT LINK IS FIRST. It is the designed path, and the moment a tenant's
+products are linked it is authoritative — the lower rungs stop being consulted. A
+tenant that has said "this product IS that catalogue variant" has settled the
+question, and a name match must not overrule it.
+
+⚠️ AND THIS FILE SAID EXACTLY THAT WHILE DOING THE OPPOSITE, FOR A DAY, BECAUSE I
+BROKE IT. The sentence above is close to the original wording; the ladder then
+acquired `_step_name_resolver` as a new first rung during the guided-capture slice,
+in front of the link it was written to protect — so a linked product WAS "a correct
+answer arriving and being overruled by a name match", which is the thing the
+paragraph forbids, in the file that forbids it. Restored to the documented order by
+James's ruling of 2026-10-28; the precedence now lives in ONE place, `variant_for`,
+rather than being re-expressed at each of the four call sites that need it.
 
 ⚠️ AND STEP 4 IS THE ONE THAT CARRIES SUNNYCREST. `Urn Vault - Standard` matches no
 platform row: the platform's twelve urn vaults are `Monticello Urn Vault`,
@@ -188,28 +203,42 @@ def _step_name_resolver(db: Session, vault: object) -> str | None:
     return None
 
 
-def _step_tenant_link(db: Session, tenant_id: str, name_key: str) -> str | None:
-    """The designed path: the tenant's own product, linked to a platform template.
+def _link_lookup(
+    db: Session, tenant_id: str, name_key: str
+) -> tuple[str | None, str | None]:
+    """The designed path: the tenant's own product, linked to a catalogue variant.
 
-    ⚠️ REACHES NOTHING AS OF 2026-10-27 (0 of 39 rows) and is still first. See the
-    module docstring.
+    Returns `(variant_template_id, form)` — BOTH, because the two consumers of this
+    link want different halves and asking twice would be two answers to one question.
+    The form answers "is this a cremation"; the variant id is what personalization
+    availability is keyed by.
+
+    ⚠️ THE JOIN IS INNER ON `variant_template_id`, so an unlinked product cannot
+    appear in these rows at all. That is what makes "unlinked behaves exactly as
+    today" true by construction rather than by a guard someone has to remember.
     """
     from app.models.product import Product
     from app.models.product_template import ProductTemplate
     from app.models.product_variant_template import ProductVariantTemplate
 
     rows = db.execute(
-        select(Product.name, ProductTemplate.form)
+        select(Product.name, Product.variant_template_id, ProductTemplate.form)
         .join(ProductVariantTemplate,
               ProductVariantTemplate.id == Product.variant_template_id)
         .join(ProductTemplate,
               ProductTemplate.id == ProductVariantTemplate.product_template_id)
         .where(Product.company_id == tenant_id)
     ).all()
-    for product_name, form in rows:
-        if form and _key(product_name) == name_key:
-            return str(form)
-    return None
+    for product_name, variant_id, form in rows:
+        if _key(product_name) == name_key:
+            return (str(variant_id) if variant_id else None,
+                    str(form) if form else None)
+    return (None, None)
+
+
+def _step_tenant_link(db: Session, tenant_id: str, name_key: str) -> str | None:
+    """The form half of `_link_lookup`, kept as a named rung for the ladder."""
+    return _link_lookup(db, tenant_id, name_key)[1]
 
 
 def _step_platform_template(db: Session, name_key: str) -> str | None:
@@ -427,8 +456,14 @@ class FormResolver:
             return cached
 
         found: VaultForm = UNKNOWN
+        # ⚠️ THE TENANT LINK IS CHECKED FIRST HERE TOO, and the two implementations of
+        # this ladder must not drift — `test_the_two_form_ladders_AGREE` pins it.
+        # Before James's ruling of 2026-10-28 both asked the name resolver first.
+        link = self._links().get(name_key)
+        if link is not None:
+            found = VaultForm(link, VIA_TENANT_LINK)
         index = self._idx()
-        if index is not False and index is not None:
+        if not found.is_known and index is not False and index is not None:
             try:
                 from app.services.product_name_resolver import resolve as resolve_vault
                 resolution = resolve_vault(index, str(vault).strip())
@@ -442,7 +477,6 @@ class FormResolver:
                 found = UNKNOWN
         if not found.is_known:
             for table, via in (
-                (self._links(), VIA_TENANT_LINK),
                 (self._tmpl(), VIA_PLATFORM_TEMPLATE),
                 (self._cat(), VIA_PLATFORM_CATALOG),
                 (self._categories(), VIA_TENANT_CATEGORY),
@@ -460,6 +494,101 @@ class FormResolver:
         return found
 
 
+class VaultVariant:
+    """Which catalogue variant a captured vault name is, and how we know.
+
+    ⚠️ ONE PLACE, BECAUSE FOUR CALLERS NEED THIS AND THEY MUST NOT DISAGREE.
+    `form_of`, `FormResolver.form_of`, `clears` and `typed_extraction` all have to
+    turn a vault NAME into a catalogue variant, and before this they each did it
+    themselves — three of them by going straight to the name resolver, which is how a
+    tenant's explicit link came to be ignored by everything except one rung of the
+    form ladder.
+
+    ⚠️ `form` AND `variant_template_id` HAVE DIFFERENT THRESHOLDS ON THE RESOLVER
+    PATH, AND THAT ASYMMETRY IS DELIBERATE AND PRE-EXISTING. A variant id needs the
+    name to resolve to exactly ONE candidate. A form only needs every candidate to
+    AGREE — `Continental Burial Vault` returns two candidates that are both
+    `burial_vault`, so the form is known while the variant is not. Collapsing them to
+    one threshold would either discard a form the catalogue agrees on or invent a
+    variant it does not.
+    """
+
+    __slots__ = ("variant_template_id", "form", "via")
+
+    def __init__(self, variant_template_id: str | None, form: str | None,
+                 via: str | None) -> None:
+        self.variant_template_id = variant_template_id
+        self.form = form
+        self.via = via
+
+    def __repr__(self) -> str:  # pragma: no cover - diagnostics only
+        return (f"VaultVariant(variant_template_id={self.variant_template_id!r}, "
+                f"form={self.form!r}, via={self.via!r})")
+
+
+NO_VARIANT = VaultVariant(None, None, None)
+
+
+def linked_variant(db: Session, *, tenant_id: str, vault: object) -> VaultVariant:
+    """ONLY the tenant's explicit link. `NO_VARIANT` when the product is unlinked.
+
+    ⚠️ SEPARATE FROM `variant_for` SO A CALLER WITH ITS OWN FALLBACK DOES NOT RESOLVE
+    TWICE. `typed_extraction` keeps a STRICTER form rule than the ladder does — it
+    takes a form only when the name resolves to exactly one candidate, where the
+    ladder accepts unanimity across several — so it cannot use `variant_for`'s
+    fallback. If it called `variant_for` and then its own resolver, `build_index`
+    would read the product tables twice on every extraction, which is the hot path.
+    """
+    name_key = _key(vault)
+    if not name_key:
+        return NO_VARIANT
+    variant_id, form = _link_lookup(db, tenant_id, name_key)
+    if variant_id is None and form is None:
+        return NO_VARIANT
+    return VaultVariant(variant_id, form, VIA_TENANT_LINK)
+
+
+def variant_for(db: Session, *, tenant_id: str, vault: object) -> VaultVariant:
+    """The catalogue variant for a captured vault name. The TENANT'S LINK WINS.
+
+    James's ruling of 2026-10-28: *"An explicit products.variant_template_id wins over
+    name resolution wherever a vault's variant is resolved (form ladder AND
+    availability). Unlinked products behave exactly as today."*
+
+    ⚠️ THE FALLBACK IS BYTE-FOR-BYTE THE OLD BEHAVIOUR, which is the half of the
+    ruling that is easy to break while satisfying the other half. An unlinked product
+    reaches the same `resolve_vault` call, with the same uniqueness rule for the
+    variant and the same unanimity rule for the form, and reports the same
+    `via=name_resolver`.
+    """
+    if not _key(vault):
+        return NO_VARIANT
+
+    # ── the tenant's own declaration ───────────────────────────────────────────────
+    linked = linked_variant(db, tenant_id=tenant_id, vault=vault)
+    if linked.via is not None:
+        return linked
+
+    # ── the catalogue's name resolver ──────────────────────────────────────────────
+    try:
+        from app.services.product_name_resolver import build_index
+        from app.services.product_name_resolver import resolve as resolve_vault
+
+        resolution = resolve_vault(build_index(db), str(vault).strip())
+    except Exception:  # pragma: no cover - the ladder continues without it
+        return NO_VARIANT
+
+    candidates = resolution.candidates or ()
+    forms = {c.form for c in candidates if getattr(c, "form", None)}
+    # ⚠️ UNANIMITY FOR THE FORM, UNIQUENESS FOR THE ID — see the class docstring.
+    unanimous = str(next(iter(forms))) if len(forms) == 1 else None
+    variant_id = getattr(resolution, "variant_template_id", None)
+    if variant_id is None and unanimous is None:
+        return NO_VARIANT
+    return VaultVariant(str(variant_id) if variant_id else None, unanimous,
+                        VIA_NAME_RESOLVER)
+
+
 def form_of(db: Session, *, tenant_id: str, vault: object) -> VaultForm:
     """What form the captured vault is, and how we know.
 
@@ -472,9 +601,14 @@ def form_of(db: Session, *, tenant_id: str, vault: object) -> VaultForm:
     if not name_key:
         return UNKNOWN
 
+    # ⚠️ THE FIRST TWO RUNGS ARE NOW ONE CALL, AND THE ORDER INSIDE IT IS THE RULING.
+    # `variant_for` asks the tenant's link before the name resolver; this used to be
+    # two rungs with the resolver first, which overruled the link.
+    first = variant_for(db, tenant_id=tenant_id, vault=vault)
+    if first.form is not None:
+        return VaultForm(first.form, first.via)
+
     for step, via in (
-        (lambda: _step_name_resolver(db, vault), VIA_NAME_RESOLVER),
-        (lambda: _step_tenant_link(db, tenant_id, name_key), VIA_TENANT_LINK),
         (lambda: _step_platform_template(db, name_key), VIA_PLATFORM_TEMPLATE),
         (lambda: _step_platform_catalog(db, name_key), VIA_PLATFORM_CATALOG),
         (lambda: _step_tenant_category(db, tenant_id, name_key), VIA_TENANT_CATEGORY),

@@ -2872,15 +2872,43 @@ def evaluate_typed(db: Session, *, tenant_id: str | None, answers: dict[str, obj
     from app.services.personalization.enrollment import resolve_availability_config
     from app.services.product_name_resolver import build_index, resolve as resolve_vault
 
-    phrase = str(answers.get("vault") or "").strip()
-    resolution = resolve_vault(build_index(db), phrase or None)
+    from app.services.capture.vault_form import linked_variant
 
-    # ⚠️ None FOR AMBIGUOUS, matching `_resolved_form`. An ambiguous set can span forms
-    # ("Graveliner" spans grave_liner and urn_vault), so a form read off candidates[0]
-    # would be whichever the sort put first.
-    vault_form = None
-    if resolution.variant_template_id and resolution.candidates:
-        vault_form = resolution.candidates[0].form
+    phrase = str(answers.get("vault") or "").strip()
+
+    # ⚠️ THE TENANT'S EXPLICIT LINK WINS, AND THE RESOLVER IS NOT CONSULTED AT ALL WHEN
+    # IT ANSWERS. James's ruling of 2026-10-28: "An explicit
+    # products.variant_template_id wins over name resolution wherever a vault's
+    # variant is resolved (form ladder AND availability)."
+    #
+    # ⚠️ IT MATTERS MOST EXACTLY WHERE THE RESOLVER IS WEAKEST. `Continental Burial
+    # Vault` returns TWO candidates — the standard and the 34-inch — so the resolver
+    # abstains and personalization was never asked on it, even on a tenant that had
+    # declared which one it sells. The link settles both halves at once.
+    linked = linked_variant(db, tenant_id=tenant_id, vault=phrase or None)
+    # ⚠️ BOUND ON BOTH PATHS, AND THIS LINE IS NOT TIDINESS. Two sites further down
+    # read `resolution` — the `vault_label` for a conflict message and the
+    # `_permitted_for` call — so leaving it unbound on the link path would raise
+    # NameError only when a product IS linked. That is only Sunnycrest, and only in
+    # the walk: a crash reachable in production and in no test on a dev database,
+    # where nothing is linked.
+    resolution = None
+    if linked.via is not None:
+        vault_product_id = linked.variant_template_id
+        vault_form = linked.form
+    else:
+        resolution = resolve_vault(build_index(db), phrase or None)
+        vault_product_id = resolution.variant_template_id
+        # ⚠️ UNCHANGED FOR AN UNLINKED PRODUCT, DELIBERATELY — the ruling's second
+        # half is "unlinked products behave exactly as today", and this is the rule
+        # that would be easiest to loosen by accident. None FOR AMBIGUOUS, matching
+        # `_resolved_form`: an ambiguous set can span forms ("Graveliner" spans
+        # grave_liner and urn_vault), so a form read off candidates[0] would be
+        # whichever the sort put first. NOTE this is STRICTER than the form ladder's
+        # unanimity rule, and the difference is pre-existing and intentional.
+        vault_form = None
+        if resolution.variant_template_id and resolution.candidates:
+            vault_form = resolution.candidates[0].form
 
     from app.services.capture.missing import UnpermittedAnswer
 
@@ -2897,7 +2925,7 @@ def evaluate_typed(db: Session, *, tenant_id: str | None, answers: dict[str, obj
         try:
             state = capture.evaluate(
                 trial,
-                vault_product_id=resolution.variant_template_id,
+                vault_product_id=vault_product_id,
                 personalization_config=config,
                 vault_form=vault_form,
                 platform_fields=template,
@@ -2941,9 +2969,12 @@ def evaluate_typed(db: Session, *, tenant_id: str | None, answers: dict[str, obj
     # fields nobody mentioned (`legacy_print_name`, `nameplate_date_format`); naming
     # those would be noise about questions never asked.
     vault_label = ""
-    if resolution.candidates and resolution.variant_template_id:
+    if resolution is not None and resolution.candidates and resolution.variant_template_id:
         vault_label = resolution.candidates[0].display_name
     elif answers.get("vault"):
+        # ⚠️ ALSO THE LINK PATH, AND IT IS THE BETTER LABEL THERE. When the tenant has
+        # linked the product, the name the director typed IS the tenant's own name for
+        # it; the catalogue's `display_name` would rename it in the message.
         vault_label = str(answers["vault"])
 
     # ⚠️ A TYPED BURIAL DATE THAT DISAGREES WITH THE SERVICE DATE IS A CONTRADICTION,
@@ -3011,7 +3042,7 @@ def evaluate_typed(db: Session, *, tenant_id: str | None, answers: dict[str, obj
         if str(answers[field_id]) == ANSWER_NONE:
             continue
         permitted = _permitted_for(
-            template, field_id, resolution.variant_template_id, config
+            template, field_id, vault_product_id, config
         )
         conflicts.append(
             Conflict(

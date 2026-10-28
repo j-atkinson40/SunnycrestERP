@@ -61,12 +61,40 @@ def resolve_and_evaluate(db: Session, result: dict, *, tenant_id: str | None = N
     exactly what the resolver returns a set to prevent. The caller persists the
     set and its discriminator so the capture can ask the question.
     """
+    from app.services.capture.vault_form import linked_variant
     from app.services.personalization.enrollment import resolve_availability_config
 
     resolution = _resolve_vault_phrase(db, result)
+
+    # ⚠️ THE TENANT'S EXPLICIT LINK WINS HERE TOO — James's ruling of 2026-10-28 binds
+    # "wherever a vault's variant is resolved", and this is the FOURTH such site. It
+    # was nearly missed: the ladder and the two capture call sites are in
+    # `services/capture/`, and this one is not.
+    #
+    # ⚠️ THE MATCH IS ON THE PRODUCT'S EXACT NAME, which is what keeps this coherent
+    # with the ambiguity question below. A spoken "Continental" matches NEITHER product
+    # name, so the link misses and the resolver's candidate set stands — the director
+    # really was ambiguous. A spoken "Continental Burial Vault" names one product
+    # exactly, and if the tenant has linked it they have already said which variant
+    # that is.
+    #
+    # ⚠️ AND `resolution` IS RETURNED UNCHANGED, DELIBERATELY. The caller persists its
+    # candidate set and discriminator so the capture can ask "which of these two?".
+    # Suppressing that question for a linked product is a separate decision about a
+    # separate surface, and the ruling did not make it — so it is not made here.
+    linked = linked_variant(
+        db, tenant_id=tenant_id, vault=(result.get("vault_type") or "").strip() or None
+    ) if tenant_id else None
+    if linked is not None and linked.via is not None:
+        vault_product_id = linked.variant_template_id
+        vault_form = linked.form
+    else:
+        vault_product_id = resolution.variant_template_id
+        vault_form = _resolved_form(resolution)
+
     state = capture.evaluate(
         _captured_from_result(result),
-        vault_product_id=resolution.variant_template_id,
+        vault_product_id=vault_product_id,
         # ⚠️ THE RESOLVED THREE-SCOPE CONFIG (section C), not the raw enrollment row.
         # A tenant with no enrollment now falls through to the platform default
         # instead of reading NOT_CONFIGURED on every vault.
@@ -79,7 +107,7 @@ def resolve_and_evaluate(db: Session, result: dict, *, tenant_id: str | None = N
         # ambiguous set can span forms — "Bronze Triune" matches BV-BTRI and UV-BTRI —
         # so taking candidates[0].form would pick a form the resolver refused to pick
         # a product for.
-        vault_form=_resolved_form(resolution),
+        vault_form=vault_form,
         platform_fields=capture.template_for(capture.SALES_ORDER),
     )
     return resolution, state

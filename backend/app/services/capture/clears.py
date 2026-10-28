@@ -31,7 +31,7 @@ from sqlalchemy.orm import Session
 
 from app.services.capture.pills import BURIAL_ONLY_EQUIPMENT
 from app.services.capture.schema import VAULT_FIELD_ID, resolve_schema
-from app.services.capture.vault_form import form_of
+from app.services.capture.vault_form import form_of, variant_for
 
 # ⚠️ IMPORTED AT MODULE LEVEL ON PURPOSE, AND THIS LINE IS THE FIX FOR A SHIPPED
 # DEFECT. These two were function-local inside a `try: ... except Exception:` that
@@ -45,8 +45,6 @@ from app.services.capture.vault_form import form_of
 from app.services.capture import SALES_ORDER, template_for
 from app.services.personalization.enrollment import resolve_availability_config
 from app.services.personalization.questions import ANSWER_NONE
-from app.services.product_name_resolver import build_index
-from app.services.product_name_resolver import resolve as resolve_vault
 
 EQUIPMENT_FIELD_ID = "cemetery_equipment"
 
@@ -137,12 +135,17 @@ def clear_what_no_longer_fits(
         # alongside the ImportError. Two independent defects, one silence.
         #
         # ⚠️ AND THE VAULT IS A NAME HERE, NOT AN ID. Availability is keyed by
-        # variant_template_id, so the name has to go through the catalogue's own
-        # resolver — the same two lines `typed_extraction` uses — rather than being
-        # handed to a resolver that expects an id.
-        resolution = resolve_vault(build_index(db), str(vault) or None)
+        # variant_template_id, so the name has to be turned into one.
+        #
+        # ⚠️ `variant_for` RATHER THAN THE RESOLVER DIRECTLY, per James's ruling of
+        # 2026-10-28: the tenant's explicit `products.variant_template_id` wins over
+        # name resolution. This line used to call `resolve_vault` itself, which is how
+        # a linked product's availability went unread — `Continental Burial Vault`
+        # resolves to TWO candidates and the resolver abstains, so personalization was
+        # never asked on it even after the tenant had said which variant it is.
+        variant = variant_for(db, tenant_id=company_id, vault=vault)
         resolved = resolve_schema(
-            vault_product_id=resolution.variant_template_id,
+            vault_product_id=variant.variant_template_id,
             personalization_config=resolve_availability_config(db, company_id),
             vault_form=form.form,
             platform_fields=template_for(SALES_ORDER),
