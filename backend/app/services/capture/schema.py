@@ -1173,6 +1173,46 @@ READY_HINT = "Press Enter to review, or click any line to change it."
 #: what Enter does. The prototype marks it the same way — `{act:'review',...}` — and the
 #: distinction is load-bearing at the client: an action pill routed through `/answer`
 #: would try to store "review" into a field.
+# ── James's dispatch of 2026-10-28: the idle and done states ──────────────────────
+#
+# Quoted from the prototype saved at
+# `docs/prototypes/2026-10-27-guided-order-capture.html`
+# (92,138 bytes, sha256 34b3938d9a2dcedca7fce8f15f14c7ba62fc37a80da86d4b2ba6b58bcacd09f3),
+# line 536, verbatim:
+#
+#   if(S.mode==='done')return {ask:S.type==='quote'?'Quote saved.':'Order confirmed.',
+#     hint:'Type the next one, or pick below.',
+#     options:[{act:'order',label:'Start another order'},{act:'quote',label:'New quote'}]};
+#
+# ⚠️ THE DISPATCH'S URL DOES NOT RESOLVE — the same short artifact id as the three
+# previous dispatches — so these strings come from the file already in the repo with a
+# digest, not from a description. Every one of the dispatch's strings was found in it.
+DONE_QUESTION = "Order confirmed."
+DONE_HINT = "Type the next one, or pick below."
+
+#: ⚠️ THE QUOTE BRANCH IS DELIBERATELY ABSENT, PER THE DISPATCH'S OWN CLAUSE 3: "if
+#: quotes can't be created through capture yet, say so and leave the pill out rather
+#: than offering one that fails."
+#:
+#: MEASURED, AND THEY CANNOT. `capture_sessions.object_type` has exactly ONE writer —
+#: `session_service.start`, hard-coded to `SALES_ORDER` — `SALES_ORDER` is the only
+#: template constant in this module, `approve` constructs `SalesOrder`/`SalesOrderLine`
+#: and branches on nothing, and production holds 25 capture sessions, all
+#: `'sales_order'`. Quotes are created by `sales_service.create_quote`, a different
+#: path with its own schema.
+#:
+#: So there is no `"Quote saved."` constant here and no `New quote` pill. Adding the
+#: string without the path would be machinery behind an unprovisioned entrance — the
+#: shape CLAUDE.md §11 names — and adding the PILL would offer the office a button
+#: that fails, which the dispatch forbids in terms.
+NEW_ORDER_ACTION = "new_order"
+NEW_ORDER_PILL_LABEL = "Start another order"
+
+#: ⚠️ `sub` CARRIES THE KEY, THE SAME WAY THE REVIEW PILL DOES. The dispatch says
+#: "Enter starts another order", and a pill that Enter performs has to say so or the
+#: keystroke is undiscoverable.
+NEW_ORDER_PILL_SUB = "Enter"
+
 REVIEW_ACTION = "review"
 REVIEW_PILL_LABEL = "Review"
 #: ⚠️ "Enter" RATHER THAN "⌥1", because both work and Enter is the one a director

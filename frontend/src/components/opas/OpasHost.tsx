@@ -74,6 +74,15 @@ import {
   questionTakesNumbers,
 } from "./GuidedQuestion"
 import type { PickModifier } from "./GuidedQuestion"
+import {
+  DONE_HINT,
+  DONE_PILL_LABEL,
+  DONE_QUESTION,
+  IDLE_HINT,
+  IDLE_PILL_LABEL,
+  IDLE_QUESTION,
+  PILL_ACT_NEW_ORDER,
+} from "./opas-prompts"
 import { shortcutRequest } from "./shortcut-request"
 import { resolvePhrase } from "@/services/opas-catalog-service"
 import {
@@ -286,6 +295,16 @@ export function OpasHost() {
   // ⚠️ PANE IDS THAT HOLD A CREATED ORDER. The opening effect reads this so the next
   // phrase closes the receipt instead of being typed into a finished order.
   const approvedPanes = useRef<Set<string>>(new Set())
+  /**
+   * ⚠️ TRUE FROM AN APPROVAL UNTIL THE OFFICE DOES THE NEXT THING. The Opas pane's
+   * DONE state (James, 2026-10-28 clause 2) outlives the capture session that caused
+   * it — `onApproved` closes that pane and opens the order's own — so the state cannot
+   * be read back from a session and has to be remembered here.
+   *
+   * ⚠️ AND IT IS CLEARED BY TYPING OR BY ACTING, NOT BY A TIMER. The pills are
+   * actionable, and a receipt on a fuse is a receipt the office can lose mid-reach.
+   */
+  const [justApproved, setJustApproved] = useState(false)
   // ⚠️ A COUNTER-STAMPED REQUEST, NOT A BOOLEAN, for the same reason `pickRequest`
   // is: the pane must act on the SECOND Enter as well as the first, and a bare flag
   // would be compared by value and the repeat would be a no-op.
@@ -694,8 +713,51 @@ export function OpasHost() {
    * a question stored on an event survives the thing that caused it, including the
    * director deleting the text it was asked about.
    */
+  /**
+   * ⚠️ THE RECEIPT IS SPENT ONCE THE OFFICE TYPES, AND IT DOES NOT COME BACK. The memo
+   * already HIDES the done pills while the bar holds text, but hiding alone would
+   * bring "Order confirmed." back if they typed and then deleted — a receipt for an
+   * order they have stopped thinking about. Clearing the flag makes the state
+   * one-shot, which is what "Type the next one" means.
+   */
+  useEffect(() => {
+    if (justApproved && text.trim() !== "") setJustApproved(false)
+  }, [text, justApproved])
+
   const guided = useMemo(() => {
-    if (!entryMode) return null
+    if (!entryMode) {
+      // ── the Opas pane with nothing in progress: DONE, then IDLE ────────────────
+      //
+      // ⚠️ BOTH ARE GATED ON AN EMPTY BAR AND NO REPLY ON SCREEN, which is the
+      // dispatch's "typing anything hides them" and its "every other bar use is
+      // unchanged" stated as one condition. A reply means the bar is being used for
+      // something else — a result list, a miss, a drafted rule — and putting pills
+      // over it would answer a question nobody asked.
+      if (!opas.isOpen) return null
+      if (text.trim() !== "") return null
+      if (reply !== null) return null
+      if (justApproved) {
+        return {
+          question: DONE_QUESTION,
+          hint: DONE_HINT,
+          fieldId: null,
+          // ⚠️ `sub: "Enter"` BECAUSE ENTER PERFORMS IT. The dispatch says Enter
+          // starts another order, and a key that works without being shown is a key
+          // nobody uses.
+          pills: [{ value: PILL_ACT_NEW_ORDER, label: DONE_PILL_LABEL,
+                    sub: "Enter", act: PILL_ACT_NEW_ORDER }],
+          cremation: null,
+        }
+      }
+      return {
+        question: IDLE_QUESTION,
+        hint: IDLE_HINT,
+        fieldId: null,
+        pills: [{ value: PILL_ACT_NEW_ORDER, label: IDLE_PILL_LABEL,
+                  act: PILL_ACT_NEW_ORDER }],
+        cremation: null,
+      }
+    }
     const question = status?.guidedQuestion ?? null
     if (question === null || question === "") return null
     const fieldId = status?.guidedFieldId ?? null
@@ -712,6 +774,10 @@ export function OpasHost() {
     }
   }, [  // eslint-disable-line react-hooks/exhaustive-deps
     entryMode,
+    opas.isOpen,
+    text,
+    reply,
+    justApproved,
     status?.guidedQuestion,
     status?.guidedHint,
     status?.guidedFieldId,
@@ -1164,6 +1230,11 @@ export function OpasHost() {
     (paneId: string, order: { id: string | null }) => {
       setText("")
       opas.setEntryText(paneId, "")
+      // ⚠️ SET BEFORE EITHER BRANCH, because the Opas pane's done state is owed in
+      // both — whether the capture pane is replaced by the order's pane or left for
+      // the fallback timer, the office has just confirmed an order and the pane
+      // beside the bar should say so.
+      setJustApproved(true)
       if (order.id !== null) {
         opas.closePane(paneId)
         openSalesOrder(order.id)
@@ -1202,11 +1273,33 @@ export function OpasHost() {
    * three entrances was the 2026-10-14 arrangement; this replaces the button with a
    * pill and leaves the action alone.
    */
+  /**
+   * Start a capture with no phrase — the idle and done states' pill.
+   *
+   * ⚠️ IT OPENS THE PANE WITH AN EMPTY BAR, WHICH IS WHAT PUTS THE OFFICE ON THE
+   * FUNERAL-HOME QUESTION. The dispatch's clause 1: "Picking one starts the capture at
+   * the funeral-home question." A capture with no text has every field missing, and
+   * `guided_field` walks `CALL_ORDER`, whose first entry is `funeral_home` — so the
+   * question is the engine's answer rather than a destination this function picks.
+   *
+   * ⚠️ NO PHRASE IS PASSED, DELIBERATELY. `openPane` + `setEntryText(id, phrase)` is
+   * the typed path; passing text here would make the pane open already holding words
+   * the office did not type.
+   */
+  const startBlankCapture = useCallback(() => {
+    setJustApproved(false)
+    const id = opas.openPane({ kind: "capture", label: "Order" })
+    opas.setEntryText(id, "")
+    setText("")
+    focusBar()
+  }, [opas, focusBar])
+
   const actGuided = useCallback(
     (act: string) => {
       if (act === PILL_ACT_REVIEW) requestComplete()
+      else if (act === PILL_ACT_NEW_ORDER) startBlankCapture()
     },
-    [requestComplete],
+    [requestComplete, startBlankCapture],
   )
 
   /**
@@ -2634,6 +2727,16 @@ export function OpasHost() {
                 if (entryMode) {
                   e.preventDefault()
                   requestComplete()
+                  return
+                }
+                // ⚠️ ENTER STARTS ANOTHER ORDER IN THE DONE STATE (James, 2026-10-28
+                // clause 2), AND ONLY WITH THE BAR EMPTY. With words in the bar Enter
+                // belongs to `submit()` — that is how "orders this month" and a typed
+                // order both work, and the dispatch says every other bar use is
+                // unchanged.
+                if (justApproved && text.trim() === "") {
+                  e.preventDefault()
+                  startBlankCapture()
                   return
                 }
                 void submit()

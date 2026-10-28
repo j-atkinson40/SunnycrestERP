@@ -762,6 +762,197 @@ def test_an_equipment_answer_that_fits_a_cremation_SURVIVES_the_change(db, canon
     assert note is None
 
 
+# ── JAMES'S DISPATCH OF 2026-10-28: THE IDLE AND DONE STATES ──────────────────────
+#
+# Clause 2: after Approve the pane says "Order confirmed." with a pill that starts
+# another order, and Enter starts another order.
+#
+# ⚠️ CLAUSE 3 IS WHY THERE IS NO QUOTE PILL, AND IT IS MEASURED: "if quotes can't be
+# created through capture yet, say so and leave the pill out rather than offering one
+# that fails." `capture_sessions.object_type` has exactly ONE writer, hard-coded to
+# `SALES_ORDER`; `approve` constructs SalesOrder/SalesOrderLine and branches on
+# nothing; production holds 25 capture sessions, all `'sales_order'`. Quotes come from
+# `sales_service.create_quote`, a different path.
+#
+# ⚠️ THE IDLE STATE IS NOT TESTED HERE BECAUSE IT CANNOT BE. It is the state with NO
+# SESSION, so there is nothing for `read_state` to read and nothing for `_guided` to
+# answer — it is the client's, and `guided-question.test.tsx` covers it.
+
+
+def test_an_APPROVED_session_says_Order_confirmed_rather_than_asking(db, canonical_tenant):
+    """⚠️ WITHOUT THIS BRANCH THE PANE SHOWS THE READY STATE ON AN ORDER THAT IS
+    ALREADY AN ORDER. Every field of an approved capture is answered, so
+    `guided_field` returns None and the ready branch answers "That's everything." with
+    a Review pill — inviting the office to review an order that has been confirmed.
+    """
+    from app.services.capture import session_service
+    from app.services.capture.schema import (
+        DONE_HINT, DONE_QUESTION, NEW_ORDER_ACTION, NEW_ORDER_PILL_LABEL,
+        READY_TO_REVIEW, REVIEW_ACTION,
+    )
+
+    class _Row:
+        status = "approved"
+        pending_picks: list = []
+        values: dict = {}
+        resolutions: dict = {}
+        unrecognized: list = []
+
+    class _State:
+        missing: set = set()
+        unanswered_optional: set = set()
+        answered: set = set()
+        not_applicable: set = set()
+        indeterminate: set = set()
+        is_complete = True
+        resolved_fields: tuple = ()
+
+    got = session_service._guided(db, TESTCO_ID, _Row(), _State(), False)
+    assert got["question"] == DONE_QUESTION, got["question"]
+    assert got["question_hint"] == DONE_HINT, got["question_hint"]
+    # ⚠️ AND IT IS NOT THE READY STATE, asserted explicitly: the two are both "nothing
+    # left to ask" and only one of them is right once the order exists.
+    assert got["question"] != READY_TO_REVIEW
+    assert [p["act"] for p in got["pills"]] == [NEW_ORDER_ACTION], got["pills"]
+    assert REVIEW_ACTION not in [p["act"] for p in got["pills"]]
+    assert got["pills"][0]["label"] == NEW_ORDER_PILL_LABEL
+    # ⚠️ THE KEY IS ON THE PILL. "Enter starts another order" is undiscoverable if the
+    # pill does not say so.
+    assert got["pills"][0]["sub"] == "Enter"
+    # ⚠️ NO FIELD, because there is no question. A field here would make the pane
+    # outline a row as "Opas is asking" on a confirmed order.
+    assert got["question_field_id"] is None
+
+
+def test_the_done_state_offers_NO_QUOTE_PILL_because_capture_cannot_make_one(db, canonical_tenant):
+    """Clause 3, as a test rather than as a claim in a commit message.
+
+    ⚠️ IT ASSERTS THE ABSENCE AND THEN THE REASON FOR IT. Asserting only the absence
+    would pass if someone removed quotes from the capture engine for an unrelated
+    reason and left a quote pill behind; asserting only the reason would not notice the
+    pill reappearing.
+    """
+    from sqlalchemy import text as _text
+
+    from app.services.capture import schema, session_service
+
+    class _Row:
+        status = "approved"
+        pending_picks: list = []
+        values: dict = {}
+        resolutions: dict = {}
+        unrecognized: list = []
+
+    class _State:
+        missing: set = set()
+        unanswered_optional: set = set()
+        answered: set = set()
+        not_applicable: set = set()
+        indeterminate: set = set()
+        is_complete = True
+        resolved_fields: tuple = ()
+
+    got = session_service._guided(db, TESTCO_ID, _Row(), _State(), False)
+    labels = [p["label"].lower() for p in got["pills"]]
+    assert not any("quote" in lbl for lbl in labels), got["pills"]
+
+    # the reason: the capture engine knows one object type, and it is not a quote
+    assert schema.SALES_ORDER == "sales_order"
+    assert not hasattr(schema, "QUOTE"), (
+        "a QUOTE template appeared — if capture can now make quotes, clause 3's "
+        "condition has changed and the pill should be reconsidered"
+    )
+    # ⚠️ AND EVERY SESSION THIS TENANT HAS EVER HAD IS A SALES ORDER, which is the
+    # population claim the absence rests on.
+    kinds = {r[0] for r in db.execute(_text(
+        "SELECT DISTINCT object_type FROM capture_sessions WHERE company_id = :t"
+    ), {"t": TESTCO_ID}).all()}
+    assert kinds <= {"sales_order"}, kinds
+
+
+def test_the_done_strings_AGREE_across_the_two_surfaces():
+    """⚠️ THE DONE STRINGS EXIST IN TWO PLACES AND THIS IS WHAT HOLDS THEM TOGETHER.
+
+    `schema.py` serves them for the one case where the capture pane STAYS open — when
+    the server returns no `sales_order_id`, which `CapturePane` already guards for — and
+    `opas-prompts.ts` carries them for the client-side done state after the usual
+    approval, which closes that pane and so has no session to read.
+
+    The duplication is real. Rather than claim it is held by discipline, this reads the
+    TypeScript and compares. Same shape as the token-catalog test that parses
+    `tokens.css`.
+    """
+    import re
+    from pathlib import Path
+
+    from app.services.capture.schema import (
+        DONE_HINT, DONE_QUESTION, NEW_ORDER_ACTION, NEW_ORDER_PILL_LABEL,
+    )
+
+    ts = Path(__file__).resolve().parents[2] / "frontend/src/components/opas/opas-prompts.ts"
+    assert ts.is_file(), f"control: {ts} must exist for this test to mean anything"
+    src = ts.read_text(encoding="utf-8")
+
+    def literal(name: str) -> str:
+        m = re.search(rf'export const {name} = "([^"]*)"', src)
+        assert m is not None, f"{name} not found in {ts.name}"
+        return m.group(1)
+
+    assert literal("DONE_QUESTION") == DONE_QUESTION
+    assert literal("DONE_HINT") == DONE_HINT
+    assert literal("DONE_PILL_LABEL") == NEW_ORDER_PILL_LABEL
+    # ⚠️ AND THE ACT NAME, which is the one the server EMITS and the client PERFORMS —
+    # a mismatch here makes the pill inert rather than wrong, which is harder to see.
+    assert literal("PILL_ACT_NEW_ORDER") == NEW_ORDER_ACTION
+
+
+def test_the_frontend_declares_NO_quote_vocabulary_either():
+    """Clause 3 on the other side of the wire.
+
+    ⚠️ ASSERTED AGAINST THE FILE RATHER THAN TRUSTED. The backend has no "Quote saved."
+    constant; a frontend that added one would offer the office a state the engine
+    cannot reach, and nothing else in either suite would notice.
+    """
+    from pathlib import Path
+
+    ts = Path(__file__).resolve().parents[2] / "frontend/src/components/opas/opas-prompts.ts"
+    src = ts.read_text(encoding="utf-8")
+    # only the lines that DECLARE something — the file's own comments explain at length
+    # why quotes are absent, so a bare "quote" search would match the explanation.
+    declared = [ln for ln in src.splitlines() if ln.strip().startswith("export const")]
+    offending = [ln for ln in declared if "quote" in ln.lower() and "QUOTES_THROUGH_CAPTURE" not in ln]
+    assert offending == [], offending
+
+
+def test_a_session_still_CAPTURING_is_unaffected_by_the_done_branch(db, canonical_tenant):
+    """⚠️ THE CONTROL, AND IT IS THE HALF A STATUS CHECK GETS WRONG. A branch keyed on
+    the wrong thing — truthiness of `status`, say — would swallow every capturing
+    session into the done state and the pane would stop asking questions entirely.
+    """
+    from app.services.capture import session_service
+    from app.services.capture.schema import DONE_QUESTION
+
+    class _Row:
+        status = "capturing"
+        pending_picks: list = []
+        values: dict = {}
+        resolutions: dict = {}
+        unrecognized: list = []
+
+    class _State:
+        missing = {"funeral_home"}
+        unanswered_optional: set = set()
+        answered: set = set()
+        not_applicable: set = set()
+        indeterminate: set = set()
+        is_complete = False
+        resolved_fields: tuple = ()
+
+    got = session_service._guided(db, TESTCO_ID, _Row(), _State(), False)
+    assert got["question"] != DONE_QUESTION, got
+    assert got["question_field_id"] == "funeral_home", got
+
+
 # ── JAMES'S RULING OF 2026-10-28: AN EXPLICIT LINK WINS OVER NAME RESOLUTION ──────
 #
 # "An explicit products.variant_template_id wins over name resolution wherever a

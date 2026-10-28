@@ -15,6 +15,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { OrderListSnapshot } from "@/services/order-list-service"
+import { IDLE_PILL_LABEL, IDLE_QUESTION } from "./opas-prompts"
 import { REPLY_FADE_MS } from "./reply"
 
 const askOrderList = vi.fn()
@@ -740,17 +741,40 @@ describe("5 — capture's question is in the Opas pane and stays while typing", 
     expect(bar().getAttribute("placeholder")).not.toContain("service")
   })
 
-  it("⚠️ AND THE QUESTION GOES WHEN THE CAPTURE DOES, without wiping what comes next", async () => {
+  it("⚠️ AND THE CAPTURE'S QUESTION GOES WHEN THE CAPTURE DOES, replaced by idle", async () => {
+    /**
+     * ⚠️ REPOINTED 2026-10-28, AND THE OLD ASSERTION WAS THE RIGHT ONE UNTIL THAT DAY.
+     * This read `expect(screen.queryByTestId("opas-guided-question")).toBeNull()` —
+     * no capture, no question — and James's dispatch of 2026-10-28 superseded exactly
+     * that: with nothing in progress the Opas pane now asks "What do you need?". So
+     * the element is no longer absent and the test went red on a behaviour change
+     * rather than a defect.
+     *
+     * ⚠️ THE CLAIM IS KEPT RATHER THAN DROPPED. What it guarded is that the CAPTURE'S
+     * question and the CAPTURE'S pills do not outlive the capture — a question nobody
+     * can answer sitting above a closed pane. That is still worth holding, and
+     * asserting the idle question is what makes it specific instead of merely
+     * "something is there".
+     */
     await capturing("What day is the service?")
-    await waitFor(() => expect(screen.getByTestId("opas-guided-question")).toBeTruthy())
+    await waitFor(() => {
+      expect(screen.getByTestId("opas-guided-question").textContent)
+        .toBe("What day is the service?")
+    })
     const pane = screen.getByTestId("capture-pane").closest("[data-testid^='opas-pane-']")!
     await act(async () => {
       fireEvent.click(pane.querySelector("[data-testid^='opas-pane-close-']") as HTMLElement)
     })
-    await waitFor(() => expect(screen.queryByTestId("opas-guided-question")).toBeNull())
-    // ⚠️ AND THE PILLS GO WITH IT. A pills row left above a closed capture would be a
-    // row of answers to a question nobody can see.
-    expect(screen.queryByTestId("opas-guided-pills")).toBeNull()
+    // the capture's question is gone, and the idle one has taken its place
+    await waitFor(() => {
+      expect(screen.getByTestId("opas-guided-question").textContent).toBe(IDLE_QUESTION)
+    })
+    // ⚠️ AND THE CAPTURE'S PILLS GO WITH IT. The row survives — it now holds the idle
+    // pill — so the assertion is on WHICH pills, not on the row's absence. A row left
+    // holding the closed capture's answers is the defect this still guards.
+    const pills = screen.queryAllByTestId(/^opas-guided-pill-\d+$/)
+    expect(pills).toHaveLength(1)
+    expect(pills[0].textContent).toContain(IDLE_PILL_LABEL)
   })
 
   it("falls back to the reply line when the server sends NO question at all", async () => {

@@ -1152,10 +1152,43 @@ def _guided(
     from app.services.capture.schema import guided_field, question_for, hint_for
     from app.services.capture.schema import (
         CREMATION_CHIP,
+        DONE_HINT,
+        DONE_QUESTION,
+        NEW_ORDER_ACTION,
+        NEW_ORDER_PILL_LABEL,
+        NEW_ORDER_PILL_SUB,
         REVIEW_ACTION,
         REVIEW_PILL_LABEL,
         REVIEW_PILL_SUB,
     )
+
+    # ⚠️ THE DONE STATE IS FIRST, BEFORE ANY QUESTION IS COMPUTED. James's dispatch of
+    # 2026-10-28, clause 2: once the order is approved the pane says "Order confirmed."
+    # with a pill that starts another. An approved session has no next question — every
+    # field is answered — so `guided_field` would return None and the pane would show
+    # the ready state ("That's everything.") on an order that is already an order.
+    #
+    # ⚠️ AND IT IS SERVED RATHER THAN DECIDED BY THE CLIENT, because the session is
+    # still there to be read: `approve` leaves `status == "approved"` and the pane
+    # renders `capture-approved` from it. The IDLE state is the opposite case — no
+    # session exists — so that one cannot come from here and does not.
+    #
+    # ⚠️ NO QUOTE BRANCH, PER CLAUSE 3, AND IT IS MEASURED NOT ASSUMED — see the
+    # comment on `DONE_QUESTION` in `schema.py`. `object_type` has one writer and it
+    # is hard-coded to `sales_order`.
+    if getattr(row, "status", None) == "approved":
+        return {
+            "question_field_id": None,
+            "question": DONE_QUESTION,
+            "question_hint": DONE_HINT,
+            "pills": [{
+                "act": NEW_ORDER_ACTION,
+                "value": NEW_ORDER_ACTION,
+                "label": NEW_ORDER_PILL_LABEL,
+                "sub": NEW_ORDER_PILL_SUB,
+            }],
+            "cremation": CREMATION_CHIP if cremation else None,
+        }
 
     # ⚠️ `guided_field`, NOT `next_field(state.missing)`, AND THE DIFFERENCE IS FOUR
     # QUESTIONS. `missing` is required-and-unanswered, so the four fields that are
