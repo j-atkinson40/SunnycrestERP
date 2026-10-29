@@ -663,58 +663,13 @@ _SURNAME_CLAUSE = re.compile(
     re.I,
 )
 
-#: English function words: a span must never take one as a name.
-#:
-#: ⚠️ A CLASS, NOT A STOPLIST OF WORDS THAT HAPPENED TO BURN US. James's walk of
-#: 2026-10-26 produced the deceased name **"Smith It"** from
-#:
-#:     "… in st. marys last name smith it is 1 oclock church service 1pm friday"
-#:
-#: and the ruling was "fix it in the name rules (not a one-word stoplist)". Adding `it`
-#: alone would have been exactly that — and measured, the whole class absorbs:
-#: `smith is`, `smith he`, `smith was`, `smith has`, `smith will`, `smith that` all
-#: came back as two-word names. One word was the symptom.
-#:
-#: ⚠️ AND IT SATISFIES THIS FILE'S OWN DOCTRINE RATHER THAN BENDING IT.
-#: `_trim_absorbed_word` says the test is "a closed list of words that are something
-#: else, not a guess at what a name looks like", because surnames are an OPEN set and
-#: any rule about their shape is wrong about somebody's family. A function word has
-#: another job: it is a pronoun, a copula, an auxiliary or a determiner. What makes
-#: this admissible where "common words" would not be is that the class is CLOSED —
-#: English gains surnames constantly and gains pronouns about once a century — so this
-#: set is complete in a way a frequency list never is.
-#:
-#: ⚠️ THE SEPARATORS ARE ALREADY IN `_SPAN_TAIL_STOPS` and are not repeated here; the
-#: two sets are unioned below. Kept apart because they are admitted for different
-#: reasons — those are words `party_resolver.normalize` strips, which is a fact about
-#: this codebase; these are a fact about English.
-_FUNCTION_WORDS = frozenset(
-    {
-        # pronouns, including possessive and reflexive forms
-        "i", "me", "my", "mine", "myself",
-        "you", "your", "yours", "yourself", "yourselves",
-        "he", "him", "his", "himself",
-        "she", "her", "hers", "herself",
-        "it", "its", "itself",
-        "we", "us", "our", "ours", "ourselves",
-        "they", "them", "their", "theirs", "themselves",
-        "who", "whom", "whose", "which", "what",
-        # determiners and demonstratives not already in `_SPAN_TAIL_STOPS`
-        "that", "these", "those", "there", "here",
-        "any", "some", "each", "every", "both", "either", "neither", "no", "none",
-        # the copula and the auxiliaries
-        "is", "am", "are", "was", "were", "be", "been", "being",
-        "do", "does", "did", "done",
-        "has", "have", "had",
-        "will", "would", "shall", "should", "can", "could", "may", "might", "must",
-        # conjunctions and the remaining prepositions `_SPAN_TAIL_STOPS` does not hold
-        "but", "or", "nor", "so", "if", "then", "than", "because", "while", "when",
-        "from", "by", "about", "into", "over", "under", "after", "before", "until",
-        "up", "down", "out", "off", "through",
-        # the possessive clitic, which arrives as its own token after a split
-        "'s",
-    }
-)
+#: ⚠️ MOVED TO `noise.py` ON 2026-10-29 and aliased here under its old private
+#: name so every use below is unchanged. It left because clause 2 needs the same
+#: closed class and the E6 ratchet forbids importing this module — see
+#: `noise.py` for the full argument. One list, two readers.
+from sqlalchemy.exc import SQLAlchemyError
+from app.services.capture.names import bare_name_before_a_term
+from app.services.capture.noise import FUNCTION_WORDS as _FUNCTION_WORDS
 
 
 #: Words a two-word name span must not absorb as its second word.
@@ -2877,6 +2832,67 @@ def extract_text(
             values[field_id] = payload
         else:
             picks.append(payload)
+
+    # ── CLAUSE 2: A BARE NAME MID-SENTENCE (James, 2026-10-28) ──────────────
+    #
+    # ⚠️ IT RUNS HERE, OVER THE WHOLE TEXT, AND THE FIRST ATTEMPT PUT IT IN
+    # `extract_line` WHERE IT COULD NOT WORK. A director's commas SPLIT the text into
+    # statements: "new order for riverside, keegan, thursday" is three segments, and
+    # inside the middle one "keegan" has nothing before or after it. The clause's whole
+    # evidence is that a word sits BETWEEN two things the engine understood — which is a
+    # property of the typed TEXT, not of a segment. Measured before moving it: the
+    # per-line version fired on nothing.
+    #
+    # ⚠️ AND "MID-SENTENCE" IN THIS CODEBASE MEANS MID-TEXT. The dispatch's word is
+    # "sentence"; a sentence here is `segments()`-plural, so reading it as a single
+    # segment is the narrower claim and the wrong one.
+    if "deceased_name" not in values and not any(
+        pk.field_id == "deceased_name" for pk in picks
+    ):
+        _claimed = sorted(
+            (sp.start, sp.end) for sp in text_spans if sp.state == "captured"
+        )
+        if _claimed:
+            _known: list[str] = []
+            try:
+                from app.services.party_resolver import (
+                    cemetery_rows as _cem_rows,
+                    funeral_home_rows as _fh_rows,
+                )
+
+                _known += [n for _i, n, _c in _cem_rows(db, tenant_id)]
+                _known += [n for _i, n, _c in _fh_rows(db, tenant_id)]
+            except SQLAlchemyError:
+                # ⚠️ NARROW, AND IT DEGRADES THE GUARD RATHER THAN THE CLAUSE. With no
+                # vocabulary the typo test cannot fire, so a mistyped funeral home could
+                # be taken as a name. That direction is deliberate: the clause's own
+                # evidence still holds, and a filled row the director can correct beats a
+                # held word they have to place by hand. Not `except Exception` — sweep
+                # item 1 is about precisely that.
+                _known = []
+            _bare = bare_name_before_a_term(
+                text, list(_claimed), _unclaimed_slices(text, list(_claimed)),
+                known_terms=_known,
+            )
+            if _bare is not None:
+                _name, _a, _b = _bare
+                values["deceased_name"] = _name
+                # ⚠️ THE WORD MUST STOP BEING HELD, OR THE PANE SHOWS IT IN BOTH PLACES —
+                # filled on the Deceased row AND in "not placed yet". The held list is
+                # noise-stripped text, so the comparison is on the stripped form.
+                _nf = _name.casefold()
+                unrecognized = [u for u in unrecognized if u.casefold() != _nf]
+                # ⚠️ AND THE SPAN FLIPS TO `captured`, so the bar underlines it the way it
+                # underlines every other filled field rather than dotting it as unknown.
+                text_spans = [
+                    sp for sp in text_spans
+                    if not (sp.start >= _a and sp.end <= _b and sp.state == "unrecognized")
+                ]
+                text_spans.append(
+                    TextSpan(start=_a, end=_b, state="captured",
+                             field_ids=("deceased_name",))
+                )
+                text_spans.sort(key=lambda sp: (sp.start, sp.end))
 
     # ⚠️ BENEATH THE TEXT, WHICH IS THE WHOLE POINT, SO `setdefault` AND NOT `[...] =`.
     # A prefilled field the text is silent about stays filled; one the text names

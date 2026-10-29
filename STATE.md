@@ -21,6 +21,22 @@ Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end 
 - **2026-10-29** — ⚠️ **THREE BREAK TESTS DID NOT FIRE ON THE FIRST ATTEMPT AND EACH FAILURE WAS A REAL GAP.** Reverting `stage.py`'s rows and `service.py`'s pick label turned only the TEXTUAL ratchet red, so a regression written as `facts.deceased_name if facts.deceased_name else "Unnamed"` would have passed everything — behavioural cover for the Order List and the reply line was added, which needed `phrase="orders"` (a bare customer name opens the customer pane instead) and, for the pick labels, TWO orders sharing a number suffix (one match opens the order rather than offering a choice). The third was my own malformed break: dropping a paren made the module a SyntaxError, and the harness grepped only `^FAILED`, so eleven ERRORS printed as "NOTHING FIRED".
 - **2026-10-29** — Four neighbouring tests had pinned the lowercase display; updated by ruling with the reason recorded at each, and one of them had a **sibling in the same test** (`overdue` beside `open_orders`) missed on the first pass.
 
+### Onboarding cutover checklist
+
+- **2026-10-29** — ⚠️ **RE-RUN THE PREFIX/NAME COLLISION CHECK ONCE SUNNYCREST'S REAL RECORDS ARE ENTERED, AND REPORT ANY HIT BEFORE GO-LIVE.** One command:
+
+  ```
+  cd backend
+  PROBE_SLUG=sunnycrest railway run --project ad95792e-6625-4bf5-ad61-ead9c291bdf9 \
+    --environment production --service SunnycrestERP -- \
+    env PROBE_SLUG=sunnycrest .venv/bin/python scripts/check_prefix_name_collisions.py
+  ```
+
+- **2026-10-29** — ⚠️ **AND RUN IT AGAINST `testco` FIRST, AS A POSITIVE CONTROL, BEFORE READING THE PRODUCTION RESULT.** It should report 6 displacements (green, john, johnson, river, rivers, smith). A zero with no control beside it is worthless: two earlier versions of this probe returned zero on BOTH tenants while the defect was live, and the first was only caught because the control failed to fire.
+- **2026-10-29** — Why this is owed at the cutover and not before: the 2026-10-29 measurement found `river`/`rivers` displacing *Riverside Memorial Chapel*, and **Riverside is demo seed**. James: *"the check that counts is against Sunnycrest's actual funeral homes and cemeteries, and those arrive at the onboarding cutover. That's when to run it again."*
+- **2026-10-29** — ⚠️ **AND THE EXECUTOR'S CLAIM THAT THIS "COULD ALREADY HAVE HAPPENED ON A REAL ORDER" WAS WRONG.** Riverside is seed and SO-2026-0001..0005 are seed orders, so **no real order has been affected**. Corrected by James. Recorded because the original phrasing would later have read as evidence of a production incident that never happened.
+- **2026-10-29** — The demo-data cleanup (SO-2026-0001…0005, INV-2026-0009, Fairview Burial Services, Hopkins, Riverside) is clear-and-re-enter at onboarding. **Nothing is deleted until James runs it.**
+
 ### The sweep, queued after slice 2 — now FIVE items
 
 - **2026-10-29** — James has widened the sweep three times. Its items, as they stand:
@@ -28,10 +44,10 @@ Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end 
   2. **Messages that name the wrong cause** — the instrument or guard that says "DATABASE_URL is not set" when `SECRET_KEY` is missing.
   3. **Tests that depend on the calendar** — a weekday literal that resolves to today one day in seven.
   4. **Tests that depend on leftover local data** — pass or fail according to what is already in someone's database. Two instances found: three `tax_jurisdictions` tests green only because the table was empty, and `test_note_session2_fragments::test_the_endpoint_SERVES_prose_when_a_fragment_emits`, which CI passes and a seeded laptop fails.
-  5. **NEW 2026-10-29 — a harness that decides pass/fail from test output and counts only `FAILED`.** James: *"Any harness or gate script that decides pass/fail from pytest output must count ERROR as a failure, and must say 'nothing fired' only when the tests ran and passed."*
+  5. **NEW 2026-10-29 — a RULE, not a cleanup: nothing may decide pass/fail by matching words in test output.** James, after the inventory came back empty: *"The repo's gates decide by exit code, so there's no grep to fix. The fifth sweep item becomes a rule: nothing may decide pass/fail by matching words in test output. It doesn't need a cleanup pass."* The original form — count `ERROR` as well as `FAILED` — is subsumed: a harness reading an exit code cannot miss either, and a harness reading words can always miss a third one.
 
 - **2026-10-29** — ⚠️ **ITEM 5's INVENTORY CAME BACK EMPTY IN COMMITTED CODE, AND THAT IS THE FINDING RATHER THAN A DISAPPOINTMENT.** The instance that prompted it was an ad-hoc break-test harness typed into a session, not a file. Searched: every `*.sh`, `*.yml`, `*.yaml` and `*.py` outside `node_modules`/`.venv` for a grep that reads `FAILED` to decide an outcome — **zero**. The repo's gates decide by EXIT CODE, which counts errors for free. `ci.yml`'s vitest block parses `status === "failed"` but is a REPORTER (`exit 0`), and its own comment at line 231 already names the exact condition: *"vitest exits 1 on an UNHANDLED error regardless of how many tests passed."*
-- **2026-10-29** — So item 5 is a **guard against one being added**, plus reporting discipline, not a cleanup. ⚠️ **AND IT IS THE SAME SHAPE AS THE 237 UNCOLLECTED TESTS**, which is why James filed it here: a check that went quiet and read as a pass. The 237 were invisible because `SECRET_KEY` was unset and nothing said so; the eleven ERRORs were invisible because the harness only knew one word for failure.
+- **2026-10-29** — So item 5 is a **rule**, not a cleanup. ⚠️ **AND IT TOOK ITS OWN SCALP WITHIN THE HOUR.** The monitor watching the gate for this very commit fired early on `errors.pydantic.dev` — a substring match on "error" inside a deprecation-warning URL — while the suite was at 44%. Caught by reading the anchored summary line instead. James: *"Its own monitor tripping on 'errors.pydantic.dev' is exactly the failure that rule exists to stop."* ⚠️ **AND IT IS THE SAME SHAPE AS THE 237 UNCOLLECTED TESTS**, which is why James filed it here: a check that went quiet and read as a pass. The 237 were invisible because `SECRET_KEY` was unset and nothing said so; the eleven ERRORs were invisible because the harness only knew one word for failure.
 
 ## 2026-10-20 (later) — the reply-line ruling, and the model-behind-the-bar investigation
 

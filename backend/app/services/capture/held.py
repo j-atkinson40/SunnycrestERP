@@ -145,7 +145,13 @@ def _candidates(terms) -> list[tuple[str, str]]:
     """
     out: list[tuple[str, str]] = []
     for term in terms or ():
-        text = getattr(term, "text", None)
+        # ⚠️ A PLAIN STRING IS ACCEPTED SINCE 2026-10-29, and the alternative was a
+        # SECOND EXPANSION RULE. Clause 2's typo guard holds bare names
+        # (`cemetery_rows` / `funeral_home_rows` return `(id, name, city)`, not `Term`s)
+        # and needs exactly this expansion — whole term plus meaningful interior words,
+        # minus label words. Expanding strings somewhere else would be the two-bodies
+        # defect this codebase keeps recording. A string has no `.kind`, so it gets "".
+        text = getattr(term, "text", None) or (term if isinstance(term, str) else None)
         if not text:
             continue
         kind = str(getattr(term, "kind", "") or "")
@@ -328,3 +334,26 @@ class HeldWord:
             else ORIGIN_TYPED,
             declined=[str(d) for d in declined] if isinstance(declined, list) else [],
         )
+
+
+def is_typo_of_a_known_term(word: str, terms) -> bool:
+    """Is `word` within two letters of any known term, or of a meaningful word inside one?
+
+    ⚠️ THE GUARD CLAUSE 2 NEEDS, AND IT IS NOT `did_you_mean`. That function answers
+    "which ONE term did they mean", so it returns None when a word is near SEVERAL —
+    which is the case where clause 2 must most certainly not file the word as a name.
+    Asking "is this near anything known" is a different question with a different answer
+    at the ambiguous boundary, and using the suggestion function here would have let
+    every ambiguous typo through.
+
+    ⚠️ AND THE WHOLE-TERM COMPARISON ALONE IS USELESS, which a probe showed rather than
+    a review. Clause 2 first compared the word to the full recorded name and
+    `"riversde"` — a plain typo of Riverside — sailed through and was filed as the
+    deceased's name, because "riversde" is nowhere near "Riverside Funeral Home" as a
+    string. The interior words are the comparison that matters, which is the same thing
+    `_candidates`' own docstring says about "montcello".
+    """
+    w = _norm(word)
+    if not w:
+        return False
+    return any(within_two(w, cand) for cand, _ in _candidates(terms))

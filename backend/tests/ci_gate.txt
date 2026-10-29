@@ -675,6 +675,12 @@ tests/test_a_town_belongs_to_its_cemetery.py
 # written yet. The Sales Order Pane's top-level deceased_name is exempt BY CONTRACT and
 # the exemption is itself pinned.
 tests/test_a_deceased_name_is_never_shown_lowercase.py
+# Clause 2 of guided capture slice 2: a bare name mid-sentence is the decedent, on
+# POSITION rather than shape — the surname rules need a marker because surnames are an
+# open set. It seeds its own tenant because testco's vocabulary collides with ordinary
+# personal names three times over (Smith & Sons, Johnson, Riverside), each collision
+# making a clause-2 assertion mean its opposite.
+tests/test_a_bare_name_mid_sentence_is_the_decedent.py
 tests/test_guided_capture_slice1.py
 # Opas asks "why?" (James, 2026-10-26), first slice. The rules: what counts as a change
 # (a field Opas filled that the person then changed), what does NOT (a first fill, an

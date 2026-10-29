@@ -3411,6 +3411,75 @@ rule now uses `.title()`, so "o'brien" renders "O'Brien" and "smith-jones" rende
 is the guard: a value that is not already all-lowercase never reaches it, so "deSoto"
 and "MacLeod" are untouched.
 
+## 2026-10-29 — Position decides placement, and the typed word is always shown as typed
+
+**Ruled by James**, closing a conflict between clause 2 of guided-capture slice 2 and a
+property this codebase had been pinning since 2026-10-21.
+
+**Clause 2:** an unknown word sitting between two things the engine understood is the
+decedent, with no marker needed. ⚠️ **ITS EVIDENCE IS POSITION, NEVER SHAPE, AND THAT IS
+THE DECISION RATHER THAN AN IMPLEMENTATION DETAIL.** The surname rules in
+`typed_extraction` all require a marker ("last name smith"), and their own comments say
+why: surnames are an OPEN set, so any rule about what a name LOOKS like is wrong about
+somebody's family. Clause 2 never asks what the word looks like. It asks what surrounds
+it — a fact about the sentence instead of a guess about the word.
+
+**The conflict, and it was found by the full gate rather than by review.**
+`test_capture_abbreviations::test_a_word_reaching_nothing_is_reported_not_invented`
+asserted that "a word that reaches nothing is REPORTED, never invented", using
+`"order hop zzzqqq sat"`. Clause 2 places `zzzqqq` on the Deceased row, because to a rule
+deciding on position `zzzqqq` and `bramwell` are indistinguishable.
+
+**Ruled: clause 2 keeps it.** James: *"'zzzqqq' isn't made up: it's the word you typed,
+shown exactly as typed in the Deceased row, where you'll see it and fix it. 'Never
+invented' was about Opas putting a product it guessed from a near-miss onto an order, and
+that protection is unchanged. The only alternative is a shape test, which is the guessing
+about what names look like that clause 2 was built to avoid."*
+
+⚠️ **SO THE TWO RULES WERE NEVER ABOUT THE SAME THING, AND THE TEST'S NAME HID THAT.**
+"Reported, never invented" protects against a GUESSED VALUE — a product inferred from a
+near-miss and written onto an order as though the director had named it. Clause 2 writes
+the director's own characters, unaltered, onto a row they can see. The surviving
+assertion in that test is `"vault" not in ex.values`, and it holds in every position.
+
+**The trade, stated so it is not rediscovered as a defect:**
+
+    position decides PLACEMENT
+    the typed word is always shown AS TYPED — never altered, never resolved to a record
+
+**Scope, measured rather than argued.** Only a BOUNDED word moves:
+
+    'order hop zzzqqq sat'   -> deceased=zzzqqq   held=()        changed
+    'order hop sat zzzqqq'   -> deceased=None     held=zzzqqq    unchanged
+    'order hop zzzqqq'       -> deceased=None     held=zzzqqq    unchanged
+
+The old test was NARROWED to the positions clause 2 declines (trailing, lone) and the
+mid-sentence case given its own named test, rather than the assertion being deleted.
+
+### A prefix match never displaces a settled field
+
+**Also ruled 2026-10-29**, from a finding in clause 2's own report: "john"
+prefix-matched *Johnson Funeral Home* and **silently replaced a funeral home that was
+already settled**. James: *"'Last mention wins' was meant for a word that names the thing
+outright. A partial match is too weak to replace something already settled."*
+
+⚠️ **AND THE PRECONDITION WAS A MEASUREMENT, NOT A JUDGEMENT.** He required the risk be
+measured against real Sunnycrest records before building. Result: `river` and `rivers`
+both displace a settled funeral home with *Riverside Memorial Chapel*, and "Rivers" is a
+genuine surname. `mary`/`marys` reach St. Mary's without displacing it.
+
+⚠️ **THE CLAIM "THIS COULD ALREADY HAVE HAPPENED ON A REAL ORDER" WAS WRONG AND JAMES
+CORRECTED IT.** Riverside is demo seed data and SO-2026-0001..0005 are seed orders, so
+**no real order has been affected**. The exposure is prospective, which is why the ruling
+lands before onboarding rather than after. The correction matters because the original
+phrasing would have read, later, as evidence of a production incident that never occurred.
+
+⚠️ **AND THE NAME LIST THE MEASUREMENT USED IS NOT AUTHORITATIVE.** 43 name-words that
+actually occur in the database, plus ~130 common first names and surnames supplied by the
+executor — its own list, not a census. The check that counts runs against Sunnycrest's
+REAL funeral homes, cemeteries and products, which arrive at the onboarding cutover; the
+probe is kept as a script and the re-run is on the cutover checklist in STATE.
+
 ## 2026-10-29 — Only an all-lowercase name is title-cased, and the panes were a third surface
 
 **Ruled by James:** *"deceased display casing — only an all-lowercase name is

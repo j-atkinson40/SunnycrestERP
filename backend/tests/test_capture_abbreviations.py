@@ -629,13 +629,61 @@ def test_a_word_reaching_nothing_is_reported_not_invented(db, tenant):
 
     ⚠️ WHAT SURVIVES UNCHANGED IS THE PROPERTY, so it keeps a test: a word that reaches
     nothing is REPORTED, never invented.
+
+    ⚠️ NARROWED 2026-10-29 TO THE POSITIONS CLAUSE 2 DECLINES, BY RULING. This test used
+    `"order hop zzzqqq sat"` — a word BOUNDED by two things the engine understood — and
+    clause 2 of slice 2 now places such a word on the Deceased row. James ruled the
+    clause keeps it: *"'zzzqqq' isn't made up: it's the word you typed, shown exactly as
+    typed in the Deceased row, where you'll see it and fix it. 'Never invented' was about
+    Opas putting a product it guessed from a near-miss onto an order, and that protection
+    is unchanged."*
+
+    ⚠️ AND THE PROPERTY THIS FILE IS ABOUT IS THE PRODUCT ONE, which is why narrowing
+    rather than deleting is right: the assertion that matters here is `"vault" not in
+    ex.values` — no product is invented from a near-miss — and it holds in every
+    position. The mid-sentence case is now named in
+    `test_a_BOUNDED_unknown_word_is_placed_VERBATIM_on_the_decedent` below.
     """
-    t = "order hop zzzqqq sat"
-    ex = extract_text(db, tenant_id=tenant, text=t)
+    # trailing: nothing understood follows it, so clause 2 declines and it is reported
+    ex = extract_text(db, tenant_id=tenant, text="order hop sat zzzqqq")
     assert ex.values.get("funeral_home") == "Hopkins Funeral Home"
     assert ex.values.get("service_date") == _next_weekday("saturday")
     assert any("zzzqqq" in u for u in ex.unrecognized), ex.unrecognized
     assert "vault" not in ex.values
+    assert ex.values.get("deceased_name") is None, ex.values
+
+    # lone: nothing understood on either side
+    ex2 = extract_text(db, tenant_id=tenant, text="order hop zzzqqq")
+    assert any("zzzqqq" in u for u in ex2.unrecognized), ex2.unrecognized
+    assert "vault" not in ex2.values
+    assert ex2.values.get("deceased_name") is None, ex2.values
+
+
+def test_a_BOUNDED_unknown_word_is_placed_VERBATIM_on_the_decedent(db, tenant):
+    """⚠️ THE OTHER HALF OF THE RULING ABOVE, AND THE REASON IT IS A SEPARATE TEST RATHER
+    THAN A DELETED ASSERTION. Clause 2 places a bounded unknown word on the Deceased row.
+    What must remain true is the part "never invented" was protecting:
+
+      * the word is stored EXACTLY as typed — not title-cased, not trimmed, not
+        corrected, and not resolved to any record;
+      * no product, funeral home or cemetery is invented from it;
+      * it stops being held, so the pane shows it in one place.
+
+    ⚠️ `zzzqqq` IS THE RIGHT FIXTURE PRECISELY BECAUSE IT IS NOT A NAME. Clause 2 decides
+    on POSITION, never shape — so a word no human would read as a surname is the honest
+    test of what the rule actually does, and James ruled that outcome correct: the
+    director sees their own word on the row and fixes it. A shape test is the guessing
+    about what names look like that clause 2 exists to avoid.
+    """
+    ex = extract_text(db, tenant_id=tenant, text="order hop zzzqqq sat")
+    assert ex.values.get("funeral_home") == "Hopkins Funeral Home"
+    assert ex.values.get("service_date") == _next_weekday("saturday")
+    # placed, and VERBATIM
+    assert ex.values.get("deceased_name") == "zzzqqq", ex.values
+    # nothing invented from it
+    assert "vault" not in ex.values, ex.values
+    # and not held as well as placed
+    assert not any("zzzqqq" in u for u in ex.unrecognized), ex.unrecognized
 
 
 # ───────────────────────────────────────────────────────────────────────────
