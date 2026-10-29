@@ -91,6 +91,13 @@ class LineExtraction:
     switches: tuple[Switch, ...] = ()
     #: ⚠️ RELATIVE TO THIS LINE. `extract_text` shifts them by the segment's offset.
     spans: tuple[TextSpan, ...] = ()
+    #: ⚠️ FIELDS SETTLED BY A PREFIX/ABBREVIATION EXPANSION RATHER THAN A NAME THE
+    #: DIRECTOR TYPED OUT. Ruled by James 2026-10-29: *"'Last mention wins' was meant
+    #: for a word that names the thing outright. A partial match is too weak to replace
+    #: something already settled."* `extract_text` needs the distinction at the MERGE,
+    #: which is the only place the displacement happens — measured: one segment is
+    #: already safe, because `once()` blocks the prefix pass when the field is set.
+    approximate: tuple[tuple[str, str], ...] = ()
 
     @property
     def understood_nothing(self) -> bool:
@@ -668,6 +675,7 @@ _SURNAME_CLAUSE = re.compile(
 #: closed class and the E6 ratchet forbids importing this module — see
 #: `noise.py` for the full argument. One list, two readers.
 from sqlalchemy.exc import SQLAlchemyError
+from app.services.capture.held import PrefixOffer
 from app.services.capture.names import bare_name_before_a_term
 from app.services.capture.noise import FUNCTION_WORDS as _FUNCTION_WORDS
 
@@ -905,6 +913,8 @@ class DeterministicExtractor:
 
         spans = _Spans()
         values: dict[str, object] = {}
+        #: fields this line settled by prefix expansion -> the word that did it
+        _approx_word: dict[str, str] = {}
         picks: list[Pick] = []
         switches: list[Switch] = []
         low = line.casefold()
@@ -2013,6 +2023,11 @@ class DeterministicExtractor:
                         if res is None:
                             continue
                         if finish(res, frag_start + a, frag_start + b, frag):
+                            # ⚠️ RECORDED HERE RATHER THAN IN EACH FINISHER, so a field
+                            # that starts using this pass later is covered without
+                            # anyone remembering to mark it. The pass knows its own
+                            # field name; the finishers do not all take it.
+                            _approx_word[field] = typed
                             return
 
         if once("funeral_home"):
@@ -2179,6 +2194,7 @@ class DeterministicExtractor:
             unrecognized=_leftovers(line, spans) + tuple(restated),
             switches=tuple(switches),
             spans=_describe_spans(line, spans),
+            approximate=tuple(sorted(_approx_word.items())),
         )
 
 
@@ -2652,6 +2668,10 @@ class TextExtraction:
     #: ⚠️ KEYED BY FIELD AND LAST-WINS LIKE EVERYTHING ELSE. A later segment naming
     #: the same vault replaces the earlier switch rather than offering two.
     switches: tuple[Switch, ...] = ()
+    #: Prefix matches that were REFUSED because the field was already settled outright,
+    #: each carrying the question to ask. See `held.PrefixOffer` and ruling 2 of
+    #: 2026-10-29.
+    prefix_offers: tuple[PrefixOffer, ...] = ()
     policy: MentionPolicy = MentionPolicy.LAST_WINS
     #: ⚠️ WHOLE-TEXT COORDINATES, ordered by position. See `TextSpan`.
     spans: tuple[TextSpan, ...] = ()
@@ -2745,6 +2765,14 @@ def extract_text(
     unrecognized: list[str] = []
     #: field_id -> the switch most recently offered for it. Last-wins, like values.
     switch_by_field: dict[str, Switch] = {}
+    #: fields currently held approximately, so an exact match can still replace them
+    #: while a second approximate one cannot displace an exact one
+    _approx_fields: set[str] = set()
+    #: ⚠️ RULING 2's QUESTION, not an answer. "Did you mean Johnson Funeral Home?" with
+    #: Yes/No — Yes replaces, No leaves the word held. The Yes/No SURFACE is clause 5's
+    #: and is not built yet; the offer is produced here so the protection lands now and
+    #: the pane has the data when the surface arrives.
+    offers: list[PrefixOffer] = []
 
     segs = segments(text)
 
@@ -2756,10 +2784,52 @@ def extract_text(
             db, tenant_id=tenant_id, line=segment, answers={},
             gating={GATING_TAIL_OPEN: _i == len(segs) - 1},
         )
+        _now_approx = dict(ex.approximate)
         for field_id, value in ex.values.items():
+            # ── RULING 2 (James, 2026-10-29): A PREFIX NEVER DISPLACES A SETTLED FIELD
+            #
+            # ⚠️ IT BELONGS IN PASS 1, AND MY FIRST ATTEMPT PUT IT IN PASS 2 WHERE IT
+            # COULD NOT FIRE. `decided = frozenset(last)` is taken BETWEEN the passes,
+            # so by the time pass 2 runs, `funeral_home` is already decided and its loop
+            # skips the field entirely with `continue`. Pass 1 is where
+            # last-mention-wins across segments actually happens. Same altitude mistake
+            # as clause 2's first version, one layer in.
+            #
+            # ⚠️ AND WITHIN ONE SEGMENT THE FIELD WAS ALWAYS SAFE, measured: `once()`
+            # refuses the prefix pass when the field is set, so "order for hopkins john
+            # thursday" keeps Hopkins. It is the COMMA that breaks it — three segments,
+            # each extracted in isolation, and "john" settles Johnson knowing nothing
+            # about the first.
+            #
+            # ⚠️ "LAST MENTION WINS" IS NOT WEAKENED, it is read as James meant it:
+            # *"meant for a word that names the thing outright. A partial match is too
+            # weak to replace something already settled."* An exact or alias match still
+            # replaces an exact one, which is the whole of the existing ruling.
+            if (
+                field_id in last
+                and field_id in _now_approx
+                and field_id not in _approx_fields
+                and last[field_id][0] == "value"
+                and last[field_id][1] != value
+            ):
+                _word = _now_approx[field_id]
+                offers.append(PrefixOffer(
+                    word=_word, term=str(value), kind=field_id,
+                    instead_of=str(last[field_id][1]),
+                ))
+                # ⚠️ HELD, NOT DROPPED. The director typed the word; refusing to act on
+                # it is not licence to stop showing it. The offer carries the question;
+                # this keeps the word visible until it is answered.
+                unrecognized.append(_word)
+                continue
             last[field_id] = ("value", value)
+            if field_id in _now_approx:
+                _approx_fields.add(field_id)
+            else:
+                _approx_fields.discard(field_id)
         for pick in ex.picks:
             last[pick.field_id] = ("pick", pick)
+            _approx_fields.discard(pick.field_id)
         for sw in ex.switches:
             switch_by_field[sw.field_id] = sw
 
@@ -2935,6 +3005,7 @@ def extract_text(
         values=values,
         picks=tuple(picks),
         unrecognized=tuple(unrecognized),
+        prefix_offers=tuple(offers),
         switches=switches,
         policy=MentionPolicy.LAST_WINS,
         spans=tuple(sorted(text_spans, key=lambda s: (s.start, s.end))),

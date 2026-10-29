@@ -681,6 +681,11 @@ tests/test_a_deceased_name_is_never_shown_lowercase.py
 # personal names three times over (Smith & Sons, Johnson, Riverside), each collision
 # making a clause-2 assertion mean its opposite.
 tests/test_a_bare_name_mid_sentence_is_the_decedent.py
+# Ruling 2 of 2026-10-29: a prefix match never displaces a field settled by a name typed
+# out. The defect was at the SEGMENT MERGE — one segment was always safe because `once()`
+# refuses the prefix pass — and it is pass 1, not pass 2, because `decided` is taken
+# between them. "Last mention wins" is untouched for exact matches in both directions.
+tests/test_a_prefix_never_displaces_a_settled_field.py
 tests/test_guided_capture_slice1.py
 # Opas asks "why?" (James, 2026-10-26), first slice. The rules: what counts as a change
 # (a field Opas filled that the person then changed), what does NOT (a first fill, an

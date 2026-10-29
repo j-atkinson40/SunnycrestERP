@@ -357,3 +357,33 @@ def is_typo_of_a_known_term(word: str, terms) -> bool:
     if not w:
         return False
     return any(within_two(w, cand) for cand, _ in _candidates(terms))
+
+
+@dataclass(frozen=True)
+class PrefixOffer:
+    """A word that reached a record only by PREFIX, offered instead of applied.
+
+    ⚠️ DELIBERATELY NOT A `Suggestion`, THOUGH BOTH RENDER AS "Did you mean X?". A
+    `Suggestion` is a TYPO — the word is near the term and wrong. This is a word that is
+    a correct, exact PREFIX of the term, which is how the office abbreviates and is
+    normally accepted. It is offered rather than applied for one narrow reason: the field
+    was ALREADY settled by a name the director typed out, and James ruled 2026-10-29 that
+    *"a partial match is too weak to replace something already settled"*.
+
+    ⚠️ SO `distance` WOULD BE A LIE HERE, which is why this is a separate type rather
+    than a `Suggestion` with a zero in it. `Suggestion.distance`'s own comment says "0
+    never occurs here — an exact match is not a typo", and a prefix IS an exact match of
+    a shorter string. Reusing that type would have put a value in a field whose docstring
+    forbids it.
+    """
+
+    #: The word as the director typed it.
+    word: str
+    #: The record it reaches by prefix, in the office's own capitalisation.
+    term: str
+    #: The field it would fill.
+    kind: str
+    #: What the field is set to NOW, which the question has to show — "Did you mean
+    #: Johnson Funeral Home?" is only answerable if the director can see it currently
+    #: says Hopkins.
+    instead_of: str
