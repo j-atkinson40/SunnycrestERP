@@ -1263,6 +1263,24 @@ class DeterministicExtractor:
                 if claimed:
                     break
 
+        _cem_town_cache: frozenset[str] | None = None
+
+        def _cem_towns() -> frozenset[str]:
+            """The towns this tenant holds cemeteries in. Fetched at most once per line.
+
+            ⚠️ MEMOISED ON A NONLOCAL RATHER THAN RECOMPUTED, because both the marker
+            path and the record scan below want it and a line can reach both.
+            """
+            nonlocal _cem_town_cache
+            if _cem_town_cache is None:
+                from app.services.party_resolver import cemetery_rows
+                from app.services.party_resolver import normalize as _pn
+
+                _cem_town_cache = frozenset(
+                    _pn(_city) for _i, _n, _city in cemetery_rows(db, tenant_id) if _city
+                )
+            return _cem_town_cache
+
         # ── cemetery (+ city) ───────────────────────────────────────────
         # ⚠️ THE CITY IS PARSED FROM THE SAME CLAUSE AND PASSED AS A HINT, not stored
         # as an answer unless the cemetery resolves — a town with no cemetery attached
@@ -1270,13 +1288,48 @@ class DeterministicExtractor:
         if once("cemetery"):
             # ⚠️ ONE CALL TO A STEP PARSER, NOT ONE REGEX. See
             # `parse_cemetery_clause` for the three silent failures that bought this.
-            clause = parse_cemetery_clause(line)
+            #
+            # ⚠️ THE TOWN LIST IS PASSED IN SINCE JAMES'S RULING OF 2026-10-29, AND IT
+            # COSTS ONE QUERY AT MOST ONCE PER LINE. Without it the clause parser cannot
+            # tell a bare adjacent town from any other word — "st marys skaneateles" was
+            # parsed as `name='st marys skaneateles'`, resolved to nothing, and the town
+            # fell out as text the engine could not place. `cemetery_rows` is documented
+            # as "exposed so a scan can fetch ONCE and match in memory"; this is the same
+            # lazy shape as `_vocab()` further down, and for the same reason: a line with
+            # no cemetery clause must not pay for the read.
+            clause = parse_cemetery_clause(line, _cem_towns())
             if clause:
+                # ⚠️ A BARE TOWN IS ONLY A HINT WHEN A CEMETERY OF THIS NAME IS IN IT,
+                # which is what keeps this path agreeing with the record scan below. The
+                # peel still runs either way — it is what stops the greedy name
+                # swallowing the town — but an inconsistent bare town is dropped rather
+                # than raising a pick that un-answers the row. See `_towns_for_name`;
+                # the explicit "in <town>" form is unaffected and still conflicts.
+                hint = clause.town
+                claim_end = clause.end
+                if hint and not clause.town_explicit:
+                    from app.services.party_resolver import cemetery_rows as _cr
+                    from app.services.party_resolver import normalize as _pn
+
+                    if _pn(hint) not in _towns_for_name(
+                        _cr(db, tenant_id), clause.name
+                    ):
+                        hint = None
+                        # ⚠️ AND THE CLAIM GIVES THE WORD BACK, which is the half that
+                        # makes this honest rather than merely safe. A dropped hint whose
+                        # span stayed claimed would swallow a word the director typed and
+                        # the engine did not use — silently, with nothing on screen to
+                        # say so. Unclaimed, it surfaces as text the engine could not
+                        # place, which is true and is what slice 2's held-word strip is
+                        # for. The record scan below already behaves this way; this makes
+                        # the two paths agree.
+                        if clause.town_span is not None:
+                            claim_end = min(claim_end, clause.town_span[0])
                 cr = resolve_cemetery(
-                    db, tenant_id, clause.name, city_hint=clause.town
+                    db, tenant_id, clause.name, city_hint=hint
                 )
                 if cr.party_id:
-                    if _claim(spans, clause.start, clause.end, "cemetery"):
+                    if _claim(spans, clause.start, claim_end, "cemetery"):
                         values["cemetery"] = cr.candidates[0].name
                         if cr.candidates[0].city:
                             values["cemetery_city"] = cr.candidates[0].city
@@ -1287,7 +1340,7 @@ class DeterministicExtractor:
                     # realise they meant somewhere else. Leaving it as unrecognized
                     # text would be honest but useless — they said a cemetery and the
                     # pane would show them nothing to act on.
-                    if _claim(spans, clause.start, clause.end, "cemetery"):
+                    if _claim(spans, clause.start, claim_end, "cemetery"):
                         picks.append(Pick(
                             "cemetery", clause.name,
                             tuple((c.name, c.label) for c in cr.candidates),
@@ -1486,26 +1539,49 @@ class DeterministicExtractor:
                     #
                     # One pattern, one place. A fix to the town now reaches both
                     # callers, which is the whole reason the constant exists.
-                    tail = _CEM_TOWN.match(frag[b:])
-                    city = (
-                        _narrow_town(tail.group(1), town_names) if tail else None
-                    ) or None
+                    # ⚠️ `_town_after` SINCE JAMES'S RULING OF 2026-10-29, which reads a
+                    # BARE adjacent town as well as the "in <town>" form. This was
+                    # `_CEM_TOWN.match` alone, requiring the word "in" — so the walk
+                    # sentence "…graveside st marys skaneateles" resolved the cemetery
+                    # (the record scan matches "st marys" on its own) and then reported
+                    # **'skaneateles'** as text the engine could not place. Measured.
+                    #
+                    # ⚠️ AND THE BARE FORM IS NARROWED STRICTLY INSIDE THE HELPER, so
+                    # "st marys tent only" still claims no town. The forgiving narrowing
+                    # — which returns a town we hold no record of, deliberately, so a
+                    # conflict raises the pick — applies only when the director wrote
+                    # "in", because that word is what says a town follows.
+                    # ⚠️ NARROWED TO THE TOWNS THIS NAME ACTUALLY SITS IN — see
+                    # `_towns_for_name` for why, and for which of James's three cases is
+                    # deferred until clause 1 lands.
+                    name_towns = _towns_for_name(rows, frag[a:b])
+                    after = _town_after(frag[b:], town_names, bare_known=name_towns)
+                    city = after[0] if after else None
+                    # ⚠️ AND A TOWN TYPED BEFORE THE NAME, per the same ruling. The claim
+                    # has to extend BACKWARDS over it or the word is left unclaimed and
+                    # reported as text the engine could not place — which is the defect,
+                    # moved rather than fixed.
+                    #
+                    # ⚠️ THE TRAILING FORM WINS WHEN BOTH APPEAR. "skaneateles st marys
+                    # auburn" is a director correcting themselves and the last thing said
+                    # is the one that counts, as everywhere else in this module.
+                    before = None if city else _town_before(frag[:a], name_towns)
+                    if before is not None:
+                        city = before[0]
                     # ⚠️ THE CLAIM ENDS WHERE THE NARROWED TOWN ENDS, not where the
                     # pattern matched. Claiming the pattern's full span is what ate
                     # the following clause; the words the town did not use must stay
                     # available to the passes that want them.
-                    end = b + (
-                        tail.start(1) - tail.start() + len(city) if tail and city
-                        else 0
-                    )
+                    end = b + (after[1] if after else 0)
+                    start_at = before[1] if before is not None else a
                     cr = resolve_from_rows(rows, frag[a:b], city)
                     if cr.party_id:
-                        if _claim(spans, frag_start + a, frag_start + end, "cemetery"):
+                        if _claim(spans, frag_start + start_at, frag_start + end, "cemetery"):
                             values["cemetery"] = cr.candidates[0].name
                             if cr.candidates[0].city:
                                 values["cemetery_city"] = cr.candidates[0].city
                     elif len(cr.candidates) > 1 or cr.city_conflict:
-                        if _claim(spans, frag_start + a, frag_start + end, "cemetery"):
+                        if _claim(spans, frag_start + start_at, frag_start + end, "cemetery"):
                             picks.append(Pick(
                                 "cemetery", frag[a:b],
                                 tuple((c.name, c.label) for c in cr.candidates),
@@ -2322,58 +2398,6 @@ _CEM_SUFFIX = re.compile(r"\s+(?:cemetery|cemeteries)\b", re.I)
 #: quantifier rejected a one-letter town as a side effect; keeping that rejection
 #: explicit means "in A" is still not a town, which matters because a stray single
 #: letter after "in" is far more likely to be a typo than a place.
-_CEM_TOWN = re.compile(
-    r"\s+in\s+([A-Za-z][A-Za-z'\-.]+(?:\s+[A-Za-z][A-Za-z'\-.]*){0,2})", re.I
-)
-
-
-def _narrow_town(raw: str, known: frozenset[str]) -> str:
-    """The longest word-prefix of `raw` that is a town we have a record of.
-
-    ⚠️ THIS IS THE FUNERAL-HOME RULE APPLIED TO TOWNS, by the same ruling: a
-    marker-led span must not swallow following words, and what bounds it is a
-    record rather than a word count. "in Skaneateles tent only" gives
-    "Skaneateles" because that is a city we hold and "Skaneateles tent" is not.
-
-    ⚠️ AN UNKNOWN TOWN IS STILL READ, because a typed town that CONFLICTS with the
-    record is supposed to raise the pick (ruled 2026-10-12) — it is the signal, so
-    dropping it would lose the conflict. It is truncated at the first LABEL word
-    after the first, which is what actually separates a place from the clause behind
-    it: "Auburn service at" -> "Auburn".
-
-    ⚠️ THE FIRST WORD IS NEVER DROPPED, and that exemption is load-bearing. A
-    one-word fallback was tried and truncated two real towns — "New Hartford" became
-    "New" and "St. Albans" became "St." — because `_NOISE_WORDS` contains "new" (for
-    "new order") and the bare fallback took a single word. Towns are named after
-    anything, including words this module treats as noise elsewhere, so the first
-    word of a town span is exempt by construction rather than by a longer list.
-
-    ⚠️ RESIDUAL, STATED RATHER THAN HIDDEN: an UNKNOWN town followed by a label that
-    is not in `_NOISE_WORDS` still over-reaches by those words — "Xville tent only"
-    reads "Xville tent". Every town in the seeded data takes the record path above,
-    so this is reachable only for a town we hold no record of, and it is bounded at
-    three words rather than the 30 CHARACTERS that produced 'ursday'.
-    """
-    # ⚠️ IMPORTED HERE, NOT AT MODULE LEVEL, BECAUSE THAT IS WHERE IT LIVES. The
-    # name `_party_norm` is an alias created INSIDE `extract_line`
-    # (`normalize as _party_norm`), so a module-level reference to it compiles,
-    # imports, and raises `NameError` at call time. It did — caught by running the
-    # function, not by reading it (CLAUDE.md §11: the check that catches this is
-    # importing, or better, calling).
-    from app.services.party_resolver import normalize as _norm
-
-    words = raw.split()
-    for n in range(len(words), 0, -1):
-        if _norm(" ".join(words[:n])) in known:
-            return " ".join(words[:n])
-    if not words:
-        return ""
-    keep = [words[0]]
-    for w in words[1:]:
-        if w.casefold().strip(".,'") in _NOISE_WORDS:
-            break
-        keep.append(w)
-    return " ".join(keep)
 
 
 @dataclass(frozen=True)
@@ -2387,14 +2411,83 @@ class CemeteryClause:
     name_span: tuple[int, int]
     suffix_span: tuple[int, int] | None
     town_span: tuple[int, int] | None
+    #: ⚠️ DID THE DIRECTOR WRITE "in <town>"? The caller treats the two forms
+    #: differently and cannot tell them apart from the text alone once the clause is
+    #: parsed. An explicit town is taken at face value and a conflicting one raises the
+    #: pick (ruled 2026-10-12); a BARE town is only honoured when a cemetery of that
+    #: name is actually in it — see `_towns_for_name`. Defaults True so a clause built
+    #: without this field behaves as explicit, which is how every caller behaved before
+    #: the bare form existed.
+    town_explicit: bool = True
 
 
-def parse_cemetery_clause(line: str) -> CemeteryClause | None:
-    """Marker, name, optional "cemetery", optional "in <town>" — in that order.
+def _peel_trailing_town(
+    line: str, name_span: tuple[int, int], known: frozenset[str]
+) -> tuple[int, str, tuple[int, int]] | None:
+    """A known town the NAME swallowed, as `(new_name_end, town, town_span)`.
+
+    ⚠️ THE NAME IS GREEDY AND THAT IS WHY THIS EXISTS. `_CEM_NAME` takes up to three
+    words, so "going to st marys skaneateles" parses `name='st marys skaneateles'` and
+    `town=None` — measured 2026-10-29. The town is not missing from the clause; it is
+    INSIDE the name, which is worse, because `resolve_cemetery` then looks up a cemetery
+    whose name includes a town and finds nothing.
+
+    ⚠️ LONGEST RUN FIRST, so a two-word town wins over its first word. "New Hartford"
+    must not peel as "Hartford" leaving a name ending in "New".
+
+    ⚠️ AND IT NEVER PEELS THE WHOLE NAME. A cemetery called after its town — plausible —
+    would otherwise leave no name at all and the clause would resolve nothing.
+    """
+    a, b = name_span
+    runs = [(m.start(), m.end()) for m in re.finditer(r"\S+", line[a:b])]
+    if len(runs) < 2:
+        return None
+    for i in range(1, len(runs)):
+        start = a + runs[i][0]
+        # ⚠️ NARROWED OVER THE REST OF THE LINE, NOT JUST THE NAME SPAN, AND A TWO-WORD
+        # TOWN IS WHY. `_CEM_NAME` takes at most three words, so "going to st marys new
+        # hartford" matched `name='st marys new'` and left "hartford" outside it
+        # entirely — a peel bounded by the name span found "new" (not a town) and gave
+        # up, which is how my first version lost a real town. Measured.
+        #
+        # ⚠️ AND STRICTLY, so this cannot over-reach. `_narrow_town(strict=True)` returns
+        # the LONGEST prefix that is a town we hold records for, and "" otherwise — so
+        # "st marys tent only" peels nothing rather than claiming "tent", and a town
+        # cannot swallow the clause behind it.
+        town = _narrow_town(line[start:], known, strict=True)
+        if town:
+            return a + runs[i - 1][1], town, (start, start + len(town))
+    return None
+
+
+#: ⚠️ THE TOWN HELPERS MOVED TO `capture/towns.py` AND THESE NAMES ARE NOW ALIASES, so
+#: every call site below is untouched. They moved because James ruled on 2026-10-29 that
+#: ONE town pattern is shared by the capture bar and the cemetery pane — and a ratchet
+#: forbids the pane importing THIS module, so a leaf module is the only place both can
+#: take it from. Same shape as `noise.py`, same reason.
+from app.services.capture.towns import CEM_TOWN as _CEM_TOWN
+from app.services.capture.towns import CEM_TOWN_BARE as _CEM_TOWN_BARE
+from app.services.capture.towns import narrow_town as _narrow_town
+from app.services.capture.towns import town_after as _town_after
+from app.services.capture.towns import town_before as _town_before
+from app.services.capture.towns import towns_for_name as _towns_for_name
+
+
+def parse_cemetery_clause(
+    line: str, known_towns: frozenset[str] | None = None
+) -> CemeteryClause | None:
+    """Marker, name, optional "cemetery", optional town — in that order.
 
     ⚠️ EACH STEP STARTS WHERE THE LAST ONE ENDED. That is the whole design: there is
     no shared backtracking and no fragment adjacency, so a change to one part can
     shorten or lengthen its own span and nothing else.
+
+    ⚠️ `known_towns` IS OPTIONAL AND CHANGES TWO THINGS WHEN GIVEN, per James's ruling of
+    2026-10-29 ("towns typed with a cemetery are part of it, not held words"): a town the
+    greedy NAME swallowed is peeled back off it, and a town following with no "in" is
+    read. Without it the parser behaves exactly as it did — which keeps every existing
+    caller and every existing test on the old path rather than silently reinterpreting
+    them.
     """
     mk = _CEM_MARKER.search(line)
     if not mk:
@@ -2402,21 +2495,62 @@ def parse_cemetery_clause(line: str) -> CemeteryClause | None:
     nm = _CEM_NAME.match(line, mk.end())
     if not nm:
         return None
-    pos = nm.end()
+    name_span = nm.span()
+    name_text = nm.group(0)
+    bare_town: str | None = None
+    bare_span: tuple[int, int] | None = None
+
+    if known_towns:
+        peeled = _peel_trailing_town(line, name_span, known_towns)
+        if peeled is not None:
+            new_end, bare_town, bare_span = peeled
+            name_span = (name_span[0], new_end)
+            name_text = line[name_span[0]:new_end]
+
+    pos = name_span[1]
     sfx = _CEM_SUFFIX.match(line, pos)
     if sfx:
         pos = sfx.end()
     twn = _CEM_TOWN.match(line, pos)
+    explicit = False
     if twn:
         pos = twn.end()
+        town, town_span = twn.group(1).strip() or None, twn.span(1)
+        explicit = True
+    elif bare_town is not None:
+        # ⚠️ THE PEELED TOWN LOSES TO AN "in <town>" THAT FOLLOWS IT, and my first version
+        # got this backwards. "going to st marys skaneateles in auburn" is a director
+        # correcting themselves, and the LAST thing they said wins — the rule the rest of
+        # this module runs on. The `_CEM_TOWN` match above starts at the end of the
+        # SHORTENED name, which is before the peeled town, so it cannot see the "in"; it
+        # has to be retried from the end of the peel.
+        after_peel = _CEM_TOWN.match(line, bare_span[1]) if bare_span else None
+        if after_peel is not None:
+            town, town_span = after_peel.group(1).strip() or None, after_peel.span(1)
+            pos = after_peel.end()
+            explicit = True
+        else:
+            town, town_span = bare_town, bare_span
+            if bare_span is not None and bare_span[1] > pos:
+                pos = bare_span[1]
+    else:
+        town, town_span = None, None
+        if known_towns:
+            after = _town_after(line[pos:], known_towns)
+            if after is not None:
+                town, used = after
+                town_span = (pos + (len(line[pos:]) - len(line[pos:].lstrip())), pos + used)
+                pos = pos + used
+
     return CemeteryClause(
-        name=nm.group(0).strip(),
-        town=(twn.group(1).strip() if twn else None) or None,
+        name=name_text.strip(),
+        town=(town.strip() if town else None) or None,
         start=mk.start(),
         end=pos,
-        name_span=nm.span(),
+        name_span=name_span,
         suffix_span=sfx.span() if sfx else None,
-        town_span=twn.span(1) if twn else None,
+        town_span=town_span,
+        town_explicit=explicit,
     )
 
 

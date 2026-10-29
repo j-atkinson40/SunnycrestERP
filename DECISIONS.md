@@ -3913,3 +3913,61 @@ in entry mode, including the ones that place nothing, because a Tab that sometim
 focus is worse than either behaviour alone.
 
 So Tab means one thing throughout: **finish this word and put it away.**
+
+---
+
+## 2026-10-29 — A town typed with a cemetery belongs to it, on both surfaces
+
+**James's ruling.** *"Towns typed with a cemetery are part of it, not held words.
+Sunnycrest serves several cemeteries that share a name, so people type the town."* Three
+cases: a **matching** town is absorbed as confirmation, a **shared name** is
+disambiguated by it, and a town where **that cemetery isn't** makes Opas ask.
+
+⚠️ **AND CASE 3 IS DEFERRED UNTIL CLAUSE 1 LANDS, BY A SECOND RULING THE SAME DAY**,
+because it collides with a property James asked for. A city conflict becomes a PICK (ruled
+2026-10-12) and a pick REPLACES the value — so the cemetery row goes from filled to a
+question as the director types the next word, which is exactly what
+`test_NO_PREFIX_EVER_LOSES_A_FIELD_IT_HAD` exists to catch: *"A field that appears and
+then vanishes is the defect he watched happen on screen — Hopkins captured, then gone when
+the next word landed."*
+
+It fires on James's own fixture sentence, `"st marys auburn tent only"`, because testco
+holds Oakwood in Auburn. Measured: **production is unaffected** — Sunnycrest has one
+cemetery, so "auburn" is not a town it holds and the bare form reads nothing there.
+
+So the bare form is narrowed to towns a cemetery **of that name** is actually in. That
+implements cases 1 and 2 exactly and leaves case 3 as it behaves today, with the unused
+word surfacing as unplaced rather than un-answering the row.
+
+⚠️ **CLAUSE 1 IS WHAT MAKES CASE 3 SAFE, which is why the deferral has an end.** Under the
+same day's ruling, a term that leaves the bar becomes a durable resolution, and
+resolutions outrank the text — so "st marys" is already settled before "auburn" is typed
+and cannot be un-answered by it. Case 3 is built when clause 1 is.
+
+⚠️ **THE EXPLICIT `in <town>` FORM IS UNTOUCHED AND STILL RAISES THE CONFLICT.** The word
+"in" is what says a town follows, so there the director wrote it and meant it. Two forms,
+two strictnesses, one reason: how much the text itself tells you.
+
+### One town pattern, shared, because the alternative is already a recorded defect
+
+James: *"One town pattern shared by both surfaces, not a copy."*
+
+⚠️ **AND THE RATCHET FORCES THE RIGHT STRUCTURE.**
+`test_only_the_typed_path_imports_the_extractor` forbids any module importing
+`typed_extraction` — the E6 guarantee. So the helpers cannot be shared by importing them
+from where they were born; they move to a leaf module both surfaces take, which is what
+`prefix_resolve` already is for the prefix walk (`cemetery.py` and `customer.py` both
+import `reaches` from it rather than copying it) and what `noise.py` became earlier the
+same day for the noise list.
+
+That is the third time in one day the same structural answer has been reached from a
+different direction, and the file's own history says why: `_CEM_TOWN` gained a period in
+its charset on 2026-10-12 for "St. Albans", a duplicated inline copy did not, and the fix
+landed without taking. A copy is not a shortcut here; it is the defect.
+
+### The pane's search gets the same rule
+
+`test_cemetery_pane_reads.py` asserted `resolve(db, tid, "skaneateles st marys") == []`
+with a note: *"An unsupported case asserted as unsupported is the honest version of a
+boundary — and if James wants it, this is the line to change."* He wants it. Both
+orderings now open the pane.

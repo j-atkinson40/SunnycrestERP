@@ -25,12 +25,14 @@ from app.services.order_list.cemetery import (
     _directions,
     _name_key,
     _row_for_pane,
-    _strip_town,
     essentials,
     meta_line,
     what_opas_knows,
 )
+from app.services.capture.prefix_resolve import reaches
+from app.services.capture.towns import town_before, town_leading
 from app.services.order_list.stage import OrderFacts
+from app.services.party_resolver import normalize as _pn
 
 #: Monday. Oct 28 is ahead of it; Oct 16 is behind.
 TODAY = date(2026, 10, 26)
@@ -191,18 +193,78 @@ def test_punctuation_and_case_do_not_change_a_name():
     assert _name_key("Oakwood Cemetery") != _name_key("Oakwood Memorial")
 
 
-def test_the_town_is_stripped_word_wise_not_as_a_substring():
+def test_the_town_is_read_word_wise_not_as_a_substring():
     """⚠️ A TOWN CAN APPEAR INSIDE THE CEMETERY'S OWN NAME. "Auburn Memorial Cemetery"
     in Auburn would have its first word sliced out by a substring cut, leaving "memorial
     cemetery" — which then matches the wrong row or nothing at all.
+
+    ⚠️ THIS TEST USED TO EXERCISE `cemetery._strip_town`, WHICH NO LONGER EXISTS. James's
+    ruling of 2026-10-29 — *"one town pattern shared by both surfaces, not a copy"* —
+    moved the pane onto `capture.towns`, and `_strip_town` became a helper nothing
+    called, with five assertions still on it. A tested artifact with no wiring is a check
+    that cannot fail for the reason it names, so the helper was deleted and its
+    protections re-pointed at the functions the pane actually runs.
+
+    ⚠️ AND THE SHARED FUNCTIONS ARE STRICTER THAN THE HELPER THEY REPLACE. `_strip_town`
+    compared squeezed keys word-wise, which was right; the PASS that called it tested
+    `key.endswith(_name_key(city))`, which was a squeezed-string suffix and matched
+    inside a word. Both ends are whole-run now.
     """
-    assert _strip_town("st marys skaneateles", "Skaneateles") == "st marys"
-    assert _strip_town("st mary's skaneateles", "Skaneateles") == "st mary's"
-    # The town is NOT at the end, so nothing is stripped.
-    assert _strip_town("auburn memorial cemetery", "Auburn") == "auburn memorial cemetery"
-    # No town recorded: the phrase is returned untouched.
-    assert _strip_town("st marys", None) == "st marys"
-    assert _strip_town("st marys", "") == "st marys"
+    known = frozenset({_pn("Skaneateles"), _pn("Auburn")})
+
+    # The town trails the name — `town_before` finds it and hands back where it starts,
+    # so the caller keeps "st marys".
+    assert town_before("st marys skaneateles", known) == ("skaneateles", 9)
+    assert town_before("st mary's skaneateles", known) == ("skaneateles", 10)
+
+    # The town LEADS the name — the case James ruled in. `town_leading` hands back where
+    # it ends, so the caller keeps "st marys".
+    assert town_leading("skaneateles st marys", known) == ("skaneateles", 11)
+
+    # ⚠️ "Auburn" opens the cemetery's OWN name. The leading read finds it, which is
+    # correct and harmless — the remainder still has to `reaches` the same row. What must
+    # not happen is the MIDDLE being cut, and neither function can do that: each only
+    # ever reports a run at one edge.
+    assert town_before("auburn memorial cemetery", known) is None
+    assert town_leading("auburn memorial cemetery", known) == ("auburn", 6)
+
+    # A town nobody holds records for is not a town. This is what stops "hopkins st
+    # marys" reading "hopkins" as a town, and it is why both functions are strict.
+    assert town_leading("hopkins st marys", known) is None
+    assert town_before("st marys hopkins", known) is None
+
+    # ⚠️ THE LONGEST RUN WINS, AND MOST TWO-WORD TOWNS CANNOT TEST THAT EITHER. The first
+    # attempt here used {"new hartford", "hartford"} against "new hartford st marys" and
+    # was NOT a break test: the short leading window is "new", which is not a known town,
+    # so reversing the walk order lands on the same answer and the break stayed green.
+    #
+    # The discriminator needs a town that is a WORD-PREFIX of a longer town, so that both
+    # the short and the long window are known and the walk order decides which wins.
+    # ⚠️ AND THE TWO FUNCTIONS NEED DIFFERENT NESTED PAIRS, which the first version of
+    # this test got wrong in a way that left `town_before` unguarded. `town_leading`
+    # grows its window from the LEFT, so its short window is a word-PREFIX; `town_before`
+    # grows from the RIGHT, so its short window is a word-SUFFIX. One set cannot
+    # discriminate both: reversing `town_before`'s walk order against `nested_prefix`
+    # stayed green, because "heights" alone is not a known town there.
+    nested_prefix = frozenset({_pn("Hartford"), _pn("Hartford Heights")})
+    assert town_leading("hartford heights st marys", nested_prefix) == ("hartford heights", 16)
+
+    nested_suffix = frozenset({_pn("Heights"), _pn("Hartford Heights")})
+    assert town_before("st marys hartford heights", nested_suffix) == ("hartford heights", 9)
+
+    # No text, no town — the guard the pane relies on for rows with a blank city.
+    assert town_before("", known) is None
+    assert town_leading("", known) is None
+    assert town_leading("skaneateles st marys", frozenset()) is None
+
+    # ⚠️ AND THIS IS THE ASSERTION THAT ACTUALLY STOPS A BARE TOWN OPENING THE PANE,
+    # which is not where it looks like it lives. The pane guards the empty remainder with
+    # `if rest.strip() and reaches(...)`, and that guard is DEFENSIVE, NOT LOAD-BEARING:
+    # breaking it leaves every test green, because `reaches` already returns None for an
+    # empty needle and the pane strips the argument too. `reaches(name, " ")` returns a
+    # position, though — so the pane's guard is one missing `.strip()` away from being
+    # the only thing standing there, and it is kept for that reason rather than deleted.
+    assert reaches("St. Mary's Cemetery", "", interior=True) is None
 
 
 # ── the rows ──────────────────────────────────────────────────────────────────

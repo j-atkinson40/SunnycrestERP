@@ -661,6 +661,13 @@ tests/test_cemetery_pane.py
 # choice list with the town shown, tenant isolation, and the ask door trying the cemetery
 # rule BEFORE the customer rule — which changed a shipped behaviour for "st marys".
 tests/test_cemetery_pane_reads.py
+# A town typed with a cemetery is part of it, not a held word (James, 2026-10-29). The
+# fixture tenant has TWO St. Mary's in different towns, which no production tenant does —
+# the shared-name case is the one the whole rule exists for, and Sunnycrest cannot host
+# it (James: "don't add a second cemetery to Sunnycrest"). Absorption in both orderings,
+# a shared name picking one, equipment not read as a town, and case 3 deferred with the
+# word surfacing rather than silently dropped.
+tests/test_a_town_belongs_to_its_cemetery.py
 tests/test_guided_capture_slice1.py
 # Opas asks "why?" (James, 2026-10-26), first slice. The rules: what counts as a change
 # (a field Opas filled that the person then changed), what does NOT (a first fill, an

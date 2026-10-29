@@ -122,13 +122,29 @@ def test_the_dispatch_s_own_name_and_town_phrase_resolves(tenant):
         got = cem.resolve(db, tid, phrase)
         assert [h["id"] for h in got] == [mary.id], phrase
 
-    # ⚠️ THE BOUNDARY, STATED RATHER THAN LEFT TO BE DISCOVERED. Town-first with an
-    # ABBREVIATED name ("skaneateles st marys") does NOT resolve. The dispatch names
-    # "st marys" and "st mary's skaneateles"; this form is neither, and supporting it
-    # means letting a town prefix a partial name, which starts matching phrases nobody
-    # typed. An unsupported case asserted as unsupported is the honest version of a
-    # boundary — and if James wants it, this is the line to change.
-    assert cem.resolve(db, tid, "skaneateles st marys") == []
+    # ⚠️ THIS LINE USED TO ASSERT `== []`, AND JAMES RULED IT CHANGES (2026-10-29):
+    # *"Extend the leading/bare town rule to the cemetery pane's search: change the line
+    # at test_cemetery_pane_reads.py:131 and make "skaneateles st marys" /
+    # "st marys skaneateles" open the pane. One town pattern shared by both surfaces,
+    # not a copy."*
+    #
+    # The old comment argued the form was unsupported because "supporting it means
+    # letting a town prefix a partial name, which starts matching phrases nobody typed."
+    # That cost is real and is paid differently than the old pass would have paid it:
+    # the town must be a WHOLE whitespace run that the tenant holds records for, so
+    # "hopkins st marys" cannot read "hopkins" as a town. See `capture/towns.py`.
+    assert [h["id"] for h in cem.resolve(db, tid, "skaneateles st marys")] == [mary.id]
+
+    # ⚠️ AND THE BOUNDARY MOVED RATHER THAN DISAPPEARING, so here is where it sits now.
+    # A town ALONE is not a cemetery phrase — the remainder after the town has to reach
+    # a name, and an empty remainder reaches nothing. Without this the pane would open
+    # on "skaneateles", which names a place and not a cemetery.
+    assert cem.resolve(db, tid, "skaneateles") == []
+
+    # ⚠️ AND A LEADING WORD THAT IS NOT A TOWN THIS TENANT HOLDS RECORDS FOR IS NOT A
+    # TOWN. This is the assertion that pays for the ruling: it is what stops a funeral
+    # home's name being read as a town and the rest as a cemetery.
+    assert cem.resolve(db, tid, "hopkins st marys") == []
 
 
 def test_the_town_picks_ONE_of_two_cemeteries_sharing_a_name(tenant):

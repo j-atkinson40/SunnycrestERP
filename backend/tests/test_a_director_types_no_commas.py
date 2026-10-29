@@ -190,26 +190,44 @@ def test_a_known_town_bounds_the_span_at_the_town(db, tenant):
     assert ex.unrecognized == (), ex.unrecognized
 
 
-def test_there_is_exactly_ONE_town_pattern_in_the_module(db):
-    """⚠️ A RATCHET, BECAUSE THE DUPLICATE IS WHAT MADE A FIX NOT TAKE. `_CEM_TOWN`
+def test_there_is_exactly_ONE_town_pattern_IN_THE_WHOLE_APP():
+    """⚠️ A RATCHET, BECAUSE THE DUPLICATE IS WHAT MADE A FIX NOT TAKE. The town pattern
     gained a period in its charset on 2026-10-12; an inline copy in the record-lookup
     pass kept the old 30-character form, so the record path still could not read
     "St. Albans" and still claimed mid-word. A second copy of a pattern is a second
     place to fix and the one nobody remembers.
-    """
-    import io
 
-    src = io.open(
-        "app/services/capture/typed_extraction.py", encoding="utf-8"
-    ).read()
-    # ⚠️ A SUBSTRING COUNT, NOT A REGEX. My first version matched the pattern shape
+    ⚠️ IT COUNTED INSIDE `typed_extraction.py` UNTIL 2026-10-29 AND THAT STOPPED BEING
+    ENOUGH. James ruled that ONE town pattern is shared by the capture bar AND the
+    cemetery pane — and since `test_only_the_typed_path_imports_the_extractor` forbids
+    the pane importing `typed_extraction`, the pattern had to move to
+    `capture/towns.py`, a leaf module both surfaces take.
+
+    A file-scoped count would then have read ZERO in the file it was pointed at and
+    guarded NOTHING in the file the pattern actually lives in — green, and blind. The
+    same shape as the defect it exists to catch, one level up: an instrument still
+    running, still passing, no longer looking at the thing.
+
+    ⚠️ SO IT COUNTS ACROSS ALL OF `app/`, which is strictly stronger and is what makes
+    the ruling enforced rather than remembered. A copy anywhere in the application —
+    in the pane, in a service, in a second leaf module — now fails here.
+    """
+    import pathlib
+
+    app_dir = pathlib.Path(__file__).resolve().parent.parent / "app"
+    # ⚠️ A SUBSTRING COUNT, NOT A REGEX. An earlier version matched the pattern shape
     # with a regex over the source and the escaping was wrong, so it reported zero and
     # the ratchet failed on correct code — an instrument answering an adjacent
     # question. The thing being counted is literal text; count it literally.
     needle = r"\s+in\s+("
-    n = src.count(needle)
-    assert n == 1, (
-        f"{n} town patterns found in the module; there must be exactly ONE, named, "
-        f"so a fix reaches every caller. A second copy is how the 2026-10-12 period "
-        f"fix failed to reach the record-lookup path."
+    found: list[str] = []
+    for path in sorted(app_dir.rglob("*.py")):
+        n = path.read_text(encoding="utf-8").count(needle)
+        found.extend([str(path.relative_to(app_dir))] * n)
+
+    assert found == ["services/capture/towns.py"], (
+        f"the town pattern appears in {found or 'NO file'}; it must appear exactly "
+        f"once, in services/capture/towns.py, so a fix reaches every caller. A second "
+        f"copy is how the 2026-10-12 period fix failed to reach the record-lookup "
+        f"path; ZERO occurrences means this ratchet is pointed at nothing."
     )

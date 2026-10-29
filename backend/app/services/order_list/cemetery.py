@@ -75,6 +75,11 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.services.capture.prefix_resolve import GENERIC_WORDS, MIN_PREFIX, reaches
+# ⚠️ ONE TOWN PATTERN, SHARED — not a copy. See `capture/towns.py`, whose single
+# definition of the town pattern is held by the ratchet in
+# `test_a_director_types_no_commas.py`. Same precedent as `prefix_resolve` above.
+from app.services.capture.towns import town_before, town_leading
+from app.services.party_resolver import normalize as _pn
 from app.services.order_list.customer import DID_YOU_MEAN, TOO_MANY, needs_confirmation
 from app.services.order_list.stage import (
     GROUP_LABEL,
@@ -189,24 +194,6 @@ def _same_name(db: Session, company_id: str, row: dict) -> dict | None:
 def _name_key(name: str) -> str:
     """"St. Mary's Cemetery" and "St Marys Cemetery" are the same name here."""
     return "".join(ch for ch in (name or "").casefold() if ch.isalnum())
-
-
-def _strip_town(typed: str, town: str | None) -> str:
-    """"st marys skaneateles" -> "st marys", when the tail IS that town.
-
-    ⚠️ WORD-WISE FROM THE END, not a substring cut. A town whose name appears inside the
-    cemetery's own name ("Auburn" in "Auburn Memorial Cemetery") must not be sliced out
-    of the middle, and comparing squeezed keys word by word is what prevents it.
-    """
-    want = _name_key(town or "")
-    if not want:
-        return typed
-    words = typed.split()
-    for take in range(1, len(words)):
-        tail = words[len(words) - take:]
-        if _name_key(" ".join(tail)) == want:
-            return " ".join(words[: len(words) - take])
-    return typed
 
 
 def _directions(row: dict) -> dict | None:
@@ -480,17 +467,50 @@ def resolve(db: Session, company_id: str, typed: str) -> list[dict]:
     if with_town:
         return with_town
 
-    # A NAME PREFIX plus the exact town — "st marys skaneateles" where the record reads
-    # "St. Mary's Cemetery". The town has to match in full; a prefix of a town would
-    # start matching things nobody typed.
-    town_tail = [
-        dict(r) for r in rows
-        if (r["city"] or "").strip()
-        and key.endswith(_name_key(r["city"]))
-        and reaches(r["name"], _strip_town(text_in, r["city"]), interior=True)
-    ]
-    if town_tail:
-        return sorted(town_tail, key=lambda r: (len(r["name"]), r["name"]))
+    # A NAME PREFIX plus the exact town, IN EITHER ORDER — "st marys skaneateles" and
+    # "skaneateles st marys" where the record reads "St. Mary's Cemetery". The town has
+    # to match in full; a prefix of a town would start matching things nobody typed.
+    #
+    # ⚠️ BOTH ORDERINGS, BY RULING (James, 2026-10-29): *"Extend the leading/bare town
+    # rule to the cemetery pane's search … One town pattern shared by both surfaces, not
+    # a copy."* The leading form resolved to NOTHING before this — `with_town` above
+    # cannot see it either, because the record's name carries "Cemetery" and the typed
+    # text does not, so neither joined key matches.
+    #
+    # ⚠️ AND IT ROUTES THROUGH `capture.towns`, WHICH IS A BEHAVIOUR CHANGE AS WELL AS A
+    # DE-DUPLICATION. The pass this replaces tested `key.endswith(_name_key(city))` —
+    # a squeezed-string suffix, which matches INSIDE a word: a town "Auburn" against a
+    # typed "newauburn" satisfied it. `town_before` / `town_leading` compare whole
+    # whitespace runs, so the town must be a word, and the longest run wins so a
+    # two-word town is never read as its second word.
+    town_edge: list[dict] = []
+    if rows:
+        known_towns = frozenset(
+            _pn(r["city"]) for r in rows if (r["city"] or "").strip()
+        )
+        trailing = town_before(text_in, known_towns)
+        leading = town_leading(text_in, known_towns)
+        for r in rows:
+            city = (r["city"] or "").strip()
+            if not city:
+                continue
+            for found, rest in (
+                (trailing, text_in[: trailing[1]] if trailing else ""),
+                (leading, text_in[leading[1] :] if leading else ""),
+            ):
+                if not found or _pn(found[0]) != _pn(city):
+                    continue
+                # ⚠️ `rest.strip() and` IS DEFENSIVE, NOT LOAD-BEARING, AND A BREAK TEST
+                # PROVED IT: removing it leaves every test green, because `reaches`
+                # returns None for an empty needle and the argument is stripped here too.
+                # It is kept because `reaches(name, " ")` DOES return a position — so one
+                # missing `.strip()` and this clause becomes the only thing stopping a
+                # bare town ("skaneateles") from opening a cemetery pane.
+                if rest.strip() and reaches(r["name"], rest.strip(), interior=True):
+                    town_edge.append(dict(r))
+                    break
+    if town_edge:
+        return sorted(town_edge, key=lambda r: (len(r["name"]), r["name"]))
 
     # ⚠️ A PUNCTUATION-BLIND PREFIX, AND A TEST OF THE SHARED-NAME CASE IS WHAT FOUND
     # THE NEED. "st marys" against two cemeteries — "St. Mary's Cemetery" and
