@@ -247,26 +247,47 @@ export function OpasHost() {
 
   // ── the pill-pick modifier, a per-user preference (James, 2026-10-28) ───────────
   //
-  // ⚠️ READ ONCE PER MOUNT, NOT PER QUESTION. It is a preference, not session state,
-  // and threading it through the capture read would have meant adding a field to
-  // `EntryPaneStatus` — whose equality guard must then compare it, which is the exact
-  // gap that turned CI red on 2026-10-27 when seven new fields went uncompared.
+  // ⚠️ NOT PER QUESTION. It is a preference, not session state, and threading it through
+  // the capture read would have meant adding a field to `EntryPaneStatus` — whose
+  // equality guard must then compare it, which is the exact gap that turned CI red on
+  // 2026-10-27 when seven new fields went uncompared.
   //
-  // ⚠️ AND THE DEFAULT IS THE PRE-RULING BEHAVIOUR, so the window before the read
-  // lands is indistinguishable from how the bar worked yesterday.
+  // ⚠️ AND NOT AT MOUNT EITHER, WHICH IS THE BUG JAMES WALKED ON 2026-10-29. His stored
+  // preference was `control`, the pills read ⌥1, and a plain digit worked. Three things
+  // composed:
+  //
+  //     `OpasHost` mounts at `App.tsx:519`, OUTSIDE `<Routes>` and unconditionally, so
+  //     it mounts on first page load BEFORE any token exists;
+  //     the request answered 403 (measured live; a bogus path answers 404, the control);
+  //     `fetchCapturePreferences` swallowed that and returned the Option DEFAULT;
+  //     and the effect's `[]` dep array meant it never asked again — `OpasHost` does not
+  //     remount, so the guess stood for the whole session.
+  //
+  // ⚠️ GATED ON `opas.isOpen`, WHICH IS WHAT MAKES IT POST-LOGIN. The sphere renders
+  // only for `isAdmin`, so Opas cannot be open unless the caller is authenticated — the
+  // same reason `fetchVocabulary` is gated the same way one effect below. That effect
+  // was the working pattern sitting in this file while this one was written wrong.
+  //
+  // ⚠️ AND IT RETRIES, because `loaded` only becomes true on a READ THAT SUCCEEDED. A
+  // failure leaves it false, so the next time Opas opens it asks again. The old version
+  // had no way to know it had failed, which is why `fetchCapturePreferences` now returns
+  // `null` for "could not read" rather than a plausible default.
   const [pickModifier, setPickModifier] = useState<PickModifier>(DEFAULT_PICK_MODIFIER)
   const [pickGlyph, setPickGlyph] = useState<string>(MODIFIER_GLYPH[DEFAULT_PICK_MODIFIER])
+  const [pickLoaded, setPickLoaded] = useState(false)
   useEffect(() => {
+    if (!opas.isOpen || pickLoaded) return
     let live = true
     void fetchCapturePreferences().then((p) => {
-      if (!live) return
+      if (!live || p === null) return
       setPickModifier(p.pick_modifier)
       setPickGlyph(p.pick_modifier_glyph)
+      setPickLoaded(true)
     })
     return () => {
       live = false
     }
-  }, [])
+  }, [opas.isOpen, pickLoaded])
   /** A row the office clicked, whose question is shown instead of the next one.
    *
    *  ⚠️ IT IS CLEARED THE MOMENT THAT FIELD IS ANSWERED, not on a timer and not on the
@@ -1881,6 +1902,11 @@ export function OpasHost() {
           const saved = await setCapturePickModifier(wanted)
           setPickModifier(saved.pick_modifier)
           setPickGlyph(saved.pick_modifier_glyph)
+          // ⚠️ A SUCCESSFUL WRITE COUNTS AS A READ, so the retry stops asking. Without
+          // this, a user who set the modifier by phrase while the READ was still failing
+          // would have their choice overwritten by the next successful fetch — which
+          // would return the same value, so the bug would be invisible until it wasn't.
+          setPickLoaded(true)
           // ⚠️ THE CONFIRMATION SHOWS THE GLYPH, not the word, because the glyph is
           // what the pills now print and is the thing to check.
           // ⚠️ `"ack"` IS "Opas did something" AND IT FADES, which is right here: the

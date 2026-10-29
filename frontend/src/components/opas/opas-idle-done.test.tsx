@@ -14,7 +14,7 @@
  * fixture rather than the condition.
  */
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
-import { describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import {
   DONE_HINT, DONE_PILL_LABEL, DONE_QUESTION,
@@ -66,12 +66,28 @@ const CAPTURING = {
   surface: { id: "capture_sales_order", rows: [] },
 }
 
-vi.mock("@/services/opas-capture-service", () => ({
-  fetchCapturePreferences: vi.fn(async () => ({
-    pick_modifier: "control" as const,
+//: ⚠️ A MUTABLE STORED PREFERENCE, SO A TEST CAN MAKE THE FIRST READ FAIL. James's bug
+//: of 2026-10-29 was precisely a first read that failed and never retried, and a mock
+//: that always succeeds cannot express it.
+const storedPreference: {
+  value: { pick_modifier: "option" | "control" | "command"
+           pick_modifier_glyph: string
+           pick_modifier_event_flag: "altKey" | "ctrlKey" | "metaKey" } | null
+  reads: number
+} = {
+  value: {
+    pick_modifier: "control",
     pick_modifier_glyph: "⌃",
-    pick_modifier_event_flag: "ctrlKey" as const,
-  })),
+    pick_modifier_event_flag: "ctrlKey",
+  },
+  reads: 0,
+}
+
+vi.mock("@/services/opas-capture-service", () => ({
+  fetchCapturePreferences: vi.fn(async () => {
+    storedPreference.reads += 1
+    return storedPreference.value
+  }),
   setCapturePickModifier: vi.fn(),
   // ⚠️ ONE COMPLETE STATE SHAPE, SHARED BY EVERY READER, AND THE PANE'S OWN CODE IS
   // WHY. `CapturePane` reads `state?.missing.length` and `state.rows` — the optional
@@ -228,5 +244,131 @@ describe("the done state — clause 2", () => {
     // ⚠️ THE DISCRIMINATOR. A done state that showed without an approval would be a
     // receipt for an order nobody placed.
     expect(screen.getByTestId("opas-guided-question").textContent).not.toBe(DONE_QUESTION)
+  })
+})
+
+
+describe("the stored pick modifier reaches the first render — James's bug, 2026-10-29", () => {
+  /**
+   * ⚠️ THIS WHOLE BLOCK EXISTS FOR A BUG I SHIPPED, and the shape is why it needed a
+   * test rather than a careful second look. The read was correct, the write was correct,
+   * the label and the chord both read the same state — and the value was a GUESS,
+   * because `fetchCapturePreferences` swallowed a 403 and returned the Option default
+   * while the effect's `[]` dep array meant it never asked again.
+   *
+   * ⚠️ AND THE OLD TESTS COULD NOT HAVE CAUGHT IT. They mocked the service to RESOLVE,
+   * so the first read always succeeded — which is the one condition the bug needs to be
+   * absent. A test that loads a real stored preference is only half of it; the other
+   * half is a test where the first read FAILS.
+   */
+  beforeEach(() => {
+    storedPreference.value = {
+      pick_modifier: "control",
+      pick_modifier_glyph: "⌃",
+      pick_modifier_event_flag: "ctrlKey",
+    }
+    storedPreference.reads = 0
+  })
+
+  it("labels the pills with the STORED value, not the default", async () => {
+    await mount()
+    await waitFor(() => {
+      expect(screen.getByTestId("opas-guided-pill-key-1").textContent).toBe("⌃1")
+    })
+    // ⚠️ AND THE DEFAULT IS GONE, not merely joined. This is the assertion that was
+    // false on James's screen.
+    expect(screen.queryByText("⌥1")).toBeNull()
+  })
+
+  it("and the CHORD follows the stored value too, not just the label", async () => {
+    // ⚠️ BOTH HALVES, BECAUSE A LABEL THAT SAYS ⌃ OVER A CHORD THAT WANTS ⌥ IS WORSE
+    // THAN EITHER — it is an instruction that does not work. James asked for exactly
+    // this pair.
+    //
+    // ⚠️ AND THE ASSERTION IS THE OBSERVABLE EFFECT, NOT A SPY I CONTROL. My first
+    // version returned a literal `true` from a fake helper and asserted it was truthy —
+    // which is an assertion about nothing. In the idle state the pill is the New order
+    // ACT, so a working chord OPENS A CAPTURE: that is a real consequence the broken
+    // version cannot produce.
+    await mount()
+    await waitFor(() => {
+      expect(screen.getByTestId("opas-guided-pill-key-1").textContent).toBe("⌃1")
+    })
+    expect(screen.queryByTestId("capture-pane")).toBeNull()  // the control
+
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", {
+        code: "Digit1", key: "1", ctrlKey: true, bubbles: true, cancelable: true,
+      }))
+    })
+    await waitFor(() => {
+      expect(screen.queryByTestId("capture-pane")).toBeTruthy()
+    })
+  })
+
+  it("and ⌥1 does NOT work once the stored value is Control", async () => {
+    // ⚠️ THE DISCRIMINATOR. Without this, a chord that accepted ANY modifier would pass
+    // the test above and the stored preference would be decoration.
+    await mount()
+    await waitFor(() => {
+      expect(screen.getByTestId("opas-guided-pill-key-1").textContent).toBe("⌃1")
+    })
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", {
+        code: "Digit1", key: "¡", altKey: true, bubbles: true, cancelable: true,
+      }))
+    })
+    expect(screen.queryByTestId("capture-pane")).toBeNull()
+  })
+
+  it("⚠️ RETRIES WHEN THE FIRST READ FAILS — the regression test for the bug itself", async () => {
+    // the first read is refused, exactly as a pre-login 403 is
+    storedPreference.value = null
+    await mount()
+    // the default stands, which is correct while nothing is known
+    await waitFor(() => {
+      expect(screen.getByTestId("opas-guided-pill-key-1").textContent).toBe("⌥1")
+    })
+    const afterFirst = storedPreference.reads
+    expect(afterFirst).toBeGreaterThan(0)
+
+    // the preference becomes readable, and Opas is closed and reopened
+    storedPreference.value = {
+      pick_modifier: "control",
+      pick_modifier_glyph: "⌃",
+      pick_modifier_event_flag: "ctrlKey",
+    }
+    // ⚠️ ESCAPE TUCKS; THE SPHERE ONLY OPENS. `onClick={() => opas.open()}` and the
+    // sphere is `pointerEvents: none` while open — so clicking it twice does NOT close
+    // and reopen, which is why my first version saw no second read and read as a broken
+    // retry.
+    await act(async () => {
+      fireEvent.keyDown(document, { key: "Escape" })
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("opas-sphere"))
+    })
+
+    // ⚠️ IT ASKED AGAIN. The old version's `[]` dep array made this impossible, and the
+    // read count is what proves a retry rather than a cached success.
+    await waitFor(() => {
+      expect(storedPreference.reads).toBeGreaterThan(afterFirst)
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId("opas-guided-pill-key-1").textContent).toBe("⌃1")
+    })
+  })
+
+  it("stops asking once it has an answer", async () => {
+    // ⚠️ THE OTHER SIDE OF THE RETRY. An effect that re-read on every open would put a
+    // request on the hot path of a gesture the office makes constantly.
+    await mount()
+    await waitFor(() => {
+      expect(screen.getByTestId("opas-guided-pill-key-1").textContent).toBe("⌃1")
+    })
+    const afterFirst = storedPreference.reads
+    await act(async () => { fireEvent.keyDown(document, { key: "Escape" }) })
+    await act(async () => { fireEvent.click(screen.getByTestId("opas-sphere")) })
+    expect(storedPreference.reads).toBe(afterFirst)
   })
 })

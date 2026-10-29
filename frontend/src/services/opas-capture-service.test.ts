@@ -15,21 +15,24 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@/lib/api-client", () => ({
-  default: { post: vi.fn(), get: vi.fn(), put: vi.fn() },
+  default: { post: vi.fn(), get: vi.fn(), put: vi.fn(), patch: vi.fn() },
 }))
 
 import apiClient from "@/lib/api-client"
 import {
   addLine,
   choosePick,
+  fetchCapturePreferences,
   readCapture,
   setCaptureText,
+  setCapturePickModifier,
   startCapture,
 } from "./opas-capture-service"
 
 const post = vi.mocked(apiClient.post)
 const get = vi.mocked(apiClient.get)
 const put = vi.mocked(apiClient.put)
+const patch = vi.mocked(apiClient.patch)
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -151,5 +154,78 @@ describe("the four paths match the registered routes", () => {
       expect(p).not.toContain("/api/")
       expect(p.startsWith("/capture/sessions")).toBe(true)
     }
+  })
+})
+
+
+describe("the pick-modifier preference — James's bug of 2026-10-29", () => {
+  /**
+   * ⚠️ THIS BLOCK IS THE ROOT CAUSE'S ONLY COVERAGE, AND A BREAK TEST IS HOW I FOUND
+   * THAT OUT. `opas-idle-done.test.tsx` mocks the WHOLE service, so the swallow below
+   * is never executed there — I broke it (put the silent default back) and all 14 host
+   * tests stayed green. The same reasoning this file's own header gives for existing.
+   */
+  it("returns the stored value on a successful read", async () => {
+    get.mockResolvedValueOnce({
+      data: {
+        pick_modifier: "control",
+        pick_modifier_glyph: "⌃",
+        pick_modifier_event_flag: "ctrlKey",
+      },
+    } as never)
+    const got = await fetchCapturePreferences()
+    expect(got).toEqual({
+      pick_modifier: "control",
+      pick_modifier_glyph: "⌃",
+      pick_modifier_event_flag: "ctrlKey",
+    })
+    expect(get).toHaveBeenCalledWith("/capture/preferences")
+  })
+
+  it("⚠️ RETURNS null ON A REFUSED READ, NOT A PLAUSIBLE DEFAULT — this is the bug", async () => {
+    /**
+     * The chain James walked: `OpasHost` mounts outside `<Routes>`, so it asked before
+     * any token existed; the endpoint answered **403** (measured live — a bogus path
+     * answers 404, the control); and this function CAUGHT that and returned
+     * `pick_modifier: "option"`. A refusal became indistinguishable from a user who had
+     * never chosen, so the caller had nothing to retry on and the guess stood for the
+     * whole session.
+     *
+     * ⚠️ `null` IS THE WHOLE FIX AT THIS LAYER. It does not throw — a failed preference
+     * read must not stop the bar working — but the caller can now TELL.
+     */
+    get.mockRejectedValueOnce(Object.assign(new Error("Forbidden"), {
+      response: { status: 403 },
+    }))
+    expect(await fetchCapturePreferences()).toBeNull()
+  })
+
+  it("and null for a network failure too, not only a 403", async () => {
+    get.mockRejectedValueOnce(new Error("Network Error"))
+    expect(await fetchCapturePreferences()).toBeNull()
+  })
+
+  it("the WRITE does not swallow, because the office asked for it", async () => {
+    /**
+     * ⚠️ THE ASYMMETRY IS DELIBERATE AND IS THE OTHER HALF OF THE RULING. A read that
+     * fails can degrade to the default for display; a WRITE the office typed
+     * ("set my shortcut to control") must report whether it happened, or Opas would
+     * answer "Pills pick with ⌃ now." and change nothing.
+     */
+    patch.mockRejectedValueOnce(new Error("nope"))
+    await expect(setCapturePickModifier("control")).rejects.toThrow()
+
+    patch.mockResolvedValueOnce({
+      data: {
+        pick_modifier: "control",
+        pick_modifier_glyph: "⌃",
+        pick_modifier_event_flag: "ctrlKey",
+      },
+    } as never)
+    const saved = await setCapturePickModifier("control")
+    expect(saved.pick_modifier).toBe("control")
+    expect(patch).toHaveBeenCalledWith("/capture/preferences", {
+      pick_modifier: "control",
+    })
   })
 })

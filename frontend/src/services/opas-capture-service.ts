@@ -280,22 +280,38 @@ export interface CapturePreferences {
 }
 
 /**
- * Read the caller's own pick modifier.
+ * Read the caller's own pick modifier. `null` means it could not be read.
  *
- * ⚠️ IT FALLS BACK RATHER THAN THROWING, because a failed preference read must not
- * stop the bar working. Option is the 2026-10-27 default and is what a user who has
- * never chosen gets anyway, so the degraded state is the ordinary one.
+ * ⚠️ `null` RATHER THAN A DEFAULT, AND THAT ONE WORD WAS THE BUG. This function used to
+ * `catch` and return the Option default — so a refused request was indistinguishable
+ * from a user who had never chosen, and the caller had no way to know it should try
+ * again. James walked it on 2026-10-29: his stored preference was `control`, the pills
+ * read ⌥1, and a plain digit worked.
+ *
+ * The chain: `OpasHost` mounts at `App.tsx:519` OUTSIDE `<Routes>`, so it mounts before
+ * any token exists; the request answered **403** (measured live — a bogus path answers
+ * 404, which is the control); the `catch` turned that into "the user chose Option"; and
+ * the effect's `[]` dep array meant it never asked again. Three things composing, and
+ * the swallow is the one that made it silent.
+ *
+ * ⚠️ IT IS THE FOURTH INSTANCE OF THE CLASS JAMES HAD ALREADY QUEUED A SWEEP FOR — an
+ * error hidden behind a plausible "nothing to do" — and it was written the day after
+ * that sweep was queued. The sweep now runs straight after slice 2 and covers this
+ * shape wherever it appears.
+ *
+ * ⚠️ IT STILL DOES NOT THROW, because a failed preference read must not stop the bar
+ * working. The difference is that the caller can now TELL, so it can keep the default
+ * for display AND retry — rather than recording a guess as an answer.
  */
-export async function fetchCapturePreferences(): Promise<CapturePreferences> {
+export async function fetchCapturePreferences(): Promise<CapturePreferences | null> {
   try {
     const r = await apiClient.get<CapturePreferences>(`${BASE_ROOT}/preferences`)
     return r.data
-  } catch {
-    return {
-      pick_modifier: "option",
-      pick_modifier_glyph: "⌥",
-      pick_modifier_event_flag: "altKey",
-    }
+  } catch (err) {
+    // ⚠️ IT LOGS. A silent null is the same defect one layer up: the caller would retry
+    // forever and nobody would know why the first attempt failed.
+    console.warn("[opas] could not read the pick-modifier preference", err)
+    return null
   }
 }
 
