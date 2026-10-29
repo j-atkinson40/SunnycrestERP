@@ -45,6 +45,8 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 
+from datetime import date, timedelta
+
 import pytest
 from sqlalchemy import text
 
@@ -88,10 +90,30 @@ def tenant(db) -> str:
 #: unavailable personalization answer is a conflict and a conflict blocks approval,
 #: so a Monticello with a nameplate can no longer be approved — and choosing a
 #: nameplate makes `nameplate_date_format` required, which "written" answers.
+#: ⚠️ THE DAY IS DERIVED, NOT THE WORD "thursday", AND A THURSDAY IS WHY.
+#: This sentence said "thursday" and the file's own control caught it on
+#: 2026-10-29 — a Thursday:
+#:
+#:     AssertionError: the fixture's service date is not in the future
+#:     (2026-10-29); this test would then prove nothing about the date gate
+#:
+#: A weekday name resolves to the NEXT occurrence, and on that weekday the next
+#: occurrence is TODAY — so the fixture's service date stopped being in the future
+#: and `test_the_END_OF_DAY_BATCH_DOES_NOT_SEE_IT` refused to pass vacuously. The
+#: test was right 6 days in 7 and wrong on the seventh, latent since it was written.
+#:
+#: ⚠️ THE CONTROL IS WHAT FOUND IT, which is the argument for writing them. A version
+#: without `assert before["scheduled_date"] > date.today()` would have gone green on
+#: a Thursday while proving nothing about the date gate it is named for — and would
+#: have gone green every Thursday after that too.
+#:
+#: Two days out is never today and never yesterday, whatever day the suite runs on.
+_SERVICE_DAY = (date.today() + timedelta(days=2)).strftime("%A").lower()
+
 ORDER = (
     "order for hopkins continental 34 Mary Smith 1948 to 2026 "
     "going to St. Mary's section 4 lot 12 "
-    "service at the church thursday 10am full equipment nameplate only written"
+    f"service at the church {_SERVICE_DAY} 10am full equipment nameplate only written"
 )
 
 
