@@ -305,17 +305,12 @@ _DATE_FORMAT_WORDS: tuple[tuple[str, str], ...] = (
 GATING_TAIL_OPEN = "tail_open"
 
 #: Words that carry no field and must not be reported as unrecognized.
-_NOISE_WORDS: frozenset = frozenset({
-    "a", "an", "the", "and", "for", "with", "to", "at", "on", "in", "of", "is",
-    "it", "its", "please", "thanks", "ok", "okay", "also", "plus", "then",
-    "order", "vault", "need", "needs", "want", "wants", "get", "put", "add",
-    "new", "start", "create", "make", "enter", "take", "going", "goes", "be",
-    "will", "we", "they", "he", "she", "her", "his", "their", "this", "that",
-    "no", "not", "none", "only", "just", "both", "all", "some", "there",
-    # Label words a director says around a value rather than as one.
-    "service", "burial", "cemetery", "funeral", "home", "decedent", "deceased",
-    "print", "design", "date", "time", "day", "section", "lot", "space",
-})
+#:
+#: ⚠️ THE LIST MOVED TO `capture/noise.py` AND THIS NAME IS NOW AN ALIAS, so the six use
+#: sites below are untouched. It moved because a ratchet forbids any other module
+#: importing THIS one — the E6 guarantee — and `held.py` needs the same list for clause
+#: 5's suggestions. Same frozenset object, read from a leaf module both can import.
+from app.services.capture.noise import NOISE_WORDS as _NOISE_WORDS
 
 
 def _free(spans: list[tuple[int, int]], a: int, b: int) -> bool:

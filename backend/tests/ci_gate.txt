@@ -679,3 +679,4 @@ tests/test_rulebook.py
 # shrink; the marker is read with `ast`, never grepped.
 tests/test_migration_safety.py
 tests/test_pick_modifier.py
+tests/test_held_words.py

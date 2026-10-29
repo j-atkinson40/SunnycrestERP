@@ -3814,3 +3814,102 @@ is still a gap, so it is asked last and asked plainly. For an optional field, ab
 means nobody wants it asked — `burial_date` is the case that proves it, ruled away on
 2026-10-13 ("the burial is always the same day as the service") and reinstated by a
 fallback in the first version of this walk.
+
+---
+
+## 2026-10-29 — "Last mention wins" applies when a term LEAVES the bar, not per keystroke
+
+**James's ruling, accepting the slice-2 design review's recommendation. This supersedes
+the LIVE HALF of the resolutions-outrank-text ruling of 2026-10-24, and nothing else
+about it.**
+
+Slice 2 ("words leave the bar") makes a term that has been typed past into a durable
+answer — a resolution — and removes it from the bar. The dispatch also said "a new
+mention of an answered field replaces it, as today". Under the 2026-10-24 tiers those
+two cannot both hold:
+
+```
+prefill       a pane's choice made BEFORE any text
+text          last mention wins
+resolutions   the director's decision ABOUT ambiguous text. Outranks it.
+```
+
+A new mention arrives in the TEXT. A resolution outranks the text. So once `hopkins` is
+a typed-past answer, typing `riverside` cannot replace it — not until `riverside` is
+itself typed past and overwrites the resolution.
+
+**The ruling: that deferral is the behaviour.** A replacement takes effect when the new
+word leaves the bar, by the same mechanism that placed the first one.
+
+⚠️ **WHAT IS SUPERSEDED IS THE TIMING, NOT THE RULE.** Last-mention-wins still decides
+WHICH mention wins; it no longer decides WHEN the row changes. The row changes once, when
+the word is done.
+
+**Why it is better rather than merely consistent**, which is James's own reason: today,
+typing `riv` on the way to `riverside` briefly BLANKS the funeral home, because the
+partial word matches nothing and last-mention-wins applies to every keystroke. Under this
+ruling the row holds Hopkins until Riverside is complete, then changes once. The
+prototype already behaves this way.
+
+⚠️ **THE PRECEDENCE ITSELF IS UNTOUCHED, WHICH IS THE POINT OF RULING IT THIS WAY.** The
+two options that would have preserved live last-mention-wins both cost more: ranking the
+text above typed-past resolutions reintroduces exactly the problem the 2026-10-24 ruling
+exists to prevent ("re-reading that text would raise the same question again on the next
+keystroke"), and keeping the word in the text while hiding it visually would make the
+bar's value and its rendering diverge, so every caret calculation, the mirror, the ghost
+and the span offsets would operate on a string the director cannot see.
+
+**A clicked pick is unaffected.** It was always a resolution and still outranks
+everything; this ruling is about how a TYPED term becomes one.
+
+---
+
+## 2026-10-29 — An ambiguous pick keeps priority over "Did you mean…?"
+
+**James's ruling.** Two questions nearly share a sentence and compete for one slot in the
+Opas pane:
+
+```
+session_service.DID_YOU_MEAN_BY = "Which one did you mean by “{phrase}”?"   a PICK
+slice 2 clause 5:                 "Did you mean Monticello?"                a TYPO
+```
+
+They are different in kind. A pick says *your words matched several things in the
+tenant's data, choose one*. A typo suggestion says *your word matched nothing, did you
+mean this*.
+
+**The pick wins, and the typo question waits until no pick is open.** The reason is
+stakes rather than age: **a pick blocks the order** — it is an unresolved ambiguity about
+something the office actually typed — while **a held word does not**, because slice 2's
+clause 4 allows approving with words still held. The lower-stakes question must not
+displace the blocking one.
+
+This preserves `_guided`'s existing ordering comment verbatim — *"AN AMBIGUITY OUTRANKS A
+GAP… A pending pick is the one thing that needs the director's hand"* — and adds the typo
+question below it rather than beside it.
+
+---
+
+## 2026-10-29 — Tab accepts the ghost AND places the word, in one gesture
+
+**James's ruling.** Tab already carried one:
+
+> ⚠️ TAB ACCEPTS THE GHOST AND NEVER LEAVES THE BAR WHILE CAPTURING, by ruling.
+> `preventDefault` is the whole mechanism… It is called even when there is NO ghost,
+> because a Tab that sometimes moves focus and sometimes does not is worse than either.
+
+Slice 2's clause 3 gives Tab a second job — "places what's typed and moves on" — while
+clause 1 keeps the ghost working on the word under the caret. So Tab with a ghost showing
+had two possible meanings.
+
+**The ruling: one key, two effects, in the order the director expects.** With a ghost
+showing, Tab accepts it and flies the completed term in the same gesture — type `monti`,
+press Tab, Monticello completes and lands in the Vault row. With no ghost, Tab places
+what is typed or holds it, per clause 3.
+
+⚠️ **AND TAB STILL NEVER LEAVES THE BAR WHILE CAPTURING**, which is the half of the
+original ruling that is unchanged and is load-bearing: `preventDefault` runs on every Tab
+in entry mode, including the ones that place nothing, because a Tab that sometimes moves
+focus is worse than either behaviour alone.
+
+So Tab means one thing throughout: **finish this word and put it away.**
