@@ -68,6 +68,7 @@ from app.services.order_list.stage import (
     sort_key,
     status_label,
 )
+from app.services.display_name import deceased_for_display, title_case_for_display
 
 #: Fewer than this many orders and the rulebook says so instead of counting.
 #:
@@ -238,7 +239,7 @@ def _row_for_pane(facts: OrderFacts, today: date) -> dict:
         "number": facts.number,
         # the prototype's `.mono` is the last four of the number
         "short": facts.number[-4:],
-        "deceased_name": facts.deceased_name or "Unnamed",
+        "deceased_name": deceased_for_display(facts.deceased_name),
         "what": " · ".join(place) or None,
         "status": status_label(facts),
     }
@@ -316,7 +317,11 @@ def _recent(db: Session, company_id: str, customer_id: str) -> list[dict]:
         if r["when_"] is not None:
             entry["when"] = r["when_"].isoformat()
         if r["detail"]:
-            entry["detail"] = r["detail"]
+            entry["detail"] = (
+                title_case_for_display(r["detail"])
+                if r["kind"] == "order"
+                else r["detail"]
+            )
         out.append(entry)
     return out
 

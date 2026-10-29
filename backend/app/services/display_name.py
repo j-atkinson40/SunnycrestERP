@@ -46,3 +46,40 @@ def title_case_for_display(value: str | None) -> str | None:
     if value != value.lower():
         return value
     return value.title()
+
+
+#: What a pane shows where no deceased name is recorded. One spelling, because four
+#: panes each spelled it themselves and a fifth would have spelled it a fifth way.
+UNNAMED = "Unnamed"
+
+
+def deceased_for_display(value: str | None) -> str:
+    """The deceased as a PANE shows it: title-cased, or `UNNAMED` when absent.
+
+    ⚠️ ADDED 2026-10-29 AFTER THE RULING REACHED ITS THIRD SURFACE AND MISSED IT.
+    James's walk screenshot showed "smith" and "smith it" rendering lowercase in the
+    Order List pane and the Cemetery pane's "Coming up here". The 2026-10-15 ruling —
+    "title-cased wherever displayed" — had been applied at the API RESPONSE BOUNDARY,
+    deliberately, because enumerating render sites is a scope that stops being
+    exhaustive the day it is written. The Opas panes do not render through those
+    schemas: they build their own dicts, so the boundary never covered them.
+
+    ⚠️ AND THE PANES HAD A SECOND IMPLEMENTATION OF THE CASING RULE, which is why one
+    pane was right and the rest were not. `order_list/detail.py::title_case_name`
+    title-cased PER WORD on `islower() or isupper()`; this module guards on the WHOLE
+    string. Measured, they disagree on exactly two shapes: an all-caps "MCLEOD"
+    (-> "MCLEOD" here, "Mcleod" there) and a mixed "mary SMITH" (-> unchanged here,
+    "Mary Smith" there). They also disagreed on None (None vs ""). Neither divergent
+    shape is ruled; this module's guard is the one the ruling's own test file pins, so
+    it is the one kept and `title_case_name` is deleted.
+
+    ⚠️ MEASURED ON PRODUCTION BEFORE COLLAPSING THEM: all 15 orders carrying a deceased
+    name render identically under both, so there is no visible change to any existing
+    row — the fix is to the panes that were not calling either one.
+
+    ⚠️ IT RETURNS A NON-EMPTY STRING ALWAYS, so it must NOT be used where an absent name
+    has to stay falsy. The Cemetery pane's "Coming up here" line joins its parts with
+    `p for p in (...) if p`; passing "Unnamed" through there would put the word into a
+    label that is supposed to omit it. That site calls `title_case_for_display`.
+    """
+    return title_case_for_display(value) or UNNAMED

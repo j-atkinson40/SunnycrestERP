@@ -11,6 +11,7 @@ from decimal import Decimal
 from typing import Literal
 
 from app.services.order_list.question import OrderQuestion
+from app.services.display_name import deceased_for_display
 
 # A service with no driver is "needs something" only when it is soon. Further
 # out is hidden from the default view, which is what the footer says.
@@ -622,7 +623,7 @@ def row_dict(facts: OrderFacts, today: date) -> dict:
     row: dict = {
         "id": facts.id,
         "number": facts.number,
-        "deceased_name": facts.deceased_name or "Unnamed",
+        "deceased_name": deceased_for_display(facts.deceased_name),
         "meta": meta_line(facts),
         "stage": stage,
         "status": status_of(facts),
@@ -653,7 +654,7 @@ def stands_at(facts: OrderFacts, today: date) -> str:
 
 
 def _lens_bit(facts: OrderFacts, today: date, *, flagged: bool) -> str:
-    name = (facts.deceased_name or "Unnamed").split()[-1]
+    name = deceased_for_display(facts.deceased_name).split()[-1]
     if flagged:
         flag = flag_of(facts, today)
         text = FLAG_COPY[flag][0] if flag is not None else status_label(facts)

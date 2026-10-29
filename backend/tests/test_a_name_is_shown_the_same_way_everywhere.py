@@ -39,6 +39,25 @@ _ORDER = {
         ("smith-jones", "Smith-Jones", "so is a hyphen"),
         ("deSoto", "deSoto", "already capitalised — left alone"),
         ("MacLeod", "MacLeod", "already capitalised — left alone"),
+        # ⚠️ RULED 2026-10-29, AND BOTH WERE UNRULED UNTIL THEN. The all-lowercase guard
+        # introduced on 2026-10-15 meant these two fell straight through untouched —
+        # a consequence of the guard rather than a decision about these shapes. James
+        # ruled them deliberate: *"only an all-lowercase name is title-cased. Any name
+        # containing a capital … displays exactly as entered."*
+        #
+        # ⚠️ AND THEY ARE THE TWO SHAPES ON WHICH THE DELETED DUPLICATE DISAGREED.
+        # `order_list/detail.py::title_case_name` guarded PER WORD, so it rendered
+        # "Mcleod" and "Mary Smith" for these. Pinning them here is what stops a future
+        # "improvement" quietly reinstating the per-word rule: forcing title case turns
+        # McLeod into Mcleod and DeAngelo into Deangelo, which is a wrong name on a
+        # document rather than a cosmetic miss.
+        #
+        # ⚠️ THE ONE ARGUMENT FOR CONVERTING ALL-CAPS — funeral homes typing surnames in
+        # caps out of habit — was checked against production rather than weighed:
+        # ZERO of the 15 orders carrying a deceased name are all-caps. If that changes,
+        # this is the case to revisit and that figure is what to re-measure.
+        ("MCLEOD", "MCLEOD", "all caps — a capital means leave it alone"),
+        ("mary SMITH", "mary SMITH", "mixed case — displayed exactly as entered"),
         ("", "", "empty passes through"),
     ],
 )

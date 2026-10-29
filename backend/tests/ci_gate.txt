@@ -668,6 +668,13 @@ tests/test_cemetery_pane_reads.py
 # a shared name picking one, equipment not read as a town, and case 3 deferred with the
 # word surfacing rather than silently dropped.
 tests/test_a_town_belongs_to_its_cemetery.py
+# The deceased is never shown as it was typed (James 2026-10-15, re-ruled from his walk
+# 2026-10-29). Two layers: a behavioural test per pane the router exposes, walking the
+# whole payload rather than naming keys; and a ratchet forbidding the raw Unnamed idiom
+# and any second title-casing helper, which is what catches a fifth pane nobody has
+# written yet. The Sales Order Pane's top-level deceased_name is exempt BY CONTRACT and
+# the exemption is itself pinned.
+tests/test_a_deceased_name_is_never_shown_lowercase.py
 tests/test_guided_capture_slice1.py
 # Opas asks "why?" (James, 2026-10-26), first slice. The rules: what counts as a change
 # (a field Opas filled that the person then changed), what does NOT (a first fill, an

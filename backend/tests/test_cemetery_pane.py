@@ -344,7 +344,12 @@ def test_the_next_delivery_is_the_soonest_upcoming_and_absent_when_there_is_none
     ]
     got = what_opas_knows(mine, TODAY, None)
     assert got["next_delivery"]["order_id"] == "b"
-    assert "hart" in got["next_delivery"]["line"]
+    # ⚠️ EXPECTATION UPDATED 2026-10-29 BY RULING, NOT BY CONVENIENCE. James's walk
+    # found the deceased rendering lowercase in the panes; the 2026-10-15 ruling is
+    # "title-cased wherever displayed" and this row IS displayed
+    # (see the frontend render sites named in
+    # test_a_deceased_name_is_never_shown_lowercase.py). What is STORED is unchanged.
+    assert "Hart" in got["next_delivery"]["line"]
     # The absence, with its control above.
     assert "next_delivery" not in what_opas_knows(
         [_order(status="delivered", service_date=date(2026, 8, 6))], TODAY, None,

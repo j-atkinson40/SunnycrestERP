@@ -53,6 +53,7 @@ from app.services.order_list.stage import (
     total_sentence,
     format_when,
 )
+from app.services.display_name import deceased_for_display
 
 SETTING_KEY = "opas_order_list_phrases"
 MAX_TAUGHT = 40
@@ -472,7 +473,7 @@ def _pick_or_open(found: list[OrderFacts], today: date) -> dict:
     picks = []
     for item in sorted(found, key=lambda row: row.service_date or date.max):
         when = format_when(item.service_date, item.service_time, today)
-        label = item.deceased_name or "Unnamed"
+        label = deceased_for_display(item.deceased_name)
         # ⚠️ THE NUMBER IS ON THE LABEL, not only the name. Two Hopkins orders for the
         # same week with no decedent recorded would otherwise be two identical choices.
         label = f"{label} · {item.number}"

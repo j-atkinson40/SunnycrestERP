@@ -296,8 +296,16 @@ def test_the_two_lists_split_on_today(tenant):
     d = cust.customer_detail(db, tid, c.id, TODAY,
                              facts=load_facts(db, tid, include_cancelled=True))
     assert d is not None
-    assert [r["deceased_name"] for r in d["open_orders"]] == ["today", "ahead"]
-    assert [r["deceased_name"] for r in d["overdue"]] == ["past"]
+    # ⚠️ EXPECTATION UPDATED 2026-10-29 BY RULING, NOT BY CONVENIENCE. James's walk
+    # found the deceased rendering lowercase in the panes; the 2026-10-15 ruling is
+    # "title-cased wherever displayed" and this row IS displayed
+    # (see the frontend render sites named in
+    # test_a_deceased_name_is_never_shown_lowercase.py). What is STORED is unchanged.
+    assert [r["deceased_name"] for r in d["open_orders"]] == ["Today", "Ahead"]
+    # ⚠️ THE SIBLING IN THE SAME TEST, and it was missed on the first pass — the
+    # `open_orders` list above was updated and this `overdue` list was not, which is
+    # the "siblings are often in the same file" shape CLAUDE.md names. Same ruling.
+    assert [r["deceased_name"] for r in d["overdue"]] == ["Past"]
     # ⚠️ A CANCELLED ORDER IS IN NEITHER, and the control is that it exists at all.
     assert all(r["deceased_name"] != "gone" for r in d["open_orders"] + d["overdue"])
     assert d["overdue_label"] == "Service day passed, not delivered"
@@ -445,7 +453,12 @@ def test_only_this_customers_orders_reach_the_pane(tenant):
     db.flush()
     facts = load_facts(db, tid, include_cancelled=True)
     d = cust.customer_detail(db, tid, a.id, TODAY, facts=facts)
-    assert [r["deceased_name"] for r in d["open_orders"]] == ["theirs"]
+    # ⚠️ EXPECTATION UPDATED 2026-10-29 BY RULING, NOT BY CONVENIENCE. James's walk
+    # found the deceased rendering lowercase in the panes; the 2026-10-15 ruling is
+    # "title-cased wherever displayed" and this row IS displayed
+    # (see the frontend render sites named in
+    # test_a_deceased_name_is_never_shown_lowercase.py). What is STORED is unchanged.
+    assert [r["deceased_name"] for r in d["open_orders"]] == ["Theirs"]
 
 
 def test_the_bare_name_rule_runs_before_the_model_door(tenant):

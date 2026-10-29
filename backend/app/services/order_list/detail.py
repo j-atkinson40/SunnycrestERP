@@ -66,6 +66,7 @@ from app.services.order_list.stage import (
     stage_of,
     stands_at,
 )
+from app.services.display_name import UNNAMED, deceased_for_display, title_case_for_display
 
 _MON = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 _DOW = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
@@ -431,33 +432,6 @@ def _order_extras(db: Session, company_id: str, order_id: str) -> dict | None:
     return dict(row) if row is not None else None
 
 
-def title_case_name(name: str | None) -> str:
-    """`'smith'` -> `'Smith'`, `"o'brien"` -> `"O'Brien"`, `'McLEOD'` left alone.
-
-    ⚠️ TITLE-CASED BY DISPATCH: "Title is the deceased's name, title-cased, in the serif".
-    Needed because the capture stores what was typed and the office types lower case —
-    all three Sunnycrest orders carry `smith`, `demo walker`, `smith` (measured
-    2026-10-19). Rendering those as the pane's largest text, in a serif, as `smith`, is
-    the whole reason the dispatch says so.
-
-    ⚠️ A WORD THAT IS ALREADY MIXED-CASE IS LEFT ALONE. `str.title()` turns `McLeod` into
-    `Mcleod` and `O'Brien` into `O'Brien` -> `O'Brien` is fine but `D'Angelo` survives
-    while `DeWitt` becomes `Dewitt`. So only words that are entirely one case are
-    recapitalised; anything the typist shaped deliberately is kept.
-    """
-    if not name:
-        return ""
-    out: list[str] = []
-    for word in name.split():
-        if word.islower() or word.isupper():
-            # `.title()` after a lower/upper word handles the apostrophe and hyphen cases
-            # ("o'brien" -> "O'Brien", "smith-jones" -> "Smith-Jones").
-            out.append(word.title())
-        else:
-            out.append(word)
-    return " ".join(out)
-
-
 def order_detail(
     db: Session,
     company_id: str,
@@ -550,7 +524,13 @@ def order_detail(
         #    that read keeps working.
         "id": facts.id,
         "number": facts.number,
-        "deceased_name": facts.deceased_name or "Unnamed",
+        # ⚠️ RAW ON PURPOSE, AND IT IS NOT A MISS. The Sales Order Pane displays
+        # `title` (SalesOrderPane.tsx:229 renders `row.title`); this key carries the
+        # name AS STORED and `test_sales_order_pane.py` pins it with its own message,
+        # "the raw name stopped being carried". Title-casing it was tried on
+        # 2026-10-29 while fixing the display bug and reverted — the 2026-10-15
+        # ruling is about what is DISPLAYED, and nothing displays this.
+        "deceased_name": facts.deceased_name or UNNAMED,
         "funeral_home": facts.funeral_home,
         # ⚠️ THE ID, SO THE NAME CAN BE A LINK (James, 2026-10-24: "Right now the funeral
         # home link on an order goes nowhere"). `funeral_home` above is the NAME and is
@@ -564,7 +544,7 @@ def order_detail(
         **({"customer_id": extras["customer_id"]} if extras.get("customer_id") else {}),
         "stands_at": stands_at(facts, today),
         # ── the pane ──────────────────────────────────────────────────────
-        "title": title_case_name(facts.deceased_name) or "Unnamed",
+        "title": deceased_for_display(facts.deceased_name),
         "state": steps_for(facts),
         "order": [r for r in rows if r is not None],
         "billing": {
@@ -638,7 +618,7 @@ def _personalization_value(tasks: list[dict]) -> str | None:
         if task.get("print_name"):
             pieces.append(f"“{task['print_name']}”")
         elif task.get("inscription_name"):
-            pieces.append(f"“{title_case_name(str(task['inscription_name']))}”")
+            pieces.append(f"“{title_case_for_display(str(task['inscription_name']))}”")
         if task.get("symbol"):
             pieces.append(str(task["symbol"]).replace("_", " "))
         bits.append(" ".join(pieces))

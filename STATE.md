@@ -2,6 +2,37 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 2026-10-29 — cemetery towns WALKED on production, and the deceased was lowercase in the panes
+
+### Walked
+
+- **2026-10-29** — **WALKED AND PASSING ON PRODUCTION (James).** The cemetery-town slice, commit `b072c9fc`, steps 1–4 of his walk: the town absorbed into the cemetery answer, `"skaneateles st marys"` opening the cemetery pane, `"hopkins st marys"` correctly NOT opening St. Mary's but falling through to the Order List filtered to Hopkins at St. Mary's, and ← → with Enter picking a pill on an empty bar.
+- **2026-10-29** — ⚠️ **THE `"hopkins st marys"` CASE READS AS A REFUSAL AND IS NOT ONE.** The cemetery resolver returns nothing for it — deliberately, because "hopkins" is not a town this tenant holds records for — and the ask door then tries the Order List rule, which filters. A pre-walk check that stopped at the cemetery resolver reported only the empty half and under-described the behaviour.
+- **2026-10-29** — The real-browser walk is James's. Pre-walk checks against production DATA through the deployed code path are the executor's, and they are not a substitute: they cannot see the bar, the pills, the flight, or the keyboard.
+
+### The deceased was shown as typed, in four panes
+
+- **2026-10-29** — James, from a walk screenshot: *"the deceased shows lowercase ("smith", "smith it") in the Order List pane and the Cemetery pane's "Coming up here". Ruling of 2026-10-15: title-case the deceased wherever displayed. Apply it in one shared display helper used by every pane … not per pane, and add a test that fails if a pane renders a deceased name without it."*
+- **2026-10-29** — ⚠️ **THE RULING HAD BEEN APPLIED, AT A BOUNDARY THE PANES DO NOT CROSS.** The 2026-10-15 fix put a validator on `SalesOrderResponse`, deliberately, because `test_a_name_is_shown_the_same_way_everywhere.py` records that enumerating render sites "silently stop[s] being" exhaustive. That reasoning was right and the boundary was the wrong one for Opas: the panes build their own dicts and never render through those schemas.
+- **2026-10-29** — ⚠️ **AND THE PANES HELD A SECOND IMPLEMENTATION OF THE CASING RULE, which is why ONE pane was right and four were wrong.** `order_list/detail.py::title_case_name` guarded per word; `display_name.title_case_for_display` guards on the whole string. Measured, they disagreed on exactly two shapes — all-caps `"MCLEOD"` (→ `"MCLEOD"` vs `"Mcleod"`) and mixed `"mary SMITH"` (→ unchanged vs `"Mary Smith"`) — plus `None` (`None` vs `""`). Neither divergent shape is ruled. The ruled module was kept and the duplicate deleted. Measured on production before collapsing them: **all 15 orders carrying a deceased name render identically under both**, so no existing row changed.
+- **2026-10-29** — `display_name.deceased_for_display` is the one pane helper; seven sites across `cemetery/customer/detail/stage/service` route through it. `"smith it"` lives in **SO-2026-0005**, already on the demo-data cleanup list — a seed artifact, not a live extraction defect.
+- **2026-10-29** — ⚠️ **ONE SITE WAS REVERTED AFTER BEING "FIXED".** The Sales Order Pane's top-level `deceased_name` is raw BY CONTRACT — `SalesOrderPane.tsx:229` renders `row.title`, and `test_sales_order_pane.py` pins the raw value with its own message, "the raw name stopped being carried". Title-casing it broke that test. The exemption is now pinned by a test of its own so it cannot widen, and the frontend render sites were MEASURED (`OrderListPane.tsx:196`, `CemeteryPane.tsx:365`, `CustomerPane.tsx:328`) rather than assumed.
+- **2026-10-29** — `tests/_cleanup.py` gained `cemeteries`, which was missing and blocks `companies`. Found by the first test in the suite to seed one.
+- **2026-10-29** — ⚠️ **THREE BREAK TESTS DID NOT FIRE ON THE FIRST ATTEMPT AND EACH FAILURE WAS A REAL GAP.** Reverting `stage.py`'s rows and `service.py`'s pick label turned only the TEXTUAL ratchet red, so a regression written as `facts.deceased_name if facts.deceased_name else "Unnamed"` would have passed everything — behavioural cover for the Order List and the reply line was added, which needed `phrase="orders"` (a bare customer name opens the customer pane instead) and, for the pick labels, TWO orders sharing a number suffix (one match opens the order rather than offering a choice). The third was my own malformed break: dropping a paren made the module a SyntaxError, and the harness grepped only `^FAILED`, so eleven ERRORS printed as "NOTHING FIRED".
+- **2026-10-29** — Four neighbouring tests had pinned the lowercase display; updated by ruling with the reason recorded at each, and one of them had a **sibling in the same test** (`overdue` beside `open_orders`) missed on the first pass.
+
+### The sweep, queued after slice 2 — now FIVE items
+
+- **2026-10-29** — James has widened the sweep three times. Its items, as they stand:
+  1. **Errors swallowed and shown as a normal "nothing to do"** — broad `except Exception` turning a failure into an empty result.
+  2. **Messages that name the wrong cause** — the instrument or guard that says "DATABASE_URL is not set" when `SECRET_KEY` is missing.
+  3. **Tests that depend on the calendar** — a weekday literal that resolves to today one day in seven.
+  4. **Tests that depend on leftover local data** — pass or fail according to what is already in someone's database. Two instances found: three `tax_jurisdictions` tests green only because the table was empty, and `test_note_session2_fragments::test_the_endpoint_SERVES_prose_when_a_fragment_emits`, which CI passes and a seeded laptop fails.
+  5. **NEW 2026-10-29 — a harness that decides pass/fail from test output and counts only `FAILED`.** James: *"Any harness or gate script that decides pass/fail from pytest output must count ERROR as a failure, and must say 'nothing fired' only when the tests ran and passed."*
+
+- **2026-10-29** — ⚠️ **ITEM 5's INVENTORY CAME BACK EMPTY IN COMMITTED CODE, AND THAT IS THE FINDING RATHER THAN A DISAPPOINTMENT.** The instance that prompted it was an ad-hoc break-test harness typed into a session, not a file. Searched: every `*.sh`, `*.yml`, `*.yaml` and `*.py` outside `node_modules`/`.venv` for a grep that reads `FAILED` to decide an outcome — **zero**. The repo's gates decide by EXIT CODE, which counts errors for free. `ci.yml`'s vitest block parses `status === "failed"` but is a REPORTER (`exit 0`), and its own comment at line 231 already names the exact condition: *"vitest exits 1 on an UNHANDLED error regardless of how many tests passed."*
+- **2026-10-29** — So item 5 is a **guard against one being added**, plus reporting discipline, not a cleanup. ⚠️ **AND IT IS THE SAME SHAPE AS THE 237 UNCOLLECTED TESTS**, which is why James filed it here: a check that went quiet and read as a pass. The 237 were invisible because `SECRET_KEY` was unset and nothing said so; the eleven ERRORs were invisible because the harness only knew one word for failure.
+
 ## 2026-10-20 (later) — the reply-line ruling, and the model-behind-the-bar investigation
 
 Commits `6fbc88df` (the ruling) and `7b7ea248` (the investigation, read-only).

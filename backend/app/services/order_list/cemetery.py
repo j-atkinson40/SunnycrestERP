@@ -89,6 +89,7 @@ from app.services.order_list.stage import (
     sort_key,
     status_label,
 )
+from app.services.display_name import deceased_for_display, title_case_for_display
 
 #: Said when the record holds nothing but a name and a town.
 #:
@@ -287,7 +288,7 @@ def _row_for_pane(facts: OrderFacts, today: date) -> dict:
         "number": facts.number,
         # the prototype's `.mono` is the last four of the number
         "short": facts.number[-4:],
-        "deceased_name": facts.deceased_name or "Unnamed",
+        "deceased_name": deceased_for_display(facts.deceased_name),
         "status": status_label(facts),
     }
     home = (facts.funeral_home or "").strip()
@@ -342,7 +343,7 @@ def what_opas_knows(mine: list[OrderFacts], today: date, same: dict | None) -> d
         when = format_when(nxt.service_date, nxt.service_time, today)
         label = " · ".join(
             p for p in (when.get("date_primary") or when.get("date_head"),
-                        nxt.deceased_name) if p
+                        title_case_for_display(nxt.deceased_name)) if p
         )
         out["next_delivery"] = {"order_id": nxt.id, "line": label}
     if same is not None:

@@ -235,6 +235,12 @@ _PURGE_STATEMENTS = [
     "DELETE FROM sales_order_lines WHERE sales_order_id IN (SELECT id FROM sales_orders WHERE company_id = ANY(:ids))",
     "DELETE FROM sales_orders WHERE company_id = ANY(:ids)",
     "DELETE FROM customers WHERE company_id = ANY(:ids)",
+    # ⚠️ `cemeteries` WAS MISSING AND BLOCKS `companies`, found 2026-10-29 by the
+    # first test in this suite to seed one. It must follow `sales_orders` above,
+    # which carries `cemetery_id`. Added here rather than as a local delete list
+    # in the test, per CLAUDE.md: "extend the helper rather than writing a local
+    # delete list" — this file is where the FK order is meant to live.
+    "DELETE FROM cemeteries WHERE company_id = ANY(:ids)",
     "DELETE FROM vendors WHERE company_id = ANY(:ids)",
     # activity_log.master_company_id → company_entities — delete before it.
     "DELETE FROM activity_log WHERE master_company_id IN (SELECT id FROM company_entities WHERE company_id = ANY(:ids))",

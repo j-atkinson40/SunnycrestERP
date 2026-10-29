@@ -3411,6 +3411,70 @@ rule now uses `.title()`, so "o'brien" renders "O'Brien" and "smith-jones" rende
 is the guard: a value that is not already all-lowercase never reaches it, so "deSoto"
 and "MacLeod" are untouched.
 
+## 2026-10-29 — Only an all-lowercase name is title-cased, and the panes were a third surface
+
+**Ruled by James:** *"deceased display casing — only an all-lowercase name is
+title-cased. Any name containing a capital (all-caps "MCLEOD", mixed "mary SMITH",
+"McLeod") displays exactly as entered."* Filed beside the 2026-10-15 ruling above,
+which it does not supersede — it settles two cases that ruling left open.
+
+**The two cases had never been ruled and the guard already implied an answer.** The
+all-lowercase guard introduced on 2026-10-15 means an all-caps "MCLEOD" and a mixed
+"mary SMITH" both fall straight through untouched. That was a consequence of the
+guard rather than a decision about those shapes, so it is decided here.
+
+**Why NOT to convert them, and the cost is asymmetric.** Forcing title case breaks
+real names — "McLeod" becomes "Mcleod", "O'Brien" becomes "O'brien", "DeAngelo"
+becomes "Deangelo" — and a director who types the capitals is carrying information
+no rule can reconstruct from an all-uppercase string. An all-caps surname rendering
+in caps is a cosmetic miss; a mangled family name is a wrong name on a document.
+
+⚠️ **AND THE ONE ARGUMENT FOR CONVERTING ALL-CAPS WAS CHECKED AGAINST THE DATA RATHER
+THAN WEIGHED AS A HYPOTHESIS.** Some funeral homes type surnames in caps out of
+habit, which would make the decision wrong in practice whatever it is in principle.
+Measured on production 2026-10-29: of the **15 orders carrying a deceased name,
+ZERO are all-caps** — they are either all-lowercase ("smith", "hart", "demo walker")
+or already properly capitalised ("Charles Brown", "Helen Martinez"). The habit does
+not appear in Sunnycrest's data, so the case for converting has no instance behind it
+and the certain cost stands alone. If all-caps names start arriving, this is the entry
+to revisit; the figure above is what to re-measure.
+
+### The panes were a third surface, and the boundary above did not reach them
+
+⚠️ **THE 2026-10-15 RULING WAS APPLIED AND STILL SHIPPED LOWERCASE FOR TWO WEEKS.**
+James's walk screenshot, 2026-10-29, showed "smith" and "smith it" in the Order List
+pane and the Cemetery pane's "Coming up here". The entry above renders at the API
+RESPONSE BOUNDARY, deliberately and for a good reason. The Opas panes do not cross
+it: they build their own dicts. A boundary is only a boundary for the traffic that
+goes through it, and "we fixed it at the boundary" is not a claim about surfaces that
+route around it.
+
+⚠️ **AND THE REAL DEFECT WAS TWO COPIES OF THE RULE THAT DISAGREED, NOT ONE MISSED
+PANE.** `order_list/detail.py::title_case_name` guarded PER WORD on
+`islower() or isupper()`; `display_name.title_case_for_display` guards on the WHOLE
+string. That is why exactly one pane was right. Measured before deleting either, they
+disagreed on precisely the two shapes this ruling settles — all-caps ("MCLEOD" vs
+"Mcleod") and mixed ("mary SMITH" unchanged vs "Mary Smith") — plus `None` (`None` vs
+`""`). The entry above says a casing rule with two bodies "would drift on the first
+edit while both still looked right". It had.
+
+**Collapsed in the order that made it safe.** Production was measured FIRST: all 15
+rows render identically under both implementations, so deleting the duplicate changed
+no existing row. Had they disagreed on real data, the deletion would have been a
+visible change to shipped output and would have needed its own ruling.
+
+**`deceased_for_display` is the pane-level helper** — the casing rule plus the
+"Unnamed" fallback, which four panes had each spelled themselves. Seven sites route
+through it.
+
+⚠️ **ONE SITE IS EXEMPT BY CONTRACT AND THE EXEMPTION IS PINNED.** The Sales Order
+Pane's top-level `deceased_name` carries the name AS STORED; the pane displays
+`title` (`SalesOrderPane.tsx:229`). Title-casing it turned
+`test_sales_order_pane.py` red with its own message, "the raw name stopped being
+carried". The ruling is about what is DISPLAYED, and nothing displays that key. The
+three keys that ARE rendered were measured in the frontend rather than assumed:
+`OrderListPane.tsx:196`, `CemeteryPane.tsx:365`, `CustomerPane.tsx:328`.
+
 ## 2026-10-15 — The bar asks one question, in call order
 
 **Ruled by James** after a walk: *"it works, but typing into a blank bar with no
