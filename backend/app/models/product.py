@@ -125,6 +125,22 @@ class Product(Base):
         index=True,
     )
 
+    #: Chairs included in this equipment bundle. ⚠️ `None` MEANS "NOT AN EQUIPMENT
+    #: BUNDLE", NOT "UNKNOWN" AND NOT "ZERO" — ruled by James 2026-10-30, and the
+    #: distinction is load-bearing: a default of 0 would assert that every vault in the
+    #: catalog includes no chairs, which is the plausible-value trap CLAUDE.md §5 names.
+    #:
+    #: ⚠️ IT REPLACES `typed_extraction.CHAIRS_INCLUDED`, a global 8 that was subtracted
+    #: from every chair count whatever the bundle. Measured on production 2026-10-30:
+    #: "device only, 10 chairs" billed 2 extras, subtracting eight chairs from a bundle
+    #: that includes none. The number belongs to the bundle.
+    #:
+    #: ⚠️ AND IT IS DECLARED HERE DELIBERATELY. Three columns on this table are declared
+    #: nowhere and are invisible to the drift guard by design — see the
+    #: `variant_template_id` comment above, which was itself added after the link the
+    #: whole catalog resolves through turned out to be undeclared.
+    included_chairs: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     created_by: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=True
     )
