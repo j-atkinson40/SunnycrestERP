@@ -178,15 +178,31 @@ export interface GuidedQuestionProps {
 /**
  * ⚠️ THE FIELDS WHOSE ANSWERS ARE NUMBERS, so a bare digit must not be eaten.
  * The prototype's list is `['time','dates','day']`; these are this schema's ids for
- * the same four things. `extra_chairs_count` is ours and not the prototype's — it is
- * literally "how many", so it belongs by the same reasoning.
+ * the same four things. The chair counts are ours and not the prototype's — they are
+ * literally "how many", so they belong by the same reasoning.
+ *
+ * ⚠️ `extra_chairs_count` STOOD HERE UNTIL 2026-10-30 AND HAD STOPPED NAMING ANYTHING.
+ * Rulings A/B' replaced that field with `chairs_total` + `chairs_extra`, and nothing on
+ * this side of the wire noticed: the backend has thirteen declared sets that each failed
+ * on the rename, and the frontend has no equivalent cross-check, so a dead id sat in a
+ * live list looking correct. Renamed rather than deleted — see the next paragraph for
+ * why the entry is kept at all.
+ *
+ * ⚠️ NEITHER CHAIR FIELD CAN BE ASKED TODAY, AND THE ENTRY IS STILL RIGHT. `fieldId`
+ * comes from the server's `next_question`, which only ever names a REQUIRED field, and
+ * both chair fields are `required_when=Never()`. So this list cannot be exercised for
+ * them right now. It is declared anyway because the capture-time ask is coming back —
+ * it is the named first consumer of the `And`/`Or`/`Not` combinators in the sweep — and
+ * a list that silently lost its chairs entry in the meantime would hand the restored
+ * question a bar that eats "4".
  */
 export const NUMERIC_QUESTION_FIELDS: readonly string[] = [
   "service_time",
   "service_date",
   "date_of_birth",
   "date_of_death",
-  "extra_chairs_count",
+  "chairs_total",
+  "chairs_extra",
   "eta",
 ]
 

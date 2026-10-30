@@ -31,7 +31,10 @@ import pytest
 from sqlalchemy import text
 
 from app.database import SessionLocal
-from app.services.capture.approval import EQUIPMENT_PRODUCT_NAMES
+from app.services.capture.approval import (
+    EQUIPMENT_PRODUCT_NAMES,
+    EXTRA_CHAIRS_PRODUCT_NAME,
+)
 
 
 def _load_migration():
@@ -297,7 +300,20 @@ def test_the_new_products_are_named_as_the_capture_matches_them(db):
     created = {name for _sku, name, _price in R212.EQUIPMENT}
     assert created == {
         EQUIPMENT_PRODUCT_NAMES["vault_placer"],
-        EQUIPMENT_PRODUCT_NAMES["extra_chairs"],
+        # ⚠️ READ FROM A DIFFERENT CONSTANT SINCE RULING A (2026-10-30), AND THE MOVE IS
+        # THE WHOLE POINT OF THIS TEST RATHER THAN AN EXCEPTION TO IT. Chairs stopped
+        # being a `cemetery_equipment` OPTION — they are a per-unit overage, not a
+        # bundle — so `EQUIPMENT_PRODUCT_NAMES["extra_chairs"]` raised `KeyError` and
+        # the one string joining r212's product to the billing code moved to
+        # `approval.EXTRA_CHAIRS_PRODUCT_NAME`. The migration's row is UNCHANGED: the
+        # product it created is still "Extra Chairs (Over 8)", which is what this
+        # assertion exists to hold still.
+        #
+        # ⚠️ AND IT IS STILL READ FROM THE CODE RATHER THAN TYPED AS A LITERAL. A
+        # literal here would have survived ruling A silently and gone on agreeing with
+        # the migration while the capture layer looked somewhere else entirely — which
+        # is the failure mode the docstring above describes.
+        EXTRA_CHAIRS_PRODUCT_NAME,
     }, created
 
 

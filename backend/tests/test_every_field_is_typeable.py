@@ -80,18 +80,34 @@ def test_the_declared_writable_set_matches_what_the_code_writes():
     directions.
 
     ⚠️ A SOURCE SCAN IS A CONSTRUCTED-NAME INSTRUMENT and is declared as one: it reads
-    `values["literal"] = ` and the one constant key (`QUESTION_PERSONALIZATION`). A
-    pass that wrote through a variable key would be invisible to it. None does today,
-    and the equality below would fail if one appeared — in the "listed but not
-    written" direction, which is the safe way round.
+    literal-keyed writes into `values` plus the one constant key
+    (`QUESTION_PERSONALIZATION`). A pass that wrote through a variable key would be
+    invisible to it. None does today, and the equality below would fail if one
+    appeared — in the "listed but not written" direction, which is the safe way round.
+
+    ⚠️ AND THAT LIMIT WAS BREACHED AND REPAIRED ON 2026-10-30, WHICH IS WHY THE SCAN
+    NOW STRIPS COMMENTS. Rulings A/B' first wrote both chair fields through
+    `values[field]`, a variable key, and this test fired exactly as the paragraph
+    above promises — declared-but-never-written. The extractor was changed to write
+    through literals so the instrument keeps contact.
+
+    ⚠️ THE SECOND HALF IS THE REAL FINDING: THE SCAN WAS READING COMMENTS AS CODE.
+    The comment added at that write site quoted the pattern it was describing, and the
+    scan credited a field called `literal`. It was loud only because the invented name
+    was undeclared; a comment quoting a REAL field id would have silently credited a
+    field nothing writes, which is the unsafe direction. Comments are stripped before
+    the scan now. Measured at the time of the change: 20 fields found with comments
+    included and the SAME 20 with them stripped, so no field was being credited by a
+    comment alone — the hole was open and empty.
     """
     src = io.open(
         pathlib.Path(__file__).resolve().parent.parent
         / "app" / "services" / "capture" / "typed_extraction.py",
         encoding="utf-8",
     ).read()
-    literal = set(re.findall(r'values\[\s*"([a-z_]+)"\s*\]\s*=', src))
-    if re.search(r"values\[\s*QUESTION_PERSONALIZATION\s*\]\s*=", src):
+    code = "\n".join(re.sub(r"#.*$", "", ln) for ln in src.splitlines())
+    literal = set(re.findall(r'values\[\s*"([a-z_]+)"\s*\]\s*=', code))
+    if re.search(r"values\[\s*QUESTION_PERSONALIZATION\s*\]\s*=", code):
         literal.add(QUESTION_PERSONALIZATION)
 
     assert literal, "the scan found no assignments at all — the instrument is blind"

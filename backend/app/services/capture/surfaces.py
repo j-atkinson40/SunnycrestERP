@@ -170,7 +170,18 @@ CAPTURE_SALES_ORDER = Surface(
         # this layer cannot see the vault's form.
         Row(id="cemetery_equipment", label="Equipment", order=9,
             sources=(FieldSource("cemetery_equipment"),),
-            secondary=(FieldSource("extra_chairs_count"),),
+            # ⚠️ TWO SOURCES NOW, ONE PER SENSE, BY RULING A/B' (2026-10-30). The row
+            # read `extra_chairs_count`, whose stored value was already-subtracted
+            # extras — so "6 chairs" was stored as 0 and the row could never show the
+            # number the director said. Each field below holds one reading as given.
+            #
+            # ⚠️ RULING E's FULL STRING — "Full equipment · 12 chairs (4 extra)" — NEEDS
+            # THE DERIVED EXTRA, which this layer cannot compute: the included count
+            # lives on the bundle PRODUCT and `surfaces` has no database. That
+            # composition belongs where the label flip for an urn vault already lives —
+            # the serializer, "where the cremation is KNOWN", per the comment above. What
+            # this row does is carry both senses so that layer has them.
+            secondary=(FieldSource("chairs_total"), FieldSource("chairs_extra")),
             edit_target="cemetery_equipment"),
 
         # ── personalization and its follow-ups, last, as `CALL_ORDER` asks them ──────
@@ -307,7 +318,9 @@ SUMMARY_SALES_ORDER = Surface(
         # still show a primary alone, and the contents of none of them are modelled.
         Row(id="cemetery_equipment", label="Cemetery equipment", order=6,
             sources=(FieldSource("cemetery_equipment"),),
-            secondary=(FieldSource("extra_chairs_count"),)),
+            # ⚠️ SAME CHANGE AS THE ENTRY SURFACE ABOVE, and the comment there carries
+            # the reasoning. Both senses, each as given.
+            secondary=(FieldSource("chairs_total"), FieldSource("chairs_extra"))),
     ),
     notes=NotesSlot(label="Notes"),
     # ⚠️ DECLARED AND UNFILLED. `hint` is fixed at None by the type — the

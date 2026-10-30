@@ -44,9 +44,15 @@ TIME_FIELDS = ("service_time", "eta")
 NAME_FIELDS = ("deceased_name",)
 #: ⚠️ A FOURTH KIND SINCE 2026-10-14. `display="count"` names the unit — "4" renders
 #: as "4 chairs", singular at one — because a bare number on an equipment row reads
-#: as a quantity of PACKAGES. `extra_chairs_count` is the only per-unit field on the
-#: order; every other equipment package is a flat charge at quantity 1.
-COUNT_FIELDS = ("extra_chairs_count",)
+#: as a quantity of PACKAGES. Chairs are the only per-unit thing on the order; every
+#: other equipment package is a flat charge at quantity 1.
+#:
+#: ⚠️ TWO FIELDS SINCE 2026-10-30 (rulings A/B'), WHERE `extra_chairs_count` STOOD.
+#: That one field held an ALREADY-SUBTRACTED extra count, so "6 chairs" was stored as
+#: 0 and the pane could never show "6 chairs" again. `chairs_total` and `chairs_extra`
+#: each hold one reading in the sense the director gave it, and BOTH need the unit
+#: named for the same reason the single field did.
+COUNT_FIELDS = ("chairs_total", "chairs_extra")
 
 
 def _refuse_a_non_local_database() -> None:

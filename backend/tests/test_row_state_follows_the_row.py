@@ -81,7 +81,7 @@ def session(db):
     sp.rollback()
 
 
-def _composed_row(db, session, lines, row_id="cemetery_equipment"):
+def _composed_row(db, session, lines, row_id="cemetery"):
     """Render a COMPOSED row — one that answers several fields — after some lines.
 
     ⚠️ REPOINTED 2026-10-27 FROM THE `service` ROW, which is no longer composed. The
@@ -89,12 +89,21 @@ def _composed_row(db, session, lines, row_id="cemetery_equipment"):
     row that could be PARTIAL — something captured, something required outstanding —
     is not among them any more.
 
-    ⚠️ THE EQUIPMENT ROW IS THE CLOSEST ANALOGUE AND IT WAS CHOSEN BY MEASUREMENT, not
-    by reading the surface. Rendered with `cemetery_equipment="extra_chairs"` and no
-    count it reads `('partial', 'Extra Chairs (Over 8)', ('extra_chairs_count',))` —
-    the same shape the Service row had, because choosing chairs makes the count
-    required. Three rows can still be PARTIAL (equipment, cemetery, dates); this is the
-    one reachable from one typed line.
+    ⚠️ REPOINTED AGAIN 2026-10-30, FROM THE EQUIPMENT ROW TO THE CEMETERY ROW, AND
+    THE REASON IS A RULING RATHER THAN A PREFERENCE. The 10-27 choice rested on
+    "choosing chairs makes the count required" — `extra_chairs_count` was required
+    when `cemetery_equipment == "extra_chairs"`. Rulings A/B' (2026-10-30) removed
+    both halves: chairs are no longer a `cemetery_equipment` value, and neither
+    `chairs_total` nor `chairs_extra` is ever required. MEASURED after that change:
+    NO field on the Equipment row is required, so `unanswered_required` is always
+    empty there and the row can never take the PARTIAL branch these tests are about.
+
+    ⚠️ THE CEMETERY ROW IS CHOSEN BY MEASUREMENT TOO, AND IT IS THE ORIGINAL SUBJECT.
+    `rows.py` records the measurement in its own words — "with 'eta 11:30' and no
+    cemetery named, the Cemetery row rendered **Not configured for this licensee**
+    above the time 11:30 AM … It should have read PARTIAL: something captured, the
+    required cemetery still missing." One typed line, a rendered value, a required
+    field of the same row outstanding: the exact shape of James's screenshot.
     """
     cid, uid, sid = session
     for line in lines:
@@ -115,13 +124,13 @@ def test_partial_is_a_fifth_state_and_not_an_alias():
 def test_a_row_that_captured_something_is_PARTIAL_not_not_mentioned(db, session):
     """⚠️ THE REPORTED DEFECT. One field of a composed row answered, another still
     required: the row holds a value, so it cannot claim nothing was mentioned."""
-    row, _ = _composed_row(db, session, ["extra chairs"])
-    assert row["value"] == "Extra Chairs (Over 8)", row
+    row, _ = _composed_row(db, session, ["eta 11:30"])
+    assert row["value"] == "11:30", row
     assert row["state"] == RowState.PARTIAL.value, row
     # ⚠️ AND THE OUTSTANDING FIELD IS NAMED, which is what makes PARTIAL different from
-    # a row that merely looks half-filled: the count is required BECAUSE chairs were
-    # chosen.
-    assert row["missing_field_ids"] == ["extra_chairs_count"], row
+    # a row that merely looks half-filled: the cemetery is required and the arrival
+    # time the director just gave belongs to the same row.
+    assert row["missing_field_ids"] == ["cemetery"], row
 
 
 def test_a_row_with_NOTHING_is_still_not_mentioned(db, session):
@@ -138,15 +147,71 @@ def test_a_row_with_NOTHING_is_still_not_mentioned(db, session):
 
 
 def test_a_complete_row_is_done(db, session):
-    row, _ = _composed_row(db, session, ["extra chairs 4"])
+    """⚠️ STILL THE EQUIPMENT ROW, DELIBERATELY, THOUGH ITS SIBLINGS MOVED TO THE
+    CEMETERY ROW. DONE needs a row with a primary AND a secondary both rendered, and
+    after rulings A/B' the Equipment row is the only one that has a secondary a
+    director can type. The two tests either side need a REQUIRED field outstanding,
+    which that row no longer has — so the split is not inconsistency, it is each test
+    taking the row that can still produce its state."""
+    row, _ = _composed_row(db, session, ["full equipment, 4 extra chairs"],
+                           row_id="cemetery_equipment")
     assert row["state"] == RowState.DONE.value, row
     # ⚠️ THE VALUE AND ITS SECONDARY, which is what "complete" means on this row: the
-    # package chosen and the count it needs. The old assertion read
+    # bundle chosen and the extras beside it. The old assertion read
     # "Church · Tue Mar 2, 2027 · 10:00 AM" on the Service row — those three facts are
     # three rows now, and each is asserted in `test_date_display.py` where the
     # rendering rules live.
-    assert row["value"] == "Extra Chairs (Over 8)", row
-    assert row["secondary_value"] == "4 chairs", row
+    #
+    # ⚠️ "Full Equipment" RATHER THAN "Extra Chairs (Over 8)" SINCE RULING A. Chairs
+    # stopped being a `cemetery_equipment` answer, so the bundle the director named is
+    # what the primary holds and the count is purely the secondary. Before the ruling
+    # this same sentence stored `cemetery_equipment = extra_chairs` and the bundle was
+    # LOST — one of the four phrasings measured on 2026-10-30.
+    assert row["value"] == "Full Equipment", row
+    # ⚠️ "4 extra chairs", NOT "12 chairs (4 extra)", AND THE REASON IS THIS FIXTURE'S
+    # TENANT RATHER THAN RULING E BEING WRONG. Ruling E derives the total from the
+    # BUNDLE PRODUCT's `products.included_chairs`, and the `session` fixture above
+    # builds a company with a user and no products at all — so there is no "Full
+    # Equipment" row to read an included count from and `chairs_for_display` refuses
+    # to convert between the senses. It says what the director said, in the sense they
+    # said it. `test_the_equipment_row_shows_both_chair_numbers.py` seeds the bundles
+    # and asserts the derived forms.
+    #
+    # ⚠️ AND THIS IS THE NEW-TENANT CASE, VISIBLE HERE BY ACCIDENT AND WORTH NAMING.
+    # `included_chairs` is set on Sunnycrest's five production rows and by no seed, so
+    # every bundle on a fresh tenant reads NULL and every chair display lands on this
+    # branch until the onboarding checklist sets them. The row stays honest; it just
+    # cannot do the arithmetic.
+    assert row["secondary_value"] == "4 extra chairs", row
+    assert row["missing_field_ids"] == [], row
+
+
+def test_a_row_showing_ONLY_a_SECONDARY_is_PARTIAL_not_not_mentioned(db, session):
+    """⚠️ DEFECT 3c IN A ROW THAT COULD NOT REACH IT BEFORE 2026-10-30, and it was
+    open for the length of this slice.
+
+    `resolve_surface` decided NOT_MENTIONED on `value is None` alone and never looked
+    at the secondary — so "12 chairs" with no bundle named rendered "12 chairs" on the
+    Equipment row in the not-mentioned style: italic, no check. The same thing James
+    photographed on the Service row, one row over.
+
+    ⚠️ IT IS NEW BECAUSE RULING D' MADE THE STATE REACHABLE. Before ruling A a chair
+    count could only exist alongside `cemetery_equipment = extra_chairs`, so a
+    rendered secondary implied a rendered primary. D' rules that a count with no
+    bundle records the count and leaves the bundle open — so the row now has a real
+    way to hold a secondary and nothing else.
+
+    ⚠️ AND PARTIAL RATHER THAN DONE, THOUGH NOTHING IN THE ROW IS REQUIRED. What makes
+    it unfinished is not the schema but ruling D': `approval.assess` BLOCKS an order
+    whose chairs have no bundle rather than billing zero, so the director has to come
+    back to this row. DONE would say otherwise.
+    """
+    row, _ = _composed_row(db, session, ["12 chairs"], row_id="cemetery_equipment")
+    assert row["value"] is None, row
+    assert row["secondary_value"] == "12 chairs", row
+    assert row["state"] == RowState.PARTIAL.value, row
+    # ⚠️ AND NO FIELD IS NAMED AS MISSING, which is the honest report: nothing in this
+    # row is required. The block comes from `approval.assess`, not from the row.
     assert row["missing_field_ids"] == [], row
 
 
@@ -158,17 +223,24 @@ def test_PARTIAL_holds_after_the_done_signal_rather_than_becoming_NEEDED(db, ses
     is blocking is carried by the `missing` set and rendered in the header; what the
     ROW must not do is deny the director typed something."""
     cid, uid, sid = session
-    # ⚠️ THE EQUIPMENT ROW, for the reason `_composed_row` records: the Service row is
-    # no longer composed and cannot be PARTIAL.
-    session_service.add_line(db, sid, company_id=cid, user_id=uid, line="extra chairs")
+    # ⚠️ THE CEMETERY ROW, for the reason `_composed_row` records: the Service row is
+    # no longer composed, and after rulings A/B' no field on the Equipment row is
+    # required — so NEEDED could not have won there and this test would have passed
+    # without exercising the choice it names.
+    session_service.add_line(db, sid, company_id=cid, user_id=uid, line="eta 11:30")
     session_service.add_line(db, sid, company_id=cid, user_id=uid,
                              line="that's everything")
     state = session_service.read_state(db, sid, company_id=cid, user_id=uid)
     row = next(r for r in state["surface"]["rows"]
-               if r["row_id"] == "cemetery_equipment")
+               if r["row_id"] == "cemetery")
     assert state["missing"], "the done signal did not report anything missing"
+    # ⚠️ THE PRECONDITION THAT MAKES THIS A CHOICE AND NOT A TAUTOLOGY: the row has a
+    # required field outstanding, so NEEDED is what it would become if PARTIAL
+    # deferred. Asserted, because the subject moved and a row with nothing required
+    # would satisfy the two lines below for the wrong reason.
+    assert row["missing_field_ids"] == ["cemetery"], row
     assert row["state"] == RowState.PARTIAL.value, row
-    assert row["value"] == "Extra Chairs (Over 8)", row
+    assert row["value"] == "11:30", row
 
 
 def test_an_EMPTY_row_does_become_NEEDED_after_the_done_signal(db, session):

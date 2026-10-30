@@ -81,7 +81,15 @@ def _product_by_exact_name(db: Session, tenant_id: str, name: str):
     """
     return db.execute(
         text(
-            "SELECT id, name, price FROM products "
+            # ⚠️ `included_chairs` IS IN THIS LIST AND FIVE TESTS FAILED BEFORE IT WAS.
+            # The column was added by `r218_included_chairs` and read by
+            # `billable_extra_chairs` through `getattr(prod, "included_chairs", None)` —
+            # and an explicit SELECT that does not name it returns a row without the
+            # attribute, so the getattr fell to its default and every derivation
+            # correctly refused to compute. The code was right; the data was not
+            # fetched. ⚠️ A `getattr` DEFAULT IS WHY THIS WAS QUIET: `row.included_chairs`
+            # would have raised and named itself.
+            "SELECT id, name, price, included_chairs FROM products "
             "WHERE company_id = :t AND lower(btrim(name)) = lower(btrim(:n)) "
             "AND is_active = true "
             "ORDER BY created_at NULLS LAST LIMIT 1"
@@ -91,35 +99,204 @@ def _product_by_exact_name(db: Session, tenant_id: str, name: str):
 
 
 #: The one equipment package priced per unit, and the field holding its count.
-EQUIPMENT_EXTRA_CHAIRS = "extra_chairs"
-EXTRA_CHAIRS_COUNT_FIELD = "extra_chairs_count"
+#: ⚠️ THE PRODUCT NAME, HELD HERE BECAUSE IT IS NO LONGER AN EQUIPMENT OPTION.
+#: `EQUIPMENT_PRODUCT_NAMES` is derived from `EQUIPMENT_PACKAGES`, and ruling A removed
+#: chairs from that list — so the one string billing needs would have vanished with it.
+#: The capital `Over` is load-bearing for the reason the schema's old comment gave: it
+#: is the string the capture layer and the catalog share, and `r212` created the product
+#: named as the price list names it.
+EXTRA_CHAIRS_PRODUCT_NAME = "Extra Chairs (Over 8)"
+CHAIRS_TOTAL_FIELD = "chairs_total"
+CHAIRS_EXTRA_FIELD = "chairs_extra"
 
 
 def _equipment_quantity(equip: str, answers: dict) -> Decimal:
-    """How many of this equipment package the line bills.
+    """How many of this equipment BUNDLE the line bills. Always one.
 
-    ⚠️ ONE FOR EVERY PACKAGE EXCEPT CHAIRS, WHICH ARE $5.00 EACH. Every other
-    package in the price list is a flat charge for the setup, so its quantity is 1
-    and the line total is the price. "Extra Chairs (Over 8)" is the one per-unit row
-    on the list, and a quantity of 1 there would bill one chair for an order that
-    said twelve.
+    ⚠️ IT USED TO BRANCH ON CHAIRS AND NO LONGER CAN, BY RULING A (2026-10-30). Chairs
+    stopped being a `cemetery_equipment` option, so every value this function can see is
+    a bundle, and every bundle in the price list is a flat charge for the setup. The
+    chair quantity moved to `billable_extra_chairs` below, where it has the bundle's own
+    included count to subtract.
 
-    ⚠️ IT FALLS BACK TO 1 RATHER THAN 0 WHEN THE COUNT IS MISSING OR UNREADABLE, and
-    that fallback is unreachable on the Approve path — `extra_chairs_count` is
-    REQUIRED whenever chairs are chosen, so a missing count is already a blocker and
-    `assess` cannot reach a line. The fallback exists because this function is also
-    called while the capture is still being typed, where a half-finished answer must
-    render something rather than raise. 0 would make the summary read $0.00 and look
-    like a priced answer; 1 reads as the understated guess it is, and the blocker
-    beside it says the count is still needed.
+    ⚠️ KEPT AS A FUNCTION RATHER THAN INLINED AS `1`. Its caller asks "how many of this
+    line", which is a real question with a real answer; collapsing it would delete the
+    place a future per-unit bundle would be handled, and the price list already has one
+    per-unit row, so a second is not unimaginable.
     """
-    if equip != EQUIPMENT_EXTRA_CHAIRS:
-        return Decimal("1")
-    raw = answers.get(EXTRA_CHAIRS_COUNT_FIELD)
+    return Decimal("1")
+
+
+def billable_extra_chairs(
+    included: int | None, total: object, extra: object
+) -> Decimal | None:
+    """Chairs to bill, or None when the question is still open.
+
+    Ruling B' (James, 2026-10-30): *"Billable extras = max(0, chairs −
+    bundle.included_chairs), billed on Extra Chairs (Over 8) at its price."* And the
+    billing half of the same ruling: *"no Extra Chairs line when extras = 0 — never a
+    $0 line."*
+
+    THE THREE INPUTS AND WHY THERE ARE THREE:
+
+        included    the BUNDLE's own `products.included_chairs`. `None` means the
+                    product is not a bundle at all, which is not a zero.
+        total       what the director said the crew sets out — "12 chairs".
+        extra       what the director said was already extra — "extra chairs 4".
+
+    ⚠️ `extra` WINS WHEN BOTH ARE PRESENT AND THEY AGREE, AND NEITHER WINS WHEN THEY DO
+    NOT. James ruled the disagreement is a QUESTION, not an arithmetic: *"Both said and
+    they disagree (e.g. '12 chairs, 6 extra' on Full Equipment) → don't pick."* So this
+    returns None there and the caller asks. Returning either number would settle a
+    thing the director said two ways.
+
+    ⚠️ AND `None` IS NOT ZERO ANYWHERE IN HERE. Zero means "no chairs to bill, bill no
+    line"; None means "I cannot say yet" — the bundle is unknown, the count is unsaid,
+    or the two readings conflict. A caller that treats them alike bills a $0 line or
+    silently drops a real one.
+    """
+    t = _as_int(total)
+    e = _as_int(extra)
+
+    # ⚠️ NO BUNDLE, NO DERIVATION. Without `included` an "extra" count is still usable
+    # as given — it is already netted, by definition — but a TOTAL cannot be converted.
+    if included is None:
+        return Decimal(e) if e is not None else None
+
+    if e is not None and t is not None:
+        # the two readings, each expressed as extras
+        if max(0, t - included) != e:
+            return None                      # disagreement: the caller asks
+        return Decimal(e)
+    if e is not None:
+        return Decimal(e)
+    if t is not None:
+        # ⚠️ CLAMPED AT ZERO. "6 chairs" on a bundle including 8 is fewer than the
+        # bundle already brings; that bills no extras rather than a negative line.
+        return Decimal(max(0, t - included))
+    return None
+
+
+def chairs_readings(included: int | None, total: object, extra: object):
+    """`(total, extra)` pairs the two readings could mean, for the disagreement pick.
+
+    ⚠️ IT EXISTS SO THE QUESTION CAN SHOW BOTH NUMBERS, which is what James asked for:
+    *"Opas asks '12 chairs (4 extra) or 14 chairs (6 extra)?' with two pills."* A pick
+    offering "4 or 6" would ask the director to do the arithmetic that confused the
+    engine.
+    """
+    t = _as_int(total)
+    e = _as_int(extra)
+    if included is None or t is None or e is None:
+        return ()
+    return (
+        (t, max(0, t - included)),       # take the total as said
+        (e + included, e),               # take the extra as said
+    )
+
+
+def chairs_for_display(included: int | None, total: object, extra: object) -> str | None:
+    """The equipment row's chair line — RULING E (James, 2026-10-30).
+
+    *"`Full equipment · 12 chairs (4 extra)` when extras are non-zero,
+    `Full equipment · 2 chairs` at or under the included count, and never a bare 0 —
+    and it shows BOTH numbers whichever sense the director used, so `extra chairs 4`
+    on Full Equipment still reads `12 chairs (4 extra)`."*
+
+    Returns the chair half only; the bundle label is the row's primary value and the
+    pane puts the two together.
+
+    ⚠️ IT LIVES HERE RATHER THAN IN `rows.py` OR `surfaces.py` BECAUSE IT NEEDS THE
+    BUNDLE. `included` is `products.included_chairs` on the bundle PRODUCT
+    (`r218_included_chairs`), and neither of those layers has a database. The caller
+    is `session_service`, which does — the same layer and the same reason the urn-vault
+    row label flips there rather than on the static `Row`.
+
+    ⚠️ AND IT IS HERE RATHER THAN IN `session_service` BECAUSE THE ARITHMETIC ALREADY
+    IS. `billable_extra_chairs` and `chairs_readings` convert between the two senses
+    four lines up; a second body doing the same subtraction in a serializer is the
+    defect this repo has already paid for twice — two `title_case_name`s that
+    disagreed on `"MCLEOD"`, and a `CHAIRS_INCLUDED` constant that disagreed with the
+    product rows for two of five bundles.
+
+    ⚠️ THE DISAGREEMENT CASE SHOWS BOTH READINGS rather than picking one. `"12 chairs,
+    6 extra"` on a bundle including 8 is two different orders — 12 chairs or 14 — and
+    ruling B blocks it at approval with exactly these numbers. A row that displayed
+    one of them would quietly answer the question the blocker is asking.
+
+    ⚠️ ZERO IS DELEGATED, NOT RE-DECIDED. `write_for_a_human(..., "count")` already
+    renders `"0"` as `"none extra"` under the 2026-10-15 ruling, and "never a bare 0"
+    is the same prohibition said again. Routing through it keeps one answer.
+    """
+    from app.services.capture.rows import write_for_a_human
+
+    t = _as_int(total)
+    e = _as_int(extra)
+    if t is None and e is None:
+        return None
+
+    # ⚠️ NO BUNDLE, NO CONVERSION — the same refusal `billable_extra_chairs` makes, and
+    # for the same reason: without the included count neither sense can be expressed as
+    # the other. Ruling D' leaves the bundle open here and `assess` blocks, so the row
+    # shows what the director actually said, labelled with the sense they said it in.
+    if included is None:
+        if t is not None:
+            return write_for_a_human(str(t), "count")
+        if e == 0:
+            return "none extra"
+        return f"{e} extra chair" if e == 1 else f"{e} extra chairs"
+
+    if t is not None and e is not None and max(0, t - included) != e:
+        a, b = chairs_readings(included, total, extra)
+        return (
+            f"{a[0]} chairs ({a[1]} extra) or {b[0]} chairs ({b[1]} extra)"
+        )
+
+    total_n = t if t is not None else e + included
+    extra_n = max(0, total_n - included)
+    shown = write_for_a_human(str(total_n), "count")
+    return f"{shown} ({extra_n} extra)" if extra_n > 0 else shown
+
+
+def included_chairs_for(db: Session, tenant_id: str, answers: dict) -> int | None:
+    """The chosen bundle's `products.included_chairs`, or None when it cannot be read.
+
+    ⚠️ FOUR WAYS TO GET None AND THEY ARE ALL THE SAME ANSWER TO THE CALLER: no bundle
+    chosen, the explicit `none` answer, an equipment value the schema does not list, or
+    a product row whose `included_chairs` is NULL. Each means "the included count is
+    unknown", which is exactly what `chairs_for_display` and `billable_extra_chairs`
+    refuse to derive from.
+
+    ⚠️ A NULL COLUMN IS THE LIVE ONE. `included_chairs` is set on Sunnycrest's five
+    production rows and nowhere else — no seed writes it — so on a new tenant every
+    bundle returns None here until the onboarding checklist sets them.
+    """
+    equip = (answers.get("cemetery_equipment") or "").strip()
+    if not equip or equip == EQUIPMENT_NONE:
+        return None
+    name = EQUIPMENT_PRODUCT_NAMES.get(equip)
+    if name is None:
+        return None
+    prod = _product_by_exact_name(db, tenant_id, name)
+    if prod is None:
+        return None
+    # ⚠️ PLAIN ATTRIBUTE ACCESS, NOT `getattr(..., None)`, AND THAT IS SWEEP ITEM 5
+    # APPLIED AT THE SITE THAT PROMPTED IT. The same read through a getattr default
+    # cost five failing tests and looked like a code bug: the SELECT did not name the
+    # column, the default stood in for the value, and every derivation correctly
+    # refused to compute. If the column stops being selected this raises and says so.
+    return prod.included_chairs
+
+
+def _as_int(raw: object) -> int | None:
+    """⚠️ A SEPARATE HELPER SO "UNREADABLE" AND "UNSAID" COLLAPSE TO THE SAME None.
+    Both mean the engine has no number, and a half-typed "1" must not bill one chair."""
+    if raw is None or raw == "":
+        return None
     try:
-        return Decimal(str(raw))
-    except (TypeError, ValueError, ArithmeticError):
-        return Decimal("1")
+        return int(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
 
 
 def _customer_by_exact_name(db: Session, tenant_id: str, name: str):
@@ -207,36 +384,102 @@ def assess(
                 )
             )
 
-    # ── the equipment line ─────────────────────────────────────────────────
+    # ── the equipment bundle line, and the extra-chairs line beneath it ────
+    #
+    # ⚠️ TWO LINES NOW, NOT ONE, BY RULING A (James, 2026-10-30). This block used to
+    # bill the bundle OR the chairs, because chairs were one of the
+    # `cemetery_equipment` options and the field holds one value. They are two rows on
+    # the price list — a flat setup charge and a per-unit overage — and billing them as
+    # alternatives is why "full setup, 12 chairs" produced an order with the chairs and
+    # no package.
+    #
+    # ⚠️ AND `price_list_analysis_service` ALREADY SAID SO: "Items like 'Extra Chairs
+    # (Over 8)' ... are per-unit overage charges, NOT bundles." Two layers disagreed
+    # about the same string's kind; the equipment list was the one that was wrong.
     equip = (answers.get("cemetery_equipment") or "").strip()
-    # ⚠️ A ZERO QUANTITY BUILDS NO LINE AND BLOCKS NOTHING, BY RULING (James,
-    # 2026-10-15): "8 or fewer chairs: no extra-chairs line, no conflict." Only
-    # chairs can reach zero — every other package is a flat charge at quantity 1 —
-    # so this is one package's arithmetic, not a general rule about zero-priced
-    # lines. `Vault Placer` at $0.00 still bills a REAL line, because its PRICE is
-    # zero and its QUANTITY is one; that distinction is the whole of it.
-    if equip and equip != EQUIPMENT_NONE and _equipment_quantity(equip, answers) > 0:
+    bundle_prod = None
+    if equip and equip != EQUIPMENT_NONE:
         name = EQUIPMENT_PRODUCT_NAMES.get(equip)
         if name is None:
             # An answer the schema does not list. Reported rather than dropped.
             blockers.append(f"Unknown equipment package {equip!r}.")
         else:
-            prod = _product_by_exact_name(db, tenant_id, name)
-            if prod is None or prod.price is None:
+            bundle_prod = _product_by_exact_name(db, tenant_id, name)
+            if bundle_prod is None or bundle_prod.price is None:
                 why = (
-                    "has no product on this tenant" if prod is None else "has no price"
+                    "has no product on this tenant" if bundle_prod is None
+                    else "has no price"
+                )
+                blockers.append(f"{name} {why} — the order line would have no price.")
+                bundle_prod = None
+            else:
+                # ⚠️ ALWAYS QUANTITY ONE. Every bundle is a flat charge for the setup;
+                # `Vault Placer` at $0.00 still bills a REAL line, because its PRICE is
+                # zero and its QUANTITY is one. That distinction was the whole of the
+                # old zero-quantity rule and it survives — what has gone is chairs
+                # being able to make a BUNDLE's quantity anything but one.
+                lines.append(
+                    OrderLine(
+                        kind="equipment",
+                        description=bundle_prod.name,
+                        product_id=bundle_prod.id,
+                        unit_price=Decimal(bundle_prod.price),
+                        quantity=_equipment_quantity(equip, answers),
+                    )
+                )
+
+    # ── extra chairs, derived from the bundle rather than from a constant ──
+    #
+    # ⚠️ THE INCLUDED COUNT COMES OFF THE BUNDLE PRODUCT (`r218_included_chairs`), not
+    # from a global 8. Measured on production 2026-10-30, the constant was wrong for two
+    # of the five bundles: "device only, 10 chairs" billed 2 extras, subtracting eight
+    # chairs from a bundle that includes none.
+    chairs_total = answers.get(CHAIRS_TOTAL_FIELD)
+    chairs_extra = answers.get(CHAIRS_EXTRA_FIELD)
+    if chairs_total is not None or chairs_extra is not None:
+        included = getattr(bundle_prod, "included_chairs", None) if bundle_prod else None
+        qty = billable_extra_chairs(included, chairs_total, chairs_extra)
+        if qty is None:
+            # ⚠️ OPEN, NOT ZERO, AND IT BLOCKS RATHER THAN BILLING NOTHING. Three ways
+            # to get here: no bundle chosen yet, a mention with no number, or the two
+            # readings disagreeing. All three are questions the director has to answer,
+            # and an order that quietly billed $0 for them is the failure the
+            # unsaid/zero distinction exists to prevent.
+            if bundle_prod is None:
+                blockers.append(
+                    "Chairs were named but no equipment bundle is chosen — the "
+                    "billable extras depend on what the bundle includes."
+                )
+            elif _as_int(chairs_total) is not None and _as_int(chairs_extra) is not None:
+                a, b = chairs_readings(included, chairs_total, chairs_extra)
+                blockers.append(
+                    f"Chairs were given two ways: {a[0]} chairs ({a[1]} extra) or "
+                    f"{b[0]} chairs ({b[1]} extra). Which?"
+                )
+            else:
+                blockers.append("Chairs were named but the count is still needed.")
+        elif qty > 0:
+            # ⚠️ NO LINE WHEN EXTRAS ARE ZERO, BY RULING — "never a $0 line". A bundle
+            # that already includes the chairs the family needs bills the setup and
+            # nothing more; a zero-quantity line would read as a priced answer.
+            chair_prod = _product_by_exact_name(db, tenant_id, EXTRA_CHAIRS_PRODUCT_NAME)
+            if chair_prod is None or chair_prod.price is None:
+                why = (
+                    "has no product on this tenant" if chair_prod is None
+                    else "has no price"
                 )
                 blockers.append(
-                    f"{name} {why} — the order line would have no price."
+                    f"{EXTRA_CHAIRS_PRODUCT_NAME} {why} — the order line would have "
+                    f"no price."
                 )
             else:
                 lines.append(
                     OrderLine(
                         kind="equipment",
-                        description=prod.name,
-                        product_id=prod.id,
-                        unit_price=Decimal(prod.price),
-                        quantity=_equipment_quantity(equip, answers),
+                        description=chair_prod.name,
+                        product_id=chair_prod.id,
+                        unit_price=Decimal(chair_prod.price),
+                        quantity=qty,
                     )
                 )
 

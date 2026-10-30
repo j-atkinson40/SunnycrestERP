@@ -202,24 +202,35 @@ _EQUIPMENT: tuple[tuple[str, str], ...] = (
 )
 
 #: Chairs included in every graveside package, per the price list: the per-unit
-#: charge is "Extra Chairs (Over 8)", so eight are already in the setup.
+#: ⚠️ `CHAIRS_INCLUDED = 8` STOOD HERE AND WAS DELETED BY RULING B' (James,
+#: 2026-10-30). It was subtracted from every chair count whatever the bundle, and
+#: measured on production 2026-10-30 that was wrong for two of the five:
+#: `"device only, 10 chairs"` billed 2 extras, subtracting eight chairs from a bundle
+#: that includes none. The number is a property of the BUNDLE and now lives on it, in
+#: `products.included_chairs` (migration `r218_included_chairs`).
 #:
-#: ⚠️ IT IS THE PIVOT BETWEEN THE TWO PHRASINGS James RULED (2026-10-14) AND NOT A
-#: TUNABLE. "12 chairs" is a TOTAL and bills 4; "extra chairs 4" is already the
-#: EXTRA and bills 4. Both readings need this number and they need the same one.
-CHAIRS_INCLUDED = 8
+#: ⚠️ SO NOTHING HERE SUBTRACTS ANY MORE. This module records what the director SAID;
+#: `approval` derives billable extras once the bundle is known. A subtraction here
+#: would have to guess the bundle, which is the guess the ruling removes.
 
 #: Chair phrasings, longest-intent first. Each yields `(count_or_None, span)`.
 #:
 #: ⚠️ THE TWO GROUPS ANSWER DIFFERENT QUESTIONS AND MUST NOT BE MERGED. An "extra"
-#: pattern's number is the extra count as given; a bare "N chairs" is the total and
-#: has `CHAIRS_INCLUDED` subtracted. A single pattern with an optional "extra" would
-#: have to decide which arithmetic to apply after matching, from the presence of a
-#: word it had already discarded.
+#: pattern's number is the extra count as given; a bare "N chairs" is the TOTAL the
+#: crew sets out. Since ruling B' neither is converted into the other here — each is
+#: recorded in the sense it was said, because converting needs the bundle's
+#: `included_chairs` and no bundle is named yet. A single pattern with an optional
+#: "extra" would have to decide which SENSE it had matched after the fact, from the
+#: presence of a word it had already discarded.
 _CHAIRS_EXTRA: tuple[str, ...] = (
     r"extra\s+chairs?\s*:?\s*(\d+)",
     r"(\d+)\s+extra\s+chairs?",
-    r"chairs?\s+over\s+%d\s*:?\s*(\d+)" % CHAIRS_INCLUDED,
+    # ⚠️ THE 8 HERE IS A PHRASE THE DIRECTOR SAYS, not the included count.
+    # It was `% CHAIRS_INCLUDED`, which coupled a WORDING to an ARITHMETIC
+    # constant: when the constant moved to the bundle this pattern would have
+    # silently stopped matching "chairs over 8". The price-list row is named
+    # "Extra Chairs (Over 8)", so the words are stable whatever a bundle includes.
+    r"chairs?\s+over\s+8\s*:?\s*(\d+)",
 )
 _CHAIRS_TOTAL: tuple[str, ...] = (
     r"(\d+)\s+chairs?\b",
@@ -705,17 +716,28 @@ _NOT_A_NAME_WORD = frozenset(
 )
 
 
-def _chairs(line: str) -> tuple[int | None, tuple[int, int]] | None:
-    """The extra-chair count and the span that said it, or None if no chair phrase.
+def _chairs(line: str) -> tuple[str, int | None, tuple[int, int]] | None:
+    """`(sense, count, span)` for a chair phrase, or None if there is no chair phrase.
 
-    Returns `(count, span)`; `count` is None when chairs were asked for without a
-    number, which is a GAP rather than a zero — see `extra_chairs_count` in
-    `schema.py`.
+    `sense` is one of:
 
-    ⚠️ ONE SPAN, TWO VALUES, WHICH IS WHY THIS IS A FUNCTION AND NOT A ROW IN
-    `_EQUIPMENT`. "12 chairs" settles both the package and the quantity, and the span
-    rule is per-span rather than per-field — `_year_pair` does the same thing for a
-    birth and a death year and is the precedent this follows.
+        "total"     "12 chairs"        — what the crew sets out
+        "extra"     "extra chairs 4"   — already netted of what the bundle includes
+        "mention"   "extra chairs"     — chairs, no number; `count` is None
+
+    ⚠️ THE SENSE IS RETURNED RATHER THAN RESOLVED, BY RULING B' (James, 2026-10-30).
+    Converting either reading into the other needs the bundle's `included_chairs`, and
+    no bundle is named at this point in the line — so a conversion here would be a
+    guess. Each sense is stored in its own field and `approval` resolves them.
+
+    ⚠️ A GAP IS NOT A ZERO. `count is None` means chairs were asked for without a
+    number; writing 0 there would bill nothing and read as an answer.
+
+    ⚠️ IT NO LONGER SETTLES THE PACKAGE. Before ruling A this function's caller wrote
+    `cemetery_equipment = extra_chairs` from the same span, which is the defect the
+    ruling removes: chairs and the bundle were competing for one single-valued field,
+    so naming chairs DROPPED the bundle and naming the bundle first DROPPED the count.
+    Four phrasings of one intent gave four different answers depending on a comma.
 
     ⚠️ "EXTRA" PATTERNS BEFORE TOTALS, BECAUSE "extra chairs 4" CONTAINS "chairs 4".
     Tried the other way round, the extra count is read as a total and 4 chairs bills
@@ -724,17 +746,22 @@ def _chairs(line: str) -> tuple[int | None, tuple[int, int]] | None:
     for pat in _CHAIRS_EXTRA:
         m = re.search(pat, line, re.I)
         if m:
-            return int(m.group(1)), (m.start(), m.end())
+            return ("extra", int(m.group(1)), (m.start(), m.end()))
     for pat in _CHAIRS_TOTAL:
         m = re.search(pat, line, re.I)
         if m:
-            # ⚠️ CLAMPED AT ZERO RATHER THAN ALLOWED NEGATIVE. "6 chairs" is fewer
-            # than the package includes; the extra count is 0 and `evaluate_typed`
-            # raises that as a conflict rather than billing -2 chairs.
-            return max(0, int(m.group(1)) - CHAIRS_INCLUDED), (m.start(), m.end())
+            # ⚠️ NO SUBTRACTION AND NO CLAMP SINCE RULING B'. This returned
+            # `max(0, n - CHAIRS_INCLUDED)` — the extra count, computed here from a
+            # global 8. Two things were wrong with that and only one was the 8: the
+            # arithmetic also DESTROYED the number the director said, so "6 chairs"
+            # became 0 and the pane could never show "6 chairs" again. The total is
+            # recorded; `approval` subtracts the bundle's own included count.
+            return ("total", int(m.group(1)), (m.start(), m.end()))
     m = re.search(_CHAIRS_BARE, line, re.I)
     if m:
-        return None, (m.start(), m.end())
+        # ⚠️ A MENTION WITH NO NUMBER. Neither sense applies, so neither number field
+        # is written — the mention alone makes the question applicable.
+        return ("mention", None, (m.start(), m.end()))
     return None
 
 
@@ -1109,26 +1136,58 @@ class DeterministicExtractor:
         #
         # ⚠️ ONE SPAN, TWO VALUES, so this is a function rather than a row in
         # `_EQUIPMENT` — the same shape as `_year_pair`.
+        # ⚠️ CHAIRS NO LONGER TOUCH `cemetery_equipment`, AND THAT IS RULING A's WHOLE
+        # EFFECT HERE. This block used to be gated on `once("cemetery_equipment")` AND
+        # to write that field, which is both halves of the four-phrasings defect
+        # measured on 2026-10-30:
+        #
+        #   'full setup 12 chairs'    -> full_equipment, count LOST  (the gate)
+        #   'full setup, 12 chairs'   -> extra_chairs, BUNDLE LOST   (the write)
+        #   '12 chairs full setup'    -> full_equipment, count LOST  (the gate)
+        #   '12 chairs, full setup'   -> both kept                   (only this one)
+        #
+        # One intent, four answers, decided by a comma. Chairs and the bundle were
+        # competing for one single-valued field. They are separate fields now, so
+        # neither can displace the other and the gate has nothing to guard.
         chairs = _chairs(line)
         if chairs is not None:
-            count, (ca, cb) = chairs
-            if once("cemetery_equipment"):
-                if _claim(spans, ca, cb, ("cemetery_equipment", "extra_chairs_count")):
-                    values["cemetery_equipment"] = _EQ_ID["Extra Chairs (Over 8)"]
-                    # ⚠️ ONLY WHEN A NUMBER WAS GIVEN. `None` means "chairs, count
-                    # unsaid", and writing a count there would invent one — the
-                    # field stays unanswered and `required_when` reports the gap.
-                    if count is not None and once("extra_chairs_count"):
-                        values["extra_chairs_count"] = str(count)
+            sense, count, (ca, cb) = chairs
+            field = {"total": "chairs_total", "extra": "chairs_extra"}.get(sense)
+            # ⚠️ A NUMBERLESS MENTION CLAIMS ITS SPAN AND WRITES NOTHING, and the
+            # field it used to write is gone. `chairs_count_pending` existed to make
+            # `chairs_total` required so "extra chairs" still asked how many; James
+            # ruled two fields, and a third with no row would have been a second orphan
+            # in the schema's partition. The span is still claimed so the words do not
+            # land in the unplaced list, and `approval.assess` blocks the order with
+            # "Chairs were named but the count is still needed".
+            # ⚠️ TWO LITERAL WRITES RATHER THAN ONE `values[field] =`, AND THAT IS
+            # FOR AN INSTRUMENT, NOT FOR TASTE. `test_every_field_is_typeable.py`
+            # checks `WRITABLE_FIELDS` against a SCAN of this module for
+            # literal-keyed writes into `values`, and it declares its own limit:
+            # "a pass that
+            # wrote through a variable key would be invisible to it. None does
+            # today." The first version of this block made that sentence false —
+            # the scan reported both chair fields as declared-but-never-written
+            # while `_chairs` was writing them. Teaching the scan about a second
+            # special-cased key would have widened a constructed-name instrument;
+            # writing through literals removes the blind spot instead, so the
+            # declaration keeps full contact with the code.
+            if _claim(spans, ca, cb, (field,) if field else ("chairs_total",)):
+                if count is not None:
+                    if field == "chairs_total" and once("chairs_total"):
+                        values["chairs_total"] = str(count)
+                    elif field == "chairs_extra" and once("chairs_extra"):
+                        values["chairs_extra"] = str(count)
             else:
-                # ⚠️ CLAIMED AND THE RETURN IGNORED, exactly as `note_restated` does
-                # with `_mark`. The span is spoken for either way; what matters is
-                # that these words do not also land in the unplaced list.
-                _claim(spans, ca, cb, "cemetery_equipment")
-                cur = answers.get("cemetery_equipment", values.get("cemetery_equipment"))
-                restated.append(
-                    f"{line[ca:cb].strip()} — cemetery_equipment is already {cur!r}"
-                )
+                # ⚠️ THE SPAN WAS ALREADY SPOKEN FOR. Restated rather than dropped, so
+                # the words do not also land in the unplaced list. ⚠️ AND IT REPORTS THE
+                # CHAIR FIELD NOW, NOT `cemetery_equipment` — saying "cemetery_equipment
+                # is already 'full_equipment'" about a chair count was itself the
+                # conflation, and it told the director their chairs had been read as a
+                # package they had not named.
+                shown = field or "chairs"
+                cur = answers.get(shown, values.get(shown))
+                restated.append(f"{line[ca:cb].strip()} — {shown} is already {cur!r}")
 
         # ── burial date ─────────────────────────────────────────────────
         # ⚠️ ADDED AFTER A TEST FAILED FOR THE RIGHT REASON. `burial_date` is REQUIRED on
@@ -2232,7 +2291,10 @@ WRITABLE_FIELDS: frozenset[str] = frozenset({
     # declaration disagreed with a scan of this module's own assignments. Exactly the
     # gap it was built for after `lifes_reflections_symbol`, `RowState.NEEDED` and
     # `eta`.
-    "extra_chairs_count",
+    # ⚠️ BOTH SENSES ARE TYPEABLE, AND THE PENDING MARKER IS NOT. A director types a
+    # number, not the fact that they have yet to give one.
+    "chairs_total",
+    "chairs_extra",
     "funeral_home",
     "grave_location",
     "legacy_print_name",

@@ -128,10 +128,16 @@ class TestRowsAreNotFields:
         #
         # ⚠️ AND IT MOVED TOWARD ONE-ROW-PER-FIELD WITHOUT REACHING IT, which is worth
         # saying because the direction looks like a reversal. Four rows still compose
-        # several fields each: Cemetery (name + town + eta), Equipment (+ the chair
-        # count), Dates (birth + death + format), Legacy print (series + print). 12
-        # against 21 fields.
-        assert n_fields == 21
+        # several fields each: Cemetery (name + town + eta), Equipment (+ the two chair
+        # counts), Dates (birth + death + format), Legacy print (series + print). 12
+        # against 22 fields.
+        #
+        # ⚠️ 22 FIELDS SINCE 2026-10-30 (rulings A/B'), AND STILL NO NEW ROW, WHICH IS
+        # THE SAME POINT AGAIN. `extra_chairs_count` became `chairs_total` +
+        # `chairs_extra` — one field out, two in, so 21 + 1 = 22 — and BOTH display on
+        # the EQUIPMENT row's secondary, as the one field did. The field count moved
+        # and neither row count did: 12 != 22 and 6 != 22.
+        assert n_fields == 22
         assert len(CAPTURE_SALES_ORDER.rows) == 12 != n_fields
         assert len(SUMMARY_SALES_ORDER.rows) == 6 != n_fields
 
@@ -445,10 +451,11 @@ class TestTheFourStates:
 
         # ⚠️ `secondary` COUNTS, SINCE 2026-10-14, AND LEAVING IT OUT WAS A HOLE IN
         # THIS TEST RATHER THAN A RULE. The question is "does the pane show anything
-        # for this field", and a secondary is on screen — `extra_chairs_count` renders
-        # as "Extra Chairs (Over 8) · 4 chairs" on the equipment row. Walking only
-        # `sources` reported it as having no row while it was visibly displayed, which
-        # would have pushed a real field onto the named-exception list for no reason.
+        # for this field", and a secondary is on screen — `chairs_total` and
+        # `chairs_extra` render on the equipment row's secondary (before rulings A/B'
+        # it was the single `extra_chairs_count`). Walking only `sources` reported it
+        # as having no row while it was visibly displayed, which would have pushed a
+        # real field onto the named-exception list for no reason.
         sourced = {
             i
             for r in CAPTURE_SALES_ORDER.rows
@@ -458,7 +465,9 @@ class TestTheFourStates:
         template = [f.field_id for f in _tf(_SO)]
         # ⚠️ THE CONTROL, READ FIRST. If the walker returned nothing, or returned
         # everything, the assertion below would pass for a reason unrelated to rows.
-        assert len(template) == 21, len(template)
+        # ⚠️ 22 SINCE 2026-10-30 (rulings A/B'): `extra_chairs_count` became
+        # `chairs_total` + `chairs_extra`, so 21 + 1 = 22.
+        assert len(template) == 22, len(template)
         assert 15 < len(sourced & set(template)) <= len(template), sorted(sourced)
 
         # ⚠️ ONE DELIBERATE EXCEPTION SINCE 2026-10-13, AND IT IS A RULING RATHER THAN

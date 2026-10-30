@@ -136,6 +136,20 @@ _ANSWER_BY_FIELD: dict[str, object] = {
     "date_of_death": "2026-09-14",
     # A product reference. "Full setup" is the prototype's own value.
     "cemetery_equipment": "Full setup",
+    # ⚠️ ADDED 2026-10-30 BECAUSE THE GUARD BELOW DEMANDED IT, AND IT WAS RIGHT TO.
+    # Rulings A/B' replaced `extra_chairs_count` with three fields, and 19 tests in
+    # `test_capture_schema` failed with this file's own message: "the capture template
+    # gained unconditional field 'chairs_total' … do not let it default, or every
+    # 'nothing is missing' test starts asserting something nobody chose."
+    #
+    # ⚠️ 12 AND 4 AGREE UNDER THE DEFAULT BUNDLE, DELIBERATELY. The fixture's
+    # `cemetery_equipment` is Full Equipment, which includes 8, so a total of 12 and an
+    # extra count of 4 are the SAME order stated two ways — `12 - 8 == 4`. Picking two
+    # numbers that disagreed would have made every fixture-based order carry the
+    # disagreement blocker ruling B' raises, which is a real state but not the one a
+    # "nothing is missing" test wants to be in.
+    "chairs_total": "12",
+    "chairs_extra": "4",
 }
 
 

@@ -118,14 +118,46 @@ def test_the_fields_are_the_fields_that_were_FILLED(db, tenant):
 
 
 def test_ONE_SPAN_MAY_CARRY_TWO_FIELDS(db, tenant):
-    """⚠️ THE DELIBERATE RELAXATION OF "no span feeds two fields". "12 chairs" is one
-    claim that settles the package AND the count; `_year_pair` is the same shape.
-    Attribution is a tuple so the pane can tie one tint to both rows rather than
-    dropping one silently."""
-    ex = extract_text(db, tenant_id=tenant, text="order for riverside 12 chairs")
+    """⚠️ THE DELIBERATE RELAXATION OF "no span feeds two fields". "1948 to 2026" is
+    one claim that settles the birth year AND the death year. Attribution is a tuple so
+    the pane can tie one tint to both rows rather than dropping one silently.
+
+    ⚠️ REPOINTED 2026-10-30 (ruling A), AND THE SUBJECT IT LEFT IS THE REASON. This
+    test used to read `"12 chairs"` and assert `{"cemetery_equipment",
+    "extra_chairs_count"}` — one span settling the package and its count. Ruling A
+    SEPARATED those: chairs no longer touch `cemetery_equipment`, so "12 chairs" now
+    carries `chairs_total` alone and there is no dual span in that sentence to find.
+
+    ⚠️ AND IT IS REPOINTED RATHER THAN DELETED BECAUSE THE RULE IT GUARDS IS STILL
+    LIVE. `_year_pair` was named in the original docstring as "the same shape and the
+    same precedent", and `typed_extraction.py` claims its span as a two-field tuple
+    exactly as the chairs block once did. Deleting the test with its old subject would
+    have retired the only check that a span may carry more than one field at all —
+    nothing else asserts the tuple is ever longer than one.
+    """
+    ex = extract_text(db, tenant_id=tenant,
+                      text="order for riverside decedent mary smith 1948 to 2026")
     dual = [sp for sp in ex.spans if len(sp.field_ids) > 1]
     assert dual, [(s.state, s.field_ids) for s in ex.spans]
-    assert set(dual[0].field_ids) == {"cemetery_equipment", "extra_chairs_count"}
+    assert set(dual[0].field_ids) == {"date_of_birth", "date_of_death"}
+
+
+def test_CHAIRS_NO_LONGER_CARRY_THE_PACKAGE_ON_THEIR_SPAN(db, tenant):
+    """⚠️ RULING A, PINNED FROM THE SPAN SIDE, so the conflation cannot come back by
+    tidying. "12 chairs" is one claim about chairs and says nothing about which bundle
+    the cemetery is setting out — before 2026-10-30 the same span wrote
+    `cemetery_equipment` too, and naming chairs therefore DROPPED whatever bundle the
+    director had named (measured: four phrasings, four different outcomes, decided by
+    a comma)."""
+    ex = extract_text(db, tenant_id=tenant, text="order for riverside 12 chairs")
+    by_field = {f: sp for sp in ex.spans for f in sp.field_ids}
+    assert "chairs_total" in by_field, [(s.state, s.field_ids) for s in ex.spans]
+    assert "cemetery_equipment" not in by_field, (
+        "the chair span is writing the equipment package again"
+    )
+    assert set(by_field["chairs_total"].field_ids) == {"chairs_total"}, (
+        by_field["chairs_total"].field_ids
+    )
 
 
 def test_unrecognized_spans_MATCH_the_unrecognized_list(db, tenant):

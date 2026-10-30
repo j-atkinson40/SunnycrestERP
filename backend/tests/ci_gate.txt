@@ -559,6 +559,10 @@ tests/test_import_product_templates_r2b3.py
 tests/test_order_list_rules.py
 tests/test_order_list_reads.py
 tests/test_extra_chairs_carry_a_count.py
+# Ruling E's row composition. Seeds and purges its own `tc-rowe` tenant, same
+# shape and same reason as the chairs file above: `products.included_chairs` is
+# written on production and by no seed, so the included counts must be a premise.
+tests/test_the_equipment_row_shows_both_chair_numbers.py
 tests/test_r212_price_alignment.py
 tests/test_a_name_is_shown_the_same_way_everywhere.py
 tests/test_the_question_line.py

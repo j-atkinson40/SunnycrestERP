@@ -392,14 +392,22 @@ EQUIPMENT_PACKAGES: tuple[tuple[str, str], ...] = (
     ("tent_only", "Tent Only"),
     ("lowering_device_only", "Lowering Device Only"),
     ("vault_placer", "Vault Placer"),
-    # ⚠️ CAPITALISED `Over` SINCE 2026-10-14, AND THE CAPITAL IS LOAD-BEARING. This
-    # label is also the PRODUCT NAME `approval.assess` matches on, via
-    # `EQUIPMENT_PRODUCT_NAMES`, and the product `r212` creates is named as the price
-    # list names it: "Extra Chairs (Over 8)". The matcher lowercases both sides, so
-    # the old spelling would have worked — and would have left the one string the two
-    # layers share disagreeing with itself, so that tightening the match to exact
-    # later would break billing with nothing pointing at the cause.
-    ("extra_chairs", "Extra Chairs (Over 8)"),
+    # ⚠️ `("extra_chairs", "Extra Chairs (Over 8)")` WAS AN OPTION HERE AND WAS REMOVED
+    # BY RULING A (James, 2026-10-30): *"cemetery_equipment holds the package only.
+    # 'Extra Chairs (Over 8)' stops being an equipment option; it is a billing line
+    # derived from a chair count."*
+    #
+    # ⚠️ IT WAS NEVER A BUNDLE AND THIS CODEBASE ALREADY SAID SO ELSEWHERE.
+    # `price_list_analysis_service` reads: *"Items like 'Extra Chairs (Over 8)' … are
+    # per-unit overage charges, NOT bundles."* Two layers disagreed about the same
+    # string's kind, and this list was the one that was wrong.
+    #
+    # ⚠️ WHAT IT COST WHILE IT WAS HERE: the field is single-valued, so naming chairs
+    # DROPPED the bundle and naming the bundle first DROPPED the count. Measured
+    # 2026-10-30, four phrasings of one intent gave four different answers depending on
+    # a comma. The product NAME still matters to billing and now lives on its own at
+    # `approval.EXTRA_CHAIRS_PRODUCT_NAME`, with the capital `Over` for the reason the
+    # old comment here gave: it is the string two layers share.
     # ⚠️ THE SENTINEL IS AN OPTION, AND A RATCHET FOUND THIS MISSING. "no equipment"
     # stores `ANSWER_NONE`, and `is_answered` treats "none" as an ANSWER rather than
     # as silence — so without a label here a director who declined equipment would
@@ -775,17 +783,63 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
     #
     # ⚠️ REQUIRED WHEN CHAIRS ARE CHOSEN, WHICH IS WHAT MAKES THE GAP VISIBLE. "extra
     # chairs" with no number is a real thing a director types, and the honest answer
-    # is to ask how many rather than to assume. `required_when` therefore mirrors
-    # `applies_when`: the question exists only for chairs, and once it exists an
-    # unanswered count is a gap that blocks Approve with "Still needed: extra chairs".
-    # A default of 1 would have produced a $5.00 order line nobody chose.
+    # ⚠️ `extra_chairs_count` STOOD HERE AS ONE FIELD AND IS NOW TWO, BY RULING A/B'
+    # ⚠️ IT SAID "THREE" UNTIL 2026-10-30 AND THAT WAS A STALE COMMENT, NOT A THIRD
+    # FIELD. An interim `chairs_count_pending` existed for part of one session and was
+    # removed — James ruled TWO fields, and a field with no capture row would have been
+    # a second entry in the schema's orphan set. The count is corrected here so the next
+    # reader does not go looking for a field that is not there.
+    # (James, 2026-10-30). Its conditions were
+    # `EqualsValue("cemetery_equipment", "extra_chairs")` — and chairs are no longer a
+    # `cemetery_equipment` value, so both would now be permanently false: the field
+    # would never apply, never be required, and never be asked about.
     #
-    # ⚠️ `display="count"` RATHER THAN A BARE NUMBER. `rows.py` renders it "4 chairs",
-    # because "4" alone in an equipment row reads as a quantity of packages.
+    # ⚠️ AND ITS STORED VALUE WAS ALREADY-SUBTRACTED EXTRAS, WHICH DESTROYED WHAT THE
+    # DIRECTOR SAID. "6 chairs" was stored as 0, so the pane could never show "6 chairs"
+    # again. Each field below holds exactly one reading, in the sense it was given.
+    #
+    # ⚠️ `display="count"` ON BOTH, for the reason the old comment gave: `rows.py`
+    # renders "4 chairs", because "4" alone in an equipment row reads as a quantity of
+    # packages.
     FieldDefinition(
-        "extra_chairs_count", "Extra chairs",
-        applies_when=EqualsValue("cemetery_equipment", "extra_chairs"),
-        required_when=EqualsValue("cemetery_equipment", "extra_chairs"),
+        "chairs_total", "Chairs",
+        # ⚠️ ALWAYS APPLICABLE, AND THAT IS A LIMIT OF `conditions.py` RATHER THAN A
+        # DESIGN CHOICE. The honest condition is "a number was given OR the count is
+        # pending", and there is no `Or` — the module has `EqualsValue`, `AnswerIn`,
+        # `AnyAnswered` and nothing that combines them. Applicable-but-unrequired is the
+        # safe side of that gap: an unanswered optional field reads as not-mentioned,
+        # whereas a wrongly-inapplicable one would silently refuse the value the
+        # extractor just wrote.
+        applies_when=Always(),
+        # ⚠️ NEVER REQUIRED, AND A THIRD FIELD WAS REMOVED TO GET HERE. I had added
+        # `chairs_count_pending` so that "extra chairs" with no number could make this
+        # field REQUIRED and keep the capture-time question today's code asks. Two
+        # things killed it: James ruled TWO fields, and the marker had no row, which
+        # made it a second entry in the schema's orphan set —
+        # `test_the_only_unmappable_unconditional_field_is_the_named_one` permits
+        # exactly one (`burial_date`), and weakening a structural invariant to carry a
+        # field I invented is the wrong trade.
+        #
+        # ⚠️ THE CONSEQUENCE IS REAL AND IS FLAGGED TO JAMES: "extra chairs" with no
+        # number no longer asks DURING capture. It blocks at approval instead —
+        # `assess` raises "Chairs were named but the count is still needed" — so the
+        # order cannot be approved with chairs unpriced. Later and louder, not lost.
+        required_when=Never(),
+        display="count",
+    ),
+    FieldDefinition(
+        "chairs_extra", "Extra chairs",
+        applies_when=Always(),
+        # ⚠️ NEVER REQUIRED, AND IT HAS TO SAY SO EXPLICITLY. `required_when` DEFAULTS
+        # TO `Always()`, so omitting it makes a field required — the opposite of how
+        # "no required_when" reads. Measured: leaving it off put `chairs_extra` in
+        # `missing` on every order, blocking any capture that never mentioned chairs.
+        #
+        # A director who gives a total has answered the chair question completely;
+        # requiring an extra count as well would ask them to do the subtraction the
+        # bundle now does. The genuinely-open cases are caught by `approval.assess`,
+        # which blocks with the reason rather than billing $0.
+        required_when=Never(),
         display="count",
     ),
 ) + _personalization_fields()
@@ -1111,7 +1165,10 @@ CALL_ORDER: tuple[str, ...] = (
     "cemetery_city",
     "grave_location",
     "cemetery_equipment",
-    "extra_chairs_count",
+    # ⚠️ AFTER THE BUNDLE, BECAUSE THE BILLABLE COUNT DEPENDS ON IT. Asking for chairs
+    # before the bundle is known would ask a question whose answer cannot yet be priced.
+    "chairs_total",
+    "chairs_extra",
     # ── personalization and its follow-ups, last, in the order they are chosen ──
     QUESTION_PERSONALIZATION,
     LEGACY_SERIES_FIELD_ID,
@@ -1140,7 +1197,11 @@ CALL_QUESTIONS: dict[str, str] = {
     "cemetery_city": "Which town is the cemetery in?",
     "grave_location": "Which grave?",
     "cemetery_equipment": "What equipment?",
-    "extra_chairs_count": "How many extra chairs?",
+    # ⚠️ "How many chairs?" NOT "How many EXTRA chairs?" — the field holds the TOTAL the
+    # crew sets out, and the old wording asked for the netted number the bundle now
+    # derives. Asking "extra" and storing a total is how the two senses got confused.
+    "chairs_total": "How many chairs?",
+    "chairs_extra": "How many extra chairs?",
     QUESTION_PERSONALIZATION: "Any personalization?",
     LEGACY_SERIES_FIELD_ID: "Which Legacy series?",
     "legacy_print_name": "Which print?",

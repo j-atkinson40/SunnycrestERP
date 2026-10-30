@@ -91,10 +91,17 @@ def test_every_other_field_stores_its_display_value():
         "burial_date", "service_date", "service_time", "grave_location",
         "service_location_other", "eta", "date_of_birth", "date_of_death",
         "legacy_print_name",
-        # ⚠️ ADDED 2026-10-14. `extra_chairs_count` holds a number the director gave
-        # and shows that number — there is no vocabulary to map, so no options. It
-        # belongs on this side of the partition for the same reason the dates do.
-        "extra_chairs_count",
+        # ⚠️ ADDED 2026-10-14 AS `extra_chairs_count`, NOW TWO FIELDS (rulings A/B',
+        # 2026-10-30). Each holds a number the director gave and shows that number —
+        # there is no vocabulary to map, so no options. They belong on this side of
+        # the partition for the same reason the dates do.
+        #
+        # ⚠️ AND THEY ARE ON THIS SIDE DESPITE BEING CHAIRS, which is worth saying
+        # because `cemetery_equipment` is on the OTHER side with a label map. The
+        # bundle is a vocabulary ("full_equipment" → "Full Equipment"); a count is a
+        # number. Rulings A/B' split exactly along that line.
+        "chairs_total",
+        "chairs_extra",
     }
 
 

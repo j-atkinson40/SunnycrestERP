@@ -55,13 +55,56 @@ def db_session():
         s.close()
 
 
+#: The permission `collections_outstanding` declares as its audience. Named here
+#: because the fixture below has to satisfy it and the reason is not local to either.
+COLLECTIONS_AUDIENCE_PERMISSION = "invoice.approve"
+
+
 @pytest.fixture
 def user(db_session):
+    """A testco user who can actually SEE the fragments this file is about.
+
+    ⚠️ THIS FIXTURE READ `.first()` UNTIL 2026-10-30 AND THAT MADE ONE TEST DECIDE BY
+    WHAT WAS ALREADY IN THE DATABASE. `test_the_endpoint_SERVES_prose_when_a_fragment_
+    emits` passed in CI and failed on a seeded laptop, and STATE.md carried it as an
+    open instance of the sweep's "tests that depend on leftover local data" item with
+    the cause unknown. Measured: the query has NO `ORDER BY`, testco seeds seven users
+    with different roles, and on this machine the row that came back was one whose role
+    lacks `invoice.approve`. `audience_admits` then returned False, `emit_for_user`
+    skipped the fragment before its condition ever ran, and the note served zero prose.
+
+    ⚠️ THE FAILURE WAS IN THE AUDIENCE GATE AND LOOKED LIKE AN UNWIRED SURFACE. The
+    test's own message — "the substrate is not wired to the surface" — named the defect
+    it was built for, and the substrate was wired fine. Measured at the time of this
+    fix: the condition yielded TWO instances and both passed `_validate_instance`;
+    `audience_admits` was the only False in the chain. An absent permission and an
+    absent wire produce the same empty list.
+
+    ⚠️ SO THE PERMISSION IS A PREMISE NOW, NOT AN ACCIDENT. The fixture asks the real
+    `permission_service` rather than re-deriving role logic — the same call
+    `audience_admits` makes — and skips with a sentence naming what was missing if no
+    such user exists, instead of handing back a user that silently cannot see anything.
+    """
     from app.models.user import User
-    u = db_session.query(User).filter(User.company_id == TESTCO_ID).first()
-    if u is None:
+    from app.services.permission_service import user_has_permission
+
+    # ⚠️ ORDERED, SO TWO RUNS ON THE SAME DATABASE AGREE. The missing ORDER BY was half
+    # of what made the old version unreproducible.
+    candidates = (
+        db_session.query(User)
+        .filter(User.company_id == TESTCO_ID)
+        .order_by(User.id)
+        .all()
+    )
+    if not candidates:
         pytest.skip("no user on the canonical tenant")
-    return u
+    for u in candidates:
+        if user_has_permission(u, db_session, COLLECTIONS_AUDIENCE_PERMISSION):
+            return u
+    pytest.skip(
+        f"no user on the canonical tenant holds {COLLECTIONS_AUDIENCE_PERMISSION}, "
+        f"which every fragment in this file declares as its audience — re-seed testco"
+    )
 
 
 # ── Synthesis: the three states ──────────────────────────────────────

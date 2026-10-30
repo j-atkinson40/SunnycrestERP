@@ -629,6 +629,34 @@ def resolve_surface(
             state = RowState.PARTIAL
         elif unanswered_required:
             state = RowState.NEEDED if done_signal else RowState.NOT_MENTIONED
+        elif value is None and secondary is not None:
+            # ⚠️ DEFECT 3c AGAIN, IN A ROW THAT COULD NOT REACH IT UNTIL 2026-10-30.
+            # A row whose SECONDARY rendered and whose primary did not has captured
+            # something and is not finished — which is what PARTIAL means. Without
+            # this clause it fell to NOT_MENTIONED below and the pane painted a
+            # rendered value in the not-mentioned style: italic, no check. That is
+            # exactly James's original screenshot, one row over.
+            #
+            # ⚠️ RULINGS A/B' OPENED IT, which is why the clause is new rather than
+            # missed. Before them a chair count could only exist alongside
+            # `cemetery_equipment = extra_chairs`, so the primary was always set when
+            # the secondary was; ruling D' makes "a count with no bundle" a RULED,
+            # reachable state — "order for riverside 12 chairs" renders the Equipment
+            # row as `value=None, secondary='12 chairs'` from one typed line.
+            #
+            # ⚠️ AND IT IS NOT FINISHED EVEN THOUGH NOTHING IN THE ROW IS REQUIRED.
+            # Neither `cemetery_equipment` nor either chair field is `required`, so
+            # `unanswered_required` is empty and the PARTIAL clause above cannot fire.
+            # What makes it unfinished is ruling D': `approval.assess` BLOCKS an order
+            # whose chairs have no bundle, rather than billing zero. DONE would claim
+            # a row the director still has to come back to.
+            #
+            # ⚠️ THE HIDE RULE BELOW ALREADY HELD THIS PRINCIPLE and the state did
+            # not, which is the drift this closes: its third condition is "no value —
+            # INCLUDING THE SECONDARY: a row showing anything at all has been
+            # mentioned." The row was kept on screen for that reason and then labelled
+            # not-mentioned anyway.
+            state = RowState.PARTIAL
         elif value is None:
             # Nothing required is missing, but nothing rendered either — an
             # optional row nobody answered, or a record-only row whose record

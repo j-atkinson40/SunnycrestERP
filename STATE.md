@@ -2,6 +2,208 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 2026-10-30 — slice-2 chairs rulings A-E, COMPLETE, GREEN GATE, PUSHED
+
+Supersedes the mid-flight handoff that stood here. Both WIP commits are squashed into
+one; the gate is green; `origin/main` carries it. ⚠️ **ONE RULED BEHAVIOUR DOES NOT
+EXIST AND NEEDS JAMES — see "The one thing that is owed" below. It is pinned by two
+tests that assert the wrong behaviour on purpose, so it cannot be lost.**
+
+### Gates, with denominators
+
+| gate | result | of what |
+|---|---|---|
+| backend pytest, `tests/ci_gate.txt` | **4298 passed, 5 skipped, 0 failed, exit 0** (985s) | **259 of 537** files (48%) |
+| frontend vitest | **5406 passed, 5 skipped, 1 todo, 0 failed** | **380 of 380** test files |
+| `tsc -b --noEmit` | exit 0 | whole frontend |
+| `npm run build` | exit 0 | — |
+
+The previous full gate read 4240 passed / 40 failed / 2 errors. ⚠️ **THE FIRST RE-RUN
+WAS STILL RED AT THREE, AND ALL THREE WERE REAL** — the 13-plus-1 the handoff listed
+were not the whole set. See "Three the handoff did not have" below.
+
+⚠️ **AND THE GATE RUNNER NEEDS `PYTHONPATH=.`, which cost one 1,000-second run.**
+Invoked as `.venv/bin/python <abs-path>/run_gate.py`, Python puts the SCRIPT's
+directory on `sys.path` and not the working directory, so `conftest.py`'s
+`pytest_plugins = ["tests._seeded_tenant"]` died with `No module named 'tests'` AFTER
+the collection banner had printed a plausible-looking "gate selects 259 files". The
+command is:
+
+    cd backend && set -a && source .env && set +a && \
+      PYTHONPATH=. scripts/run_and_report.sh <log> .venv/bin/python <scratch>/run_gate.py
+
+### Ruling E, landed
+
+- **2026-10-30** — `approval.chairs_for_display(included, total, extra)` composes the
+  row's chair line and `approval.included_chairs_for(db, tenant, answers)` reads the
+  bundle's `products.included_chairs`. Called from `session_service.read_state`'s row
+  comprehension, beside the urn-vault label flip. **Measured through `set_text`, which
+  is the pane's real path:** `"full equipment, 12 chairs"` and
+  `"full equipment, extra chairs 4"` both render **`Full Equipment · 12 chairs (4
+  extra)`**; `"full equipment, 2 chairs"` renders `2 chairs` with no `(0 extra)`;
+  `"lowering device only, 10 chairs"` renders `10 chairs (10 extra)`.
+- **2026-10-30** — ⚠️ **THE ARITHMETIC IS IN `approval.py`, NOT IN THE SERIALIZER, AND
+  THAT IS THE ONE DESIGN CHOICE WORTH DEFENDING.** The handoff said the composition
+  belongs in `session_service.py`, and the CALL does; the subtraction does not. This
+  repo has paid twice for a second body of one rule — two `title_case_name`s that
+  disagreed on `"MCLEOD"`, and a `CHAIRS_INCLUDED` constant that disagreed with the
+  product rows for two of five bundles. `billable_extra_chairs` and `chairs_readings`
+  already convert between the senses four lines away.
+- **2026-10-30** — **The disagreement shows BOTH readings and picks neither:**
+  `"full equipment, 12 chairs, 6 extra chairs"` renders
+  `12 chairs (4 extra) or 14 chairs (6 extra)`, the same numbers ruling B's blocker
+  gives. A row showing one of them would quietly answer the question the blocker asks.
+- **2026-10-30** — ⚠️ **`set_text` AND `add_line` DISAGREE ON THAT SENTENCE, measured.**
+  `set_text` captures both senses; `add_line` captures only `chairs_extra`, because the
+  per-line extractor sees one clause and `_chairs` tries the extra patterns first. Not
+  changed — `set_text` is the typed pane's declared source of truth — but recorded,
+  because the disagreement case is unreachable through the other door.
+- **2026-10-30** — Zero is delegated to `write_for_a_human(..., "count")`, which has
+  rendered `"0"` as `"none extra"` since 2026-10-15. "Never a bare 0" is that rule said
+  again, so it gets one body. **4 break tests on ruling E, all 4 caught.**
+
+### A defect ruling D' opened, found by three tests failing
+
+- **2026-10-30** — ⚠️ **DEFECT 3c CAME BACK, ONE ROW OVER, AND IT WAS LIVE FOR THE
+  LENGTH OF THE SLICE.** `resolve_surface` decided `NOT_MENTIONED` on `value is None`
+  alone and never looked at the secondary — so `"order for riverside 12 chairs"` showed
+  **"12 chairs" in the not-mentioned style**: italic, no check. The same thing James
+  photographed on the Service row on 2026-10-12.
+- **2026-10-30** — ⚠️ **IT WAS UNREACHABLE BEFORE THESE RULINGS, WHICH IS WHY NOBODY
+  MISSED IT.** A chair count could only exist alongside `cemetery_equipment =
+  extra_chairs`, so a rendered secondary implied a rendered primary. Ruling D' makes "a
+  count with no bundle" a ruled, reachable state.
+- **2026-10-30** — ⚠️ **AND THE HIDE RULE TEN LINES BELOW ALREADY HELD THE PRINCIPLE
+  THE STATE DID NOT.** Its third condition reads "no value — INCLUDING THE SECONDARY: a
+  row showing anything at all has been mentioned." The row was kept on screen for that
+  reason and then labelled not-mentioned anyway. Fixed as `PARTIAL`; `DONE` would claim
+  a row the director still has to come back to, since `assess` blocks it.
+- **2026-10-30** — ⚠️ **THE EQUIPMENT ROW CAN NO LONGER BE `PARTIAL` THE OLD WAY, AND
+  THAT IS WHAT BROKE THREE TESTS.** Their 10-27 subject rested on "choosing chairs makes
+  the count required"; rulings A/B' removed both halves, so **no field on that row is
+  required** and `unanswered_required` is always empty there. Repointed to the CEMETERY
+  row, which is the original measured subject — `rows.py` already records "with 'eta
+  11:30' and no cemetery named … It should have read PARTIAL". `test_a_complete_row_is_
+  done` stays on the equipment row because DONE needs a secondary and that is the only
+  row with a typeable one. **2 break tests on the two PARTIAL clauses, both caught.**
+
+### Three the handoff did not have
+
+- **2026-10-30** — **`test_r212_price_alignment::test_the_new_products_are_named_as_the_
+  capture_matches_them`** died on `KeyError: 'extra_chairs'`. Ruling A removed chairs
+  from `EQUIPMENT_PACKAGES`, so `EQUIPMENT_PRODUCT_NAMES` no longer has the key and the
+  name joining r212's product to the billing code moved to
+  `approval.EXTRA_CHAIRS_PRODUCT_NAME`. The migration's row is unchanged. Still read
+  from the code rather than typed as a literal, because a literal would have gone on
+  agreeing with the migration while the capture layer looked elsewhere.
+- **2026-10-30** — ⚠️ **`test_note_session2_fragments::test_the_endpoint_SERVES_prose_
+  when_a_fragment_emits` IS SOLVED, AND IT IS SWEEP ITEM 4's FIRST CLOSED INSTANCE.**
+  Confirmed pre-existing by running it in a worktree at `0eb1d217` before any of this
+  slice's changes — it failed identically. The cause, measured: the `user` fixture was
+  `query(User).filter(company_id == TESTCO_ID).first()` with **no `ORDER BY`**, testco
+  seeds seven users with different roles, and the row that came back on this laptop
+  holds no `invoice.approve` — which every fragment in that file declares as its
+  audience. `audience_admits` returned False, `emit_for_user` skipped the fragment
+  before its condition ran, and the note served zero prose.
+- **2026-10-30** — ⚠️ **AND THE FAILURE LOOKED LIKE THE DEFECT THE TEST WAS BUILT FOR.**
+  Its own message says "the substrate is not wired to the surface", and the substrate
+  was wired fine: measured at the time of the fix, the condition yielded TWO instances
+  and both passed `_validate_instance`; `audience_admits` was the only False in the
+  chain. **An absent permission and an absent wire produce the same empty list.** The
+  fixture now asks the real `permission_service` — the same call `audience_admits`
+  makes — orders by id, and skips with a sentence naming the missing permission.
+  Break-tested by unwiring `emit_for_user` from the endpoint: still caught.
+- **2026-10-30** — **The third was mine**: `test_a_complete_row_is_done` expected
+  `"4 chairs"` and ruling E renders `"4 extra chairs"` there, because that fixture's
+  tenant has no products at all, so there is no bundle row to read an included count
+  from. Correct behaviour, stale assertion — **and I had not re-run that file after
+  wiring E.** It is also the new-tenant case made visible: `included_chairs` is set on
+  production and by no seed, so every bundle on a fresh tenant lands on that branch.
+
+### The 13 declared sets, and a 14th on the other side of the wire
+
+- **2026-10-30** — All 13 updated by naming the new fields, none loosened to a subset
+  check. `chairs_total` and `chairs_extra` joined `UNEXTRACTABLE_OPTIONAL` beside
+  `cemetery_equipment` on the same ground, checked rather than assumed:
+  `ringcentral_call_extractions` has no chairs column and no equipment column.
+- **2026-10-30** — ⚠️ **`test_every_field_is_typeable`'s SOURCE SCAN HIT THE LIMIT IT
+  HAD DECLARED, AND THEN A SECOND ONE IT HAD NOT.** Its docstring says "a pass that
+  wrote through a variable key would be invisible to it. None does today" — the first
+  version of the chairs block made that false with `values[field] = `. The extractor now
+  writes through **two literals**, which removes the blind spot instead of teaching a
+  constructed-name instrument a second special case.
+- **2026-10-30** — ⚠️ **THE SECOND LIMIT IS THE FINDING: THE SCAN WAS READING COMMENTS
+  AS CODE.** The comment added at that write site quoted the pattern it described and
+  the scan credited a field called `literal`. It was loud only because the invented name
+  was undeclared; **a comment quoting a REAL field id would have silently credited a
+  field nothing writes**, which is the unsafe direction. Comments are stripped now.
+  Measured at the time: 20 fields found with comments included and the SAME 20 with them
+  stripped — the hole was open and empty. Break-tested with a comment naming a fake
+  field: not credited.
+- **2026-10-30** — ⚠️ **A 14TH DECLARED SET WAS IN THE FRONTEND AND NOTHING COULD HAVE
+  CAUGHT IT.** `GuidedQuestion.NUMERIC_QUESTION_FIELDS` listed `extra_chairs_count`, a
+  field that had ceased to exist, and its test asserted the same dead id — so the list
+  and the test agreed with each other about a name the schema had dropped. **Two halves
+  of one constructed name cannot cross-check each other.** Renamed to the two live ids
+  and the retired name pinned as a negative. Neither chair field can be asked today
+  (`required_when=Never()`), and the entry is kept because the capture-time ask is the
+  named first consumer of the sweep's combinators.
+- **2026-10-30** — `test_ONE_SPAN_MAY_CARRY_TWO_FIELDS` repointed from `"12 chairs"` to
+  `_year_pair`, which its own docstring already named as "the same shape and the same
+  precedent". Repointed rather than deleted: nothing else asserts a span's field tuple
+  is ever longer than one. A new test pins the separation from the span side.
+
+### The one thing that is owed — RULED BEHAVIOUR THAT DOES NOT EXIST
+
+- **2026-10-30** — ⚠️ **"extra chairs" WITH NO NUMBER IS LOST ENTIRELY. IT DOES NOT ASK
+  AT CAPTURE AND IT DOES NOT BLOCK AT APPROVAL.** What James accepted was *"the
+  approval-time block for a numberless 'extra chairs'"* — later and louder. What is
+  implemented is neither. **Measured, with a bundle named, which is the fix the handoff
+  prescribed:**
+
+      'full equipment, extra chairs'   values={funeral_home, cemetery_equipment}
+                                       lines=[('equipment', 'Full Equipment')]
+                                       blockers=[]            ← APPROVES CLEANLY
+
+  A director names a bundle and extra chairs, the order approves with no blocker at all,
+  and the invoice carries the bundle and no chairs.
+- **2026-10-30** — ⚠️ **THE HANDOFF'S "The code is correct" WAS WRONG, AND GIVING THE
+  SENTENCE A BUNDLE DOES NOT REACH THE BLOCKER.** `approval.assess` enters its chairs
+  branch only under `if chairs_total is not None or chairs_extra is not None`. A
+  numberless mention writes NEITHER field — by design, since it names no number — so
+  **`"Chairs were named but the count is still needed."` is dead code on that path.** It
+  fires only for a malformed count, which is how the positive control in
+  `test_the_count_is_still_needed_BLOCKER_is_unreachable_from_a_numberless_mention`
+  reaches it.
+- **2026-10-30** — ⚠️ **AND IT IS A REGRESSION PAST WHAT WAS ACCEPTED.** Before ruling A
+  the sentence set `cemetery_equipment = extra_chairs`, which made `extra_chairs_count`
+  REQUIRED, so capture ASKED. "Later and louder" was accepted; **"gone and silent" was
+  not.**
+- **2026-10-30** — **Nothing is bolted on, per James: *"nothing gets bolted on now."***
+  Recording the mention needs somewhere to put it and all three candidates are his call:
+  1. a sentinel in `chairs_total` (`""` = "named, count unknown") — two fields still,
+     but a field whose stored value is not a value;
+  2. the `conflicts` channel into `assess`, which today means "an answer availability
+     forbids" and would be widened to mean "incomplete";
+  3. stop claiming the span, so "extra chairs" renders as UNPLACED text and the director
+     sees at capture that it was not understood — no new field, no new channel, and it
+     does **not** give the approval-time block that was ruled.
+- **2026-10-30** — ⚠️ **PINNED BY TWO TESTS THAT ASSERT THE WRONG BEHAVIOUR ON PURPOSE**
+  — `test_a_NUMBERLESS_MENTION_IS_LOST_ENTIRELY_which_is_NOT_what_was_ruled` and the
+  unreachable-blocker test beside it. Both say in their own text that they are wrong and
+  that the day the assertion starts failing is the day the gap closes. A third smaller
+  oddity is recorded there too: the extractor claims the span as **`captured` for
+  `chairs_total`** while writing nothing, so the bar underlines as understood a phrase
+  that produced no value.
+
+### Still owed, unchanged by this session
+
+1. **James's five checks** — his three typed sentences plus the two invoice-line checks.
+   They come after the green gate, and the gate is green.
+2. **The real-Chrome walk**, still outstanding across three sessions — the browser
+   extension is not connected in this environment.
+3. **The Oct 10 plan, in the repo** (CLAUDE.md §11 unreachable-source class).
+
 ## 2026-10-29 — cemetery towns WALKED on production, and the deceased was lowercase in the panes
 
 ### Walked
@@ -35,16 +237,27 @@ Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end 
 - **2026-10-29** — ⚠️ **AND RUN IT AGAINST `testco` FIRST, AS A POSITIVE CONTROL, BEFORE READING THE PRODUCTION RESULT.** It should report 6 displacements (green, john, johnson, river, rivers, smith). A zero with no control beside it is worthless: two earlier versions of this probe returned zero on BOTH tenants while the defect was live, and the first was only caught because the control failed to fire.
 - **2026-10-29** — Why this is owed at the cutover and not before: the 2026-10-29 measurement found `river`/`rivers` displacing *Riverside Memorial Chapel*, and **Riverside is demo seed**. James: *"the check that counts is against Sunnycrest's actual funeral homes and cemeteries, and those arrive at the onboarding cutover. That's when to run it again."*
 - **2026-10-29** — ⚠️ **AND THE EXECUTOR'S CLAIM THAT THIS "COULD ALREADY HAVE HAPPENED ON A REAL ORDER" WAS WRONG.** Riverside is seed and SO-2026-0001..0005 are seed orders, so **no real order has been affected**. Corrected by James. Recorded because the original phrasing would later have read as evidence of a production incident that never happened.
+- **2026-10-30** — ⚠️ **SET `products.included_chairs` ON THE NEW TENANT'S EQUIPMENT BUNDLES.** It is written on Sunnycrest's five PRODUCTION rows and nowhere else — no seed sets it. A new tenant's bundles are NULL, and `billable_extra_chairs` then **refuses to derive extras** and blocks with "Chairs were named but no equipment bundle is chosen" or "the count is still needed". James: *"Refusing is the right behavior, but setting it has to be on the setup checklist."* The rule is his: 8 for every bundle except Device Only and Vault Placer, which include 0 — *"a bundle includes chairs when a family is coming; no-family bundles include none."*
+- **2026-10-30** — ⚠️ **AND REFUSING IS NOT THE SAME AS BILLING ZERO**, which is why this is a checklist item rather than a defect. A NULL included count produces a BLOCKER, not a $0 chairs line — so the failure is loud at approval rather than silent on an invoice. The checklist exists so it is loud *before* a director types an order, not during one.
 - **2026-10-29** — The demo-data cleanup (SO-2026-0001…0005, INV-2026-0009, Fairview Burial Services, Hopkins, Riverside) is clear-and-re-enter at onboarding. **Nothing is deleted until James runs it.**
 
-### The sweep, queued after slice 2 — now FIVE items
+### The sweep, queued after slice 2 — now EIGHT items
 
 - **2026-10-29** — James has widened the sweep three times. Its items, as they stand:
   1. **Errors swallowed and shown as a normal "nothing to do"** — broad `except Exception` turning a failure into an empty result.
   2. **Messages that name the wrong cause** — the instrument or guard that says "DATABASE_URL is not set" when `SECRET_KEY` is missing.
   3. **Tests that depend on the calendar** — a weekday literal that resolves to today one day in seven.
   4. **Tests that depend on leftover local data** — pass or fail according to what is already in someone's database. Two instances found: three `tax_jurisdictions` tests green only because the table was empty, and `test_note_session2_fragments::test_the_endpoint_SERVES_prose_when_a_fragment_emits`, which CI passes and a seeded laptop fails.
-  5. **NEW 2026-10-29 — a RULE, not a cleanup: nothing may decide pass/fail by matching words in test output.** James, after the inventory came back empty: *"The repo's gates decide by exit code, so there's no grep to fix. The fifth sweep item becomes a rule: nothing may decide pass/fail by matching words in test output. It doesn't need a cleanup pass."* The original form — count `ERROR` as well as `FAILED` — is subsumed: a harness reading an exit code cannot miss either, and a harness reading words can always miss a third one.
+     - **2026-10-30 — ⚠️ THE SECOND IS CLOSED, AND THE CAUSE WAS NOT WHERE ANYONE WAS LOOKING.** Not the leftover `agent_anomalies` rows, which the test already filters past — the `user` FIXTURE. `query(User).filter(company_id == TESTCO_ID).first()` with no `ORDER BY`, over seven seeded users with different roles, returned one holding no `invoice.approve`; every fragment in that file declares that permission as its audience, so `emit_for_user` skipped the fragment before its condition ran. The fixture now asks the real `permission_service` and skips with the missing permission named. Full account in the 2026-10-30 section at the top.
+     - **2026-10-30** — ⚠️ **AND IT GENERALISES INTO THE ITEM RATHER THAN OUT OF IT:** an unordered `.first()` over a seeded table is the same shape as the empty-table case above. One reads whatever row the database happens to hand back; the other reads whatever rows it happens not to hold. **The remaining `tax_jurisdictions` instance is still open.**
+  5. **NEW 2026-10-30 — `getattr(row, "<column>", default)` ON A DB ROW HIDES A COLUMN THAT WAS NEVER SELECTED.** James, folding it into item 1: *"it reads as 'no value' instead of failing… Inventory every getattr with a default on DB rows; where the attribute is a real column, use plain attribute access so a missing SELECT raises and names itself. Keep getattr-with-default only where the attribute is genuinely optional, with a comment saying why."*
+     - **2026-10-30** — ⚠️ **THE INSTANCE THAT PROMPTED IT COST FIVE FAILING TESTS AND LOOKED LIKE A CODE BUG.** `approval._product_by_exact_name` does an explicit `SELECT id, name, price`, so `getattr(prod, "included_chairs", None)` fell to its default and **every** chairs derivation correctly refused to compute. The derivation was right; the data was never fetched. `prod.included_chairs` would have raised and named itself.
+     - **2026-10-30** — ⚠️ **AND IT IS THE SWALLOWED-ERROR SHAPE IN A NEW FORM**, which is why James filed it under item 1 rather than as a sixth item: a failure ("this column is not in the result") was converted into a plausible value ("this bundle includes no chairs"). Same family as the `except Exception` that reads as "nothing to do".
+  6. **NEW 2026-10-30 — `FieldDefinition.required_when` DEFAULTS TO `Always()`, which reads as the opposite of its name.** Omitting it makes a field REQUIRED. Measured: leaving it off put `chairs_extra` and the internal `chairs_count_pending` in `missing` on every order, blocking any capture that never mentioned chairs. James: *"make it required to state explicitly, or flip the default, your choice with the reason recorded."*
+  7. **NEW 2026-10-30 — `conditions.py` HAS NO `And`/`Or`/`Not`, and that absence has now shaped a design.** James: *"The proper fix is the 'and' and 'or' combinators I parked earlier. This becomes their first real use, so it goes in the sweep, and nothing gets bolted on now."*
+     - **2026-10-30** — ⚠️ **FIRST CONSUMER, NAMED:** restoring the capture-time ask for a numberless `"extra chairs"`. The honest condition is `chairs_mentioned AND neither-number-answered`, which is unexpressible today — which is why the executor reached for a third field, and why that field had to be removed again.
+     - **2026-10-30** — ⚠️ **AND THE ABSENCE IS NOT ONLY AN INCONVENIENCE: IT PUSHED A DESIGN TOWARD A STRUCTURAL WEAKENING.** A field with no row is a second entry in the schema's orphan set, which `test_the_only_unmappable_unconditional_field_is_the_named_one` permits exactly one of. The combinators remove the pressure rather than the guard. ⚠️ **NO SECOND ORPHAN** (ruled).
+  8. **2026-10-29 — a RULE, not a cleanup: nothing may decide pass/fail by matching words in test output.** James, after the inventory came back empty: *"The repo's gates decide by exit code, so there's no grep to fix. The fifth sweep item becomes a rule: nothing may decide pass/fail by matching words in test output. It doesn't need a cleanup pass."* The original form — count `ERROR` as well as `FAILED` — is subsumed: a harness reading an exit code cannot miss either, and a harness reading words can always miss a third one.
 
 - **2026-10-29** — ⚠️ **ITEM 5's INVENTORY CAME BACK EMPTY IN COMMITTED CODE, AND THAT IS THE FINDING RATHER THAN A DISAPPOINTMENT.** The instance that prompted it was an ad-hoc break-test harness typed into a session, not a file. Searched: every `*.sh`, `*.yml`, `*.yaml` and `*.py` outside `node_modules`/`.venv` for a grep that reads `FAILED` to decide an outcome — **zero**. The repo's gates decide by EXIT CODE, which counts errors for free. `ci.yml`'s vitest block parses `status === "failed"` but is a REPORTER (`exit 0`), and its own comment at line 231 already names the exact condition: *"vitest exits 1 on an UNHANDLED error regardless of how many tests passed."*
 - **2026-10-29** — So item 5 is a **rule**, not a cleanup. ⚠️ **AND IT TOOK ITS OWN SCALP WITHIN THE HOUR.** The monitor watching the gate for this very commit fired early on `errors.pydantic.dev` — a substring match on "error" inside a deprecation-warning URL — while the suite was at 44%. Caught by reading the anchored summary line instead. James: *"Its own monitor tripping on 'errors.pydantic.dev' is exactly the failure that rule exists to stop."* ⚠️ **AND IT IS THE SAME SHAPE AS THE 237 UNCOLLECTED TESTS**, which is why James filed it here: a check that went quiet and read as a pass. The 237 were invisible because `SECRET_KEY` was unset and nothing said so; the eleven ERRORs were invisible because the harness only knew one word for failure.

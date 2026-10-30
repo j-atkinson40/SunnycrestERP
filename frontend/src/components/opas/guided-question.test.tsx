@@ -396,13 +396,21 @@ describe("when a digit must be left alone", () => {
 describe("which questions take numbers", () => {
   it("the four the prototype names, plus ours", () => {
     /** ⚠️ THE PROTOTYPE'S LIST IS `['time','dates','day']`; these are this schema's ids
-     *  for the same things. `extra_chairs_count` is ours and not the prototype's — it
-     *  is literally "how many", so it belongs by the same reasoning. */
+     *  for the same things. The chair counts are ours and not the prototype's — they
+     *  are literally "how many", so they belong by the same reasoning.
+     *
+     *  ⚠️ THIS TEST ASSERTED `extra_chairs_count` UNTIL 2026-10-30 AND WAS GREEN ON A
+     *  FIELD THAT NO LONGER EXISTED. Rulings A/B' split it into two, thirteen backend
+     *  declarations failed on the rename, and this one passed throughout — because
+     *  `questionTakesNumbers` is a membership check over a hand-written list, so the
+     *  test and the list agreed with each other about a name the schema had dropped.
+     *  Two halves of one constructed name cannot cross-check each other. */
     expect(questionTakesNumbers("service_time")).toBe(true)
     expect(questionTakesNumbers("service_date")).toBe(true)
     expect(questionTakesNumbers("date_of_birth")).toBe(true)
     expect(questionTakesNumbers("date_of_death")).toBe(true)
-    expect(questionTakesNumbers("extra_chairs_count")).toBe(true)
+    expect(questionTakesNumbers("chairs_total")).toBe(true)
+    expect(questionTakesNumbers("chairs_extra")).toBe(true)
   })
 
   it("and the ones that do not", () => {
@@ -410,6 +418,10 @@ describe("which questions take numbers", () => {
     expect(questionTakesNumbers("vault")).toBe(false)
     expect(questionTakesNumbers("cemetery")).toBe(false)
     expect(questionTakesNumbers(null)).toBe(false)
+    /** ⚠️ THE RETIRED NAME, PINNED AS A NEGATIVE. Without this the rename above could
+     *  be undone by re-adding the old id beside the new ones and everything would stay
+     *  green while a dead field sat in a live list again. */
+    expect(questionTakesNumbers("extra_chairs_count")).toBe(false)
   })
 })
 

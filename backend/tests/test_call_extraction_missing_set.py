@@ -110,7 +110,19 @@ UNEXTRACTABLE_REQUIRED: set[str] = set()
 # extraction a column for it, so the call path can now answer it. It had been
 # unextractable since 2026-10-05 — which meant `eta` and `service_location_other`,
 # whose conditions both read it, could never have applied.
-UNEXTRACTABLE_OPTIONAL = {"date_of_birth", "date_of_death", "cemetery_equipment"}
+#
+# ⚠️ `chairs_total` AND `chairs_extra` JOINED 2026-10-30 (rulings A/B'), ON THE SAME
+# GROUND AS `cemetery_equipment` BESIDE THEM: `ringcentral_call_extractions` has no
+# column for either — checked, it has no chairs and no equipment column at all — so
+# `_captured_from_result` cannot map what the payload does not carry. They are
+# unconditional (`applies_when=Always()`) and optional (`required_when=Never()`), which
+# is exactly this set's population. They replace `extra_chairs_count`, which was never
+# in this set because it was CONDITIONAL on `cemetery_equipment == "extra_chairs"` and
+# so never selected by `_unconditional_ids`.
+UNEXTRACTABLE_OPTIONAL = {
+    "date_of_birth", "date_of_death", "cemetery_equipment",
+    "chairs_total", "chairs_extra",
+}
 
 UNEXTRACTABLE = UNEXTRACTABLE_REQUIRED | UNEXTRACTABLE_OPTIONAL
 

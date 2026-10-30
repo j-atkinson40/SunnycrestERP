@@ -42,7 +42,11 @@ from app.models.capture_session import (
     CaptureSession,
 )
 from app.services import capture
-from app.services.capture.approval import describe_approve_effect
+from app.services.capture.approval import (
+    chairs_for_display,
+    describe_approve_effect,
+    included_chairs_for,
+)
 from app.services.capture.typed_extraction import (
     EXTRACTOR,
     evaluate_typed,
@@ -807,6 +811,30 @@ def read_state(
     # the `FormResolver` was added to avoid in the first place.
     vault_is_cremation = _is_cremation(db, company_id, row)
 
+    # ⚠️ RULING E, AND IT IS COMPOSED HERE FOR THE REASON THE LABEL FLIP ABOVE IS.
+    # James, 2026-10-30: *"`Full equipment · 12 chairs (4 extra)` when extras are
+    # non-zero, `Full equipment · 2 chairs` at or under the included count, and never
+    # a bare 0 — and it shows BOTH numbers whichever sense the director used."*
+    #
+    # The derived extra needs the bundle's own `products.included_chairs`, and neither
+    # `rows.py` nor `surfaces.py` has a database: the row carries the two senses as a
+    # secondary (`chairs_total`, `chairs_extra`) and this is the first layer that can
+    # turn them into one sentence. Exactly where the urn-vault label flip already
+    # lives, and for the same reason.
+    #
+    # ⚠️ READ ONCE PER RESPONSE, NOT PER ROW. It is a product lookup; the row
+    # comprehension below runs ten to twelve times.
+    #
+    # ⚠️ AND `None` HERE IS NOT "NO CHAIRS INCLUDED" — it is "the included count could
+    # not be read", which is why `chairs_for_display` refuses to convert between the
+    # senses rather than assuming zero. A new tenant's bundles are NULL until the
+    # onboarding checklist sets them.
+    chairs_line = chairs_for_display(
+        included_chairs_for(db, company_id, rendered_answers),
+        rendered_answers.get("chairs_total"),
+        rendered_answers.get("chairs_extra"),
+    )
+
     # ⚠️ THE SUMMARY'S LINES AND BLOCKERS ARE COMPUTED ONLY IN REVIEW. Assessing on
     # every keystroke would run two product lookups and a customer lookup per
     # extraction, and would report "nothing to bill" at the first character — a
@@ -943,7 +971,24 @@ def read_state(
                     ),
                     "state": r.state.value,
                     "value": r.value,
-                    "secondary_value": r.secondary_value,
+                    # ⚠️ THE EQUIPMENT ROW'S SECONDARY IS REPLACED, NOT DECORATED, AND
+                    # THAT IS RULING E. `resolve_surface` renders the first chair
+                    # field that has a value — so "extra chairs 4" on Full Equipment
+                    # produced the bare "4 chairs", which READS AS A TOTAL and is the
+                    # extras. One number, the wrong sense, and nothing saying which.
+                    # The composed form says both: "12 chairs (4 extra)".
+                    #
+                    # ⚠️ `or r.secondary_value` IS NOT A FALLBACK TO THE OLD STRING.
+                    # `chairs_line` is None exactly when neither chair field holds a
+                    # number, and in that case `r.secondary_value` is None too — the
+                    # row has no other secondary source. It is there so that a future
+                    # secondary added to this row is not silently dropped by a clause
+                    # about chairs.
+                    "secondary_value": (
+                        (chairs_line or r.secondary_value)
+                        if r.row_id == "cemetery_equipment"
+                        else r.secondary_value
+                    ),
                     # ⚠️ THE PILL AND THE AMBER BOTH READ THIS, which is what makes
                     # "the pill count equals the number of amber-able rows" true by
                     # construction. The pill used to count missing FIELDS while the
