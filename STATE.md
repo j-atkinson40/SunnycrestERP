@@ -32,6 +32,31 @@ command is:
     cd backend && set -a && source .env && set +a && \
       PYTHONPATH=. scripts/run_and_report.sh <log> .venv/bin/python <scratch>/run_gate.py
 
+### The deploy, verified from outside — and the marker grep INVERTED
+
+⚠️ **NOT FROM DEPLOY LOGS**, which CLAUDE.md forbids reading (`seed_sunnycrest.py`
+prints a generated password).
+
+| half | result |
+|---|---|
+| CI run 41105088110 | Frontend CI **success**, Backend CI **success** |
+| backend | `api.getbridgeable.com/api/health` `commit` = **`e655f4fc5bbf…`**, `db: connected`, `environment: production` |
+| frontend | served bundle **`index-DXkNdWNX.js`**, 6,792,110 bytes |
+
+⚠️ **AND THE GREP IS DISCRIMINATING BECAUSE IT WAS RUN ON BOTH SIDES AND THE RESULT
+INVERTED.** Markers present on a new bundle alone prove nothing about whether the grep
+could ever have said otherwise. The pre-change source (`ffd900eb`'s `GuidedQuestion.tsx`)
+was built locally and grepped with the same three strings:
+
+| marker | built from `ffd900eb` | served bundle |
+|---|---|---|
+| `chairs_total` | **0** | **1** |
+| `chairs_extra` | **0** | **1** |
+| `extra_chairs_count` | **1** | **0** |
+
+Three markers, three inversions, no overlap — so the served bundle is this commit's and
+not a cached predecessor. The file was restored and the tree re-checked clean afterwards.
+
 ### Ruling E, landed
 
 - **2026-10-30** — `approval.chairs_for_display(included, total, extra)` composes the
