@@ -83,11 +83,38 @@ as he does not stop on a bare in-range number.
 - **2026-11-02** — The capture PILLS already printed `{glyph}{i+1}`, so they needed no
   change. `IDLE_HINT` and `DONE_HINT` carry no digits.
 
+### ⚠️ CI WENT RED ON THE SUITE-SIZE RATCHET, AND THE GUARD WAS RIGHT TWICE
+
+- **2026-11-02** — Local vitest was green and **Frontend CI failed**:
+  `suite-size: FAIL — files shrank: ran 379, baseline 380 … tests shrank: ran 5381,
+  baseline 5412 (31 missing)`. `fixtures/suite-size.json` is a FLOOR whose own text
+  says *"Removing tests on purpose means lowering these IN THE SAME DIFF"* — and I
+  deleted `pick-digit.test.ts` without touching it. Caught exactly as designed.
+- **2026-11-02** — ⚠️ **AND THE NUMBER DID NOT MATCH THE FILE, WHICH IS THE SECOND
+  FINDING.** CI said 31 missing; the deleted file carried **36** tests (17 `it` plus two
+  `it.each` blocks, one over the 15 `NUMBER_LABELS`) — measured by restoring it and
+  running it alone. The gap is that **the floor was already 5 behind**: the suite had
+  grown to 5417 by `8e026939` with the ghost tests added for ruling C earlier the same
+  day, and the script PASSES on growth while printing *"raise
+  fixtures/suite-size.json when convenient so the floor keeps up"*. That reminder was
+  printed in CI and nobody acted on it. `5417 − 36 = 5381`, which is what ran.
+- **2026-11-02** — ⚠️ **SO A FLOOR THAT ONLY MOVES DOWN IN REVIEWED COMMITS STILL
+  DRIFTS UP BY NEGLECT, AND THE DRIFT HIDES THE SIZE OF A LATER REMOVAL.** Had the
+  floor been 5417, CI would have reported −36 and the number would have matched the
+  file. Raise it in the commit that ADDS tests, not "when convenient". Recorded in the
+  fixture itself so the next reader finds the arithmetic beside the number.
+- **2026-11-02** — Reconciled by measurement rather than by subtraction: the deleted
+  file alone (36), and the three edited files before and after (181 − 36 = 145, and 145
+  now — net zero). ⚠️ **AND `npm run test:assert-size` RUNS LOCALLY** — it exists and I
+  did not run it, which is the whole of why this reached CI. `CI=true npm run test:ci`
+  then `npm run test:assert-size` is the pair.
+
 ### Gates, with denominators
 
 | gate | result | of what |
 |---|---|---|
 | frontend vitest | **5375 passed, 5 skipped, 1 todo, 0 failed** | **379 of 379** test files (380 before — `pick-digit.test.ts` went with its module) |
+| frontend suite-size ratchet | **ran 379 / 5381, baseline 379 / 5381** | the floor, lowered in this commit |
 | `tsc -b --noEmit` | exit 0 | whole frontend |
 | `npm run build` | exit 0 | — |
 | backend pytest, `tests/ci_gate.txt` | **4362 passed, 5 skipped, 0 failed, exit 0** (1029s) | **262 of 540** files (48%) — **no backend file changed in this commit**, and the number is identical to the previous run, which is the expected result rather than a coincidence |
