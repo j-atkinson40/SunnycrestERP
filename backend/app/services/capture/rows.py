@@ -533,6 +533,22 @@ def resolve_surface(
     #: Burial Vault doesn't offer Nameplate Only" — the message exists precisely
     #: because the director DID mention it.
     conflicted_field_ids: frozenset[str] = frozenset(),
+    #: Secondary text the CALLER composed, by row id — because this layer cannot.
+    #:
+    #: ⚠️ IT EXISTS SO THE STATE AND THE DISPLAY STAY ONE DECISION. The equipment
+    #: row's chair line needs the bundle's `products.included_chairs` and the two
+    #: numberless chair FLAGS, and this module has neither a database nor any way to
+    #: walk a key the template does not declare. Until 2026-11-02 the serializer
+    #: composed that string and substituted it into the response dict AFTER the state
+    #: had been decided here — so `"chairs"` with no bundle rendered the word while the
+    #: row said NOT_MENTIONED, which is defect 3c again, arrived by a new route.
+    #:
+    #: ⚠️ A ROW PRESENT AS A KEY HANDS THIS LAYER ITS WHOLE SECONDARY, `None` INCLUDED.
+    #: Falling back to `_first` when the composed value is None would make an empty
+    #: composition mean "use the raw fields", and the raw fields are the thing the
+    #: composition exists to replace — `"extra chairs 4"` on Full Equipment reads
+    #: "4 chairs" raw, which is the extras wearing the total's label.
+    composed_secondary: "dict[str, str | None] | None" = None,
 ) -> ResolvedSurface:
     """Render one surface's slots against the resolved schema and the answers.
 
@@ -575,9 +591,12 @@ def resolve_surface(
             continue
 
         value = _first(row.sources, values, records, _defs)
-        secondary = (
-            _first(row.secondary, values, records, _defs) if row.secondary else None
-        )
+        if composed_secondary is not None and row.id in composed_secondary:
+            secondary = composed_secondary[row.id]
+        else:
+            secondary = (
+                _first(row.secondary, values, records, _defs) if row.secondary else None
+            )
 
         unanswered_required = [
             i for i in ids

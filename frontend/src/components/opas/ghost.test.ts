@@ -208,3 +208,71 @@ describe("an empty vocabulary", () => {
     expect(completionFor("hop", 3, [])).toBeNull()
   })
 })
+
+/**
+ * ⚠️ WHAT THE VOCABULARY ENDPOINT NOW SENDS FOR CHAIRS, AND WHAT IT USED TO. Ruling
+ * A/C (James, 2026-11-02) removed the billing-line product name and added the chairs
+ * words, so this fixture is the AFTER and `CHAIRS_BEFORE` below is the BEFORE —
+ * measured from Sunnycrest's real vocabulary on both sides of the change.
+ */
+const CHAIRS_AFTER: VocabTerm[] = [
+  t("chairs", "chairs", true),
+  t("extra chairs", "chairs", true),
+  t("Monticello Burial Vault", "vault", true, "burial_vault"),
+  t("Full Equipment", "equipment", true),
+]
+
+/**
+ * ⚠️ THE TWO TERMS THE BAR USED TO CARRY, AND THE SECOND ONE IS THE DEFECT. The
+ * platform's `Graveside Chairs` arrived as kind `vault` (its form is `equipment`), and
+ * the tenant's price-list row `Extra Chairs (Over 8)` as kind `product` — a kind the
+ * ghost treats as INTERIOR-matchable, so the word "Chairs" inside it was a match point.
+ */
+const CHAIRS_BEFORE: VocabTerm[] = [
+  t("Graveside Chairs", "vault", false, "equipment"),
+  t("Extra Chairs (Over 8)", "product", true),
+  t("Monticello Burial Vault", "vault", true, "burial_vault"),
+]
+
+describe("ghosts complete toward words a person types (James, 2026-11-02)", () => {
+  it("completes 'chai' to 'chairs' and never to a price-list name", () => {
+    const g = completionFor("chai", end("chai"), CHAIRS_AFTER)
+    expect(g?.term.text).toBe("chairs")
+    expect(g?.suffix).toBe("rs")
+  })
+
+  it("completes 'extra ch' to 'extra chairs'", () => {
+    const g = completionFor("extra ch", end("extra ch"), CHAIRS_AFTER)
+    expect(g?.term.text).toBe("extra chairs")
+    expect(g?.suffix).toBe("airs")
+  })
+
+  it("offers nothing more once 'chairs' is fully typed", () => {
+    expect(completionFor("chairs", end("chairs"), CHAIRS_AFTER)).toBeNull()
+  })
+
+  /**
+   * ⚠️ THE BUG, REPRODUCED, AND IT IS WHAT MAKES THE THREE TESTS ABOVE EVIDENCE. They
+   * assert the ghost's output over a FIXTURE, so they would pass against a ghost that
+   * had never been wrong — this one shows the exact string James saw, from the exact
+   * vocabulary the endpoint used to send. The fix is in `vocabulary.py`, not here:
+   * `ghost.ts` is unchanged, which is the point.
+   */
+  it("REPRODUCES the defect from the old vocabulary — ' (Over 8)' after the caret", () => {
+    const g = completionFor("chairs", end("chairs"), CHAIRS_BEFORE)
+    expect(g?.suffix).toBe(" (Over 8)")
+    expect(g?.term.text).toBe("Extra Chairs (Over 8)")
+  })
+
+  /**
+   * ⚠️ AND THE RULED BEHAVIOUR THE FILTER MUST NOT COST. "monti" reaching
+   * "cello Burial Vault" is James's own verify line from 2026-10-16; a vocabulary
+   * filter that over-reached would break it, and nothing else in this file would say so
+   * because the other fixtures predate the filter.
+   */
+  it("still completes 'monti' through the filtered vocabulary", () => {
+    const g = completionFor("monti", end("monti"), CHAIRS_AFTER)
+    expect(g?.term.text).toBe("Monticello Burial Vault")
+    expect(g?.suffix).toBe("cello Burial Vault")
+  })
+})

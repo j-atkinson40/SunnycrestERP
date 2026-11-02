@@ -109,6 +109,16 @@ EXTRA_CHAIRS_PRODUCT_NAME = "Extra Chairs (Over 8)"
 CHAIRS_TOTAL_FIELD = "chairs_total"
 CHAIRS_EXTRA_FIELD = "chairs_extra"
 
+#: ⚠️ IMPORTED FROM `schema` RATHER THAN RETYPED, AND NOT FROM THE EXTRACTOR THAT
+#: WRITES THEM. Two spellings of one string across two modules is the shape that let
+#: `CHAIRS_INCLUDED` disagree with the product rows; and importing them from
+#: `typed_extraction` turned `test_only_the_typed_path_imports_the_extractor` red,
+#: which is the E6 guarantee doing its job — billing must not depend on the typed path.
+from app.services.capture.schema import (  # noqa: E402
+    CHAIRS_EXTRA_PENDING_FLAG,
+    CHAIRS_WANTED_FLAG,
+)
+
 
 def _equipment_quantity(equip: str, answers: dict) -> Decimal:
     """How many of this equipment BUNDLE the line bills. Always one.
@@ -195,7 +205,14 @@ def chairs_readings(included: int | None, total: object, extra: object):
     )
 
 
-def chairs_for_display(included: int | None, total: object, extra: object) -> str | None:
+def chairs_for_display(
+    included: int | None,
+    total: object,
+    extra: object,
+    *,
+    wanted: bool = False,
+    extra_pending: bool = False,
+) -> str | None:
     """The equipment row's chair line — RULING E (James, 2026-10-30).
 
     *"`Full equipment · 12 chairs (4 extra)` when extras are non-zero,
@@ -233,6 +250,23 @@ def chairs_for_display(included: int | None, total: object, extra: object) -> st
     t = _as_int(total)
     e = _as_int(extra)
     if t is None and e is None:
+        # ⚠️ THE NUMBERLESS MENTIONS, ADDED BY RULING B (2026-11-02), AND THEY ARE
+        # REACHED ONLY WHEN NO NUMBER WAS GIVEN. A director who says both — "chairs"
+        # and then "12 chairs" — has given a count, and a count is more than a
+        # mention, so the arithmetic below wins and these never fire.
+        #
+        # ⚠️ "chairs" IS THE WHOLE STRING, NOT "0 chairs" OR "chairs (0 extra)". The
+        # row reads "Full equipment · chairs": the bundle brings them, there is
+        # nothing to count and nothing to bill, and a number on that row would be an
+        # answer nobody gave. This is the ruled text.
+        if wanted:
+            return "chairs"
+        # ⚠️ AND THE OVERAGE SAYS SO IN ITS OWN WORDS. "extra chairs" with no number
+        # is a real outstanding question — `assess` blocks on it — so the row must
+        # show that something about chairs was said rather than staying blank, which
+        # is what it did until today and is why the mention vanished silently.
+        if extra_pending:
+            return "extra chairs"
         return None
 
     # ⚠️ NO BUNDLE, NO CONVERSION — the same refusal `billable_extra_chairs` makes, and
@@ -436,6 +470,48 @@ def assess(
     # chairs from a bundle that includes none.
     chairs_total = answers.get(CHAIRS_TOTAL_FIELD)
     chairs_extra = answers.get(CHAIRS_EXTRA_FIELD)
+
+    # ── the two numberless mentions, by ruling (James, 2026-11-02) ─────────
+    #
+    # ⚠️ READ BEFORE THE ARITHMETIC AND SEPARATELY FROM IT, BECAUSE THE BRANCH BELOW
+    # CANNOT SEE THEM. `assess` enters its chairs arithmetic only when one of the two
+    # COUNT fields is present, and a numberless mention writes neither — which is
+    # exactly how `"Chairs were named but the count is still needed."` became dead
+    # code on the path it was written for. Measured 2026-10-30:
+    # `"full equipment, extra chairs"` approved with zero blockers and billed the
+    # bundle with no chairs. These two reads are what close that.
+    chairs_wanted = bool(answers.get(CHAIRS_WANTED_FLAG))
+    chairs_extra_pending = bool(answers.get(CHAIRS_EXTRA_PENDING_FLAG))
+    if chairs_extra_pending and chairs_total is None and chairs_extra is None:
+        # ⚠️ ALWAYS BLOCKS, WHATEVER THE BUNDLE INCLUDES. An overage is by definition
+        # on top of what the bundle brings, so no included count can satisfy it; the
+        # only thing that can is a number.
+        blockers.append("Chairs were named but the count is still needed.")
+    elif chairs_wanted and chairs_total is None and chairs_extra is None:
+        included = (
+            bundle_prod.included_chairs if bundle_prod is not None else None
+        )
+        if bundle_prod is None:
+            # ⚠️ THE SAME SENTENCE RULING D' USES FOR A COUNT WITH NO BUNDLE, and the
+            # same reason: what the family needs cannot be known until the bundle is.
+            blockers.append(
+                "Chairs were named but no equipment bundle is chosen — the "
+                "billable extras depend on what the bundle includes."
+            )
+        elif not included:
+            # ⚠️ `not included` CATCHES 0 AND None TOGETHER, AND BOTH MUST BLOCK FOR
+            # DIFFERENT REASONS. 0 is Device Only or Vault Placer — a no-family bundle
+            # that brings no chairs, so chairs were asked for and none are coming
+            # (ruling B). `None` is a bundle whose `included_chairs` was never set,
+            # which is the onboarding-checklist case: refusing is right there too,
+            # because billing zero would be a guess.
+            blockers.append(
+                "Chairs were named but this bundle includes none — how many chairs?"
+            )
+        # ⚠️ AND A BUNDLE THAT INCLUDES CHAIRS SAYS NOTHING AT ALL. Ruling B: the
+        # chairs are covered, there is nothing to bill and no count to ask for. The
+        # absence of an `else` here is the ruling, not an omission.
+
     if chairs_total is not None or chairs_extra is not None:
         included = getattr(bundle_prod, "included_chairs", None) if bundle_prod else None
         qty = billable_extra_chairs(included, chairs_total, chairs_extra)

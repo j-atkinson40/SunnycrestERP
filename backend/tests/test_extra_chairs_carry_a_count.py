@@ -67,6 +67,14 @@ from app.services.capture.approval import (
     chairs_readings,
 )
 from app.services.capture.rows import write_for_a_human
+#: ⚠️ IMPORTED FROM `schema`, WHICH IS WHERE THE FLAGS ARE DECLARED — not retyped as
+#: literals here. A test that spelled the key itself would go on passing after a rename
+#: while the blocker read a key nothing writes, which is the drift these two constants
+#: exist to prevent.
+from app.services.capture.schema import (
+    CHAIRS_EXTRA_PENDING_FLAG,
+    CHAIRS_WANTED_FLAG,
+)
 from app.services.capture.schema import EQUIPMENT_PACKAGES
 from app.services.capture.typed_extraction import _chairs, evaluate_typed, extract_text
 
@@ -365,98 +373,153 @@ def test_chairs_with_NO_NUMBER_is_a_GAP_not_a_one(world):
                 if l.description == EXTRA_CHAIRS_PRODUCT_NAME], v
 
 
-def test_a_NUMBERLESS_MENTION_IS_LOST_ENTIRELY_which_is_NOT_what_was_ruled(world):
-    """⚠️ OWED TO JAMES, AND PINNED HERE BECAUSE IT IS A SILENT LOSS. This test asserts
-    behaviour that is WRONG. It exists so the wrongness is measured, named and
-    unmissable rather than discovered on an invoice.
+def test_a_numberless_EXTRA_chairs_BLOCKS_and_no_longer_vanishes(world):
+    """⚠️ THE GAP THIS FILE PINNED FOR THREE DAYS, NOW CLOSED, AND THE OLD TEST IS WHY
+    THIS ONE READS LIKE THIS.
 
-    ⚠️ WHAT WAS RULED (2026-10-30): *"accept the approval-time block for a numberless
-    'extra chairs'. Capture-time ask comes back via proper condition combinators."*
-    The trade James accepted was LATER AND LOUDER — no capture-time question, but
-    `assess` refusing to approve an order whose chairs have no count.
+    Until 2026-11-02 two tests here asserted the WRONG behaviour on purpose —
+    `test_a_NUMBERLESS_MENTION_IS_LOST_ENTIRELY_which_is_NOT_what_was_ruled` and
+    `test_the_count_is_still_needed_BLOCKER_is_unreachable_from_a_numberless_mention` —
+    because the ruled approval-time block did not exist. Measured then:
+    `"full equipment, extra chairs"` approved with **zero blockers** and billed the
+    bundle with no chairs. Each of those tests said in its own text that the day its
+    assertion started failing was the day the gap closed. Both failed on ruling B.
 
-    ⚠️ WHAT IS ACTUALLY IMPLEMENTED IS NEITHER. MEASURED, not inferred:
-
-        'extra chairs'                   values={funeral_home}
-                                         blockers=['Nothing to bill …']   ← not chairs
-        'full equipment, extra chairs'   values={funeral_home, cemetery_equipment}
-                                         lines=[('equipment', 'Full Equipment')]
-                                         blockers=[]                      ← APPROVES
-
-    The second line is the defect in one row: a director names a bundle AND extra
-    chairs, the order approves with no blocker at all, and the invoice carries the
-    bundle and no chairs. The chairs are gone and nothing said so.
-
-    ⚠️ THE CAUSE IS ONE GATE, AND IT CANNOT BE FIXED BY PHRASING THE SENTENCE BETTER.
-    `approval.assess` reaches its chairs branch only under
-    `if chairs_total is not None or chairs_extra is not None`. A numberless mention
-    writes NEITHER field — by design, since "extra chairs" names no number — so the
-    branch is unreachable and `"Chairs were named but the count is still needed."` is
-    DEAD CODE on this path. It fires only for a malformed count (e.g. `chairs_total`
-    holding something `_as_int` refuses), never for the case it was written for.
-
-    ⚠️ AND IT IS A REGRESSION PAST WHAT WAS ACCEPTED, which is the part that needs a
-    ruling. Before ruling A this sentence set `cemetery_equipment = extra_chairs`,
-    which made `extra_chairs_count` REQUIRED, so capture ASKED. The slice was meant to
-    move that question later; it removed it instead. "Later and louder" was accepted —
-    "gone and silent" was not.
-
-    ⚠️ THE HANDOFF SAID THE OPPOSITE, AND THE CLAIM IS RECORDED SO IT IS NOT RE-DERIVED:
-    *"The fix is to the TEST: give the sentence a vault or a bundle so it reaches the
-    chairs path. The code is correct."* Giving it a bundle was tried first and is the
-    measurement above — the blocker still does not fire, because the gate is on the
-    FIELDS, not on whether lines exist.
-
-    ⚠️ WHY NOTHING IS BOLTED ON HERE. Recording the mention needs somewhere to put it,
-    and all three candidates are James's call, not an executor's:
-      1. a sentinel value in `chairs_total` (e.g. `""` meaning "named, count unknown")
-         — two fields still, but a field whose stored value is not a value;
-      2. the `conflicts` channel into `assess`, which today means "an answer the
-         availability config forbids" and would be widened to mean "incomplete";
-      3. stop claiming the span, so "extra chairs" renders as UNPLACED text and the
-         director sees at capture that it was not understood — no new field, no new
-         channel, and it does not give the approval-time block that was ruled.
-    James, 2026-10-30: *"nothing gets bolted on now."*
+    ⚠️ WHAT WAS MISSING WAS A PLACE TO PUT THE MENTION. `assess` enters its chairs
+    branch only when one of the two COUNT fields is present, and a numberless mention
+    writes neither — so the blocker string was dead code on the only path it was
+    written for. Ruling B records the mention as a FLAG outside the required set
+    (`CHAIRS_EXTRA_PENDING_FLAG`), which is the third attempt at this and the first
+    that neither invents a template field nor loses the mention.
     """
     db, cid = world
     v = _vals(db, cid, "full equipment, extra chairs")
+    # ⚠️ STILL NO COUNT — the flag is a record of the MENTION, not a number. If this
+    # started holding a count, the blocker below would stop being needed and the
+    # arithmetic would be billing something nobody said.
     assert v.get("chairs_total") is None, v
     assert v.get("chairs_extra") is None, v
+    assert v.get(CHAIRS_EXTRA_PENDING_FLAG) == "1", v
 
     ap = _assess(db, cid, v)
-    # the bundle bills, which is correct
+    assert [b for b in ap.blockers if "count is still needed" in b], ap.blockers
+    # and nothing is billed for chairs nobody has counted
+    assert not [l for l in ap.lines if l.description == EXTRA_CHAIRS_PRODUCT_NAME], ap.lines
+    # ⚠️ THE BUNDLE STILL BILLS. The order is blocked, not emptied — an order that
+    # lost its equipment line as well would be a second defect wearing the fix.
     assert [l.description for l in ap.lines if l.kind == "equipment"] == [
         "Full Equipment"
     ], ap.lines
-    # ⚠️ AND NOTHING AT ALL IS SAID ABOUT THE CHAIRS. The day this assertion starts
-    # failing is the day the gap closes — change it then, do not relax it now.
-    assert not [b for b in ap.blockers if "chair" in b.lower()], (
-        "the chairs gap has closed — update this test by ruling rather than "
-        "deleting it: " + repr(list(ap.blockers))
-    )
+
+
+def test_a_numberless_extra_chairs_blocks_WITH_NO_BUNDLE_TOO(world):
+    """Ruling B: *"Numberless EXTRA chairs → always blocks at approval until a count is
+    given."* Always means whatever the bundle is, including none — so this asserts the
+    other half rather than leaving it to the reader."""
+    db, cid = world
+    v = _vals(db, cid, "extra chairs")
+    assert v.get(CHAIRS_EXTRA_PENDING_FLAG) == "1", v
+    assert [b for b in _assess(db, cid, v).blockers
+            if "count is still needed" in b], v
+
+
+def test_the_flag_is_OUTSIDE_the_required_set_and_needs_no_row(world):
+    """⚠️ THE RULED MECHANISM, ASSERTED AS A MECHANISM. James, 2026-11-02: *"Both
+    blocks are stored-flag based, outside the required set."*
+
+    ⚠️ IT IS THE CONSTRAINT THAT KILLED THE PREVIOUS TWO ATTEMPTS, SO IT GETS A TEST
+    RATHER THAN A COMMENT. `chairs_count_pending` was a real `FieldDefinition` and had
+    to be removed because a field with no capture row is a second entry in the
+    schema's orphan set. A flag is invisible to the partition: not in `missing`, not
+    in `answered`, not in `unanswered_optional`, and not in the template at all.
+    """
+    from app.services.capture.schema import PLATFORM_DEFAULT_FIELDS
+
+    db, cid = world
+    declared = {f.field_id for f in PLATFORM_DEFAULT_FIELDS}
+    assert CHAIRS_WANTED_FLAG not in declared
+    assert CHAIRS_EXTRA_PENDING_FLAG not in declared
+
+    v = _vals(db, cid, "extra chairs")
+    _r, st, _c = evaluate_typed(db, tenant_id=cid, answers=v)
+    for where in (st.missing, st.answered, st.unanswered_optional,
+                  st.not_applicable, st.indeterminate):
+        assert CHAIRS_EXTRA_PENDING_FLAG not in where, (where,)
+    # ⚠️ AND THE CONTROL: the partition is not simply empty. An all-empty state would
+    # satisfy every assertion above while proving nothing about the flag.
+    assert st.missing, "nothing is missing on a funeral-home-only order — the partition is inert"
+
+
+# ── ruling B: a bare "chairs" is the NORMAL chairs, not an overage ───────────
+
+
+def test_bare_chairs_is_the_NORMAL_chairs_and_a_family_bundle_COVERS_them(world):
+    """⚠️ RULING B (James, 2026-11-02): *"a director saying 'chairs' is confirming
+    chairs, not asking for extras."* On a bundle that includes chairs there is nothing
+    to bill and nothing to ask.
+
+    ⚠️ THE READING IS THE ONE ALREADY IN FORCE ONE LEVEL UP. With a number, `"12
+    chairs"` is the TOTAL and `"extra chairs 4"` is the overage — the presence of the
+    word "extra" is what decides the sense. A bare `"chairs"` drops the number and
+    keeps the absence of "extra", so it lands on the same side as `"12 chairs"`.
+    """
+    db, cid = world
+    v = _vals(db, cid, "full equipment, chairs")
+    assert v.get(CHAIRS_WANTED_FLAG) == "1", v
+    assert v.get(CHAIRS_EXTRA_PENDING_FLAG) is None, v
+    assert v.get("chairs_total") is None and v.get("chairs_extra") is None, v
+
+    ap = _assess(db, cid, v)
+    # ⚠️ NOTHING ABOUT CHAIRS BLOCKS, which is the ruling. Full Equipment includes 8.
+    assert not [b for b in ap.blockers if "chair" in b.lower()], ap.blockers
+    # ⚠️ AND NO CHAIRS LINE. "Covered" means covered — a line at any quantity would
+    # bill a family for chairs their bundle already brings.
+    assert not [l for l in ap.lines if l.description == EXTRA_CHAIRS_PRODUCT_NAME], ap.lines
+    assert [l.description for l in ap.lines if l.kind == "equipment"] == [
+        "Full Equipment"
+    ], ap.lines
+
+
+def test_bare_chairs_on_a_bundle_that_includes_NONE_asks_how_many(world):
+    """⚠️ RULING B's SECOND BRANCH: *"Bundle with included_chairs = 0 (device only,
+    placer) → chairs wanted but none included: blocks at approval, 'How many
+    chairs?'"* The family is coming and the bundle brings no chairs, so a number is
+    genuinely needed.
+
+    ⚠️ THE TWO BUNDLES IN THIS FIXTURE DIFFER BY INCLUDED COUNT FOR EXACTLY THIS PAIR
+    OF TESTS. Full Equipment includes 8 and Lowering Device Only includes 0, so the
+    same sentence has two correct answers and a hard-coded 8 could not produce both.
+    """
+    db, cid = world
+    v = _vals(db, cid, "lowering device only, chairs")
+    assert v.get(CHAIRS_WANTED_FLAG) == "1", v
+    ap = _assess(db, cid, v)
+    assert [b for b in ap.blockers if "how many chairs" in b.lower()], ap.blockers
     assert not [l for l in ap.lines if l.description == EXTRA_CHAIRS_PRODUCT_NAME], ap.lines
 
 
-def test_the_count_is_still_needed_BLOCKER_is_unreachable_from_a_numberless_mention(world):
-    """⚠️ THE CAUSE, PINNED SEPARATELY FROM THE SYMPTOM, so a reader does not have to
-    take the paragraph above on trust. `assess` gates its whole chairs branch on one
-    of the two count fields being present; a numberless mention supplies neither.
-
-    ⚠️ THE POSITIVE CONTROL IS THE SECOND HALF AND IT IS WHAT MAKES THIS EVIDENCE. If
-    the blocker string had simply been deleted, the first assertion would pass for the
-    wrong reason. The second shows the message IS reachable — with a count field
-    present whose value `_as_int` refuses — so what the first measures is the GATE,
-    not the absence of the sentence.
-    """
+def test_bare_chairs_with_NO_BUNDLE_asks_for_the_bundle(world):
+    """Ruling B: *"Opas asks the bundle question if none is set."* At approval the same
+    fact is a blocker, and it is ruling D's sentence rather than a second one — what is
+    unknown is the bundle, not the chairs."""
     db, cid = world
-    v = _vals(db, cid, "full equipment, extra chairs")
-    assert not [b for b in _assess(db, cid, v).blockers
-                if "count is still needed" in b], v
+    v = _vals(db, cid, "chairs")
+    assert v.get(CHAIRS_WANTED_FLAG) == "1", v
+    ap = _assess(db, cid, v)
+    assert [b for b in ap.blockers if "no equipment bundle is chosen" in b], ap.blockers
 
-    forced = dict(v)
-    forced["chairs_total"] = ""
-    assert [b for b in _assess(db, cid, forced).blockers
-            if "count is still needed" in b], forced
+
+def test_a_COUNT_BEATS_THE_FLAG_so_a_director_who_says_both_is_billed_on_the_number(world):
+    """⚠️ THE PRECEDENCE, AND IT IS NOT ARBITRARY. "chairs ... 12 chairs" is one order
+    said twice, and the number is the more specific statement. If the flag won, a
+    director who confirmed chairs and then counted them would be billed for none."""
+    db, cid = world
+    v = dict(_vals(db, cid, "full equipment, 12 chairs"))
+    v[CHAIRS_WANTED_FLAG] = "1"
+    ap = _assess(db, cid, v)
+    assert not [b for b in ap.blockers if "chair" in b.lower()], ap.blockers
+    chairs = [l for l in ap.lines if l.description == EXTRA_CHAIRS_PRODUCT_NAME]
+    assert [str(l.quantity) for l in chairs] == ["4"], ap.lines
 
 
 def test_the_count_is_not_asked_when_chairs_were_never_mentioned(world):

@@ -77,3 +77,78 @@ def test_the_parties_are_there(db, sunnycrest):
     kinds = {t.kind for t in build_vocabulary(db, sunnycrest)}
     for k in ("funeral_home", "cemetery", "vault", "equipment", "personalization"):
         assert k in kinds, (k, sorted(kinds))
+
+
+# ── ruling A/C: the bar offers words a person types, not billing lines ───────
+
+
+def test_the_vault_FILLING_KINDS_carry_no_non_vault(db, sunnycrest):
+    """⚠️ RULING A/C (James, 2026-11-02): *"Ghost vocabulary excludes product names
+    that are billing lines."* Measured before the fix on this very tenant: the catalogue
+    half emitted `Graveside Chairs` (form `equipment`) as kind `vault`, and the tenant
+    half emitted `Extra Chairs (Over 8)` as kind `product` — both of which
+    `prefix_resolve.KINDS_VAULT` treats as vault candidates. Typing "chairs" therefore
+    ghost-completed to `" (Over 8)"`, a price-list overage name, and resolved into the
+    VAULT row.
+
+    ⚠️ ASKED THROUGH THE RAW RESOLVER RATHER THAN THROUGH `form`, because an alias
+    carries none. `test_the_vault_slot_only_takes_vaults.py` makes the same check the
+    hub of its door matrix; this one keeps it beside the builder that has to satisfy it.
+    """
+    from app.services.capture.prefix_resolve import KINDS_VAULT
+    from app.services.capture.vault_form import is_vault_form
+    from app.services.product_name_resolver import build_index, resolve
+
+    idx = build_index(db)
+    terms = [t for t in build_vocabulary(db, sunnycrest) if t.kind in KINDS_VAULT]
+    assert terms, "no vault-filling terms — this test is measuring nothing"
+    bad = [
+        (t.text, t.kind)
+        for t in terms
+        if any(not is_vault_form(c.form) for c in resolve(idx, t.text).candidates)
+    ]
+    assert bad == [], bad
+
+
+def test_the_CHAIRS_WORDS_are_offered_and_the_PRICE_LIST_NAME_IS_NOT(db, sunnycrest):
+    """⚠️ BOTH HALVES OF THE RULING, AND THE SECOND HALF IS WHY THE FIRST IS NEEDED.
+    James: *"chairs words come from the chairs vocabulary, not the Extra Chairs
+    product."* Excluding the product name without adding the words would have left a
+    director typing "chai" with no completion at all."""
+    terms = build_vocabulary(db, sunnycrest)
+    chairs = {t.text for t in terms if t.kind == "chairs"}
+    assert chairs == {"chairs", "extra chairs"}, sorted(chairs)
+    # ⚠️ THE BILLING LINE IS GONE FROM EVERY KIND, not merely demoted to another one.
+    assert not [t for t in terms if "(Over 8)" in t.text], [
+        (t.text, t.kind) for t in terms if "(Over 8)" in t.text
+    ]
+
+
+def test_the_CHAIRS_KIND_IS_NOT_A_VAULT_FILLING_KIND(db, sunnycrest):
+    """⚠️ IF IT WERE, THE FIX WOULD HAVE REOPENED THE DOOR IT CLOSED. `KINDS_VAULT`
+    decides which vocabulary kinds the prefix pass resolves as products; adding
+    "chairs" to the bar while leaving it in that set would send the word straight back
+    to the product resolver."""
+    from app.services.capture.prefix_resolve import KINDS_VAULT
+
+    assert "chairs" not in KINDS_VAULT, KINDS_VAULT
+
+
+def test_EVERY_OFFERED_CHAIRS_PHRASE_IS_ONE_THE_EXTRACTOR_UNDERSTANDS(db, sunnycrest):
+    """⚠️ THE TWO SIDES HELD TOGETHER, which is what the vocabulary module's own comment
+    promises. A phrase the bar completes to and the engine cannot read would be a
+    completion that produces "not understood" the moment it is accepted — the exact
+    shape of `startsCaptureWithParty`'s dead end."""
+    from app.services.capture.typed_extraction import _chairs
+    from app.services.capture.vocabulary import CHAIRS_PHRASES
+
+    for phrase in CHAIRS_PHRASES:
+        got = _chairs(phrase)
+        assert got is not None, phrase
+        sense, count, _span = got
+        assert count is None, (phrase, got)
+        assert sense in ("wanted", "extra_pending"), (phrase, got)
+    # ⚠️ AND THE TWO PHRASES MEAN DIFFERENT THINGS, which is ruling B. If both mapped to
+    # one sense the bar would be offering a distinction the engine does not make.
+    senses = {p: _chairs(p)[0] for p in CHAIRS_PHRASES}
+    assert len(set(senses.values())) == 2, senses

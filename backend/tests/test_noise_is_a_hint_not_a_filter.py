@@ -81,6 +81,51 @@ def variant_names(db) -> list[str]:
     return names
 
 
+@pytest.fixture(scope="module")
+def vault_variant_names(db) -> list[str]:
+    """The active variants that can BE a vault — the population the vault seam serves.
+
+    ⚠️ ADDED 2026-11-02 (ruling A), AND THE SPLIT IS THE WHOLE CORRECTION TO THIS FILE.
+    Its general test asserted that EVERY active variant is reachable by its own display
+    name through the VAULT seam, and that claim was written before the vault slot had an
+    acceptance rule. Eighteen of the fifty-two are not vaults — six `equipment` and
+    twelve `urn` — and ruling A says the vault field must refuse them. So the claim
+    narrows to the thirty-four it was always really about.
+
+    ⚠️ AND THE NARROWING IS GUARDED FROM BOTH SIDES. `test_no_NON_vault_variant_puts_a_
+    non_vault_in_the_slot` below is the other half: without it, "every vault variant is
+    reachable" could be satisfied by a seam that had quietly started accepting
+    everything again.
+    """
+    from app.services.capture.vault_form import is_vault_form
+
+    rows = db.execute(text(
+        "SELECT v.display_name, t.form FROM product_variant_templates v "
+        "JOIN product_templates t ON t.id = v.product_template_id "
+        "WHERE v.is_active IS TRUE"
+    )).all()
+    names = sorted({n for n, form in rows if is_vault_form(form)})
+    # ⚠️ MEASURED 2026-11-02: 34 of 52. Asserted as a floor so this fixture cannot
+    # silently shrink to a handful and take every claim below down with it.
+    assert len(names) > 25, f"only {len(names)} vault-form variants"
+    return names
+
+
+@pytest.fixture(scope="module")
+def non_vault_variant_names(db) -> list[str]:
+    """The active variants that CANNOT be a vault — equipment and urns."""
+    from app.services.capture.vault_form import is_vault_form
+
+    rows = db.execute(text(
+        "SELECT v.display_name, t.form FROM product_variant_templates v "
+        "JOIN product_templates t ON t.id = v.product_template_id "
+        "WHERE v.is_active IS TRUE"
+    )).all()
+    names = sorted({n for n, form in rows if not is_vault_form(form)})
+    assert len(names) > 10, f"only {len(names)} non-vault variants — the control is void"
+    return names
+
+
 def _vault(db, tenant, line: str):
     ex = EXTRACTOR.extract_line(db, tenant_id=tenant, line=line, answers={})
     opts = [o[0] for p in ex.picks if p.field_id == "vault" for o in p.options]
@@ -108,34 +153,112 @@ def test_the_noise_list_really_does_contain_product_words(variant_names):
 
 # ── the rule, stated generally ──────────────────────────────────────────
 
-def test_every_variant_is_reachable_by_its_own_display_name(db, tenant, variant_names):
-    """⚠️ THE RULE AS ONE CLAIM OVER ALL 52 VARIANTS, not two cases.
+def test_every_VAULT_variant_is_reachable_by_its_own_display_name(
+    db, tenant, vault_variant_names
+):
+    """⚠️ THE RULE AS ONE CLAIM OVER ALL 34 VAULT-FORM VARIANTS, not case by case.
 
-    A director typing a product's own name must reach it — resolved, or among the
-    options of a pick when the name is genuinely shared (`Cream & Gold` is both P300
-    and P310). Before the fix this failed on the two `Cemetery Tent - ...` variants,
-    because `cemetery` is in the noise list and is the first word of their names.
+    A director typing a vault's own name must reach it — resolved, or among the options
+    of a pick when the name is genuinely shared. Before the 2026-10-07 fix this failed
+    on the two `Cemetery Tent - ...` variants, because `cemetery` is in the noise list
+    and is the first word of their names.
+
+    ⚠️ RENAMED AND NARROWED 2026-11-02, AND THE TENTS ARE THE REASON BOTH TIMES. They
+    were the ORIGINAL REPORT this file closed — and they are `form = 'equipment'`, so
+    ruling A says the vault field must refuse them. The noise-word rule the file exists
+    for is untouched and still has vault-form subjects: `burial` and `vault` are inside
+    every burial-vault name, which is what lets "Continental Burial Vault" reach the
+    family phrase, and all 34 are measured reachable. What changed is the POPULATION,
+    not the rule.
+
+    ⚠️ SO THE TENTS MOVED FROM THE EVIDENCE TO THE CONTROL. They are now asserted
+    REFUSED, in `test_the_tents_are_REFUSED_by_the_vault_seam_now` below — the same
+    phrasings, the opposite expectation, with the ruling naming why.
     """
     unreachable = []
-    for name in variant_names:
+    for name in vault_variant_names:
         got, opts, unrec = _vault(db, tenant, name)
         if got != name and name not in opts:
             unreachable.append((name, got, opts, unrec))
     assert not unreachable, (
-        f"{len(unreachable)} variants are not reachable by their own display name: "
-        f"{unreachable}"
+        f"{len(unreachable)} vault variants are not reachable by their own display "
+        f"name: {unreachable}"
     )
 
 
+def test_no_NON_vault_variant_puts_a_non_vault_in_the_slot(
+    db, tenant, non_vault_variant_names
+):
+    """⚠️ THE OTHER HALF OF THE NARROWING, AND IT IS WHAT STOPS THE TEST ABOVE FROM
+    BEING SATISFIED BY A SEAM THAT ACCEPTS EVERYTHING AGAIN.
+
+    ⚠️ THE CLAIM IS ABOUT THE PRODUCT REACHED, NOT ABOUT REACHING NOTHING, AND THAT
+    DISTINCTION IS MEASURED. Two non-vault names legitimately reach the slot:
+    `Cream & Gold` and `White & Silver` are URN names, and those exact words also sit
+    inside `Universal Urn Vault (Cream & Gold)` and `(White & Silver)` — which are urn
+    VAULTS. The phrase is genuinely shared between an urn and the urn vault it goes in,
+    and the vault field taking the vault is correct. An assertion that no non-vault
+    NAME may reach the slot would have been wrong, and would have forced a fix that
+    made those two urn vaults untypeable.
+    """
+    from app.services.capture.vault_form import FormResolver, admits_name
+
+    forms = FormResolver(db, tenant)
+    bad = []
+    for name in non_vault_variant_names:
+        got, opts, _unrec = _vault(db, tenant, name)
+        for reached in [got, *opts]:
+            if reached and not admits_name(forms, reached):
+                bad.append((name, reached))
+    assert bad == [], bad
+
+
 # ── the two reports ─────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("line", [
+    "cemetery tent single",
+    "Cemetery Tent - Double",
+    "cemetery tent double",
+    "lowering device",
+    "grass mats",
+    "cremation table",
+])
+def test_the_tents_are_REFUSED_by_the_vault_seam_now(db, tenant, line):
+    """⚠️ THE ORIGINAL REPORT, INVERTED BY RULING A — AND THAT INVERSION IS THE FINDING
+    WORTH KEEPING.
+
+    This file was written on 2026-10-07 because `"cemetery tent single"` came back as
+    NOT UNDERSTOOD, and the fix made it resolve. It resolved into the VAULT field,
+    because that was the only seam it went through — and a Cemetery Tent is
+    `product_templates.form = 'equipment'`. So the 10-07 fix was right about the noise
+    rule and wrong about the destination, and nothing said so for four weeks.
+
+    ⚠️ "NOT UNDERSTOOD" IS NOW THE CORRECT ANSWER HERE, which is uncomfortable and is
+    the honest state. The words reach no field: there is no equipment vocabulary for the
+    catalogue's own equipment VARIANT names — only for the five `EQUIPMENT_PACKAGES`
+    labels — so a director who types "lowering device" gets it reported as unplaced
+    rather than silently filed as a vault.
+
+    ⚠️ AND MAPPING THEM TO PACKAGES IS NOT AN EXECUTOR'S CALL, which is why this test
+    pins the refusal rather than a redirection. `"Lowering Device"` is ambiguous between
+    the `lowering_device_only` and `lowering_device_and_grass` packages — two different
+    prices — so choosing one would be guessing at a price, and offering a pick is a new
+    question in a flow James has not ruled on. Reported; visible to the director as
+    unplaced text in the meantime.
+    """
+    got, opts, unrec = _vault(db, tenant, line)
+    assert got is None, (line, got)
+    assert opts == [], (line, opts)
+    # ⚠️ AND IT IS HELD RATHER THAN SWALLOWED. A refused phrase that vanished from both
+    # the value and the held list would be the worst of the three outcomes: the director
+    # would see no row filled and no word flagged.
+    assert unrec, (line, "refused AND swallowed — neither placed nor held")
+
 
 @pytest.mark.parametrize("line,expected", [
     ("Loved and Cherished 24", 'Loved & Cherished 24"'),
     ("Loved & Cherished 24", 'Loved & Cherished 24"'),
     ("loved and cherished 31", 'Loved & Cherished 31"'),
-    ("cemetery tent single", "Cemetery Tent - Single"),
-    ("Cemetery Tent - Double", "Cemetery Tent - Double"),
-    ("cemetery tent double", "Cemetery Tent - Double"),
 ])
 def test_the_reported_phrasings_resolve(db, tenant, line, expected):
     got, opts, unrec = _vault(db, tenant, line)

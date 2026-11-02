@@ -623,3 +623,106 @@ def form_of(db: Session, *, tenant_id: str, vault: object) -> VaultForm:
 def is_cremation(db: Session, *, tenant_id: str, vault: object) -> bool:
     """The one question most callers actually have."""
     return form_of(db, tenant_id=tenant_id, vault=vault).is_cremation
+
+
+# ── the one place that decides what the VAULT field accepts ──────────────────
+#
+# ⚠️ THIS SECTION EXISTS BECAUSE `VAULT_FORMS` WAS RIGHT, RULED, AND WIRED INTO ONE
+# DOOR OUT OF SIX. It was added after a production probe offered "Vault Placer" as a
+# vault; the fix went into `pills.py` and the typed, prefix, fuzzy and ghost doors
+# never got it. On 2026-11-02 James typed " chairs" on production and the VAULT row
+# filled with "Graveside Chairs" — `form='equipment'` — through the typed door, while
+# the constant, the ruling and the reason were all already sitting in this file.
+#
+# James, 2026-11-02: *"A rule about what a field accepts has to live in one place that
+# every path goes through."* So the predicate below is the only expression of the rule
+# anywhere, and the helpers beside it are the shapes the doors actually need. A door
+# that wants to know whether something can be a vault has no other function to call.
+#
+# ⚠️ `None` REFUSES, BY RULING, AND THE COST IS NAMED. A product whose form the ladder
+# cannot determine is not offerable as a vault — so an oddly-named real vault on a
+# tenant with no catalogue link becomes unreachable in that slot rather than silently
+# admitted. Measured on production 2026-11-02 before this shipped: all FOUR vaults
+# Sunnycrest sells pass (three via the tenant link, `Urn Vault - Standard` via its
+# recorded name) and all seven non-vaults are refused, so nothing live regresses.
+
+
+def is_vault_form(form: object) -> bool:
+    """Can a product of this `product_templates.form` be the vault on an order?
+
+    ⚠️ THE ONLY PLACE THE QUESTION IS ANSWERED. Every door — typed n-gram, typed
+    prefix, fuzzy/did-you-mean, ghost vocabulary, pills, the answer write and any
+    future model door — reaches this through one of the three helpers below.
+    `test_the_vault_slot_only_takes_vaults.py` enumerates the doors and fails if one
+    stops going through them.
+    """
+    return form in VAULT_FORMS
+
+
+def vault_resolution(index, phrase: str | None):
+    """`product_name_resolver.resolve`, narrowed to things that can BE a vault.
+
+    ⚠️ THE CANDIDATE SOURCE FOR EVERY TYPED DOOR, AND IT REPLACES `resolve` RATHER THAN
+    WRAPPING IT AT EACH CALL SITE. `build_index` has no company filter and no form
+    filter — deliberately, because `product_variant_templates` is the PLATFORM
+    catalogue and not tenant data, so there is no tenant to filter it by — and
+    `resolve` only narrows by a form the PHRASE itself names. The vault slot therefore
+    saw the whole catalogue: measured 2026-11-02, **15 catalogue names could put a
+    non-vault candidate into `vault`** — 6 of form `equipment` (Graveside Chairs,
+    both Cemetery Tents, Cremation Table, Grass Mats, Lowering Device) and 9 of form
+    `urn`. `"chairs"` reached `Graveside Chairs` as a CONFIDENT SINGLE candidate, which
+    is why nothing asked and the row simply filled.
+
+    ⚠️ `grave_liner` AND `infant` ARE NOT IN THAT COUNT AND MUST NOT BE. Both are in
+    `VAULT_FORMS` by ruling — a Graveliner is the answer to "which vault" even though
+    it is not called one — and an earlier version of this measurement counted them as
+    defects because it tested `form in ("burial_vault", "urn_vault")` instead of
+    asking `is_vault_form`. That over-counted 22 where the answer is 15, and had the
+    fix been written from it, four Graveliners and three infant vaults would have
+    become untypeable. The predicate is the authority; a hand-written form list beside
+    it is how this rule got into one door out of six in the first place.
+
+    ⚠️ THE DISCRIMINATORS ARE RE-DERIVED, NOT CARRIED OVER. They describe how the
+    candidates differ, so a set that lost members has different differences — keeping
+    the old tuple would make a now-unambiguous phrase still report something to narrow
+    by. `Resolution`'s other readings (`resolved`, `ambiguous`, `variant_template_id`)
+    are all properties over `candidates`, so they follow for free.
+    """
+    from dataclasses import replace
+
+    from app.services.product_name_resolver import _classify
+    from app.services.product_name_resolver import resolve as _resolve
+
+    res = _resolve(index, phrase)
+    kept = tuple(c for c in res.candidates if is_vault_form(c.form))
+    if len(kept) == len(res.candidates):
+        return res
+    return replace(res, candidates=kept, discriminators=_classify(kept))
+
+
+def admits_name(resolver: "FormResolver", name: object) -> bool:
+    """Can the thing called `name` be the vault? For doors holding only a name.
+
+    The pills' catalogue fallback, `session_service.answer`'s write check, and the
+    vocabulary's tenant-product terms all have a name and no candidate. They run the
+    same ladder every other form question runs, so a product linked to the catalogue
+    is classified by its link and an unlinked one by its name.
+    """
+    text_name = str(name or "").strip()
+    if not text_name:
+        return False
+    return is_vault_form(resolver.form_of(text_name).form)
+
+
+def admits_term(term: object) -> bool:
+    """Can this VOCABULARY term fill the vault row? For the ghost and the prefix pass.
+
+    ⚠️ A TERM WITH NO FORM IS REFUSED HERE AND THAT IS NOT THE SAME DECISION AS
+    `is_vault_form(None)`. A vocabulary term carries `form` only when it came from the
+    platform catalogue; a tenant's own product name carries `None` because
+    `products.variant_template_id` is NULL on almost every row. So `vocabulary.py`
+    resolves those through `admits_name` BEFORE building the term and simply does not
+    emit the ones that are not vaults — by the time a term reaches here, a `None` form
+    means "not a catalogue vault", which is the refusing answer.
+    """
+    return is_vault_form(getattr(term, "form", None))

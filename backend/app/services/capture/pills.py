@@ -47,7 +47,7 @@ from app.services.capture.schema import (
     VAULT_FIELD_ID,
     ResolvedField,
 )
-from app.services.capture.vault_form import VAULT_FORMS, FormResolver
+from app.services.capture.vault_form import FormResolver, admits_name
 from app.services.order_list.customer import rank_habits
 from app.services.personalization.questions import ANSWER_NONE
 
@@ -354,7 +354,15 @@ def pills_for(
             ).all():
                 if not name or name in ordered:
                     continue
-                if forms.form_of(name).form in VAULT_FORMS:
+                # ⚠️ ROUTED THROUGH `admits_name` SINCE 2026-11-02, NOT `in VAULT_FORMS`
+                # DIRECTLY, AND THE REASON IS THAT THIS LINE WAS THE ONLY ONE. The
+                # ruling lived here and in no other door, so the typed path filled the
+                # VAULT row with "Graveside Chairs" while this pill list was correct.
+                # Re-pointing a line that already behaved changes nothing today and is
+                # the point: there is now exactly one function to find when the rule
+                # moves, and `test_the_vault_slot_only_takes_vaults.py` fails if a door
+                # stops calling it.
+                if admits_name(forms, name):
                     ordered.append(name)
         out: list[Pill] = []
         for name in ordered[:MAX_PILLS]:

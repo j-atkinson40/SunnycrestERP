@@ -175,13 +175,38 @@ def test_a_year_pair_sets_both_dates_and_does_NOT_set_the_format(db, tenant):
     assert "nameplate_date_format" not in ex.values
 
 
-def test_an_equipment_only_drop_is_complete(db, tenant):
+def test_a_product_that_takes_NO_personalization_is_complete(db, tenant):
     """⚠️ THE R4 CASE, REACHED BY TYPING. The personalization question must be
-    not-applicable on a lowering device, and the order must complete."""
+    not-applicable on a product whose catalogue row offers none, and the order must
+    still complete.
+
+    ⚠️ RENAMED AND REPOINTED 2026-11-02, AND THE OLD SUBJECT WAS THE DEFECT ITSELF.
+    This was `test_an_equipment_only_drop_is_complete` and it typed `"Lowering
+    Device"` — which is `product_templates.form = 'equipment'`, and which therefore
+    had no business in the VAULT field at all. It landed there because the vault slot
+    had no form filter, and this test was GREEN BECAUSE OF THAT BUG: the order
+    completed with a piece of graveside equipment standing in as its vault. Ruling A
+    closed the hole and the test went red, correctly, on its own premise.
+
+    ⚠️ `Graveliner 34"` IS THE RIGHT SUBJECT AND IT IS CHOSEN BY MEASUREMENT. The
+    claim worth keeping is "a product with no personalization capability makes the
+    question not-applicable and does not block" — so the subject has to be a
+    VAULT-FORM product with `personalization_capability = []`. Measured over the
+    catalogue: the four Graveliners, the three infant vaults and `Monticello` all
+    qualify; `Graveliner` is picked because `grave_liner` is the form most likely to
+    be mistaken for equipment, so this test now also pins that grave liners stay IN.
+
+    ⚠️ AND A REAL EQUIPMENT-ONLY ORDER STILL CANNOT COMPLETE — REPORTED, NOT FIXED.
+    `vault` is required, so an order that is genuinely equipment and no vault leaves
+    `missing = ('vault',)`. The only thing that ever made such an order complete was
+    equipment masquerading as a vault, which is what just went. Whether Sunnycrest
+    sells equipment-only drops, and whether `vault` should be satisfiable by "none",
+    is a ruling and not an executor's call.
+    """
     answers, _, _ = _type(db, tenant, [
         "order for Hopkins",
         "decedent is Mary Jones",
-        "Lowering Device",
+        'Graveliner 34"',
         "to Oakwood",
         "service at the church",
         "burial on March 3 2027",
@@ -191,6 +216,10 @@ def test_an_equipment_only_drop_is_complete(db, tenant):
     ])
     _, state, _c = evaluate_typed(db, tenant_id=tenant, answers=answers)
 
+    # ⚠️ THE PREMISE, ASSERTED FIRST. Without this the three claims below could all
+    # hold because the vault never resolved at all — which is exactly the shape the
+    # old version of this test had, with an equipment product in the slot.
+    assert answers.get("vault") == 'Graveliner 34"', answers
     assert QUESTION_PERSONALIZATION in state.not_applicable
     assert QUESTION_PERSONALIZATION not in state.missing
     assert state.is_complete, f"missing={state.missing}"

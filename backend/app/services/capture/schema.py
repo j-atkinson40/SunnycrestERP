@@ -845,6 +845,34 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
 ) + _personalization_fields()
 
 
+#: The two numberless chair mentions, recorded as FLAGS rather than as FIELDS.
+#:
+#: ⚠️ THEY SIT HERE, BESIDE `PLATFORM_DEFAULT_FIELDS`, AND THEY ARE DELIBERATELY NOT IN
+#: IT. James, 2026-11-02: *"Both blocks are stored-flag based, outside the required
+#: set."* A flag is a key in `values` that the template does not declare, so
+#: `capture.evaluate` — which partitions declared fields only — cannot put either in
+#: `missing`, neither turns a row amber, and neither needs a capture row.
+#: `test_call_extraction_missing_set` already records that the schema IGNORES keys it
+#: does not know about rather than rejecting them; that is the property these lean on.
+#:
+#: ⚠️ THIRD ATTEMPT, AND THE FIRST TWO ARE WHY THIS SHAPE. `chairs_count_pending` was a
+#: real `FieldDefinition` and had to be removed — a field with no row is a second entry
+#: in the schema's orphan set, which
+#: `test_the_only_unmappable_unconditional_field_is_the_named_one` permits exactly one
+#: of. Then the mention was recorded NOWHERE, and `approval.assess`'s chairs branch —
+#: gated on one of the count fields being present — became unreachable, so a numberless
+#: "extra chairs" approved silently and billed no chairs.
+#:
+#: ⚠️ AND THEY LIVE IN `schema`, NOT IN `typed_extraction`, BECAUSE A GUARD SAID SO.
+#: `test_only_the_typed_path_imports_the_extractor` holds the E6 guarantee that ONLY
+#: `session_service` imports the typed extractor — the mention policy has to stay
+#: isolated to the typed path. Declaring these there and importing them into `approval`
+#: turned that test red, correctly: billing must not depend on the typed extractor.
+#: Both modules already import this one.
+CHAIRS_WANTED_FLAG = "chairs_wanted"
+CHAIRS_EXTRA_PENDING_FLAG = "chairs_extra_pending"
+
+
 #: Object type -> the platform-default field set for that type.
 #:
 #: ⚠️ A REGISTRY RATHER THAN A SECOND TUPLE. `resolve_schema` already takes

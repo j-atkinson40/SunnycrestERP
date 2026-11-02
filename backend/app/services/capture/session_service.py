@@ -47,6 +47,10 @@ from app.services.capture.approval import (
     describe_approve_effect,
     included_chairs_for,
 )
+from app.services.capture.schema import (
+    CHAIRS_EXTRA_PENDING_FLAG,
+    CHAIRS_WANTED_FLAG,
+)
 from app.services.capture.typed_extraction import (
     EXTRACTOR,
     evaluate_typed,
@@ -597,6 +601,27 @@ def answer(
     if field_id not in known:
         raise ValueError(f"{field_id} is not a field this capture asks for")
 
+    # ⚠️ THE VAULT'S ACCEPTANCE RULE, ON THE WRITE SIDE, SINCE 2026-11-02. Every other
+    # vault door offers CANDIDATES and is narrowed by `vault_resolution`; this one takes
+    # a value string from the client, so filtering a candidate list cannot reach it.
+    # Without this the whole ruling would hold everywhere except the one path that
+    # writes `resolutions` directly — and `resolutions` outlives re-extraction, so a
+    # non-vault written here would be the single most durable way to get one in.
+    #
+    # ⚠️ IT IS NOT DEFENCE AGAINST THE PILLS, WHICH ARE ALREADY CORRECT. It is the
+    # invariant James asked for — *"no non-vault product can ever land in vault, by any
+    # phrasing"* — stated at the place the value enters the session, so a future door
+    # (a model proposal, a widened prefill whitelist, a new pane action) inherits it
+    # instead of having to remember it.
+    if field_id == "vault":
+        from app.services.capture.vault_form import FormResolver, admits_name
+
+        if not admits_name(FormResolver(db, company_id), value):
+            raise ValueError(
+                f"{value!r} is not a vault — the vault field takes burial vaults, urn "
+                f"vaults, grave liners and infant vaults"
+            )
+
     resolutions = dict(row.resolutions or {})
     resolutions[field_id] = value
 
@@ -797,9 +822,25 @@ def read_state(
     # is the same move — render from exactly what was evaluated.
     conflicted = {c.field_id for c in conflicts}
     rendered_answers = {k: v for k, v in answers.items() if k not in conflicted}
+    # ⚠️ COMPOSED BEFORE THE SURFACE IS RESOLVED, AND FED IN, SINCE 2026-11-02. It used
+    # to be substituted into the response dict afterwards, which left `rows.py` deciding
+    # the row's STATE from a secondary it had not been given — so "chairs" with no
+    # bundle rendered the word under a NOT_MENTIONED state. One input, one decider.
+    chairs_line = chairs_for_display(
+        included_chairs_for(db, company_id, rendered_answers),
+        rendered_answers.get("chairs_total"),
+        rendered_answers.get("chairs_extra"),
+        # ⚠️ THE TWO FLAGS RIDE ALONGSIDE THE TWO COUNTS SINCE RULING B (2026-11-02).
+        # They are keys in `values` that the template does not declare, so `rows.py`
+        # cannot source them — it walks `FieldSource`s over template fields — and this
+        # is the first layer that sees the raw answers.
+        wanted=bool(rendered_answers.get(CHAIRS_WANTED_FLAG)),
+        extra_pending=bool(rendered_answers.get(CHAIRS_EXTRA_PENDING_FLAG)),
+    )
     rendered = resolve_surface(
         surface, resolved, rendered_answers, done_signal=said_done,
         conflicted_field_ids=frozenset(conflicted),
+        composed_secondary={"cemetery_equipment": chairs_line},
     )
 
     # ⚠️ RESOLVED ONCE AND SHARED WITH `_guided`, because two callers asking the same
@@ -829,11 +870,6 @@ def read_state(
     # not be read", which is why `chairs_for_display` refuses to convert between the
     # senses rather than assuming zero. A new tenant's bundles are NULL until the
     # onboarding checklist sets them.
-    chairs_line = chairs_for_display(
-        included_chairs_for(db, company_id, rendered_answers),
-        rendered_answers.get("chairs_total"),
-        rendered_answers.get("chairs_extra"),
-    )
 
     # ⚠️ THE SUMMARY'S LINES AND BLOCKERS ARE COMPUTED ONLY IN REVIEW. Assessing on
     # every keystroke would run two product lookups and a customer lookup per
@@ -971,24 +1007,13 @@ def read_state(
                     ),
                     "state": r.state.value,
                     "value": r.value,
-                    # ⚠️ THE EQUIPMENT ROW'S SECONDARY IS REPLACED, NOT DECORATED, AND
-                    # THAT IS RULING E. `resolve_surface` renders the first chair
-                    # field that has a value — so "extra chairs 4" on Full Equipment
-                    # produced the bare "4 chairs", which READS AS A TOTAL and is the
-                    # extras. One number, the wrong sense, and nothing saying which.
-                    # The composed form says both: "12 chairs (4 extra)".
-                    #
-                    # ⚠️ `or r.secondary_value` IS NOT A FALLBACK TO THE OLD STRING.
-                    # `chairs_line` is None exactly when neither chair field holds a
-                    # number, and in that case `r.secondary_value` is None too — the
-                    # row has no other secondary source. It is there so that a future
-                    # secondary added to this row is not silently dropped by a clause
-                    # about chairs.
-                    "secondary_value": (
-                        (chairs_line or r.secondary_value)
-                        if r.row_id == "cemetery_equipment"
-                        else r.secondary_value
-                    ),
+                    # ⚠️ PLAIN AGAIN SINCE 2026-11-02. Ruling E's composed chair line
+                    # used to be substituted here, after `resolve_surface` had already
+                    # decided the row's STATE without it — so a row could render a word
+                    # and claim nothing was mentioned. The composition now goes IN to
+                    # `resolve_surface` as `composed_secondary`, which makes the row
+                    # layer the only thing deciding either.
+                    "secondary_value": r.secondary_value,
                     # ⚠️ THE PILL AND THE AMBER BOTH READ THIS, which is what makes
                     # "the pill count equals the number of amber-able rows" true by
                     # construction. The pill used to count missing FIELDS while the

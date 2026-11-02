@@ -563,6 +563,11 @@ tests/test_extra_chairs_carry_a_count.py
 # shape and same reason as the chairs file above: `products.included_chairs` is
 # written on production and by no seed, so the included counts must be a premise.
 tests/test_the_equipment_row_shows_both_chair_numbers.py
+# Ruling A/C's door enumeration and ruling B's any-order guarantees. Both read
+# the platform catalogue and testco; the vault-doors file opens one nested
+# transaction for the answer-write check and rolls it back.
+tests/test_the_vault_slot_only_takes_vaults.py
+tests/test_any_field_in_any_order.py
 tests/test_r212_price_alignment.py
 tests/test_a_name_is_shown_the_same_way_everywhere.py
 tests/test_the_question_line.py

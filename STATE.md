@@ -2,6 +2,268 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 2026-11-02 — the vault slot took a chairs product; rulings A, B and C
+
+From James's production walk. He typed one word and the VAULT row filled with
+**"Graveside Chairs"**. Three separate causes met in it, plus one item that turned out
+to be already true.
+
+### Gates, with denominators
+
+| gate | result | of what |
+|---|---|---|
+| backend pytest, `tests/ci_gate.txt` | **4330 passed, 5 skipped, 0 failed, exit 0** (998s) | **261 of 539** files (48%) |
+| frontend vitest | **5411 passed, 5 skipped, 1 todo, 0 failed** | **380 of 380** test files |
+| `tsc -b --noEmit` | exit 0 | whole frontend |
+| `npm run build` | exit 0 | — |
+
+**6 break tests, all 6 caught** — the acceptance predicate neutered (4 tests fired), one
+door bypassing it, the vocabulary filter removed, ruling B's bare-chairs sense removed,
+and the n-gram door reverted with the narrowed noise file watching (5 tests fired).
+
+⚠️ **AND ONE INTERMEDIATE GATE WAS RED FOR A REASON WORTH READING** — four failures, all
+in `test_noise_is_a_hint_not_a_filter.py`, which is the finding below rather than a
+mistake in the fix.
+
+### The exact text, read from production
+
+Session `5cce14dc-2ac9-4a34-a4ab-0273dc750f6f`, 2026-11-02 12:20:49→12:22:33 UTC,
+status `abandoned`:
+
+    full_text    = ' chairs'          ← leading space, then one word. That is all of it.
+    typed_lines  = []                  (so it came through set_text, not add_line)
+    values       = {"vault": "Graveside Chairs",
+                    "funeral_home": "Riverside Memorial Chapel"}
+    resolutions  = {"funeral_home": "Riverside Memorial Chapel"}   ← a settled pill
+    unrecognized = []                  ← EMPTY
+
+⚠️ **AND THE WHOLE THING REPRODUCES LOCALLY WITH NO PRODUCTION DEPENDENCY**, because
+`build_index` reads the PLATFORM catalogue and has no company filter: `resolve(idx,
+"chairs")` returns `Graveside Chairs` on any database. Riverside survived in
+`resolutions` while the bar text was down to one word, which is why the screenshot
+showed a funeral home the text no longer contained.
+
+### THE LESSON, in James's words
+
+*"A rule about what a field accepts has to live in one place that every path goes
+through."*
+
+⚠️ **`VAULT_FORMS` ALREADY EXISTED, WAS ALREADY RULED, AND REACHED ONE DOOR OUT OF SIX.**
+It was added in October after a production probe offered "Vault Placer" as a vault, and
+its own docstring says so. Measured 2026-11-02: `grep -rn VAULT_FORMS app/` returned the
+definition and **one** call site, `pills.py:357`. The typed n-gram door, the typed prefix
+door, the ghost vocabulary, the alias vocabulary and the answer-write path had no form
+filter at all. The constant, the ruling and the reason were all sitting in the file the
+whole time.
+
+### Three causes, measured and separate
+
+- **2026-11-02 — CAUSE A: the vault slot had no form filter.** `product_name_resolver`
+  indexes `product_variant_templates JOIN product_templates` with no company filter —
+  correctly, it is platform data — and `resolve` narrows only by a form the PHRASE
+  names. Measured: **15 catalogue names could put a non-vault candidate into `vault`**,
+  6 of form `equipment` and 9 of form `urn`. `"chairs"` reached `Graveside Chairs` as a
+  CONFIDENT SINGLE candidate, which is why nothing asked.
+- **2026-11-02 — ⚠️ AND MY FIRST COUNT WAS 22, FROM MY OWN BAD INSTRUMENT.** It tested
+  `form in ("burial_vault", "urn_vault")` instead of asking `is_vault_form`, so it
+  counted four Graveliners and three infant vaults as defects. **Had the fix been
+  written from that number, seven real products would have become untypeable** — a
+  Graveliner is the answer to "which vault" by ruling. Pinned now by
+  `test_grave_liners_and_infant_vaults_STAY_IN`.
+- **2026-11-02 — CAUSE B: the chairs vocabulary had no bare `"chairs"`.** Every
+  `_CHAIRS_*` pattern needs a digit and `_CHAIRS_EXTRA_BARE` needs the word "extra", so
+  `_chairs("chairs")` returned None. ⚠️ **AND THE CHAIRS PASS RUNS BEFORE THE VAULT
+  PASS**, so A did not pre-empt B: **B is why the word was still unclaimed and A is
+  what then took it.** Two independent defects composing — fixing A alone would have
+  left `"chairs"` in the held list.
+- **2026-11-02 — CAUSE C: the ghost vocabulary carried billing-line names.**
+  `build_vocabulary` emitted every active `products.name` as kind `product`, and
+  `product` is in the ghost's `INTERIOR_KINDS`, so the interior word "Chairs" was a
+  match point inside `Extra Chairs (Over 8)`. Measured with Sunnycrest's real
+  vocabulary: typing `"chairs"` returned suffix **`" (Over 8)"`**. Reproduced as a test
+  (`ghost.test.ts`'s `CHAIRS_BEFORE` fixture) so the three new assertions are evidence
+  rather than fixture-shaped.
+
+### Item 4 was already true, and item 2's second half did not reproduce
+
+- **2026-11-02** — **The open question is not an input to extraction at all.**
+  `extract_text(text, resolutions, prefill)` has no question argument; typing goes
+  through `PUT /text` and `POST /answer` is the separate pill path. Measured with the
+  question driven to four different fields × four kinds of text: every cell landed on
+  its own field, identically. Pinned as a matrix AND structurally — a future "use the
+  open question as a hint" change turns `test_the_open_question_is_not_even_an_INPUT_to_extraction` red.
+- **2026-11-02** — ⚠️ **"chairs also sits unplaced" DID NOT REPRODUCE, AND THE REPORT
+  SAYS SO.** Production's stored `unrecognized` was `[]`, `spans_for_text` matched the
+  text exactly, and the single span was `('captured', ('vault',), 'chairs')` — so the
+  mirror tinted that word GREEN, as understood. The word was sitting in the bar, which
+  is at the bottom of the overlay, because `set_text` keeps the text by design. One
+  appearance read as two placements. The invariant was added anyway, because
+  `typed_extraction` already carries a hand-written fix for exactly this class for
+  `deceased_name` and nothing else.
+
+### Ruling B — bare "chairs" means the normal chairs
+
+James: *"a director saying 'chairs' is confirming chairs, not asking for extras."*
+⚠️ **CONFIRMED BEFORE BUILDING, AND THE EVIDENCE IS THIN ENOUGH TO STATE AS THIN.**
+Swept every free-text column on production where a director's own words about an order
+can land: **exactly ONE occurrence of "chair" anywhere** — James's own walk session.
+Zero in 5 sales orders, 29 order lines, 28 capture sessions, the cemetery notes, the
+activity log. Production cannot confirm or refute it. What decides it is the rule
+already in force one level up: with a number, `"12 chairs"` is the TOTAL and
+`"extra chairs 4"` is the overage, so **the presence of the word "extra" is already what
+decides the sense**, and a bare "chairs" keeps its absence. The one pull the other way is
+that Sunnycrest's only chairs PRODUCT is named `Extra Chairs (Over 8)` — the only chairs
+the office ever sees on an invoice are extras. Recorded so a future walk can overturn it
+cheaply.
+
+- **2026-11-02** — `_chairs` gained two senses where there was one: `"wanted"` (bare
+  `"chairs"`) and `"extra_pending"` (bare `"extra chairs"`). They were one `"mention"`
+  sense before, which would have made every director who says "chairs" owe a number for
+  chairs they are already getting.
+- **2026-11-02** — **Measured end to end**, each branch of the ruling:
+
+  | typed | blocker | chairs billed |
+  |---|---|---|
+  | `full equipment, chairs` | **none** | none — covered by the bundle |
+  | `lowering device only, chairs` | "this bundle includes none — how many chairs?" | none |
+  | `chairs` (no bundle) | "no equipment bundle is chosen" | none |
+  | `full equipment, extra chairs` | "the count is still needed" | none |
+  | `full equipment, 12 chairs` | none | 4 |
+
+  The row reads `Full Equipment · chairs` for the covered case, which is the ruled text.
+- **2026-11-02** — ⚠️ **AND THIS CLOSES THE GAP I REPORTED ON 2026-10-30.** Two tests
+  there asserted the wrong behaviour on purpose and said that the day their assertions
+  failed was the day the gap closed. Both failed on ruling B and are rewritten.
+  `"full equipment, extra chairs"` no longer approves silently.
+- **2026-11-02** — ⚠️ **THE FLAGS ARE THE THIRD ATTEMPT AT THIS MECHANISM AND THE FIRST
+  TWO ARE WHY.** `chairs_count_pending` was a real `FieldDefinition` and had to be
+  removed (a field with no row is a second orphan). Then the mention was recorded
+  nowhere and `assess`'s chairs branch became unreachable. A key in `values` that the
+  TEMPLATE DOES NOT DECLARE is stored, re-derived from the text on every read, and
+  invisible to the partition — asserted in
+  `test_the_flag_is_OUTSIDE_the_required_set_and_needs_no_row`.
+- **2026-11-02** — ⚠️ **AND THE FLAG NAMES LIVE IN `schema.py`, BECAUSE A GUARD SAID SO.**
+  Declaring them in `typed_extraction` and importing them into `approval` turned
+  `test_only_the_typed_path_imports_the_extractor` red — the E6 guarantee that only
+  `session_service` imports the typed extractor. The guard was right: billing must not
+  depend on the typed path.
+
+### Two defects this slice's own work exposed
+
+- **2026-11-02** — ⚠️ **RULING E's COMPOSITION WAS DECIDING DISPLAY AFTER STATE HAD BEEN
+  DECIDED, AND RULING B MADE IT VISIBLE.** The serializer substituted the composed chair
+  line into the response dict, so `rows.py` chose the row's STATE from a secondary it
+  had never been given — `"chairs"` with no bundle rendered the word under
+  `not_mentioned`. That is defect 3c arriving by a third route. The composition now goes
+  IN to `resolve_surface` as `composed_secondary`, which makes the row layer the only
+  thing deciding either. **State and display agree on all nine measured phrasings.**
+- **2026-11-02** — ⚠️ **`test_an_equipment_only_drop_is_complete` WAS GREEN BECAUSE OF
+  THE BUG.** It typed `"Lowering Device"` — `form = 'equipment'` — and the order
+  completed with a piece of graveside equipment standing in as its vault. Repointed to
+  `Graveliner 34"`, a `grave_liner` with no personalization capability, which keeps the
+  R4 claim and adds a pin that grave liners stay IN.
+- **2026-11-02** — ⚠️ **AND A REAL EQUIPMENT-ONLY ORDER STILL CANNOT COMPLETE. OWED TO
+  JAMES.** `vault` is required, so an order that is genuinely equipment and no vault
+  leaves `missing = ('vault',)`. The only thing that ever made such an order complete
+  was equipment masquerading as a vault, which has now gone. Whether Sunnycrest sells
+  equipment-only drops, and whether `vault` should be satisfiable by "none", is a ruling.
+
+### The 10-07 noise fix was right about the rule and wrong about the destination
+
+- **2026-11-02** — ⚠️ **`test_noise_is_a_hint_not_a_filter.py` ASSERTED THAT EVERY
+  ACTIVE VARIANT IS REACHABLE THROUGH THE VAULT SEAM, AND 18 OF THE 52 ARE NOT VAULTS.**
+  That file was written on 2026-10-07 because `"cemetery tent single"` came back as not
+  understood; the fix made it resolve — into the VAULT field, because that was the only
+  seam it went through, and a Cemetery Tent is `form = 'equipment'`. **So the 10-07 fix
+  was right about the noise rule and wrong about the destination, and nothing said so
+  for four weeks.** The noise rule itself is untouched and still has vault-form
+  subjects: `burial` and `vault` sit inside every burial-vault name, and all 34
+  vault-form variants are measured reachable by their own display name.
+- **2026-11-02** — ⚠️ **AND THE TENTS MOVED FROM THE EVIDENCE TO THE CONTROL** — same
+  phrasings, opposite expectation, in `test_the_tents_are_REFUSED_by_the_vault_seam_now`.
+  The narrowing is guarded from both sides: `test_no_NON_vault_variant_puts_a_non_vault_in_the_slot`
+  stops "every vault variant is reachable" from being satisfied by a seam that has
+  quietly started accepting everything again.
+- **2026-11-02** — ⚠️ **"NOT UNDERSTOOD" IS NOW THE CORRECT ANSWER FOR `"lowering
+  device"`, WHICH IS UNCOMFORTABLE AND IS THE HONEST STATE. OWED TO JAMES.** There is no
+  equipment vocabulary for the catalogue's own equipment VARIANT names — only for the
+  five `EQUIPMENT_PACKAGES` labels — so those words now reach no field and are reported
+  as unplaced. Mapping them to packages is not an executor's call: `"Lowering Device"` is
+  ambiguous between `lowering_device_only` and `lowering_device_and_grass`, two different
+  prices, so picking one guesses at a price and offering a pick is a new question.
+- **2026-11-02** — ⚠️ **TWO NON-VAULT NAMES LEGITIMATELY STILL REACH THE SLOT, AND THE
+  TEST SAYS WHY.** `Cream & Gold` and `White & Silver` are URN names whose exact words
+  sit inside `Universal Urn Vault (Cream & Gold)` and `(White & Silver)` — urn VAULTS. A
+  test asserting that no non-vault NAME may reach the slot would have been wrong, and
+  would have forced a fix making those two urn vaults untypeable. The claim is about the
+  product REACHED, not about reaching nothing.
+
+### A pre-existing defect found while building the matrix — OWED
+
+- **2026-11-02** — ⚠️ **`"section A, lot 2"` LOSES THE LOT.** Measured:
+  `"section A lot 2"` → `grave_location = "Section A, Lot 2"`; `"section A, lot 2"` →
+  `"Section A"`, with a bare `"2"` held and **the word "lot" in neither list — gone**.
+  Pre-existing: identical at `426ab5b6`. The cause is clause splitting, so fixing it
+  changes how commas cut every pass — a ruling, not an executor's call. Pinned by
+  `test_a_COMMA_IN_A_GRAVE_LOCATION_LOSES_THE_LOT_which_is_WRONG`, which asserts the
+  wrong behaviour on purpose and says so.
+- **2026-11-02** — ⚠️ **IT IS A NEAR RELATIVE OF THE PLACED-OR-HELD INVARIANT AND NOT AN
+  INSTANCE OF IT**, which is why that test does not catch it: the invariant asks whether
+  a word is in BOTH lists, and this word is in NEITHER.
+
+### Where the one acceptance rule now lives, and what calls it
+
+`vault_form.is_vault_form` is the only expression of the rule. Three helpers beside it
+are the shapes the doors need — `vault_resolution` (candidate sources), `admits_name`
+(name-only doors), `admits_term` (vocabulary).
+
+| door | how it is covered |
+|---|---|
+| typed n-gram scan | `vault_resolution` |
+| typed prefix pass | `vault_resolution` |
+| pills (⌥4 "Which vault?") | `admits_name` — re-pointed from the old `in VAULT_FORMS` |
+| ghost + prefix vocabulary | filtered in `build_vocabulary`, catalogue AND tenant products AND aliases |
+| `answer` write (pill/pane) | `admits_name`, raising `ValueError` — the durable one, since `resolutions` outlives re-extraction |
+| prefill whitelist | pinned: `vault` is not in `PREFILLABLE_FIELDS` |
+| model door | none writes a capture field; `rule_draft` drafts a SENTENCE only, asserted |
+
+⚠️ **AND TWO STRUCTURAL RATCHETS, WHICH ARE WHAT OCTOBER LACKED.** `VAULT_FORMS` may be
+READ in exactly one module, and no capture module may build a second form set out of
+literals. A test that enumerated PHRASINGS would have passed the day the pills were
+fixed; what was needed was a test that notices a DOOR.
+
+- **2026-11-02** — ⚠️ **THE `app`-WIDE VERSION OF THE SECOND RATCHET REPORTED THREE FALSE
+  POSITIVES AND WAS NARROWED WITH THE REASON RECORDED.** `models/product_template.py`
+  declares the column's vocabulary; `product_name_resolver.named_form` maps typed phrase
+  suffixes to forms; `price_list_analysis_service` maps forms to price-list category
+  names. The last is the interesting near-miss — **its dict keys are exactly
+  `VAULT_FORMS`** — and it is left alone deliberately: deriving it from the acceptance
+  set would make a change to what the vault field accepts silently rename a price-list
+  heading. Two identical sets with two different reasons may coincide; two answers to
+  ONE question may not.
+
+### Aliases: closed by construction, not by data
+
+- **2026-11-02** — All **56 confirmed `platform_product_aliases` point at vault-form
+  variants**, so the alias door was clean on data and open by construction.
+  `build_vocabulary` now filters them by the variant's form. ⚠️ **THE TERM STILL CARRIES
+  NO FORM OF ITS OWN**, deliberately: `Veteran` points at both the burial and the urn
+  Triune, so there is no single form to attach and attaching the first would feed the
+  ghost's form-default rule a half-truth.
+
+### Read-only probe scripts, kept
+
+Three, all read-only and all documented with their `railway run` invocation:
+`read_last_capture_session.py` (what did the director actually type, with the stored
+extraction beside it), `read_vault_candidates_for_phrase.py` (what the vault slot can
+reach from a phrase, with each candidate's form), `read_how_chairs_are_phrased.py` (every
+free-text hit for a word, with the row count printed whether or not it matched).
+
+⚠️ **THE FIRST ONE IS WHY THIS DIAGNOSIS TOOK MINUTES RATHER THAN GUESSES.** A bug report
+from a screenshot says what a row DISPLAYED; `values` says what the engine CONCLUDED and
+`unrecognized` says what it could not place. Reading the text alone would have sent the
+next reader back to re-derive the extraction from a sentence.
+
 ## 2026-10-30 — slice-2 chairs rulings A-E, COMPLETE, GREEN GATE, PUSHED
 
 Supersedes the mid-flight handoff that stood here. Both WIP commits are squashed into

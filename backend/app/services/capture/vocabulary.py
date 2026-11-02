@@ -36,6 +36,17 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.services.capture.schema import EQUIPMENT_PACKAGES, SERVICE_LOCATIONS
+from app.services.capture.vault_form import (
+    FormResolver,
+    admits_name,
+    is_vault_form,
+)
+
+#: The chairs phrasings the bar may complete to, in the order a director is likeliest
+#: to want them. ⚠️ HELD BESIDE `typed_extraction._CHAIRS_BARE` AND
+#: `_CHAIRS_EXTRA_BARE` BY `test_the_vocabulary.py`, so a phrasing the extractor learns
+#: cannot stay un-offerable, and one the bar offers cannot be un-understood.
+CHAIRS_PHRASES: tuple[str, ...] = ("chairs", "extra chairs")
 
 
 @dataclass(frozen=True)
@@ -99,6 +110,13 @@ def build_vocabulary(db: Session, tenant_id: str) -> list[Term]:
             {"t": tenant_id},
         )
     }
+    # ⚠️ ONLY THE FORMS THAT CAN BE A VAULT, SINCE 2026-11-02 (ruling A/C). This query
+    # is the PLATFORM catalogue and it has no company filter on purpose —
+    # `product_variant_templates` is platform data, not tenant data, so there is no
+    # tenant to filter it by; what it needed was a FORM filter, which it never had.
+    # Measured 2026-11-02: it was emitting 6 `equipment` and 9 `urn` variants as kind
+    # `vault`, and `KINDS_VAULT` then let the prefix pass resolve them into the VAULT
+    # row. `Graveside Chairs` was one of the six.
     for r in db.execute(
         text(
             "SELECT DISTINCT v.display_name, t.form "
@@ -107,6 +125,8 @@ def build_vocabulary(db: Session, tenant_id: str) -> list[Term]:
             "WHERE v.display_name IS NOT NULL"
         )
     ):
+        if not is_vault_form(r.form):
+            continue
         add(r.display_name, "vault",
             carried=r.display_name.casefold() in carried_names, form=r.form)
 
@@ -127,6 +147,26 @@ def build_vocabulary(db: Session, tenant_id: str) -> list[Term]:
     # `Monticello Burial Vault` AND the product `Monticello Burial Vault`-family stem,
     # two different texts, and go from resolving to ASKING — a regression on the
     # phrasing James had just confirmed working. Measured both ways.
+    # ⚠️ AND ONLY THE ONES THAT CAN BE A VAULT, SINCE 2026-11-02. James: *"Ghost
+    # vocabulary excludes product names that are billing lines; chairs words come from
+    # the chairs vocabulary."* Kind `product` is in `KINDS_VAULT` AND in the ghost's
+    # `INTERIOR_KINDS`, so an unfiltered tenant product name was completable at any
+    # interior word and resolvable into the VAULT row. That is how typing "chairs"
+    # ghost-completed to `Extra Chairs (Over 8)` — measured, suffix `" (Over 8)"`, a
+    # price-list overage name offered to a director mid-sentence.
+    #
+    # ⚠️ NOTHING COMPLETABLE IS LOST BY THIS. The bundles are already here as kind
+    # `equipment` from `EQUIPMENT_PACKAGES` below — `Full Equipment`, `Tent Only`,
+    # `Lowering Device Only`, `Vault Placer` — which is the vocabulary that actually
+    # fills the equipment row. Measured on Sunnycrest's eleven products: the four real
+    # vaults stay as kind `product`, and the seven that go are the five bundles (still
+    # present as `equipment`), `Extra Chairs (Over 8)` (now the chairs vocabulary
+    # below) and `Graveside Setup Service`, which no field captures.
+    #
+    # ⚠️ ONE RESOLVER FOR THE WHOLE LOOP, NOT ONE PER NAME. `FormResolver` exists
+    # because exactly this shape — `form_of` in a loop — put twenty-five catalogue
+    # index builds behind a blocking latency gate once already.
+    forms = FormResolver(db, tenant_id)
     for r in db.execute(
         text(
             "SELECT name FROM products WHERE company_id = :t AND is_active "
@@ -134,19 +174,36 @@ def build_vocabulary(db: Session, tenant_id: str) -> list[Term]:
         ),
         {"t": tenant_id},
     ):
+        if not admits_name(forms, r.name):
+            continue
         add(r.name, "product", carried=True)
 
     # ⚠️ ALIASES ARE INCLUDED BECAUSE THEY ARE THE ONLY ROUTE TO SOME VARIANTS —
     # `product_name_resolver.build_index` says so in terms, naming `Veteran`, `SST`
     # and `Basic Gray`. A completion list missing them would be unable to finish a
     # word the engine can resolve.
+    # ⚠️ FILTERED BY THE VARIANT'S FORM SINCE 2026-11-02, AND THE TERM STILL CARRIES NO
+    # FORM OF ITS OWN. An alias is a nickname and may point at several variants —
+    # `Veteran` reaches both the burial and the urn Triune — so there is no single form
+    # to attach, and attaching the first one would feed the ghost's form-default rule a
+    # fact that is only half true. What CAN be done is refuse an alias whose variant is
+    # not a vault, which closes the door by construction.
+    #
+    # ⚠️ MEASURED BEFORE IT SHIPPED: all 56 confirmed aliases point at vault forms, so
+    # this filter removes nothing today. It is here so the data cannot open a door
+    # later — an alias confirmed against an equipment variant would otherwise be
+    # completable into the VAULT row with no form anywhere to catch it.
     for r in db.execute(
         text(
-            "SELECT a.alias_text, v.display_name FROM platform_product_aliases a "
+            "SELECT a.alias_text, v.display_name, t.form "
+            "FROM platform_product_aliases a "
             "JOIN product_variant_templates v ON v.id = a.variant_template_id "
+            "JOIN product_templates t ON t.id = v.product_template_id "
             "WHERE a.is_confirmed IS TRUE"
         )
     ):
+        if not is_vault_form(r.form):
+            continue
         add(r.alias_text, "vault_alias",
             carried=(r.display_name or "").casefold() in carried_names,
             note=r.display_name)
@@ -154,6 +211,24 @@ def build_vocabulary(db: Session, tenant_id: str) -> list[Term]:
     # ── the fixed vocabularies, from the schema rather than retyped ────
     for _slug, label in EQUIPMENT_PACKAGES:
         add(label, "equipment", carried=True)
+
+    # ⚠️ THE CHAIRS WORDS, FROM THE EXTRACTOR'S OWN VOCABULARY, BY RULING (James,
+    # 2026-11-02): *"chairs words come from the chairs vocabulary, not the Extra Chairs
+    # product."* Before this the only chairs term in the bar was the price-list name
+    # `Extra Chairs (Over 8)`, so the ghost completed toward a billing line — and once
+    # that name is correctly excluded above, a director typing "chai" would have been
+    # offered nothing at all. This is the other half of the same ruling.
+    #
+    # ⚠️ A SEPARATE KIND, AND IT IS DELIBERATELY NOT IN `KINDS_VAULT`. The chairs row
+    # is filled by `typed_extraction._chairs`, which reads these same phrasings; the
+    # prefix pass must not try to resolve "chairs" as a product name again.
+    #
+    # ⚠️ THE TWO PHRASES MEAN DIFFERENT THINGS AND BOTH ARE OFFERED. "chairs" is the
+    # normal chairs a family bundle includes; "extra chairs" is an overage. That is the
+    # distinction ruling B turns on, so the bar offers both rather than completing one
+    # into the other.
+    for phrase in CHAIRS_PHRASES:
+        add(phrase, "chairs", carried=True)
     for loc in SERVICE_LOCATIONS:
         add(loc.replace("_", " ").title(), "service_location", carried=True)
 

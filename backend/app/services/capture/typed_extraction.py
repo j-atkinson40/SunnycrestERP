@@ -236,8 +236,39 @@ _CHAIRS_TOTAL: tuple[str, ...] = (
     r"(\d+)\s+chairs?\b",
     r"chairs?\s*:?\s*(\d+)\b",
 )
-#: The package with no number at all — "extra chairs", "we'll need extra chairs".
-_CHAIRS_BARE = r"extra\s+chairs?"
+#: EXTRA chairs with no number at all — "extra chairs", "we'll need extra chairs".
+_CHAIRS_EXTRA_BARE = r"extra\s+chairs?"
+
+#: ⚠️ THE FLAG NAMES COME FROM `schema`, WHICH DECLARES THEM BESIDE THE FIELDS THEY
+#: ARE NOT. They were declared here first and `approval` imported them from here,
+#: which turned `test_only_the_typed_path_imports_the_extractor` red — the E6
+#: guarantee that only `session_service` imports this module. The guard was right:
+#: billing must not depend on the typed extractor.
+from app.services.capture.schema import (  # noqa: E402
+    CHAIRS_EXTRA_PENDING_FLAG,
+    CHAIRS_WANTED_FLAG,
+)
+
+#: ⚠️ CHAIRS WITH NO NUMBER AND NO "EXTRA", ADDED BY RULING B (James, 2026-11-02), AND
+#: IT IS A DIFFERENT CLAIM FROM THE ONE ABOVE. A bare "chairs" was in NO pattern here:
+#: every `_CHAIRS_*` entry needs a digit and `_CHAIRS_EXTRA_BARE` needs the word
+#: "extra", so `_chairs("chairs")` returned None and the word was left unclaimed — at
+#: which point the vault pass took it and the VAULT row filled with "Graveside Chairs".
+#: That is one half of the 2026-11-02 walk defect; the other half is ruling A.
+#:
+#: ⚠️ AND IT MEANS THE NORMAL CHAIRS, NOT EXTRAS, BY RULING. James: *"Going by your own
+#: rule that chairs come with every bundle where a family is coming, a director saying
+#: 'chairs' is confirming chairs, not asking for extras."* The repo already drew the
+#: same line one level up: with a number, `"12 chairs"` is the TOTAL and `"extra chairs
+#: 4"` is the overage — the presence of the word "extra" is what decides the sense. A
+#: bare "chairs" drops the number and keeps the absence of "extra", so reading it as
+#: the total/normal chairs is the rule already in force, applied one step further.
+#:
+#: ⚠️ `(?<!extra\s)` IS NOT HOW THE TWO ARE KEPT APART — ORDER IS. `_chairs` tries the
+#: extra forms first, so by the time this pattern runs "extra chairs" has already
+#: matched and returned. A lookbehind here would be a second expression of the same
+#: precedence, free to disagree with the ordering it duplicates.
+_CHAIRS_BARE = r"chairs?"
 
 #: Personalization answers by phrasing. ⚠️ COMBINATIONS BEFORE SINGLES, same reason.
 _PERSONALIZATION: tuple[tuple[str, str], ...] = (
@@ -721,9 +752,16 @@ def _chairs(line: str) -> tuple[str, int | None, tuple[int, int]] | None:
 
     `sense` is one of:
 
-        "total"     "12 chairs"        — what the crew sets out
-        "extra"     "extra chairs 4"   — already netted of what the bundle includes
-        "mention"   "extra chairs"     — chairs, no number; `count` is None
+        "total"          "12 chairs"      — what the crew sets out
+        "extra"          "extra chairs 4" — already netted of what the bundle includes
+        "extra_pending"  "extra chairs"   — an overage, no number; `count` is None
+        "wanted"         "chairs"         — the NORMAL chairs; `count` is None
+
+    ⚠️ THE LAST TWO ARE DIFFERENT CLAIMS AND WERE ONE SENSE (`"mention"`) UNTIL RULING B
+    (2026-11-02). "extra chairs" asks for an overage nobody has counted, which blocks
+    approval until somebody does; "chairs" confirms the chairs a family bundle already
+    includes, which blocks nothing. Collapsing them would make every director who says
+    "chairs" owe a number for chairs they are already getting.
 
     ⚠️ THE SENSE IS RETURNED RATHER THAN RESOLVED, BY RULING B' (James, 2026-10-30).
     Converting either reading into the other needs the bundle's `included_chairs`, and
@@ -757,11 +795,20 @@ def _chairs(line: str) -> tuple[str, int | None, tuple[int, int]] | None:
             # became 0 and the pane could never show "6 chairs" again. The total is
             # recorded; `approval` subtracts the bundle's own included count.
             return ("total", int(m.group(1)), (m.start(), m.end()))
+    m = re.search(_CHAIRS_EXTRA_BARE, line, re.I)
+    if m:
+        # ⚠️ EXTRA CHAIRS WITH NO NUMBER. Neither count field is written, because
+        # neither number was given. `approval.assess` blocks until one is — ruling of
+        # 2026-10-30, carried by the `chairs_extra_pending` flag.
+        return ("extra_pending", None, (m.start(), m.end()))
     m = re.search(_CHAIRS_BARE, line, re.I)
     if m:
-        # ⚠️ A MENTION WITH NO NUMBER. Neither sense applies, so neither number field
-        # is written — the mention alone makes the question applicable.
-        return ("mention", None, (m.start(), m.end()))
+        # ⚠️ PLAIN "chairs" — THE NORMAL CHAIRS, NOT AN OVERAGE (ruling B, 2026-11-02).
+        # No count is written and none is asked for: a family bundle already includes
+        # them, so there is nothing to bill and nothing outstanding. The cases that DO
+        # need a number — a bundle including none, or no bundle at all — are decided by
+        # `approval.assess`, which is the only layer that knows the bundle.
+        return ("wanted", None, (m.start(), m.end()))
     return None
 
 
@@ -1153,6 +1200,31 @@ class DeterministicExtractor:
         if chairs is not None:
             sense, count, (ca, cb) = chairs
             field = {"total": "chairs_total", "extra": "chairs_extra"}.get(sense)
+            # ⚠️ THE TWO NUMBERLESS SENSES WRITE A FLAG, NOT A FIELD, BY RULING (James,
+            # 2026-11-02): *"Both blocks are stored-flag based, outside the required
+            # set."* A flag is a key in `values` that the TEMPLATE does not declare, and
+            # that is the whole of why it works: `capture.evaluate` partitions template
+            # fields only, so a flag cannot enter `missing`, cannot turn a row amber,
+            # and needs no capture row of its own.
+            #
+            # ⚠️ IT IS THE THIRD ATTEMPT AT THIS AND THE FIRST TWO ARE WHY IT IS A FLAG.
+            # `chairs_count_pending` was a FieldDefinition and had to be removed: a
+            # field with no row is a second entry in the schema's orphan set, which
+            # `test_the_only_unmappable_unconditional_field_is_the_named_one` permits
+            # exactly one of. Then the mention was recorded nowhere at all, and
+            # `assess`'s chairs branch — gated on one of the count fields being present
+            # — became unreachable, so a numberless "extra chairs" approved silently.
+            # A non-template key is stored, survives nothing, and is invisible to the
+            # partition: all three of the things that were wanted.
+            #
+            # ⚠️ AND IT IS RE-DERIVED FROM THE TEXT ON EVERY READ, WHICH IS CORRECT
+            # RATHER THAN INCIDENTAL. `set_text` rebuilds `values` from the whole text,
+            # so deleting the word deletes the flag and un-blocks the order — the same
+            # contract every captured value has.
+            flag = {
+                "extra_pending": CHAIRS_EXTRA_PENDING_FLAG,
+                "wanted": CHAIRS_WANTED_FLAG,
+            }.get(sense)
             # ⚠️ A NUMBERLESS MENTION CLAIMS ITS SPAN AND WRITES NOTHING, and the
             # field it used to write is gone. `chairs_count_pending` existed to make
             # `chairs_total` required so "extra chairs" still asked how many; James
@@ -1178,6 +1250,12 @@ class DeterministicExtractor:
                         values["chairs_total"] = str(count)
                     elif field == "chairs_extra" and once("chairs_extra"):
                         values["chairs_extra"] = str(count)
+                elif flag is not None:
+                    # ⚠️ `"1"`, A STRING, BECAUSE `values` IS JSONB AND EVERY OTHER
+                    # ENTRY IN IT IS A STRING. A boolean would be the only non-string
+                    # in the column and every consumer reading it with `str(...)` or a
+                    # truthiness test would disagree about `False` versus `"False"`.
+                    values[flag] = "1"
             else:
                 # ⚠️ THE SPAN WAS ALREADY SPOKEN FOR. Restated rather than dropped, so
                 # the words do not also land in the unplaced list. ⚠️ AND IT REPORTS THE
@@ -1782,6 +1860,13 @@ class DeterministicExtractor:
             # named no vault. Keeping both readings is why no resolution that worked
             # before stops working.
             index = build_index(db)
+            # ⚠️ `vault_resolution`, NOT `resolve_vault`, AND THAT SUBSTITUTION IS THE
+            # WHOLE OF RULING A. `build_index` is the PLATFORM catalogue — every form,
+            # every family — and `resolve` narrows only by a form the phrase itself
+            # names, so this door offered chairs, tents, urns and a cremation table as
+            # vaults. One call through the one predicate; see
+            # `vault_form.is_vault_form`.
+            from app.services.capture.vault_form import vault_resolution
             hit = False
             for frag_start, frag in _unclaimed_slices(line, spans):
                 if hit:
@@ -1806,12 +1891,12 @@ class DeterministicExtractor:
                         kept = " ".join(
                             w for w in raw.split() if w.casefold() not in _NOISE_WORDS
                         )
-                        vr = resolve_vault(index, kept) if kept else None
+                        vr = vault_resolution(index, kept) if kept else None
                         chosen = kept
                         if vr is None or not vr.candidates:
-                            vr, chosen = resolve_vault(index, raw), raw
+                            vr, chosen = vault_resolution(index, raw), raw
                         elif raw.casefold() != kept.casefold():
-                            alt = resolve_vault(index, raw)
+                            alt = vault_resolution(index, raw)
                             if _narrower(alt, vr):
                                 vr, chosen = alt, raw
                         if not vr.candidates:
@@ -2129,7 +2214,13 @@ class DeterministicExtractor:
 
         if once("vault"):
             from app.services.product_name_resolver import build_index
-            from app.services.product_name_resolver import resolve as _rv
+
+            # ⚠️ THE SAME ONE PREDICATE AS THE N-GRAM DOOR ABOVE, and this door is why
+            # the rule has to live in one function rather than be applied per site.
+            # The two paths are already held together behaviourally by
+            # `test_both_vault_paths_settle_the_same_way`; before ruling A they also
+            # agreed on being wrong, because each called `resolve` for itself.
+            from app.services.capture.vault_form import vault_resolution as _rv
 
             _pidx = build_index(db)
 
