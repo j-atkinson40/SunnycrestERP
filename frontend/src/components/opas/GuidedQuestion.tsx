@@ -149,7 +149,6 @@ export interface GuidedQuestionProps {
   /** ⚠️ TRUE WHILE THE QUESTION TAKES NUMBERS. A bare "1" during "What time?" is the
    *  start of an answer, not a pick. The prototype's own list:
    *  `['time','dates','day'].includes(currentField())`. */
-  readonly questionTakesNumbers: boolean
   /** The user's chosen pick modifier. Absent means the preference has not been read
    *  yet, and Option — the 2026-10-27 default — applies until it has. */
   readonly pickModifier?: PickModifier
@@ -176,39 +175,25 @@ export interface GuidedQuestionProps {
 }
 
 /**
- * ⚠️ THE FIELDS WHOSE ANSWERS ARE NUMBERS, so a bare digit must not be eaten.
- * The prototype's list is `['time','dates','day']`; these are this schema's ids for
- * the same four things. The chair counts are ours and not the prototype's — they are
- * literally "how many", so they belong by the same reasoning.
+ * ⚠️ `NUMERIC_QUESTION_FIELDS` AND `questionTakesNumbers` STOOD HERE AND WERE DELETED
+ * ON 2026-11-02, BY RULING. They listed the six fields whose ANSWER is a number
+ * (`service_time`, `service_date`, the two dates, `chairs_total`, `chairs_extra`,
+ * `eta`) so that a bare digit would not be eaten as a pick while one of them was being
+ * asked. With plain-digit picking gone there is nothing to protect them from.
  *
- * ⚠️ `extra_chairs_count` STOOD HERE UNTIL 2026-10-30 AND HAD STOPPED NAMING ANYTHING.
- * Rulings A/B' replaced that field with `chairs_total` + `chairs_extra`, and nothing on
- * this side of the wire noticed: the backend has thirteen declared sets that each failed
- * on the rename, and the frontend has no equivalent cross-check, so a dead id sat in a
- * live list looking correct. Renamed rather than deleted — see the next paragraph for
- * why the entry is kept at all.
+ * ⚠️ AND THE LIST COULD NEVER HAVE BEEN THE FIX, WHICH IS WHY IT WENT RATHER THAN
+ * GREW. James typed "12 chairs" while Opas was asking about the FUNERAL HOME — the
+ * number was not an answer to the open question at all, so no allowlist of
+ * number-taking questions would have covered it. A guard that can only protect what it
+ * enumerates, against input that arrives from anywhere, is the shape CLAUDE.md's
+ * "removal before recognition" names.
  *
- * ⚠️ NEITHER CHAIR FIELD CAN BE ASKED TODAY, AND THE ENTRY IS STILL RIGHT. `fieldId`
- * comes from the server's `next_question`, which only ever names a REQUIRED field, and
- * both chair fields are `required_when=Never()`. So this list cannot be exercised for
- * them right now. It is declared anyway because the capture-time ask is coming back —
- * it is the named first consumer of the `And`/`Or`/`Not` combinators in the sweep — and
- * a list that silently lost its chairs entry in the meantime would hand the restored
- * question a bar that eats "4".
+ * ⚠️ IT WAS ALSO A CONSTRUCTED NAME WITH NO CROSS-CHECK, recorded here because that
+ * cost a real bug one session earlier: it still listed `extra_chairs_count` three days
+ * after that field ceased to exist, and its test asserted the same dead id, so the two
+ * halves agreed with each other about a name the schema had dropped.
  */
-export const NUMERIC_QUESTION_FIELDS: readonly string[] = [
-  "service_time",
-  "service_date",
-  "date_of_birth",
-  "date_of_death",
-  "chairs_total",
-  "chairs_extra",
-  "eta",
-]
 
-export function questionTakesNumbers(fieldId: string | null): boolean {
-  return fieldId !== null && NUMERIC_QUESTION_FIELDS.includes(fieldId)
-}
 
 export function GuidedQuestion({
   question,
@@ -220,7 +205,6 @@ export function GuidedQuestion({
   barWidth,
   stacked,
   barIsEmpty,
-  questionTakesNumbers: takesNumbers,
   pickModifier = DEFAULT_PICK_MODIFIER,
   pickModifierGlyph,
   onAnswer,
@@ -407,7 +391,23 @@ export function GuidedQuestion({
       if (index >= options.length) return
       // ⚠️ THE CHORD WORKS WHEREVER THE FOCUS IS; a bare digit only when the bar is
       // empty and the question is not asking for a number.
-      if (!chord && !(barIsEmpty && !takesNumbers)) return
+      // ⚠️ THE CHORD, AND ONLY THE CHORD, SINCE 2026-11-02. This read
+      // `if (!chord && !(barIsEmpty && !takesNumbers)) return` — a bare digit picked
+      // whenever the bar was empty and the question was not one of six that take
+      // numbers. James, after typing "12 chairs" and watching both digits vanish:
+      // *"I'd drop plain-digit picking. Numbers are real input ('12 chairs', '2
+      // chairs', '10am'), and you already have ⌃1, plus arrows and Enter, for picking.
+      // Every app that puts number shortcuts on choices uses a modifier for exactly
+      // this reason."*
+      //
+      // ⚠️ AND THE SIX-FIELD ALLOWLIST WENT WITH IT RATHER THAN BEING WIDENED, which
+      // is the point of the ruling. `NUMERIC_QUESTION_FIELDS` existed only to protect
+      // questions whose ANSWER is a number from this path; it could only ever protect
+      // what it listed, and "12 chairs" was typed at a question about the FUNERAL
+      // HOME — a field no allowlist would have covered, because the number was not an
+      // answer to the open question at all. The mechanism is removed instead of
+      // guarded.
+      if (!chord) return
       e.preventDefault()
       e.stopImmediatePropagation()
       pick(index)
@@ -416,7 +416,7 @@ export function GuidedQuestion({
     document.addEventListener("keydown", onKeyDown, true)
     return () => document.removeEventListener("keydown", onKeyDown, true)
   }, [
-    fieldId, shown, barIsEmpty, takesNumbers, onAnswer, onAct, pickModifier, highlight,
+    fieldId, shown, barIsEmpty, onAnswer, onAct, pickModifier, highlight,
   ])
 
   if (question === null) return null

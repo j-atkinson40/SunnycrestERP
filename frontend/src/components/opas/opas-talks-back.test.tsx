@@ -399,7 +399,11 @@ describe("3 — choices sit with the question", () => {
     expect(screen.getByTestId("opas-option-1").textContent).toContain("Smith")
     expect(screen.getByTestId("opas-option-1").textContent).toContain("Fri Oct 16")
     expect(screen.getByTestId("opas-option-2").textContent).toContain("Hart")
-    expect(screen.getByTestId("opas-option-1").textContent).toMatch(/^1/)
+    // ⚠️ THE NUMBER NOW CARRIES ITS MODIFIER, SINCE 2026-11-02. This asserted
+    // `/^1/` — a bare digit at the head of the row — and a bare digit no longer
+    // answers anything, so the affordance was naming a key that does nothing. James:
+    // *"Update the idle/pill hints so none show a bare digit."*
+    expect(screen.getByTestId("opas-option-1").textContent).toMatch(/^⌃1/)
     // ⚠️ AND NOT IN A PANE. The old order-list pane rendered these as
     // `opas-order-picks` and stayed open after the answer.
     expect(screen.queryByTestId("opas-order-picks")).toBeNull()
@@ -424,35 +428,46 @@ describe("3 — choices sit with the question", () => {
     expect(screen.queryByTestId("opas-options")).toBeNull()
   })
 
-  it("a bare digit answers, while the bar is empty", async () => {
+  it("a bare digit does NOT answer, bar empty or not — 2026-11-02", async () => {
+    /** ⚠️ TWO TESTS STOOD HERE AND BOTH ARE REPLACED BY THIS ONE. "a bare digit
+     *  answers, while the bar is empty" asserted the pick; "BUT NOT MID-PHRASE"
+     *  asserted the empty-bar guard that made it safe. The guard WORKED — this
+     *  handler never ate a mid-phrase digit, unlike capture's text-based one — and
+     *  the path is removed anyway, because James's ruling is about the affordance:
+     *  *"Digits always type into the bar. Picking stays on the user's modifier (⌃1
+     *  for James) and ←/→/↑/↓ + Enter."*
+     *
+     *  ⚠️ AND LEAVING IT WOULD HAVE KEPT THE HAZARD WHERE A DIRECTOR MEETS IT NEXT.
+     *  A reply option is offered with the bar empty, which is precisely the moment
+     *  somebody starts typing "12 chairs".
+     *
+     *  ⚠️ AN IN-RANGE DIGIT, AND THE PREVIOUS VERSION OF THIS TEST RECORDED WHY: its
+     *  first draft used "8", which a 2-option list refuses for being out of range, so
+     *  a break test removing the guard left it GREEN. "2" is a real choice.
+     */
     await askedWhich()
     await act(async () => {
       fireEvent.keyDown(document, { key: "2" })
     })
-    await waitFor(() => expect(screen.getByTestId("opas-sales-order")).toBeTruthy())
-    expect(screen.getByTestId("opas-sales-order").textContent).toContain("Hart")
-  })
+    expect(screen.getByTestId("opas-options"), "a bare digit answered").toBeTruthy()
+    expect(screen.queryByTestId("opas-sales-order")).toBeNull()
 
-  it("⚠️ BUT NOT MID-PHRASE — a digit in a half-typed request is text", async () => {
-    // ⚠️ AN IN-RANGE DIGIT, AND THE FIRST VERSION OF THIS TEST USED "8". With two
-    // options, 8 is out of range and the handler refuses it for that reason alone — so
-    // a break test removing the empty-bar guard left the test GREEN. "2" is a real
-    // choice, which makes the guard the only thing that can refuse it.
-    await askedWhich()
+    // and the same with text in the bar
     fireEvent.change(bar(), { target: { value: "monticello" } })
     await act(async () => {
       fireEvent.keyDown(document, { key: "2" })
     })
-    // ⚠️ "monticello 2" IS THE START OF A SIZE. Consuming the 2 would answer the wrong
-    // question AND eat a character out of the sentence.
-    expect(screen.getByTestId("opas-options"), "a mid-phrase digit answered").toBeTruthy()
-    // ⚠️ THE CONTROL, in the same test: emptying the bar makes the same key answer, so
-    // "it did not answer" is about the guard rather than about a dead handler.
+    expect(screen.getByTestId("opas-options")).toBeTruthy()
+
+    // ⚠️ THE CONTROL, IN THE SAME TEST, AND IT IS WHAT MAKES THE THREE ASSERTIONS
+    // ABOVE EVIDENCE. ⌃2 answers — so "the digit did not answer" is about the bare
+    // key rather than about a handler that has stopped being attached at all.
     fireEvent.change(bar(), { target: { value: "" } })
     await act(async () => {
-      fireEvent.keyDown(document, { key: "2" })
+      fireEvent.keyDown(document, { key: "2", ctrlKey: true })
     })
     await waitFor(() => expect(screen.queryByTestId("opas-options")).toBeNull())
+    expect(screen.getByTestId("opas-sales-order").textContent).toContain("Hart")
   })
 
   it("typed words answer when they name one option", async () => {

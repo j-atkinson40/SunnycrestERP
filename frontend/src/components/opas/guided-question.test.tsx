@@ -1,5 +1,9 @@
 /**
- * The guided question: ⌥ and the number, a bare digit, a click — and the layout.
+ * The guided question: the modifier and the number, a click — and the layout.
+ *
+ * ⚠️ "A BARE DIGIT" WAS IN THIS SENTENCE UNTIL 2026-11-02 AND THE PATH IS GONE. James
+ * typed "12 chairs" into the bar and watched both digits vanish: *"I'd drop plain-digit
+ * picking. Numbers are real input… you already have ⌃1, plus arrows and Enter."*
  *
  * ⚠️ THE KEYBOARD TESTS DISPATCH REAL `KeyboardEvent`S WITH `code` AND `key` SET
  * SEPARATELY, because that separation is the defect this component can have and no
@@ -22,7 +26,6 @@ import {
   BAR_INSET,
   GuidedQuestion,
   paneBottomPx,
-  questionTakesNumbers,
   type GuidedQuestionProps,
 } from "./GuidedQuestion"
 
@@ -52,7 +55,6 @@ function mount(over: Partial<GuidedQuestionProps> = {}) {
     barWidth: "600px",
     stacked: false,
     barIsEmpty: true,
-    questionTakesNumbers: false,
     onAnswer,
     ...over,
   }
@@ -78,7 +80,6 @@ function renderWithRerender(over: Partial<GuidedQuestionProps> = {}) {
     barWidth: "600px",
     stacked: false,
     barIsEmpty: true,
-    questionTakesNumbers: false,
     onAnswer,
     ...over,
   }
@@ -248,10 +249,36 @@ describe("the three ways to answer", () => {
     expect(onAnswer).toHaveBeenCalledWith("funeral_home", "hopkins")
   })
 
-  it("a bare digit answers when the bar is empty", () => {
+  it("a bare digit does NOT answer, even with the bar empty", () => {
+    /** ⚠️ THE RULING OF 2026-11-02, AND THIS TEST USED TO ASSERT THE OPPOSITE. It read
+     *  "a bare digit answers when the bar is empty" and expected `pressDigit(3)` to
+     *  pick `brown`. James: *"remove plain-digit pill picking entirely. Digits always
+     *  type into the bar."*
+     *
+     *  ⚠️ `toBe(false)` IS A CLAIM ABOUT `defaultPrevented`, WHICH IS WHAT MAKES THIS
+     *  THE RIGHT ASSERTION. The digit must reach the textarea, so the handler must not
+     *  claim the event — "nothing was picked" and "the character still arrives" are the
+     *  same fact, and this is the half a unit test can see. */
     const { onAnswer } = mount({ barIsEmpty: true })
-    expect(pressDigit(3)).toBe(true)
+    expect(pressDigit(3)).toBe(false)
+    expect(onAnswer).not.toHaveBeenCalled()
+    // ⚠️ THE POSITIVE CONTROL, in the same test. "Not called" is also what a listener
+    // that was never attached produces, and that is indistinguishable from the rule.
+    expect(pressDigit(3, { alt: true })).toBe(true)
     expect(onAnswer).toHaveBeenCalledWith("funeral_home", "brown")
+  })
+
+  it("EVERY digit 1-9 types rather than picking, bar empty or not", () => {
+    /** ⚠️ ALL NINE, BECAUSE THE OLD RULE WAS RANGE-DEPENDENT and a test of one digit
+     *  would pass against a handler that still claimed the in-range ones. With three
+     *  pills showing, 1-3 were the dangerous ones. */
+    for (const empty of [true, false]) {
+      for (let d = 1; d <= 9; d++) {
+        const { onAnswer } = mount({ barIsEmpty: empty })
+        expect(pressDigit(d)).toBe(false)
+        expect(onAnswer).not.toHaveBeenCalled()
+      }
+    }
   })
 })
 
@@ -268,17 +295,22 @@ describe("when a digit must be left alone", () => {
     expect(onAnswer).toHaveBeenCalledWith("funeral_home", "hopkins")
   })
 
-  it("a bare digit is left alone while the question itself takes numbers", () => {
-    /** ⚠️ "What time?" — a bare "1" is the start of "1pm", not a pick. */
-    const { onAnswer } = mount({
-      fieldId: "service_time",
-      questionTakesNumbers: true,
-      barIsEmpty: true,
-    })
+  it("a bare digit is left alone whatever the question is asking", () => {
+    /** ⚠️ THIS USED TO DEPEND ON A SIX-FIELD ALLOWLIST AND NOW DEPENDS ON NOTHING,
+     *  which is the whole of the 2026-11-02 ruling. The old version passed
+     *  `questionTakesNumbers: true` for `service_time` — "a bare 1 is the start of
+     *  1pm" — and the allowlist was the only thing protecting it.
+     *
+     *  ⚠️ AND THE ALLOWLIST COULD NEVER HAVE BEEN THE FIX. James typed "12 chairs"
+     *  while Opas was asking about the FUNERAL HOME, a field no list of
+     *  number-taking questions would have covered, because the number was not an
+     *  answer to the open question at all. So the field asked about here is
+     *  deliberately one the allowlist did NOT contain. */
+    const { onAnswer } = mount({ fieldId: "funeral_home", barIsEmpty: true })
     expect(pressDigit(1)).toBe(false)
     expect(onAnswer).not.toHaveBeenCalled()
     expect(pressDigit(1, { alt: true })).toBe(true)
-    expect(onAnswer).toHaveBeenCalledWith("service_time", "hopkins")
+    expect(onAnswer).toHaveBeenCalledWith("funeral_home", "hopkins")
   })
 
   it("a digit past the pill count is not claimed, so the key stays free", () => {
@@ -322,7 +354,6 @@ describe("when a digit must be left alone", () => {
         barWidth="600px"
         stacked={false}
         barIsEmpty
-        questionTakesNumbers={false}
         onAnswer={onAnswer}
         onAct={onAct}
       />,
@@ -354,7 +385,6 @@ describe("when a digit must be left alone", () => {
         barWidth="600px"
         stacked={false}
         barIsEmpty
-        questionTakesNumbers={false}
         onAnswer={onAnswer}
         onAct={onAct}
       />,
@@ -381,7 +411,6 @@ describe("when a digit must be left alone", () => {
         barWidth="600px"
         stacked={false}
         barIsEmpty
-        questionTakesNumbers={false}
         onAnswer={onAnswer}
       />,
     )
@@ -393,37 +422,20 @@ describe("when a digit must be left alone", () => {
   })
 })
 
-describe("which questions take numbers", () => {
-  it("the four the prototype names, plus ours", () => {
-    /** ⚠️ THE PROTOTYPE'S LIST IS `['time','dates','day']`; these are this schema's ids
-     *  for the same things. The chair counts are ours and not the prototype's — they
-     *  are literally "how many", so they belong by the same reasoning.
-     *
-     *  ⚠️ THIS TEST ASSERTED `extra_chairs_count` UNTIL 2026-10-30 AND WAS GREEN ON A
-     *  FIELD THAT NO LONGER EXISTED. Rulings A/B' split it into two, thirteen backend
-     *  declarations failed on the rename, and this one passed throughout — because
-     *  `questionTakesNumbers` is a membership check over a hand-written list, so the
-     *  test and the list agreed with each other about a name the schema had dropped.
-     *  Two halves of one constructed name cannot cross-check each other. */
-    expect(questionTakesNumbers("service_time")).toBe(true)
-    expect(questionTakesNumbers("service_date")).toBe(true)
-    expect(questionTakesNumbers("date_of_birth")).toBe(true)
-    expect(questionTakesNumbers("date_of_death")).toBe(true)
-    expect(questionTakesNumbers("chairs_total")).toBe(true)
-    expect(questionTakesNumbers("chairs_extra")).toBe(true)
-  })
-
-  it("and the ones that do not", () => {
-    expect(questionTakesNumbers("funeral_home")).toBe(false)
-    expect(questionTakesNumbers("vault")).toBe(false)
-    expect(questionTakesNumbers("cemetery")).toBe(false)
-    expect(questionTakesNumbers(null)).toBe(false)
-    /** ⚠️ THE RETIRED NAME, PINNED AS A NEGATIVE. Without this the rename above could
-     *  be undone by re-adding the old id beside the new ones and everything would stay
-     *  green while a dead field sat in a live list again. */
-    expect(questionTakesNumbers("extra_chairs_count")).toBe(false)
-  })
-})
+/**
+ * ⚠️ A `describe("which questions take numbers")` BLOCK STOOD HERE AND WAS DELETED ON
+ * 2026-11-02 WITH THE MECHANISM IT TESTED. It asserted the six members of
+ * `NUMERIC_QUESTION_FIELDS` — the allowlist that kept a bare digit from being eaten
+ * while a number-taking question was open — and pinned the retired
+ * `extra_chairs_count` as a negative.
+ *
+ * ⚠️ IT ALSO CARRIED ITS OWN BEST ARGUMENT FOR GOING. Its comment recorded that the
+ * list had named `extra_chairs_count` for three days after that field ceased to exist,
+ * and that this test had stayed green throughout, "because `questionTakesNumbers` is a
+ * membership check over a hand-written list, so the test and the list agreed with each
+ * other about a name the schema had dropped." A guard with no cross-check, protecting
+ * against input that arrives from anywhere, is a mechanism to remove rather than fix.
+ */
 
 describe("more answers than there are keys", () => {
   it("caps at nine, because there is no ⌥0", () => {
@@ -566,7 +578,6 @@ describe("it reports the room it takes, so nothing overlaps", () => {
           barWidth="600px"
           stacked={false}
           barIsEmpty
-          questionTakesNumbers={false}
           onAnswer={vi.fn()}
           onHeightAbove={onHeightAbove}
         />,
@@ -795,19 +806,20 @@ describe("the pick modifier is a per-user setting", () => {
     }
   })
 
-  it("a plain digit still picks while the bar is empty — clause 2, unchanged", () => {
+  it("a plain digit does NOT pick, whatever the chosen modifier is", () => {
+    /** ⚠️ THESE TWO TESTS ASSERTED THE OPPOSITE UNTIL 2026-11-02. The first read "a
+     *  plain digit still picks while the bar is empty — clause 2, unchanged"; the
+     *  second said a plain digit is left alone only "while the question takes
+     *  numbers". Both are gone with the path.
+     *
+     *  ⚠️ AND IT IS TESTED UNDER A CHANGED MODIFIER PREFERENCE DELIBERATELY, which is
+     *  this block's subject. The bare-digit path and the chord were decided in one
+     *  expression, so removing the bare half could plausibly have broken the chord for
+     *  a non-default modifier — James's own is control. */
     const { onAnswer } = mount({ pickModifier: "control", barIsEmpty: true })
-    expect(pressDigitWith(1)).toBe(true)
-    expect(onAnswer).toHaveBeenCalledWith("funeral_home", "hopkins")
-  })
-
-  it("a plain digit does NOT pick while the question takes numbers — unchanged", () => {
-    const { onAnswer } = mount({
-      pickModifier: "control", barIsEmpty: true, questionTakesNumbers: true,
-    })
     expect(pressDigitWith(1)).toBe(false)
     expect(onAnswer).not.toHaveBeenCalled()
-    // ⚠️ AND THE CHORD STILL WORKS THERE, which is the point of having one.
+    // ⚠️ AND ⌃1 STILL PICKS, which is the half James kept: *"you already have ⌃1."*
     expect(pressDigitWith(1, { ctrl: true })).toBe(true)
     expect(onAnswer).toHaveBeenCalledWith("funeral_home", "hopkins")
   })

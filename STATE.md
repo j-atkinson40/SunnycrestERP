@@ -2,6 +2,105 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 2026-11-02 (latest) — plain-digit picking removed; the digits were eaten mid-sentence
+
+James typed `"12 chairs"` and both digits vanished. ⚠️ **THE ANSWER TO HIS FIRST
+QUESTION IS "NOT EMPTY" — the bar had text in it, which he called out as a separate
+bug, and it is.**
+
+### The evidence, from his own session
+
+Session `cfcc9292-4af2-44ae-a504-10a6b02ab66c`, 2026-11-02 16:23 UTC:
+
+    full_text = 'riverside full equipment  chairs'
+                                         ^^ TWO SPACES, where the number was
+
+⚠️ **AND THE MECHANISM IS MEASURED, NOT RECONSTRUCTED FROM THAT GAP.** There were TWO
+bare-digit paths, and only one of them had an empty-bar guard:
+
+| path | gate | ate a mid-sentence digit? |
+|---|---|---|
+| `GuidedQuestion` keydown — capture PILLS | `barIsEmpty && !takesNumbers` | **no** |
+| `OpasHost` reply-option keydown | bar empty | **no** |
+| `consumePickDigit` effect — capture PICKS | `picks.length > 0` **only** | **YES** |
+
+Measured directly: `consumePickDigit("riverside full equipment 1", 2)` returns index 1
+and the text `"riverside full equipment"`. The third path read the bar's TEXT and
+consumed any trailing in-range bare digit, with no reference to whether the bar was
+empty. ⚠️ **I DID NOT RECONSTRUCT HIS KEYSTROKES AND THE REPORT SHOULD NOT PRETEND TO**
+— the stored text cannot distinguish the orders in which the digits were taken.
+
+⚠️ **AND THE DEBOUNCE IS WHY IT WAS INTERMITTENT RATHER THAN CONSTANT**, which matters
+for anyone else who hits it. The check ran on the same pause as extraction, so a number
+typed straight through was judged once and survived: `"…equipment 12 chairs"` is fine.
+The damage needed a PAUSE after a trailing in-range digit. That is why "12" worked
+sometimes and vanished others, and why James's suggested workaround
+(`riverside, full setup, 12 chairs`) does hold — measured, the digits survive — as long
+as he does not stop on a bare in-range number.
+
+### What was removed
+
+- **2026-11-02** — `pick-digit.ts` and `pick-digit.test.ts` are **deleted**, with the
+  effect in `OpasHost` that drove them.
+- **2026-11-02** — `GuidedQuestion`'s bare-digit branch is gone: `if (!chord &&
+  !(barIsEmpty && !takesNumbers)) return` became `if (!chord) return`.
+- **2026-11-02** — the reply-option handler now requires `metaKey || ctrlKey`.
+  ⚠️ **THIS SUPERSEDES THE 2026-10-20 RULING** that put a bare digit there ("the guard
+  is that the bar must be empty"). That guard was real and this handler never ate a
+  mid-phrase digit — it is removed anyway, because the ruling is about the AFFORDANCE:
+  *"Digits always type into the bar."* One rule for both surfaces beats two rules that
+  differ by which one happened to be guarded. And a reply option is offered with the bar
+  EMPTY, which is exactly when somebody starts typing "12 chairs".
+- **2026-11-02** — ⚠️ **`NUMERIC_QUESTION_FIELDS` AND `questionTakesNumbers` ARE GONE,
+  AND THAT ALLOWLIST COULD NEVER HAVE BEEN THE FIX.** It named the six fields whose
+  ANSWER is a number so a bare digit would not be eaten while one was being asked.
+  **James typed "12 chairs" while Opas was asking about the FUNERAL HOME** — the number
+  was not an answer to the open question at all, so no list of number-taking questions
+  would have covered it. The mechanism is removed rather than widened.
+- **2026-11-02** — ⚠️ **AND THAT LIST HAD ALREADY COST A BUG THREE DAYS EARLIER.** It
+  still named `extra_chairs_count` after that field ceased to exist, and its test
+  asserted the same dead id — two halves of one constructed name agreeing with each
+  other about a name the schema had dropped. I renamed it on 10-30; today it is deleted.
+
+### The hints, none of which may show a bare digit
+
+- **2026-11-02** — `captureVoice`'s pick line read `Which one? 1–3, or ⌥ and the
+  number`. It is now `Which one? ⌃1–⌃3, or ← → and Enter`, and ⚠️ **IT NAMES THE USER'S
+  OWN MODIFIER RATHER THAN A HARD-CODED ⌥** — the glyph is a preference (⌃ for James)
+  and this line had ⌥ baked in, so the one place a director reads to learn the key was
+  telling some of them the wrong key. Threaded from `OpasHost`, which owns the
+  preference, so the bar and the pills cannot print different keys.
+- **2026-11-02** — the reply options' `<kbd>` printed a bare `{i + 1}`; it now prints
+  `⌃` with the number.
+- **2026-11-02** — ⚠️ **AND THAT GLYPH IS DELIBERATELY NOT THE USER'S PREFERENCE, WHICH
+  IS AN INCONSISTENCY WORTH A RULING.** Capture's pills honour `pickModifier`; the
+  reply-option handler accepts `metaKey || ctrlKey` and nothing else — so a user whose
+  preference is ⌥ would be shown a key that surface refuses. `⌃` is what actually works
+  there on every platform (⌘1-8 is eaten by Chrome, per the 2026-10-27 ruling).
+  **Unifying the reply options onto the user's modifier is a one-line change and was
+  NOT made**: this ruling is about removing the bare digit, and widening a preference to
+  a second surface is its own decision. **OWED.**
+- **2026-11-02** — The capture PILLS already printed `{glyph}{i+1}`, so they needed no
+  change. `IDLE_HINT` and `DONE_HINT` carry no digits.
+
+### Gates, with denominators
+
+| gate | result | of what |
+|---|---|---|
+| frontend vitest | **5375 passed, 5 skipped, 1 todo, 0 failed** | **379 of 379** test files (380 before — `pick-digit.test.ts` went with its module) |
+| `tsc -b --noEmit` | exit 0 | whole frontend |
+| `npm run build` | exit 0 | — |
+| backend pytest, `tests/ci_gate.txt` | **4362 passed, 5 skipped, 0 failed, exit 0** (1029s) | **262 of 540** files (48%) — **no backend file changed in this commit**, and the number is identical to the previous run, which is the expected result rather than a coincidence |
+
+**3 break tests, all 3 caught** — the bare-digit pill branch restored (4 tests fired),
+the bare digit restored on reply options (1), and the hint reverted to the bare range (1).
+
+⚠️ **THE RULED TEST IS IN `capture-live.test.tsx` IN JAMES'S OWN WORDS:** with a pick
+open, typing `"12 chairs"` leaves exactly `"12 chairs"` in the bar and picks nothing;
+`"riverside, full setup, 12"` likewise; and ⌃1 still settles the pick. That last one is
+the positive control — without it the three refusals would all pass against a pane whose
+pick path was broken outright rather than narrowed to the modifier.
+
 ## 2026-11-02 (later) — the three owed rulings, all three landed
 
 The three items the morning's work left owed. ⚠️ **ALL THREE WERE CONSEQUENCES OF CLOSING

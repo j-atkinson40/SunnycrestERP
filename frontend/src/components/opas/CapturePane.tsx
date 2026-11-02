@@ -171,6 +171,12 @@ export function captureVoice(args: {
   /** The server's single next question. See `next_question` in schema.py. */
   readonly nextQuestion?: string | null
   readonly reviewing: boolean
+  /** The pick modifier's glyph, from the user's preference. Defaults to ⌥.
+   *
+   *  ⚠️ OPTIONAL SO THE SENTENCE IS NEVER BLANK WHILE THE PREFERENCE LOADS, and
+   *  defaulted to the same `DEFAULT_PICK_MODIFIER` the pills fall back to. A required
+   *  argument would make this line disappear for one render on every open. */
+  readonly pickGlyph?: string
 }): string {
   if (!args.ready) return "Starting the order…"
   if (args.picks.length > 0) {
@@ -183,7 +189,17 @@ export function captureVoice(args: {
     // above the bar, each carrying its own ⌥-number — this line is what the bar says
     // when the guided surface is not up, which is why it still names the keys at all.
     const n = args.picks[0].options.length
-    return `Which one? 1–${Math.min(n, 9)}, or ⌥ and the number`
+    // ⚠️ NO BARE DIGIT IN THIS SENTENCE SINCE 2026-11-02, BY RULING. It read
+    // `Which one? 1–${n}, or ⌥ and the number` — and the "1–2" half advertised a
+    // shortcut that ate the digits out of "12 chairs". James: *"Update the idle/pill
+    // hints so none show a bare digit."*
+    //
+    // ⚠️ AND IT NAMES THE USER'S OWN MODIFIER RATHER THAN ⌥. The glyph is a preference
+    // (⌃ for James) and this line hard-coded ⌥, so the one place a director reads to
+    // learn the key was telling half of them the wrong key. `pickGlyph` is passed in
+    // from the same preference the pills print.
+    const glyph = args.pickGlyph ?? "⌥"
+    return `Which one? ${glyph}1–${glyph}${Math.min(n, 9)}, or ← → and Enter`
   }
   if (args.reviewing) return "Ready to review"
   if (args.inFlight) return "Reading what you typed…"
@@ -387,7 +403,12 @@ export function CapturePane({
   onAskWhy,
   completeRequest,
   caretFieldIds,
+  pickGlyph,
 }: {
+  /** The pick modifier's glyph, from the user's preference — ⌃ for James, ⌥ by
+   *  default. ⚠️ THREADED IN RATHER THAN READ HERE so the pane and the pills cannot
+   *  print different keys for the same shortcut; `OpasHost` owns the preference. */
+  readonly pickGlyph?: string
   /** Fed through extraction on start, per the prototype (`:568` calls `feed` at once). */
   readonly openingLine?: string
   /** What a pane chose. Survives re-extraction; yields to a different name in the text. */
@@ -802,6 +823,7 @@ export function CapturePane({
     missingLabels: state?.missing_labels ?? [],
     nextQuestion: state?.next_question ?? null,
     reviewing: liveReviewing,
+    pickGlyph,
   })
   useEffect(() => {
     onStatus?.({

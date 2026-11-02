@@ -385,7 +385,16 @@ describe("Opas's voice says what is happening and is never stale", () => {
     await waitFor(() =>
       expect(screen.getByTestId("opas-said").textContent).toContain("Which one?"),
     )
-    expect(screen.getByTestId("opas-said").textContent).toContain("1–3")
+    // ⚠️ THE KEYS IT NAMES CHANGED ON 2026-11-02 AND THE CLAIM DID NOT. This asserted
+    // `"1–3"` — the bare-digit range — and a bare digit no longer picks anything, so
+    // the sentence was advertising a key that does nothing. James: *"Update the
+    // idle/pill hints so none show a bare digit."*
+    const said = screen.getByTestId("opas-said").textContent ?? ""
+    expect(said).toContain("⌥1–⌥3")
+    expect(said).toContain("← →")
+    // ⚠️ AND THE BARE RANGE IS ASSERTED ABSENT, not merely un-asserted. Without this
+    // the sentence could carry both forms and the test would still pass.
+    expect(said).not.toMatch(/(^|[^⌥⌃⌘])1–3/)
   })
 
   it("counts the MISSING SET, not rows in the `needed` state", async () => {
@@ -666,21 +675,23 @@ describe("⌘1..9 settles a pick", () => {
     expect(choosePick).not.toHaveBeenCalled()
   })
 
-  it("A PLAIN NUMBER PICKS, and the number LEAVES the text", async () => {
+  it("A PLAIN NUMBER TYPES AND PICKS NOTHING, which is the 2026-11-02 ruling", async () => {
     /**
-     * ⚠️ THIS TEST ASSERTED THE OPPOSITE UNTIL 2026-10-13, and quoted the ruling it
-     * was built on: "a bare 3 is text the director may be typing — a grave depth, a
-     * vault size, a time — so stealing it would make numbers untypable for as long
-     * as a question is open." James superseded that: pressing 1 to choose from a
-     * numbered list is what a person expects. The old reasoning was not wrong, which
-     * is why the replacement is NARROW — the five conditions live in
-     * `pick-digit.ts` and are tested exhaustively in `pick-digit.test.ts`. The two
-     * tests below this one are the cases that reasoning was protecting, and they
-     * still pass.
+     * ⚠️ THIS TEST HAS NOW ASSERTED BOTH ANSWERS AND THE SECOND REVERSAL IS THE
+     * DURABLE ONE. Until 2026-10-13 it said a bare digit is text; that day James
+     * ruled that pressing 1 to choose from a numbered list is what a person expects,
+     * and it was rewritten to assert the pick. On 2026-11-02 he reversed it after
+     * typing "12 chairs" and watching both digits vanish: *"Numbers are real input
+     * ('12 chairs', '2 chairs', '10am'), and you already have ⌃1, plus arrows and
+     * Enter, for picking. Every app that puts number shortcuts on choices uses a
+     * modifier for exactly this reason."*
      *
-     * ⚠️ IT ASSERTS THE NUMBER IS GONE FROM THE BAR, not just that the pick fired.
-     * A version that selected the option and left the digit in place would send
-     * "monticello 1" to the next extraction, where the 1 reads as a size.
+     * ⚠️ AND THE 10-13 VERSION WAS NEVER SAFE, WHICH IS WHAT THE SECOND REVERSAL
+     * ADDS. The five conditions in `pick-digit.ts` were about which numbers to
+     * protect; none of them was "is the bar empty", so a digit was consumable out of
+     * the MIDDLE of a sentence the director was still typing. Measured on James's own
+     * session: `full_text = 'riverside full equipment  chairs'`, a double space where
+     * the number had been.
      */
     vi.mocked(startCapture).mockResolvedValue(state({ pending_picks: [PICK] }) as never)
     const bar = await openOrder()
@@ -688,8 +699,69 @@ describe("⌘1..9 settles a pick", () => {
     await user.type(bar, "monticello 1")
     await settle()
 
-    expect(choosePick).toHaveBeenCalledWith("sess-1", PICK.field_id, 1)
-    expect(bar).toHaveValue("monticello")
+    expect(choosePick).not.toHaveBeenCalled()
+    expect(bar).toHaveValue("monticello 1")
+    // ⚠️ AND THE TEXT REACHES THE SERVER AS TYPED. A version that left the digit on
+    // screen but sent the stripped text would be the same defect one layer down.
+    expect(setCaptureText).toHaveBeenCalledWith(
+      "sess-1", "monticello 1", expect.any(Number), null,
+    )
+  })
+
+  it("JAMES'S OWN PHRASE: \"12 chairs\" arrives whole, with a pick open", async () => {
+    /** ⚠️ THE RULED TEST, VERBATIM FROM THE DISPATCH: *"with pills showing and the bar
+     *  empty, typing '12 chairs' puts exactly '12 chairs' in the bar and picks
+     *  nothing."* Both digits are in range for this 2-option pick, which is exactly
+     *  why they used to be eaten. */
+    vi.mocked(startCapture).mockResolvedValue(state({ pending_picks: [PICK] }) as never)
+    const bar = await openOrder()
+
+    await user.type(bar, "12 chairs")
+    await settle()
+
+    expect(bar).toHaveValue("12 chairs")
+    expect(choosePick).not.toHaveBeenCalled()
+  })
+
+  it("AND MID-SENTENCE, which is the bug the empty bar hid", async () => {
+    /** ⚠️ JAMES'S SECOND PHRASE — *"riverside, full setup, 12"* — and the state that
+     *  used to be destroyed is the INTERMEDIATE one. `consumePickDigit` matched a
+     *  TRAILING bare digit, so "riverside, full setup, 1" was consumed the moment the
+     *  director paused, and the 2 then landed against a comma.
+     *
+     *  ⚠️ IT TYPES THE WHOLE PHRASE AND SETTLES ONCE, so the assertion is about the
+     *  end state. The pause is what the old path needed, and `settle()` provides it. */
+    vi.mocked(startCapture).mockResolvedValue(state({ pending_picks: [PICK] }) as never)
+    const bar = await openOrder()
+
+    await user.type(bar, "riverside, full setup, 12")
+    await settle()
+
+    expect(bar).toHaveValue("riverside, full setup, 12")
+    expect(choosePick).not.toHaveBeenCalled()
+  })
+
+  it("THE CHORD STILL SETTLES THE PICK — the half the ruling kept", async () => {
+    /** ⚠️ THE POSITIVE CONTROL FOR THIS WHOLE BLOCK. Three tests above assert that
+     *  nothing is picked; without this one they would all pass against a pane whose
+     *  pick path was broken outright rather than narrowed to the modifier. */
+    vi.mocked(startCapture).mockResolvedValue(state({ pending_picks: [PICK] }) as never)
+    vi.mocked(choosePick).mockResolvedValue(state() as never)
+    await openOrder()
+
+    // ⚠️ NO TYPING FIRST, AND THAT IS NOT LAZINESS — IT IS WHAT THIS SUITE CAN SEE.
+    // `setCaptureText`'s mock returns a state with NO pending pick, so typing clears
+    // the pick from the pane's own state and the chord then has nothing to settle.
+    // The three tests above drive the typed path and assert the digits survive; this
+    // one asserts the chord still reaches the pick, which needs the pick present.
+    //
+    // ⚠️ ⌘ RATHER THAN ⌃, MATCHING THE SIBLING TESTS IN THIS BLOCK. The capture pick
+    // handler accepts `metaKey || ctrlKey`; which one a director presses is their own
+    // preference, and this block drives ⌘ throughout.
+    await user.keyboard("{Meta>}1{/Meta}")
+    await waitFor(() =>
+      expect(choosePick).toHaveBeenCalledWith("sess-1", PICK.field_id, 1),
+    )
   })
 
   it("A NUMBER THAT IS NOT AN OPTION STAYS IN THE TEXT", async () => {

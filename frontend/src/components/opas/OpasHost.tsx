@@ -61,9 +61,7 @@ import {
   type ReplyOption,
 } from "./reply"
 import { contextIntent, type ContextIntent } from "./context-phrases"
-import { EXTRACT_DEBOUNCE_MS } from "./capture-sequence"
 
-import { consumePickDigit } from "./pick-digit"
 import {
   DEFAULT_PICK_MODIFIER,
   GuidedQuestion,
@@ -71,7 +69,6 @@ import {
   PILL_ACT_REVIEW,
   STACK_BELOW_PX,
   paneBottomPx,
-  questionTakesNumbers,
 } from "./GuidedQuestion"
 import type { PickModifier } from "./GuidedQuestion"
 import {
@@ -84,6 +81,25 @@ import {
   PILL_ACT_NEW_ORDER,
 } from "./opas-prompts"
 import { shortcutRequest } from "./shortcut-request"
+
+/**
+ * The glyph printed on a REPLY option's `<kbd>`, and it is deliberately NOT the user's
+ * pick-modifier preference.
+ *
+ * ⚠️ TWO SURFACES, TWO MODIFIERS, AND THIS IS THE ONE THAT IS TRUE OF THIS HANDLER.
+ * Capture's PILLS honour the user's choice (`pickModifier`, ⌃ for James, ⌥ by default);
+ * the reply-option handler a few hundred lines up accepts `metaKey || ctrlKey` and
+ * nothing else — so a user whose preference is ⌥ would be shown a key the handler
+ * refuses. ⌃ is what works here on every platform, and `⌘1-8` is eaten by Chrome for
+ * tab switching (James, 2026-10-27), so ⌘ is the wrong one to advertise even though the
+ * handler accepts it.
+ *
+ * ⚠️ THE INCONSISTENCY IS REPORTED, NOT PAPERED OVER. Unifying the reply options onto
+ * the user's modifier is a one-line change to that handler and was NOT made here: the
+ * 2026-11-02 ruling is about removing the bare digit, and widening a preference to a
+ * second surface is its own decision.
+ */
+const REPLY_PICK_GLYPH = "⌃"
 import { resolvePhrase } from "@/services/opas-catalog-service"
 import {
   askOrderList,
@@ -852,11 +868,19 @@ export function OpasHost() {
     function onKeyDown(e: KeyboardEvent) {
       if (e.altKey || e.shiftKey) return
       if (!/^[1-9]$/.test(e.key)) return
-      // ⚠️ A BARE DIGIT ONLY WHEN THE BAR IS EMPTY. Mid-phrase it is part of what is
-      // being typed — "monticello 28" names a size — and consuming it would both answer
-      // the wrong question and eat a character.
-      const bare = !(e.metaKey || e.ctrlKey)
-      if (bare && text.trim() !== "") return
+      // ⚠️ THE MODIFIER IS REQUIRED SINCE 2026-11-02, AND THIS SUPERSEDES THE
+      // 2026-10-20 RULING THAT PUT A BARE DIGIT HERE. That ruling read "a bare digit
+      // answers here and not in capture… the guard is that the bar must be empty",
+      // and the empty-bar guard was real — this handler never ate a mid-phrase digit.
+      // It is removed anyway because James's ruling is about the AFFORDANCE, not about
+      // this handler's safety: *"Digits always type into the bar. Picking stays on the
+      // user's modifier (⌃1 for James) and ←/→/↑/↓ + Enter."* One rule for both
+      // surfaces beats two rules that differ by which one happened to be guarded.
+      //
+      // ⚠️ AND LEAVING IT WOULD HAVE KEPT THE HAZARD IN THE ONE PLACE A DIRECTOR WOULD
+      // NEXT MEET IT. A reply option is offered with the bar empty, which is exactly
+      // when someone starts typing "12 chairs".
+      if (!(e.metaKey || e.ctrlKey)) return
       const index = Number(e.key)
       if (index > open.length) return
       e.preventDefault()
@@ -865,7 +889,9 @@ export function OpasHost() {
     }
     document.addEventListener("keydown", onKeyDown, true)
     return () => document.removeEventListener("keydown", onKeyDown, true)
-  }, [opas.isOpen, reply, text, answerOption])
+    // ⚠️ `text` IS NO LONGER A DEPENDENCY, because the handler no longer reads it. It
+    // was there for the empty-bar guard removed above.
+  }, [opas.isOpen, reply, answerOption])
 
   /**
    * CAPTURE SPEAKS IN THE SAME VOICE AS EVERYTHING ELSE.
@@ -1402,46 +1428,29 @@ export function OpasHost() {
   }, [opas])
 
   /**
-   * A PLAIN NUMBER PICKS, and the number leaves the order text. Ruled 2026-10-13,
-   * superseding "typed digits go into the text".
+   * ⚠️ A PLAIN-NUMBER PICK EFFECT STOOD HERE AND WAS DELETED ON 2026-11-02, BY RULING.
    *
-   * ⚠️ IT WATCHES THE TEXT RATHER THAN THE KEY, because the digit must be REMOVED.
-   * A key handler would select the option and leave the digit in the sentence, where
-   * the next extraction reads it as a size or a year. `consumePickDigit` owns the
-   * five conditions and is tested as a pure function.
+   * It watched the bar's TEXT and, whenever a pending pick was open, consumed a
+   * trailing bare number in range as the choice — removing the digit from the order so
+   * the next extraction would not read it as a size or a year. Five conditions
+   * protected real numbers, and `pick-digit.ts` held them as a tested pure function.
    *
-   * ⚠️ IT CANNOT LOOP. Stripping the digit leaves text that no longer ends in a bare
-   * number, so the effect re-runs once and matches nothing.
+   * ⚠️ IT HAD NO EMPTY-BAR GUARD, AND THAT IS THE BUG JAMES HIT. The pill path in
+   * `GuidedQuestion` fired only on an empty bar; this one fired on ANY text ending in a
+   * bare digit. Measured: `consumePickDigit("riverside full equipment 1", 2)` returned
+   * index 1 and the text `"riverside full equipment"` — a digit eaten out of the middle
+   * of a sentence the director was still typing. His own session carries the scar:
+   * `full_text = 'riverside full equipment  chairs'`, with a DOUBLE SPACE where the
+   * number belonged.
    *
-   * ⚠️ ⌘1..9 IS UNTOUCHED and still works; this is the plain-number path beside it.
+   * ⚠️ AND THE DEBOUNCE IS WHY IT WAS INTERMITTENT RATHER THAN CONSTANT. The check ran
+   * on the same pause as extraction, so a number typed straight through was judged once
+   * and survived — `"…equipment 12 chairs"` is fine. The damage needed a PAUSE after a
+   * trailing in-range digit, which is why "12" worked sometimes and vanished others.
+   *
+   * ⌃1..9 (or the user's chosen modifier) is the pick path now, plus ←/→/↑/↓ and Enter.
    */
-  useEffect(() => {
-    if (entryPane === undefined || picks.length === 0) return
-    const pick = picks[0]
-    const paneId = entryPane.id
-    // ⚠️ DEBOUNCED ON THE SAME PAUSE AS EXTRACTION, AND NOT OPTIONAL. Checked on
-    // every keystroke, a number is judged on its PREFIXES: typing "34" passes
-    // through "3", and with three options showing the 3 was consumed and the 4 left
-    // behind. James's own counter-example ("34 is not consumed") failed this way in
-    // the first version — the rule was right and the timing was wrong. Waiting for
-    // the pause means the number is judged once, finished.
-    const timer = window.setTimeout(() => {
-      const hit = consumePickDigit(entryValue, pick.options.length)
-      if (hit === null) return
-      opas.setEntryText(paneId, hit.text)
-      pickNonce.current += 1
-      setPickRequest((prev) => ({
-        ...prev,
-        [paneId]: {
-          fieldId: pick.field_id,
-          index: hit.index,
-          nonce: pickNonce.current,
-        },
-      }))
-    }, EXTRACT_DEBOUNCE_MS)
-    return () => window.clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entryValue, entryPane, picks])
+
 
   /** ⚠️ A REF TO BREAK A REAL CYCLE, not a workaround for a lint rule.
    *  `settleOrderAnswer` builds the option actions, and each one calls
@@ -2445,6 +2454,7 @@ export function OpasHost() {
                   onSessionStarted={(id) => opas.setCaptureSession(pane.id, id)}
                   text={opas.entryText[pane.id] ?? ""}
                   onStatus={(st) => reportStatus(pane.id, st)}
+                  pickGlyph={pickGlyph}
                   caretFieldIds={fieldsAtCaret(
                     status?.spans,
                     status?.spansForText,
@@ -2821,7 +2831,6 @@ export function OpasHost() {
           // ⚠️ THE BAR'S EMPTINESS DECIDES WHETHER A BARE DIGIT ANSWERS. Mid-phrase a
           // digit is part of what is being typed — "monticello 28" names a size.
           barIsEmpty={text.trim() === ""}
-          questionTakesNumbers={questionTakesNumbers(guided.fieldId)}
           pickModifier={pickModifier}
           pickModifierGlyph={pickGlyph}
           onAnswer={answerGuided}
@@ -2921,8 +2930,10 @@ export function OpasHost() {
                     color: "#f2f2f2",
                   }}
                 >
-                  {/* The prototype's `<kbd>${i+1}</kbd>`. ⌘1-9 and a bare digit reach the
-                      same option; the number is the affordance for all three. */}
+                  {/* The prototype's `<kbd>${i+1}</kbd>`, now carrying the MODIFIER.
+                      ⚠️ IT PRINTED A BARE NUMBER UNTIL 2026-11-02 and a bare number no
+                      longer picks anything — so the affordance named a key that does
+                      nothing, on the one surface a director reads to learn it. */}
                   <kbd
                     style={{
                       flex: "none",
@@ -2934,6 +2945,7 @@ export function OpasHost() {
                       color: "#9a9a9a",
                     }}
                   >
+                    {REPLY_PICK_GLYPH}
                     {i + 1}
                   </kbd>
                   <span>{option.label}</span>
