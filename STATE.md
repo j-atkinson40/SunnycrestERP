@@ -25,6 +25,29 @@ and the n-gram door reverted with the narrowed noise file watching (5 tests fire
 in `test_noise_is_a_hint_not_a_filter.py`, which is the finding below rather than a
 mistake in the fix.
 
+### The deploy, verified — and the frontend bundle is UNCHANGED on purpose
+
+| half | result |
+|---|---|
+| CI run 41460606464 | Backend CI **success**, Frontend CI **success** |
+| backend | `api.getbridgeable.com/api/health` `commit` = **`eee7161422a8…`**, `db: connected` |
+| frontend | served bundle **`index-DXkNdWNX.js`**, 6,792,110 bytes — **byte-identical to 2026-10-30** |
+
+⚠️ **AN UNCHANGED BUNDLE IS THE CORRECT RESULT HERE AND IS PROVED FROM THE COMMIT, NOT
+ASSUMED.** `git show --name-only eee71614 -- frontend/` lists exactly one file,
+`ghost.test.ts` — every frontend change this slice is a TEST. All three rulings are
+server-side: `ghost.ts` itself is untouched and the ghost's behaviour changed because
+the VOCABULARY ENDPOINT stopped sending the price-list name, not because the matcher
+changed. A new bundle hash would have been the thing to explain.
+
+⚠️ **AND HASH COMPARISON ACROSS ENVIRONMENTS IS NOT A VALID INSTRUMENT, measured.** A
+local `npm run build` of this exact commit produces `index-Bgy9U5fc.js` while Railway
+serves `index-DXkNdWNX.js`, because the two builds bake different env values
+(`VITE_API_URL` and friends). The same divergence was present on 2026-10-30. So the
+served bundle is verified by CONTENT — the 10-30 markers are still in it
+(`chairs_total` 1, `chairs_extra` 1, `extra_chairs_count` 0), which says it has not
+rolled back.
+
 ### The exact text, read from production
 
 Session `5cce14dc-2ac9-4a34-a4ab-0273dc750f6f`, 2026-11-02 12:20:49→12:22:33 UTC,
