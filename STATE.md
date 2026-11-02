@@ -83,6 +83,29 @@ as he does not stop on a bare in-range number.
 - **2026-11-02** — The capture PILLS already printed `{glyph}{i+1}`, so they needed no
   change. `IDLE_HINT` and `DONE_HINT` carry no digits.
 
+### The deploy, verified — and this time the grep INVERTED on a real bundle change
+
+| half | result |
+|---|---|
+| CI run 41489362497 | Backend CI **success**, Frontend CI **success** |
+| backend | `api.getbridgeable.com/api/health` `commit` = **`48d3c8aea12b…`** = `HEAD` |
+| frontend | served bundle **`index-DvhJUms9.js`**, 6,791,109 bytes — **a NEW hash**, where the last three commits all served `index-DXkNdWNX.js` |
+
+⚠️ **AND THE MARKER IS A STRING LITERAL, NOT A FUNCTION NAME, BECAUSE MINIFICATION
+MANGLES THE SECOND.** `consumePickDigit` appears 0 times in the served bundle, which
+proves nothing on its own — a minifier renames it either way. The hint sentence is a
+literal and survives:
+
+| marker | built from `8e026939` | served bundle |
+|---|---|---|
+| `and the number` | **1** | **0** |
+| `← → and Enter` | **0** | **1** |
+
+Two markers, two inversions, opposite directions — so the served bundle carries this
+commit's hint and not a cached predecessor. The previous three commits' identical hash
+was correct then (no frontend source changed); a changed hash here is the expected
+result of the first real frontend change since.
+
 ### ⚠️ CI WENT RED ON THE SUITE-SIZE RATCHET, AND THE GUARD WAS RIGHT TWICE
 
 - **2026-11-02** — Local vitest was green and **Frontend CI failed**:
