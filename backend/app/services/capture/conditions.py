@@ -275,6 +275,64 @@ class AnyAnswered:
 
 
 @dataclass(frozen=True)
+class NoAnswerOrSentinel:
+    """TRUE when a field is unanswered OR holds one of `sentinels` — "nothing chosen".
+
+    `vault` is required when there is NO EQUIPMENT BUNDLE (James, 2026-11-02:
+    *"Vault is required only when nothing else makes it a sale"*), so this is
+    `NoAnswerOrSentinel("cemetery_equipment", {"none"})`.
+
+    ⚠️ AN UNANSWERED DEPENDENCY READS **TRUE** HERE, AND THAT INVERTS THE DISCIPLINE
+    EVERY OTHER NODE IN THIS MODULE FOLLOWS. `EqualsValue`, `NotEqualsValue` and
+    `AnswerIn` all read an unanswered dependency as INDETERMINATE, for the reason the
+    module docstring gives: a requirement must not appear mid-flow with no explanation.
+    This node is the opposite case, and the asymmetry is the whole point of it being a
+    node rather than a combination of the others.
+
+    ⚠️ BECAUSE "NOT YET ANSWERED" IS NOT A PENDING QUESTION HERE — IT IS THE ANSWER.
+    On a brand-new order nothing is answered, and the vault must be required *then*:
+    James, same ruling, *"Opas still asks the vault question first on a new order."*
+    Reading unanswered as INDETERMINATE would put `vault` in `indeterminate` on every
+    fresh order, where `guided_field` never reaches it and the pane renders nothing —
+    so Opas would open a new order and ask about the funeral home, the decedent, the
+    dates, and never once about the vault. Measured on the first attempt.
+
+    ⚠️ AND THE REQUIREMENT DISAPPEARING MID-FLOW IS FINE IN THIS DIRECTION, which is
+    the other half of why the inversion is safe. The hazard the module warns about is a
+    requirement APPEARING — the director is told, late, that something they were never
+    asked for is now blocking. Here the movement is the other way: naming a bundle
+    RELAXES the vault from required to optional, so nothing new is ever demanded.
+
+    ⚠️ THE SENTINEL SET IS EXPLICIT BECAUSE `"none"` IS AN ANSWER. `is_answered("none")`
+    is TRUE — the family declined — so "no bundle" cannot be expressed by asking whether
+    the field is answered. `cemetery_equipment = "none"` means *this order has no
+    equipment*, which is precisely the case where a vault is the only thing that could
+    make it a sale.
+
+    ⚠️ AN UNUSABLE DEPENDENCY READS TRUE, for the same reason as the unanswered case: a
+    tenant that switched the equipment question off can never set a bundle, so a vault
+    is the only thing that can make any of its orders a sale.
+    """
+
+    field_id: str
+    sentinels: frozenset = frozenset()
+
+    @property
+    def depends_on(self) -> tuple[str, ...]:
+        return (self.field_id,)
+
+    def evaluate(self, ctx: ConditionContext) -> Verdict:
+        if _unusable(ctx, self.field_id):
+            return Verdict.TRUE
+        if not _answered(ctx, self.field_id):
+            return Verdict.TRUE
+        return (
+            Verdict.TRUE if ctx.answers.get(self.field_id) in self.sentinels
+            else Verdict.FALSE
+        )
+
+
+@dataclass(frozen=True)
 class AvailabilityOffered:
     """The three personalization questions apply when the resolved vault offers them.
 

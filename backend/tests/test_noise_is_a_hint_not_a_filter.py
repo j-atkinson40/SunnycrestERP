@@ -219,7 +219,6 @@ def test_no_NON_vault_variant_puts_a_non_vault_in_the_slot(
     "cemetery tent single",
     "Cemetery Tent - Double",
     "cemetery tent double",
-    "lowering device",
     "grass mats",
     "cremation table",
 ])
@@ -239,12 +238,18 @@ def test_the_tents_are_REFUSED_by_the_vault_seam_now(db, tenant, line):
     labels — so a director who types "lowering device" gets it reported as unplaced
     rather than silently filed as a vault.
 
-    ⚠️ AND MAPPING THEM TO PACKAGES IS NOT AN EXECUTOR'S CALL, which is why this test
-    pins the refusal rather than a redirection. `"Lowering Device"` is ambiguous between
-    the `lowering_device_only` and `lowering_device_and_grass` packages — two different
-    prices — so choosing one would be guessing at a price, and offering a pick is a new
-    question in a flow James has not ruled on. Reported; visible to the director as
-    unplaced text in the meantime.
+    ⚠️ `"lowering device"` LEFT THIS LIST ON 2026-11-02, AND THAT IS RULING 2. When
+    this test was written I reported that mapping it to a package was not an executor's
+    call, because `Lowering Device Only` and `Lowering Device & Grass` are two prices
+    and picking one would guess at a price. James ruled the third option: *"'lowering
+    device' alone → Opas asks, two pills: 'Device only' / 'Device & grass'. Never map it
+    to either price silently."* It now produces a PICK on `cemetery_equipment` — see
+    `test_an_ambiguous_equipment_family_ASKS.py` — so it is no longer refused and no
+    longer unplaced.
+
+    ⚠️ THE FIVE THAT REMAIN ARE STILL REFUSED AND STILL UNPLACED, and that is still the
+    honest state: no equipment vocabulary reaches a tent, grass mats or a cremation
+    table, so the words land nowhere and the director sees them flagged.
     """
     got, opts, unrec = _vault(db, tenant, line)
     assert got is None, (line, got)

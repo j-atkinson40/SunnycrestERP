@@ -26,7 +26,11 @@ from decimal import Decimal
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.services.capture.schema import EQUIPMENT_PACKAGES
+from app.services.capture.schema import (
+    EQUIPMENT_NONE_ANSWER,
+    EQUIPMENT_PACKAGES,
+    VAULT_NONE_ANSWER,
+)
 
 #: Equipment slug -> the product name a tenant must carry for it to be billable.
 #: ⚠️ DERIVED FROM THE SCHEMA'S OWN LABELS, not retyped. `EQUIPMENT_PACKAGES` is the
@@ -37,7 +41,14 @@ EQUIPMENT_PRODUCT_NAMES: dict[str, str] = {
 }
 
 #: The answer meaning "no equipment on this order" — no line, and no blocker.
-EQUIPMENT_NONE = "none"
+#:
+#: ⚠️ RE-EXPORTED FROM `schema` SINCE 2026-11-02, NOT DECLARED TWICE. `vault`'s
+#: `required_when` reads the same sentinel (a vault is required again once the
+#: equipment question is answered "None"), and `schema` cannot import from this module,
+#: so the string moved there and this name now points at it. Two spellings of one
+#: sentinel across the requirement rule and the billing rule is the drift that
+#: `CHAIRS_INCLUDED` already cost this codebase once.
+EQUIPMENT_NONE = EQUIPMENT_NONE_ANSWER
 
 
 @dataclass(frozen=True)
@@ -403,7 +414,17 @@ def assess(
 
     # ── the vault line ─────────────────────────────────────────────────────
     vault = (answers.get("vault") or "").strip()
-    if vault:
+    # ⚠️ THE RESERVED "no vault" ANSWER BILLS NOTHING AND BLOCKS NOTHING (ruling 1,
+    # 2026-11-02). Without this clause it would reach `_product_by_exact_name`, find no
+    # product called "none", and block with *"none has no product on this tenant"* — a
+    # sentence about a product the director never named, on an order they had
+    # deliberately told Opas has no vault.
+    #
+    # ⚠️ AND AN ORDER WITH NO VAULT AND NO EQUIPMENT STILL BLOCKS, which is what makes
+    # this safe to skip quietly. "Nothing to bill — the order would have no lines"
+    # fires below on exactly that case, so declining the vault cannot produce an empty
+    # approved order.
+    if vault and vault.casefold() != VAULT_NONE_ANSWER:
         prod = _product_by_exact_name(db, tenant_id, vault)
         if prod is None or prod.price is None:
             why = "has no product on this tenant" if prod is None else "has no price"

@@ -201,6 +201,37 @@ _EQUIPMENT: tuple[tuple[str, str], ...] = (
     (r"no\s+equipment|don'?t\s+need\s+equipment", ANSWER_NONE),
 )
 
+#: Equipment phrases that name a FAMILY rather than a package, with the packages they
+#: could mean. ⚠️ THEY ASK; THEY NEVER PICK (ruling 2, James 2026-11-02): *"'lowering
+#: device' alone → Opas asks, two pills: 'Device only' / 'Device & grass'. Never map it
+#: to either price silently."*
+#:
+#: ⚠️ AND "NEVER SILENTLY" IS ABOUT MONEY, WHICH IS WHY THIS IS A PICK AND NOT A
+#: DEFAULT. `Lowering Device Only` and `Lowering Device & Grass` are two price-list rows
+#: at two prices; choosing one on the director's behalf puts a number on an invoice that
+#: nobody said. The vault resolver already works this way — a phrase reaching two
+#: variants asks — and the 2026-10-13 exception to that (a form-only ambiguity takes the
+#: burial vault) was ruled precisely because the two readings cost the same.
+#:
+#: ⚠️ RUN AFTER `_EQUIPMENT`, SO THE EXACT PHRASINGS STILL RESOLVE DIRECTLY. "device
+#: only" and "lowering device and grass" are unambiguous and match there first; this
+#: table only ever sees what that one declined. Ruling 2 says so in terms: *"'lowering
+#: device and grass' / 'device only' resolve directly as now."*
+#:
+#: ⚠️ THE LABELS ARE JAMES'S OWN AND ARE SHORTER THAN THE PACKAGE NAMES. "Device only"
+#: and "Device & grass" read as two answers to one question; "Lowering Device Only" and
+#: "Lowering Device & Grass" side by side differ in their last word and read as one
+#: thing written twice.
+_EQUIPMENT_FAMILIES: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
+    (
+        r"(?:lowering\s+)?device(?!\s+(?:only|and|&|\+))",
+        (
+            (_EQ_ID["Lowering Device Only"], "Device only"),
+            (_EQ_ID["Lowering Device & Grass"], "Device & grass"),
+        ),
+    ),
+)
+
 #: Chairs included in every graveside package, per the price list: the per-unit
 #: ⚠️ `CHAIRS_INCLUDED = 8` STOOD HERE AND WAS DELETED BY RULING B' (James,
 #: 2026-10-30). It was subtracted from every chair count whatever the bundle, and
@@ -1024,15 +1055,36 @@ class DeterministicExtractor:
         # grave location. A chair phrase carries a NUMBER, and so does a grave
         # location; the ordering decides which of them owns a bare digit. See the
         # chairs block for the measurement that forced it.
+        _equip_hit = False
         for pat, val in _EQUIPMENT:
             m = re.search(pat, low)
             if m:
+                _equip_hit = True
                 if once("cemetery_equipment"):
                     if _mark(spans, m, "cemetery_equipment"):
                         values["cemetery_equipment"] = val
                 else:
                     note_restated("cemetery_equipment", m)
                 break
+
+        # ── an equipment FAMILY, which asks rather than guessing (ruling 2) ──
+        #
+        # ⚠️ ONLY WHEN NOTHING ABOVE MATCHED. "device only" and "device and grass" are
+        # exact and resolve there; this sees what they declined, which is a bare
+        # "lowering device" — two packages at two prices, so it asks.
+        #
+        # ⚠️ IT CLAIMS THE SPAN EVEN THOUGH IT WRITES NO VALUE, the same way an
+        # ambiguous vault phrase does. Without the claim the words would also land in
+        # the unplaced list, and the director would be asked a question about a phrase
+        # Opas was simultaneously reporting it had not understood.
+        if not _equip_hit and once("cemetery_equipment"):
+            for pat, options in _EQUIPMENT_FAMILIES:
+                m = re.search(pat, low)
+                if m and _mark(spans, m, "cemetery_equipment"):
+                    picks.append(Pick(
+                        "cemetery_equipment", m.group(0), options, "package",
+                    ))
+                    break
 
         # ── personalization answer ───────────────────────────────────────
         for pat, val in _PERSONALIZATION:
@@ -1143,27 +1195,10 @@ class DeterministicExtractor:
 
         # ── grave location ──────────────────────────────────────────────
         if once("grave_location"):
-            m = re.search(
-                # ⚠️ EVERY LABEL IS WORD-BOUNDED, AND `grave` IS WHY. Without the
-                # `\b` it matched the "grave" inside "graveSIDE": measured 2026-10-13,
-                # "section 4 graveside Friday 11am" produced
-                # `grave_location='Section 4, Space side'` and swallowed the word, so
-                # the SERVICE LOCATION was lost and the order still asked for one.
-                # The same sentence with anything between — "section 4 11 graveside" —
-                # worked, which is what made it look like a graveside problem.
-                #
-                # ⚠️ `l` AND `sp` CARRY THE SAME RISK AND ARE BOUNDED TOO. A bare `l`
-                # would match the "l" starting any word after a comma.
-                r"\b(?:section|sec\.?)\s*([A-Za-z0-9]+)"
-                r"(?:[,\s]+(?:lot|l)\b\s*([A-Za-z0-9]+))?"
-                r"(?:[,\s]+(?:space|grave|sp)\b\s*([A-Za-z0-9]+))?", line, re.I)
+            m = _GRAVE_RE.search(line)
             if m:
-                parts = [f"Section {m.group(1)}"]
-                if m.group(2):
-                    parts.append(f"Lot {m.group(2)}")
-                if m.group(3):
-                    parts.append(f"Space {m.group(3)}")
-                if _mark(spans, m, "grave_location"):
+                parts = _grave_parts(m.group(0))
+                if parts and _mark(spans, m, "grave_location"):
                     values["grave_location"] = ", ".join(parts)
 
         # ── chairs: the package AND its count, from one span ─────────────
@@ -2798,8 +2833,120 @@ _ETA_MARKER = re.compile(r"\b(?:eta|e\.t\.a\.?|arrival|arriv(?:e|ing)|at the cem
 #: ⚠️ " actually " IS A SEPARATOR BECAUSE IT IS HOW A CORRECTION SOUNDS. James's own
 #: sample order ends "full setup actually tent only", and under LAST_WINS the later
 #: segment is the answer — which is exactly what he described.
+#: The grave's parts, in the order the office writes them. ⚠️ CANONICAL ORDER, NOT THE
+#: TYPED ORDER: "lot 2, section A" and "section A, lot 2" are the same grave, and two
+#: spellings of one place on two orders is what makes a cemetery map unsearchable.
+_GRAVE_LABELS: tuple[tuple[str, str], ...] = (
+    (r"section|sec\.?", "Section"),
+    (r"lot|l", "Lot"),
+    (r"row", "Row"),
+    (r"space|grave|sp", "Space"),
+)
+
+#: What a grave component's VALUE may look like: a plot identifier, never a word.
+#:
+#: ⚠️ THIS IS WHAT STOPS RULING 3 RE-OPENING THE 2026-10-13 DEFECT, AND IT DID RE-OPEN
+#: IT FOR ONE RUN. The old pattern could only open on `section`, so "we'll do it grave
+#: side" matched nothing. Ruling 3 lets `grave` open a location — and `\bgrave\b\s*
+#: ([A-Za-z0-9]+)` then matched "grave side", producing `grave_location = "Space side"`
+#: and stealing the word that makes the service GRAVESIDE. That is the 10-13 defect
+#: exactly, arrived at from the opposite direction, and
+#: `test_no_span_feeds_two_fields.py` caught it.
+#:
+#: ⚠️ SO A VALUE MUST CARRY A DIGIT OR BE ONE OR TWO LETTERS: "4", "4A", "A", "A4",
+#: "AB". An English word cannot — "side" is four letters with no digit, and the `\b`
+#: refuses the "si" prefix because a word character follows it.
+#:
+#: ⚠️ AND THE COST IS NAMED: a cemetery with a section called "North" is not typeable
+#: as a grave location. That is the safe direction of the trade — the word is reported
+#: as unplaced and the director sees it — where the other direction silently eats
+#: whatever word follows "grave", and the 10-13 measurement is what that costs.
+_GRAVE_VALUE = r"(?:\d+[A-Za-z]?|[A-Za-z]{1,2}\d*)\b"
+
+#: One `<label> <value>` component.
+#:
+#: ⚠️ EVERY LABEL IS WORD-BOUNDED, AND `grave` IS WHY. Without the `\b` it matched the
+#: "grave" inside "graveSIDE": measured 2026-10-13, "section 4 graveside Friday 11am"
+#: produced `grave_location='Section 4, Space side'` and swallowed the word, so the
+#: SERVICE LOCATION was lost and the order still asked for one. The same sentence with
+#: anything between — "section 4 11 graveside" — worked, which is what made it look
+#: like a graveside problem.
+#:
+#: ⚠️ `l` AND `sp` CARRY THE SAME RISK AND ARE BOUNDED TOO. A bare `l` would match the
+#: "l" starting any word after a comma.
+_GRAVE_PART = (
+    r"\b(?:" + "|".join(pat for pat, _label in _GRAVE_LABELS) + r")\b\s*" + _GRAVE_VALUE
+)
+
+#: One or more components, joined across spaces OR COMMAS.
+#:
+#: ⚠️ IT NO LONGER REQUIRES A SECTION, BY RULING 3 (James, 2026-11-02): *"'lot' joins
+#: the grave vocabulary… Lot is never required (standing ruling), but anything said
+#: about the grave is never dropped."* The old pattern opened on `section` and treated
+#: lot and space as optional tails, so `"lot 2"` on its own matched NOTHING and was
+#: reported as text the engine could not place — a thing the director said about the
+#: grave, dropped.
+#:
+#: ⚠️ AND `row` IS NEW, named in the same ruling. It was in no vocabulary at all.
+_GRAVE_RE = re.compile(
+    _GRAVE_PART + r"(?:[,\s]+" + _GRAVE_PART + r")*", re.I
+)
+
+
+def _grave_parts(phrase: str) -> list[str]:
+    """The matched grave phrase, rendered in canonical order with one label each.
+
+    ⚠️ LAST MENTION WINS PER LABEL, which is the same rule the whole extractor uses.
+    "section A, section B" is a correction, not two sections.
+
+    ⚠️ AND A LABEL THE DIRECTOR DID NOT SAY IS ABSENT RATHER THAN EMPTY. The row reads
+    "Section A, Lot 2" on an order that named both and "Lot 2" on one that named only
+    the lot; a fixed four-part string with blanks would put "Section , Lot 2" on screen.
+    """
+    found: dict[str, str] = {}
+    for pat, label in _GRAVE_LABELS:
+        for m in re.finditer(
+            r"\b(?:" + pat + r")\b\s*(" + _GRAVE_VALUE + r")", phrase, re.I
+        ):
+            found[label] = m.group(1)
+    return [
+        f"{label} {found[label]}"
+        for _pat, label in _GRAVE_LABELS
+        if label in found
+    ]
+
+
+#: ⚠️ AND NOT ON A COMMA THAT SITS INSIDE A GRAVE LOCATION, BY RULING 3 (James,
+#: 2026-11-02): *"'section A, lot 2' must keep the lot. Grave location takes section and
+#: lot (and 'row', 'grave', 'space') together across a comma."*
+#:
+#: ⚠️ THE GRAVE PATTERN ALREADY SPANNED THE COMMA; THE SPLITTER NEVER LET IT SEE ONE.
+#: `_GRAVE_RE` has joined its components on `[,\s]+` since it was written, and
+#: `"section A lot 2"` has always produced `"Section A, Lot 2"`. What happened to
+#: `"section A, lot 2"` is that `segments()` cut it into `"section A"` and `"lot 2"`
+#: first, so the matcher was handed half a grave location and the word "lot" ended up
+#: in NEITHER the placed nor the held list. Measured 2026-11-02 and pinned as a known
+#: gap before this ruling closed it.
+#:
+#: ⚠️ FIXED AT THE SPLITTER RATHER THAN BY MATCHING OVER THE WHOLE TEXT, which was the
+#: other option and is worse. Running the grave matcher across segments would let it
+#: join a section in one statement to a lot in another — `"section A, actually tent
+#: only, lot 2"` would become one grave location — and every other parser would still
+#: be segment-scoped, so one pass would see a different sentence from the rest.
+#:
+#: ⚠️ THE LOOKAHEAD IS TIGHT, AND EACH BOUND IS THERE FOR A MEASURED REASON. The grave
+#: word must be a WHOLE word and must be followed by a value: `\bl\b` does not match
+#: the "l" of ", lowering device", and `\bgrave\b` does not match ", graveside friday"
+#: — the 2026-10-13 defect where "graveside" was eaten and the service location was
+#: lost. Requiring the value is what stops ", grave concerns" joining a grave location.
+_GRAVE_CONTINUES = (
+    r"(?!\s*(?:section|sec\.?|lot|l|row|space|grave|sp)\b\s*" + _GRAVE_VALUE + r")"
+)
+
 _SEGMENT_RE = re.compile(
-    r"\n|[,;]|\bactually\b|\bscratch that\b|\bno wait\b|\bmake that\b",
+    r"\n|,"
+    + _GRAVE_CONTINUES
+    + r"|;|\bactually\b|\bscratch that\b|\bno wait\b|\bmake that\b",
     re.I,
 )
 

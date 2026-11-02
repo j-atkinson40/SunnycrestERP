@@ -49,6 +49,7 @@ from app.services.capture.conditions import (
     ConditionContext,
     EqualsValue,
     Never,
+    NoAnswerOrSentinel,
     NotEqualsValue,
     Verdict,
     topological_order,
@@ -142,6 +143,22 @@ class FieldDefinition:
     #: field without stores what it shows. `test_enum_display.py` asserts the
     #: partition, so a new enum field cannot quietly join the second group.
     options: tuple[tuple[str, str], ...] = ()
+    #: `(stored_id, display_label)` for values a field RESERVES without having a
+    #: vocabulary. Empty for every field but `vault`.
+    #:
+    #: ⚠️ IT IS NOT A SECOND `options`, AND KEEPING THEM APART IS THE WHOLE REASON IT
+    #: EXISTS. `options` means "this field's answers come from a fixed list", and
+    #: `test_enum_display.py` partitions the template on exactly that: a field with
+    #: options stores an id, a field without stores what it shows. `vault` stores what
+    #: it shows — a resolved product name — and ALSO reserves one string meaning "no
+    #: vault at all". Putting that string in `options` would move `vault` to the enum
+    #: side of the partition and make every real vault an unpermitted answer.
+    #:
+    #: ⚠️ `label_for` READS THIS FIRST, so a reserved value is labelled on a field with
+    #: no vocabulary. Without it the row rendered the raw sentinel — "none" on screen
+    #: where the director had clicked "No vault — equipment only", which is the same
+    #: defect as the Service row reading `funeral_home` on James's 2026-10-12 walk.
+    reserved: tuple[tuple[str, str], ...] = ()
     #: How a stored value is written for a human: `"date"`, `"time"`, or None for
     #: "as stored".
     #:
@@ -177,6 +194,17 @@ class FieldDefinition:
         predate a vocabulary change, and showing the raw id is a visible oddity the
         operator can report; raising would take the whole pane down over one row.
         """
+        # ⚠️ RESERVED VALUES ARE LABELLED EVEN ON A FIELD WITH NO OPTIONS, ADDED
+        # 2026-11-02. `vault` is a resolved PRODUCT and declares no vocabulary, so
+        # `not self.options` returned early and the row rendered the raw sentinel —
+        # "none" on screen where the director had clicked "No vault — equipment only".
+        # An option list would have been the wrong fix: it would move `vault` to the
+        # enum side of `test_enum_display`'s partition and make every real vault an
+        # unpermitted answer.
+        if self.reserved:
+            for ident, label in self.reserved:
+                if ident == value:
+                    return label
         if not self.options:
             return str(value)
         for ident, label in self.options:
@@ -386,6 +414,36 @@ SERVICE_LOCATION_OPTIONS: tuple[tuple[str, str], ...] = tuple(
 #:
 #: ⚠️ THE LABELS ARE THE EXACT STRINGS THE OLD EXTRACTOR STORED, so nothing a
 #: director reads changes; only what the database holds does.
+#: The VAULT answer meaning "this order has no vault — the equipment is the sale".
+#:
+#: ⚠️ A RESERVED VALUE, NOT AN OPTION, AND THE DIFFERENCE IS LOAD-BEARING. `vault` is a
+#: resolved PRODUCT and declares no `options` — `test_enum_display` partitions the
+#: template on exactly that, and giving it a vocabulary would move it to the enum side
+#: and make every real vault an unpermitted answer. So this is one string the field
+#: reserves, the same shape `EQUIPMENT_NONE_ANSWER` has for a field that does declare
+#: options.
+#:
+#: ⚠️ IT EXISTS BECAUSE A PILL HAS TO BE ABLE TO ANSWER THE QUESTION. James, 2026-11-02:
+#: *"Opas still asks the vault question first on a new order; a pill 'No vault —
+#: equipment only' answers it."* Without a value to write, the pill could only be a
+#: no-op: `vault` leaves `missing` either when a bundle is named or when the field is
+#: ANSWERED, and the director clicking this has named no bundle yet.
+#:
+#: ⚠️ AND IT IS NOT THE SAME CLAIM AS LEAVING THE FIELD BLANK. Blank means "nobody has
+#: said"; this means "somebody said no". The second stops Opas asking again, which is
+#: the whole point of the pill, and it is why the row renders the label below rather
+#: than going quiet.
+VAULT_NONE_ANSWER = "none"
+VAULT_NONE_LABEL = "No vault — equipment only"
+
+#: The equipment answer meaning "no equipment on this order".
+#:
+#: ⚠️ DECLARED HERE AND RE-EXPORTED BY `approval.EQUIPMENT_NONE`, WHICH IS WHERE IT
+#: USED TO LIVE ALONE. `vault`'s `required_when` reads it — a vault is required again
+#: when the equipment question has been answered "None", because then nothing else on
+#: the order could make it a sale — and `schema` must not import from `approval`.
+EQUIPMENT_NONE_ANSWER = "none"
+
 EQUIPMENT_PACKAGES: tuple[tuple[str, str], ...] = (
     ("full_equipment", "Full Equipment"),
     ("lowering_device_and_grass", "Lowering Device & Grass"),
@@ -472,7 +530,30 @@ ANY_PERSONALIZATION_CHOSEN = AnyAnswered(
 
 #: What every tenant is asked for before it configures anything.
 PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
-    FieldDefinition(VAULT_FIELD_ID, "Vault", switchable=False),
+    # ⚠️ REQUIRED ONLY WHEN THERE IS NO EQUIPMENT BUNDLE, BY RULING (James,
+    # 2026-11-02): *"EQUIPMENT-ONLY ORDERS ARE REAL. An order is complete with no vault
+    # when an equipment bundle is set and no vault was mentioned. Vault is required only
+    # when nothing else makes it a sale."*
+    #
+    # ⚠️ IT WAS UNCONDITIONALLY REQUIRED UNTIL TODAY, AND THE ONLY REASON THAT LOOKED
+    # WORKABLE IS THAT EQUIPMENT COULD MASQUERADE AS A VAULT. `test_an_equipment_only_
+    # drop_is_complete` typed "Lowering Device" — `form = 'equipment'` — and the order
+    # completed with graveside equipment standing in the vault slot. Ruling A closed
+    # that hole on 2026-11-02 and the test went red on its own premise, which is how
+    # this requirement came up for a ruling at all.
+    #
+    # ⚠️ `"none"` IS A SENTINEL, NOT A BUNDLE. `is_answered("none")` is TRUE, so "no
+    # bundle" cannot be expressed as "unanswered" — an order whose equipment question
+    # was answered "None" has nothing BUT a vault to make it a sale, so the vault is
+    # required again. See `NoAnswerOrSentinel` for why an UNANSWERED bundle reads TRUE
+    # here rather than INDETERMINATE.
+    FieldDefinition(
+        VAULT_FIELD_ID, "Vault", switchable=False,
+        required_when=NoAnswerOrSentinel(
+            "cemetery_equipment", frozenset({EQUIPMENT_NONE_ANSWER}),
+        ),
+        reserved=((VAULT_NONE_ANSWER, VAULT_NONE_LABEL),),
+    ),
     FieldDefinition("funeral_home", "Funeral home"),
     # ⚠️ `display="name"` TITLE-CASES FOR DISPLAY ONLY, BY RULING (2026-10-14),
     # SUPERSEDING "display as given" from 2026-10-13. A director typing fast gives

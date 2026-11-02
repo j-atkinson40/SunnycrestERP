@@ -175,6 +175,76 @@ def test_a_year_pair_sets_both_dates_and_does_NOT_set_the_format(db, tenant):
     assert "nameplate_date_format" not in ex.values
 
 
+def test_an_equipment_only_drop_is_complete(db, tenant):
+    """⚠️ RULING 1 (James, 2026-11-02): *"EQUIPMENT-ONLY ORDERS ARE REAL. An order is
+    complete with no vault when an equipment bundle is set and no vault was mentioned.
+    Vault is required only when nothing else makes it a sale."* And, naming this test:
+    *"Rewrite `test_an_equipment_only_drop_is_complete` to type a real bundle ('lowering
+    device and grass') and complete with vault empty."*
+
+    ⚠️ THIS TEST EXISTED, PASSED, AND PROVED THE OPPOSITE OF WHAT IT CLAIMED. It typed
+    `"Lowering Device"` — `product_templates.form = 'equipment'` — and the order
+    completed because the vault slot had no form filter and accepted it. So "an
+    equipment-only drop is complete" was true only in the sense that equipment could
+    masquerade as a vault. Ruling A (2026-11-02) closed that and the test went red on
+    its own premise; ruling 1 is the answer, and this is the test it asked for.
+
+    ⚠️ THE BUNDLE IS `"lowering device and grass"`, WHICH IS THE PHRASE JAMES NAMED, and
+    it is unambiguous. A bare `"lowering device"` would ASK (ruling 2) and this order
+    would have a pending pick rather than a bundle — a different state, and not the one
+    this test is about.
+    """
+    answers, _, _ = _type(db, tenant, [
+        "order for Hopkins",
+        "decedent is Mary Jones",
+        "lowering device and grass",
+        "to Oakwood",
+        "service at the church",
+        "service on March 2 2027",
+        "service at 10am",
+        "section A, lot 2",
+    ])
+    _, state, _c = evaluate_typed(db, tenant_id=tenant, answers=answers)
+
+    # ⚠️ THE PREMISE, ASSERTED BOTH WAYS. The bundle is set and the vault is EMPTY —
+    # without the second half this would pass on an order that had quietly resolved a
+    # vault from one of the other lines, which is the whole failure mode it replaces.
+    assert answers.get("cemetery_equipment") == "lowering_device_and_grass", answers
+    assert answers.get("vault") is None, answers
+
+    assert "vault" not in state.missing, state.missing
+    assert state.missing == (), state.missing
+    assert state.is_complete, f"missing={state.missing}"
+
+
+def test_the_vault_is_required_again_when_NOTHING_makes_it_a_sale(db, tenant):
+    """⚠️ THE OTHER HALF OF RULING 1, AND WITHOUT IT THE TEST ABOVE WOULD PASS ON A
+    SCHEMA THAT HAD SIMPLY STOPPED REQUIRING A VAULT AT ALL. *"Vault is required only
+    when nothing else makes it a sale"* — so with no bundle, it is required.
+
+    ⚠️ AND `"no equipment"` IS NOT A BUNDLE. `cemetery_equipment = "none"` is an ANSWER
+    — the director said this order has no equipment — so the vault is the only thing
+    that could make it a sale and is required again. `is_answered("none")` is TRUE,
+    which is exactly why `NoAnswerOrSentinel` takes the sentinel set explicitly rather
+    than asking whether the field is answered.
+    """
+    bare, _, _ = _type(db, tenant, [
+        "order for Hopkins", "decedent is Mary Jones", "to Oakwood",
+        "service at the church", "service on March 2 2027", "service at 10am",
+    ])
+    _, state, _c = evaluate_typed(db, tenant_id=tenant, answers=bare)
+    assert bare.get("cemetery_equipment") is None, bare
+    assert "vault" in state.missing, state.missing
+
+    declined, _, _ = _type(db, tenant, [
+        "order for Hopkins", "decedent is Mary Jones", "no equipment", "to Oakwood",
+        "service at the church", "service on March 2 2027", "service at 10am",
+    ])
+    _, state2, _c2 = evaluate_typed(db, tenant_id=tenant, answers=declined)
+    assert declined.get("cemetery_equipment") == "none", declined
+    assert "vault" in state2.missing, state2.missing
+
+
 def test_a_product_that_takes_NO_personalization_is_complete(db, tenant):
     """⚠️ THE R4 CASE, REACHED BY TYPING. The personalization question must be
     not-applicable on a product whose catalogue row offers none, and the order must

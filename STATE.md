@@ -2,6 +2,131 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 2026-11-02 (later) — the three owed rulings, all three landed
+
+The three items the morning's work left owed. ⚠️ **ALL THREE WERE CONSEQUENCES OF CLOSING
+THE VAULT SLOT, AND NONE OF THEM WAS VISIBLE BEFORE IT** — which is the argument for
+closing it at the acceptance rule rather than per door: one fix, three holes it
+uncovered, each of them a real product question nobody had been asked.
+
+### Gates, with denominators
+
+| gate | result | of what |
+|---|---|---|
+| backend pytest, `tests/ci_gate.txt` | **4362 passed, 5 skipped, 0 failed, exit 0** (1181s) | **262 of 540** files (48%) |
+| frontend vitest | **5411 passed, 5 skipped, 1 todo, 0 failed** | **380 of 380** test files |
+| `tsc -b --noEmit` | exit 0 | whole frontend |
+| `npm run build` | exit 0 | — |
+
+**5 break tests, all 5 caught** — the vault required unconditionally again (5 tests
+fired), the unanswered-bundle inversion removed (4), the equipment family silently
+picking the cheaper package (3), the splitter cutting the grave comma again (5), and the
+grave value widened back to any word (2, including the 10-13 guard).
+
+⚠️ **NO FRONTEND CHANGE WAS NEEDED AND THAT WAS CHECKED RATHER THAN ASSUMED.** The pick
+type is `{field_id: string, options, discriminator: string | null}` and `captureVoice`
+renders *"Which one? 1–N"* for any pick, so the new `cemetery_equipment` pick with
+discriminator `"package"` and the new vault pill both arrive through surfaces that were
+already generic.
+
+### Ruling 1 — equipment-only orders are real
+
+- **2026-11-02** — `vault.required_when` is now
+  `NoAnswerOrSentinel("cemetery_equipment", {"none"})`: *"Vault is required only when
+  nothing else makes it a sale."* Measured over all five states the equipment field can
+  be in — unanswered and `"none"` require a vault; the three real bundles do not.
+- **2026-11-02** — ⚠️ **AN UNANSWERED BUNDLE READS `TRUE`, WHICH INVERTS THE DISCIPLINE
+  EVERY OTHER NODE IN `conditions.py` FOLLOWS, AND THE INVERSION IS WHY IT IS A NODE
+  RATHER THAN A COMBINATION.** `EqualsValue`, `NotEqualsValue` and `AnswerIn` all read an
+  unanswered dependency as INDETERMINATE so a requirement cannot appear mid-flow. Here
+  "not yet answered" IS the answer: on a new order nothing is answered and the vault must
+  be required then. **Measured on the first attempt** — reading it as INDETERMINATE put
+  `vault` in `indeterminate` on every fresh order, where `guided_field` never reaches it,
+  so Opas would open an order and never once ask about the vault.
+- **2026-11-02** — ⚠️ **AND THE HAZARD RUNS ONLY ONE WAY, WHICH IS WHAT MAKES THE
+  INVERSION SAFE.** The module warns about a requirement APPEARING late. Here naming a
+  bundle RELAXES the vault from required to optional, so nothing new is ever demanded.
+- **2026-11-02** — ⚠️ **`"none"` IS AN ANSWER, NOT AN ABSENCE, WHICH IS WHY THE SENTINEL
+  SET IS EXPLICIT.** `is_answered("none")` is TRUE, so "no bundle" cannot be expressed as
+  "unanswered" — an order whose equipment question was answered *None* has nothing but a
+  vault to make it a sale, and the vault is required again.
+- **2026-11-02** — The pill: `VAULT_NONE_ANSWER` / `"No vault — equipment only"`, offered
+  LAST on the vault question (the habit-ranked vaults are what the office picks nine
+  times in ten) and costing a slot rather than exceeding `MAX_PILLS`.
+- **2026-11-02** — ⚠️ **A RESERVED VALUE, NOT AN OPTION, AND THE DIFFERENCE IS
+  LOAD-BEARING.** `vault` stores what it SHOWS — a resolved product name — and
+  `test_enum_display` partitions the template on exactly that. Putting the sentinel in
+  `options` would move `vault` to the enum side and make every real vault an unpermitted
+  answer. `FieldDefinition` gained `reserved`, which `label_for` reads FIRST — without it
+  the row rendered `"none"` where the director had clicked the pill, the same defect as
+  the Service row reading `funeral_home` on the 2026-10-12 walk.
+- **2026-11-02** — ⚠️ **AND THE EXEMPTION IS IN ONE PLACE.** `admits_name` admits exactly
+  this one non-product; every other non-vault is still refused. An exemption repeated per
+  door is the mistake the acceptance rule exists to prevent.
+
+### Ruling 2 — an ambiguous equipment family asks
+
+- **2026-11-02** — `_EQUIPMENT_FAMILIES` runs only on what `_EQUIPMENT` declined, so
+  `"device only"`, `"lowering device and grass"`, `"lowering device & grass"`,
+  `"just the device"` and `"grass and lowering device"` all still resolve directly
+  (measured), and a bare `"lowering device"` produces a pick with James's own labels —
+  **"Device only" / "Device & grass"**.
+- **2026-11-02** — ⚠️ **"NEVER SILENTLY" IS A RULE ABOUT MONEY, WHICH IS WHY THIS ASKS
+  RATHER THAN DEFAULTING.** The two packages are two price-list rows at two prices
+  (140.00 and 185.00 in the fixture, asserted as a premise), so choosing one puts a
+  number on an invoice nobody said. The 2026-10-13 exception for a form-only vault
+  ambiguity was ruled precisely because the two readings there cost the SAME.
+- **2026-11-02** — The span is claimed even though no value is written, the same way an
+  ambiguous vault phrase is: a question about a phrase Opas is simultaneously reporting
+  it could not understand is two messages about one word.
+- **2026-11-02** — `"lowering device"` consequently LEFT the refusal list in
+  `test_noise_is_a_hint_not_a_filter.py`, where it had been pinned that morning with the
+  note that mapping it was not an executor's call. James ruled the third option.
+
+### Ruling 3 — anything said about the grave is never dropped
+
+- **2026-11-02** — ⚠️ **THE GRAVE PATTERN ALREADY SPANNED THE COMMA; THE SPLITTER NEVER
+  LET IT SEE ONE.** `_GRAVE_RE` has joined its components on `[,\s]+` since it was
+  written, and `"section A lot 2"` always worked. `segments()` cut `"section A, lot 2"`
+  into two statements first, so the matcher got half a grave location. Fixed at the
+  SPLITTER with a narrow lookahead, not by matching over the whole text — a whole-text
+  matcher would join a section in one statement to a lot in another, and every other
+  pass would still be segment-scoped.
+- **2026-11-02** — `lot` and `row` joined the vocabulary and the pattern no longer
+  requires a `section`: `"lot 2"` alone used to match NOTHING and be reported as unplaced
+  text. Rendered in canonical order, so `"lot 2, section A"` and `"section A, lot 2"` are
+  one place rather than two spellings.
+- **2026-11-02** — ⚠️ **AND RULING 3 RE-OPENED THE 2026-10-13 DEFECT FOR ONE RUN.**
+  Letting `grave` open a location made `\bgrave\b\s*([A-Za-z0-9]+)` match
+  `"grave side"` — `grave_location = "Space side"`, with the word that makes the service
+  GRAVESIDE eaten. That is the 10-13 defect arrived at from the opposite direction, and
+  **`test_no_span_feeds_two_fields.py` caught it**, not review.
+- **2026-11-02** — The repair is a VALUE SHAPE, not a stoplist: a grave component's value
+  must carry a digit or be one or two letters, because a plot identifier does and an
+  English word does not. ⚠️ **THE COST IS NAMED WHERE IT IS DECLARED** — a cemetery with
+  a section called "North" is not typeable as a grave location. That is the safe
+  direction: the word is reported unplaced and the director sees it, where the other
+  direction silently eats whatever follows "grave".
+
+### Four tests whose premises the rulings moved
+
+- **2026-11-02** — `test_an_equipment_only_drop_is_complete` is back under its own name,
+  typing `"lowering device and grass"` as James asked, asserting the bundle is set AND
+  the vault is empty. It had been renamed that morning when its old subject turned out to
+  be the defect.
+- **2026-11-02** — `test_call_extraction_missing_set`'s unconditional accounting now
+  reads the WALK'S OWN `required_verdict` instead of `definition.required`, because the
+  latter means *unconditionally* required and reads False for the vault. **`rows.py` has
+  carried the same correction since 2026-10-06, in the same words** — a caller that
+  re-derives requiredness from the definition loses every conditional case.
+- **2026-11-02** — Its completeness fixture now answers `vault` explicitly, and does so
+  rather than naming a bundle on purpose: a bundle would clear the vault from `missing`
+  by RELAXING the requirement, and that test is about an order whose required fields are
+  answered. The equipment-only shape has its own test.
+- **2026-11-02** — `test_a_COMMA_IN_A_GRAVE_LOCATION_LOSES_THE_LOT_which_is_WRONG` is
+  gone, replaced by the ruling-3 table. It said in its own text that the day its
+  assertion failed was the day the gap closed; ruling 3 failed it.
+
 ## 2026-11-02 — the vault slot took a chairs product; rulings A, B and C
 
 From James's production walk. He typed one word and the VAULT row filled with

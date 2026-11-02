@@ -45,6 +45,8 @@ from sqlalchemy.orm import Session
 from app.services.capture.schema import (
     EQUIPMENT_PACKAGES,
     VAULT_FIELD_ID,
+    VAULT_NONE_ANSWER,
+    VAULT_NONE_LABEL,
     ResolvedField,
 )
 from app.services.capture.vault_form import FormResolver, admits_name
@@ -365,10 +367,23 @@ def pills_for(
                 if admits_name(forms, name):
                     ordered.append(name)
         out: list[Pill] = []
-        for name in ordered[:MAX_PILLS]:
+        for name in ordered[:MAX_PILLS - 1]:
             form = forms.form_of(name)
             out.append(Pill(value=name, label=name,
                             sub="cremation" if form.is_cremation else None))
+        # ⚠️ LAST, AND IT IS ALWAYS OFFERED (ruling 1, James 2026-11-02: *"a pill 'No
+        # vault — equipment only' answers it"*). Equipment-only orders are real, and
+        # until today the only way to complete one was to let a piece of graveside
+        # equipment stand in the vault slot.
+        #
+        # ⚠️ LAST RATHER THAN FIRST BECAUSE IT IS THE UNUSUAL ANSWER. The habit-ranked
+        # vaults above are what the office picks nine times in ten; putting a decline
+        # at the head of the list would make the common case travel furthest.
+        #
+        # ⚠️ AND IT COSTS A SLOT RATHER THAN BEING ADDED BEYOND THE CAP — hence
+        # `MAX_PILLS - 1`. Returning one more than the cap would push the row past the
+        # width the pane lays out for it, and a pill nobody can see is not an answer.
+        out.append(Pill(value=VAULT_NONE_ANSWER, label=VAULT_NONE_LABEL, sub=None))
         return tuple(_dedupe(out))
 
     if field_id == "cemetery":

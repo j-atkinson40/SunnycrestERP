@@ -711,6 +711,22 @@ def admits_name(resolver: "FormResolver", name: object) -> bool:
     text_name = str(name or "").strip()
     if not text_name:
         return False
+    # ⚠️ THE ONE RESERVED VALUE, ADMITTED HERE AND NOWHERE ELSE (ruling 1, 2026-11-02).
+    # "No vault — equipment only" is an explicit ABSENCE, not a product, so the form
+    # ladder has nothing to say about it — `form_of("none")` is UNKNOWN and would refuse
+    # it. Admitting it at the single predicate every door already calls is what keeps
+    # the exemption from being repeated per door, which is the mistake this whole
+    # module exists to stop.
+    #
+    # ⚠️ AND IT IS AN EXEMPTION FROM "IS THIS A VAULT PRODUCT", NOT FROM THE RULE. The
+    # rule is that the vault field may not hold a non-vault PRODUCT. `none` is not a
+    # product at all; `approval.assess` builds no line for it and
+    # `test_the_vault_slot_only_takes_vaults.py` asserts every real non-vault is still
+    # refused.
+    from app.services.capture.schema import VAULT_NONE_ANSWER
+
+    if text_name.casefold() == VAULT_NONE_ANSWER:
+        return True
     return is_vault_form(resolver.form_of(text_name).form)
 
 

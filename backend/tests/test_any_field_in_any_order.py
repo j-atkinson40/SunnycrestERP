@@ -250,47 +250,88 @@ def test_the_WALK_PHRASE_is_placed_and_not_held(world, db):
     ], [(sp.state, sp.field_ids) for sp in ex.spans]
 
 
-# ── a defect found while building the matrix, pinned rather than fixed ───────
+# ── ruling 3: anything said about the grave is never dropped ────────────────
 
 
-def test_a_COMMA_IN_A_GRAVE_LOCATION_LOSES_THE_LOT_which_is_WRONG(world, db):
-    """⚠️ THIS TEST ASSERTS BEHAVIOUR THAT IS WRONG. It exists so the wrongness is
-    measured and named rather than discovered on a grave.
+@pytest.mark.parametrize("typed,expected", [
+    # ⚠️ THE COMMA FORM FIRST, BECAUSE IT IS THE ONE THAT WAS BROKEN and it is how the
+    # office actually writes a grave.
+    ("section A, lot 2", "Section A, Lot 2"),
+    ("section A lot 2", "Section A, Lot 2"),
+    # ⚠️ AND THE TWO FORMS MUST AGREE, which is asserted as its own test below rather
+    # than left to a reader comparing two rows of this table.
+    ("section A, lot 2, space 3", "Section A, Lot 2, Space 3"),
+    ("section A, row 7", "Section A, Row 7"),
+    # ⚠️ `lot` ALONE, which matched NOTHING before ruling 3. The old pattern opened on
+    # `section` and treated the lot as an optional tail, so "lot 2" was reported as text
+    # the engine could not place — a thing the director said about the grave, dropped.
+    # James: *"Lot is never required (standing ruling), but anything said about the
+    # grave is never dropped."*
+    ("lot 2", "Lot 2"),
+    ("row 7", "Row 7"),
+    ("space 3", "Space 3"),
+    # ⚠️ CANONICAL ORDER, NOT TYPED ORDER. Two spellings of one place across two orders
+    # is what makes a cemetery map unsearchable.
+    ("lot 2, section A", "Section A, Lot 2"),
+])
+def test_everything_said_about_the_grave_is_kept(world, db, typed, expected):
+    """⚠️ RULING 3 (James, 2026-11-02): *"'section A, lot 2' must keep the lot. Grave
+    location takes section and lot (and 'row', 'grave', 'space') together across a
+    comma; 'lot' joins the grave vocabulary."*
 
-    `"section A, lot 2"` is how the office writes a grave location, and it extracts as
-    `"Section A"`. MEASURED:
-
-        'section A lot 2'   -> grave_location = 'Section A, Lot 2'   unrecognized = []
-        'section A, lot 2'  -> grave_location = 'Section A'          unrecognized = ['2']
-
-    ⚠️ AND "lot" IS NEITHER PLACED NOR HELD — IT IS GONE. The bare `"2"` is reported as
-    not understood and the word "lot" appears in no list at all, so the pane can show
-    the director a stray 2 while silently dropping the word that said what it was. That
-    is a near relative of the placed-or-held invariant above rather than an instance of
-    it, which is why that test does not catch this one: the invariant asks whether a
-    word is in BOTH lists, and this word is in NEITHER.
-
-    ⚠️ PRE-EXISTING, NOT INTRODUCED BY THIS SLICE. Confirmed by running the same phrase
-    against `426ab5b6` before any of 2026-11-02's changes: identical result. The cause
-    is clause splitting — the grave-location pass sees "section A" and ", lot 2" as two
-    clauses — so fixing it means changing how commas cut a sentence, which touches every
-    other pass and is a ruling rather than an executor's call.
-
-    ⚠️ THE DAY THIS ASSERTION FAILS IS THE DAY THE GAP CLOSES. Update it by ruling then;
-    do not relax it now.
+    ⚠️ THIS FILE PINNED THE DEFECT AS A KNOWN GAP UNTIL TODAY, in a test that asserted
+    the wrong behaviour on purpose and said the day its assertion failed was the day the
+    gap closed. It failed on ruling 3 and is replaced by this.
     """
     tenant, _uid = world
-    ex = extract_text(db, tenant_id=tenant, text="order for johnson section A, lot 2")
-    values = dict(ex.values)
-    assert values.get("grave_location") == "Section A", (
-        "the comma gap has closed — update this test by ruling rather than deleting "
-        f"it: {values.get('grave_location')!r}"
+    ex = extract_text(db, tenant_id=tenant, text=f"order for johnson {typed}")
+    assert dict(ex.values).get("grave_location") == expected, dict(ex.values)
+    # ⚠️ AND NOTHING IS HELD. The old failure left a bare "2" in the unplaced list and
+    # the word "lot" in neither list; a fix that kept the value but still reported a
+    # stray token would be half a fix.
+    assert list(ex.unrecognized) == [], ex.unrecognized
+
+
+def test_the_comma_and_the_space_forms_AGREE(world, db):
+    """⚠️ ASSERTED AS EQUALITY, NOT AS TWO LITERALS. Two expected strings could both be
+    edited to agree on a wrong answer; this cannot be satisfied unless the comma
+    genuinely stops mattering."""
+    tenant, _uid = world
+    with_comma = extract_text(
+        db, tenant_id=tenant, text="order for johnson section A, lot 2"
     )
-    assert "2" in [str(u) for u in ex.unrecognized], ex.unrecognized
-    # ⚠️ AND THE WORD THAT VANISHED, NAMED. Neither list holds "lot".
-    assert "lot" not in " ".join(str(u) for u in ex.unrecognized).casefold()
-    placed = " ".join(
-        "order for johnson section A, lot 2"[sp.start:sp.end]
-        for sp in ex.spans if sp.state == "captured"
-    ).casefold()
-    assert "lot" not in placed, placed
+    without = extract_text(
+        db, tenant_id=tenant, text="order for johnson section A lot 2"
+    )
+    assert (
+        dict(with_comma.values).get("grave_location")
+        == dict(without.values).get("grave_location")
+        == "Section A, Lot 2"
+    )
+
+
+def test_the_grave_vocabulary_STILL_DOES_NOT_EAT_GRAVESIDE(world, db):
+    r"""⚠️ THE 2026-10-13 DEFECT, AND RULING 3 RE-OPENED IT FOR ONE RUN. The old pattern
+    could only open on `section`, so "we'll do it grave side" matched nothing. Letting
+    `grave` open a location made `\bgrave\b\s*([A-Za-z0-9]+)` match "grave side" —
+    `grave_location = "Space side"`, with the word that makes the service GRAVESIDE
+    eaten. That is the 10-13 defect arrived at from the opposite direction, and
+    `test_no_span_feeds_two_fields.py` is what caught it.
+
+    ⚠️ THE REPAIR IS A VALUE SHAPE, NOT A STOPLIST: a grave component's value must carry
+    a digit or be one or two letters, because a plot identifier does and an English word
+    does not. The cost is named where it is declared — a section called "North" is not
+    typeable — and that is the safe direction of the trade.
+    """
+    tenant, _uid = world
+    ex = extract_text(db, tenant_id=tenant, text="we'll do it grave side")
+    values = dict(ex.values)
+    assert values.get("service_location") == "graveside", values
+    assert values.get("grave_location") is None, values
+    # and the same sentence that the 10-13 ruling was about keeps BOTH
+    both = extract_text(
+        db, tenant_id=tenant, text="order for johnson section 4 graveside friday 11am"
+    )
+    bv = dict(both.values)
+    assert bv.get("grave_location") == "Section 4", bv
+    assert bv.get("service_location") == "graveside", bv

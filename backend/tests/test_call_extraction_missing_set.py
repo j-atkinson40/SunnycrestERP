@@ -27,6 +27,8 @@ from __future__ import annotations
 from datetime import date, time
 
 from app.services import capture
+from app.services.capture.conditions import Verdict
+from app.services.capture.schema import resolve_schema
 from app.services.capture.missing import is_answered
 from app.services.call_extraction_service import _captured_from_result
 
@@ -313,10 +315,31 @@ class TestTheConditionalOmissionIsPinnedInBothDirections:
         # ⚠️ REQUIRED only. Optional unconditional fields are never "missing" —
         # see test_capture_schema's partition test for why CaptureState has no
         # bucket for them at all.
-        required_unconditional = {
-            f.field_id for f in template if not f.is_conditional and f.required
+        #
+        # ⚠️ READ FROM THE WALK'S OWN VERDICT SINCE 2026-11-02, NOT FROM
+        # `definition.required`, AND THE REASON IS `vault`. Ruling 1 made it required
+        # only when there is no equipment bundle, so `FieldDefinition.required` — which
+        # means UNCONDITIONALLY required — reads False for it while the walk correctly
+        # reports it missing on an order with no bundle. `rows.py` has carried the same
+        # correction since 2026-10-06, for the same reason and in the same words: a
+        # caller that re-derives requiredness from the definition loses every
+        # conditional case.
+        resolved = resolve_schema(
+            vault_product_id=None, personalization_config=None,
+            platform_fields=template, answers={},
+        )
+        required_now = {
+            r.definition.field_id
+            for r in resolved
+            if r.required_verdict is Verdict.TRUE
+            and not r.definition.is_conditional
         }
-        assert set(state.missing) == required_unconditional
+        # ⚠️ AND THE CONTROL, BECAUSE THE SET ABOVE IS NOW DERIVED RATHER THAN TYPED:
+        # `vault` must be in it. If the walk ever stopped reporting the vault required
+        # on an order with no equipment, this set and `missing` would agree on being
+        # wrong together and the assertion below would pass.
+        assert "vault" in required_now, sorted(required_now)
+        assert set(state.missing) == required_now
 
 
 class TestTheServerDecidesWhatIsCapturedToo:
@@ -448,6 +471,19 @@ class TestTheServerDecidesWhatIsCapturedToo:
             f.field_id: "x" for f in template
             if f.required and not f.is_conditional
         }
+        # ⚠️ `vault` IS ANSWERED EXPLICITLY SINCE 2026-11-02, BECAUSE IT STOPPED BEING
+        # UNCONDITIONALLY REQUIRED. Ruling 1 made it required only when there is no
+        # equipment bundle, so `f.required` reads False for it and the comprehension
+        # above no longer fills it — while the walk still reports it missing on this
+        # order, which has no bundle either. The fixture has to say something about the
+        # vault for "every required field answered" to be true of it.
+        #
+        # ⚠️ AND IT ANSWERS THE VAULT RATHER THAN NAMING A BUNDLE, DELIBERATELY. Setting
+        # `cemetery_equipment` would ALSO clear the vault from `missing` — that is
+        # ruling 1 — but it would clear it by relaxing the requirement, and this test is
+        # about an order whose required fields are ANSWERED. The equipment-only shape
+        # has its own test: `test_an_equipment_only_order_is_complete_with_no_vault`.
+        answers["vault"] = "x"
         state = capture.evaluate(
             answers, vault_product_id=None, platform_fields=template)
 
