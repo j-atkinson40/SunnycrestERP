@@ -2,6 +2,134 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 2026-11-03 — check 3: three defects, three layers, and neither of James's two guesses
+
+He typed `"riverside 2 chairs"`. Session `5758ed77`, 18:42 UTC:
+`values = {chairs_total: "2", funeral_home: "Riverside Memorial Chapel"}`,
+`resolutions = {}`.
+
+### ⚠️ THE DIAGNOSIS HE ASKED FOR: NOT STALE, AND NOT A PICKER THAT FAILS TO SKIP
+
+James named two candidates — *"the question was worked out before your text was read, or
+the picker isn't skipping fields that are settled"* — and **the mechanism is a third
+thing**. Measured on production data before anything was changed:
+
+    read_state(..., asking=None)            -> question_field_id = 'deceased_name'
+    read_state(..., asking="funeral_home")  -> question_field_id = 'funeral_home'
+
+**The server was right both times. It was answering the question the CLIENT asked.** The
+pane passed `askedFieldId` into `setCaptureText`'s `?asking=` on every text PUT, and
+`askedField` in the host FALLS BACK to the server's own `guidedFieldId` — so each
+keystroke echoed the previous question back as a request to ask it again. The server
+honours `asking` for an ANSWERED field **deliberately**, because clicking a finished row
+to change it is ruled behaviour. So the question pinned itself to the first field ever
+asked.
+
+⚠️ **THE PICKER WAS ALWAYS CORRECT**, which is the half worth stating plainly:
+`guided_field` returned `deceased_name` for that text. Nothing was stale either — the
+response was fresh, and freshly composed for a field that was already done.
+
+⚠️ **SO THE FIX IS CLIENT-SIDE, AND THAT IS NOT A PREFERENCE.** Refusing answered fields
+in the server's `asking` validation would break click-to-change. The pane now sends
+`focusedFieldId` — a real click and nothing else — which is what the service's own
+comment always said the parameter was for: *"A director who clicks a row and then TYPES
+the answer…"*
+
+### Three causes, three layers, none the same bug
+
+| James's observation | layer | cause |
+|---|---|---|
+| asks a settled question | the CLIENT's `?asking=` echo | ruling a |
+| never asks about equipment | the SERVER's question ordering | ruling b |
+| "Not mentioned yet" over "2 chairs" | the CLIENT's row text | ruling c |
+
+### Ruling a — never ask about a settled field
+
+- **2026-11-03** — The pane sends the clicked field, not the asked one. Swept per James's
+  own condition — *"for every field, settle it by typing and assert the next question
+  isn't it"* — over **all 22 template fields**, with an exhaustiveness ratchet so a
+  field added to the schema and to neither list fails by name.
+- **2026-11-03** — ⚠️ **AND THE SERVER'S `asking`-HONOURS-ANSWERED BEHAVIOUR IS NOW
+  PINNED AS CORRECT**, so that someone "fixing" the other end breaks a test instead of
+  click-to-change.
+- **2026-11-03** — ⚠️ **MY FIRST TEST FOR THIS WAS NOT DISCRIMINATING AND A BREAK TEST
+  SAID SO.** `capture-live`'s default mock carries no `question_field_id`, so
+  `askedField` was null either way and restoring the echo left all 52 tests green. The
+  fixture now sets a question field, which is the condition the defect needs.
+
+### Ruling b — chairs with no bundle ask the equipment question next
+
+- **2026-11-03** — `guided_field` jumps `cemetery_equipment` to the head of the queue
+  when any of the four chair signals is present and the bundle is open. Measured: all
+  five phrasings ask *"What equipment?"*; a set bundle, an answered `"none"`, and an
+  order that never mentioned chairs all keep the ordinary required-first order.
+- **2026-11-03** — ⚠️ **IT BREAKS "REQUIRED FIRST" DELIBERATELY.** `guided_field`'s own
+  docstring says the cemetery should be asked before chairs — true while chairs are
+  merely unmentioned. Once a count is typed, ruling D' means the order cannot be priced
+  at all until the bundle is known, so it is not one open question among several.
+- **2026-11-03** — ⚠️ **MY FIRST VERSION WAS DEAD ON ARRIVAL AND COMPILED PERFECTLY.** It
+  read `getattr(state, "answers", None)`, and `CaptureState` has no `answers` field — so
+  the rule ran and never once fired. `guided_field` takes the answers explicitly now;
+  an explicit argument cannot be silently absent. Pinned by a test that asserts the rule
+  does NOT fire when the answers are withheld.
+- **2026-11-03** — The answers are needed because `chairs_wanted` and
+  `chairs_extra_pending` are keys the template does not declare, so none of
+  `CaptureState`'s five sets can see them — the invisibility that is the whole point of
+  their being flags.
+
+### Ruling c — a row holding anything said is never "Not mentioned"
+
+- **2026-11-03** — ⚠️ **THE SERVER STATE WAS ALREADY RIGHT, WHICH IS WHY THIS IS A
+  FRONTEND FIX.** The row came back `state: "partial"` with `secondary_value: "2
+  chairs"` — correct since 2026-10-30. `valueText` took only the state and the PRIMARY
+  value, and `partial` matched none of its branches, so it fell through to the last
+  line: *"Not mentioned yet"*. **Defect 3c for the third time, at the last layer that
+  can still get it wrong.**
+- **2026-11-03** — The row now reads `2 chairs · which equipment?`, composed server-side
+  beside ruling E's string. `valueText` promotes a secondary when there is no primary;
+  `rowSecondary` returns null in exactly that case so the words are not printed twice.
+- **2026-11-03** — ⚠️ **`bundle_set` IS A SEPARATE ARGUMENT FROM `included is None`, AND
+  CONFLATING THEM WOULD BE WRONG ON EVERY NEW TENANT.** `included_chairs_for` returns
+  None for four reasons and only one is "no bundle"; another is a bundle whose
+  `included_chairs` column is NULL — the onboarding-checklist state, where the bundle IS
+  chosen. Appending "which equipment?" there would ask for something already given.
+- **2026-11-03** — ⚠️ **AND THE SUMMARY SURFACE WOULD HAVE GOT WORSE WITHOUT A SECOND
+  EDIT.** It rendered `r.value ?? "None"`; once `rowSecondary` stopped printing the
+  secondary under a primary-less row, a chairs-only Equipment row there would have read
+  "None" with nothing beneath it — the same defect wearing a different word.
+
+### An observation, not changed
+
+- **2026-11-03** — ⚠️ **A TEXT THAT IS EXACTLY ONE WORD CAPTURES NO PARTY AT ALL.**
+  Measured: `"johnson"` → `values={}`, `unrecognized=['johnson']`, while `"johnson "`,
+  `"order for johnson"`, `"johnson 2 chairs"` and `"johnson funeral home"` all resolve
+  it. A lone word is genuinely ambiguous between a party, a surname and a product, so
+  holding it is defensible — **and it is exactly why check 3 opened on "Which funeral
+  home?" with pills, which was CORRECT for text that had captured nothing.** The bug was
+  that it kept asking after "2 chairs" arrived. Reported, not changed.
+
+### Gates, with denominators
+
+| gate | result | of what |
+|---|---|---|
+| backend pytest, `tests/ci_gate.txt` | **4392 passed, 5 skipped, 0 failed, exit 0** (1121s) | **263 of 541** files (48%) |
+| frontend vitest | **5379 passed, 5 skipped, 1 todo, 0 failed** | **379 of 379** test files |
+| frontend suite-size ratchet | **ran 379 / 5385, baseline 379 / 5385** | the floor, **raised in this commit** |
+| `tsc -b --noEmit` | exit 0 | whole frontend |
+| `npm run build` | exit 0 | — |
+
+⚠️ **THE FLOOR IS RAISED HERE RATHER THAN "WHEN CONVENIENT", which is the lesson from
+earlier today applied the first time it came up.** The ratchet printed *"tests grew —
+raise fixtures/suite-size.json when convenient"*; that reminder is not a to-do, it is
+this edit. Letting it slide is what made this morning's deletion report −31 when the
+file carried −36.
+
+**6 break tests, all 6 caught** — the equipment jump removed (6 tests fired), the answers
+withheld from it (5), the jump ignoring whether the bundle is set (2), the server's
+"which equipment?" suffix dropped (3), `valueText`'s promotion removed (1), and the
+secondary printed twice (1). Plus the non-discriminating client test above, caught and
+repaired.
+
 ## 2026-11-02 (latest) — plain-digit picking removed; the digits were eaten mid-sentence
 
 James typed `"12 chairs"` and both digits vanished. ⚠️ **THE ANSWER TO HIS FIRST

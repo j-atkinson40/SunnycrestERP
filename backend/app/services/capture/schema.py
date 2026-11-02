@@ -1461,7 +1461,44 @@ def next_field(missing: object) -> str | None:
     return sorted(outstanding)[0]
 
 
-def guided_field(state: object) -> str | None:
+def _chairs_need_a_bundle(answers: object) -> bool:
+    """Was something said about chairs while the equipment bundle is still open?
+
+    ⚠️ ALL FOUR WAYS CHAIRS CAN BE PRESENT, because any one of them is a count or a
+    mention the director has already raised: the two count fields (`chairs_total`,
+    `chairs_extra`) and the two numberless flags (`chairs_wanted`,
+    `chairs_extra_pending`). Reading only the counts would miss `"chairs"` and
+    `"extra chairs"`, which are exactly the phrasings that cannot be priced without
+    the bundle.
+
+    ⚠️ IT TAKES THE ANSWERS EXPLICITLY, AND `CaptureState` IS WHY. The flags are keys
+    the TEMPLATE does not declare, so the five-set partition cannot see them at all —
+    which is the whole point of their being flags. My first version read
+    `getattr(state, "answers", None)`, and `CaptureState` has no such field, so the
+    rule was dead on arrival: it compiled, it ran, and it never once fired. An explicit
+    argument cannot be silently absent.
+    """
+    # ⚠️ IMPORTED AT CALL TIME, matching `next_question` and `_missing_labels` just
+    # below, which import from `missing` and `schema` the same way. This module is on
+    # the session hot path and `missing` imports back from it.
+    from app.services.capture.missing import is_answered
+
+    answers = answers or {}
+    if not any(
+        is_answered(answers.get(k))
+        for k in (
+            "chairs_total", "chairs_extra",
+            CHAIRS_WANTED_FLAG, CHAIRS_EXTRA_PENDING_FLAG,
+        )
+    ):
+        return False
+    # ⚠️ ANSWERED `"none"` COUNTS AS SET. A director who said the order has no
+    # equipment has answered the question; re-asking it would be the same defect
+    # ruling (a) is about.
+    return not is_answered(answers.get("cemetery_equipment"))
+
+
+def guided_field(state: object, answers: object = None) -> str | None:
     """The question the GUIDED flow asks next — required first, then the optional ones.
 
     ⚠️ THIS EXISTS BECAUSE `next_field(missing)` CANNOT REACH FOUR QUESTIONS, AND I
@@ -1494,6 +1531,29 @@ def guided_field(state: object) -> str | None:
     two: this says WHAT TO ASK, `state.is_complete` says WHETHER IT CAN BE REVIEWED.
     """
     missing = set(getattr(state, "missing", ()) or ())
+
+    # ── chairs with no bundle jump the queue, by ruling (James, 2026-11-02) ──
+    #
+    # ⚠️ RULING b: *"When a chair count is present and no bundle is set, the equipment
+    # question is asked next (ahead of other open fields) with the count carried, per
+    # D'."* It is the only field that jumps, and the warrant is ruling D': a count with
+    # no bundle cannot be priced at all — `billable_extra_chairs` refuses to derive
+    # extras without the bundle's `included_chairs`, and `assess` BLOCKS. So it is not
+    # one open question among several; it is the one that makes the order unapprovable.
+    #
+    # ⚠️ AND IT BREAKS THE "REQUIRED FIRST" RULE DELIBERATELY, which is the one thing
+    # worth defending here. The paragraph below says a director who has not named the
+    # cemetery should be asked for the cemetery before being asked about chairs — true
+    # when chairs are merely UNMENTIONED. Once a count has been typed, the director has
+    # already raised the subject and the follow-up belongs with it; making them answer
+    # four other questions first is what loses the thread.
+    #
+    # ⚠️ IT FIRES ONLY WHEN SOMETHING ABOUT CHAIRS WAS SAID AND THE BUNDLE IS OPEN.
+    # `cemetery_equipment` answered — including answered `"none"` — ends it, so the
+    # question is asked once and never re-asked.
+    if _chairs_need_a_bundle(answers):
+        return "cemetery_equipment"
+
     for field_id in CALL_ORDER:
         if field_id in missing:
             return field_id

@@ -223,6 +223,7 @@ def chairs_for_display(
     *,
     wanted: bool = False,
     extra_pending: bool = False,
+    bundle_set: bool = True,
 ) -> str | None:
     """The equipment row's chair line — RULING E (James, 2026-10-30).
 
@@ -258,6 +259,22 @@ def chairs_for_display(
     """
     from app.services.capture.rows import write_for_a_human
 
+    # ⚠️ RULING c (James, 2026-11-02): *"Equipment row with chairs but no bundle reads
+    # '2 chairs · which equipment?' in the partial style."* The row has to say both
+    # things at once — what the director said, and what is still needed — because it is
+    # the only place the pairing appears: the guided question above the bar says "What
+    # equipment?" and the count lives here.
+    #
+    # ⚠️ `bundle_set` IS A SEPARATE ARGUMENT FROM `included is None`, AND CONFLATING
+    # THEM WOULD BE WRONG IN A LIVE CASE. `included_chairs_for` returns None for FOUR
+    # reasons, and only one of them is "no bundle": the others are the `none` sentinel,
+    # an unlisted equipment value, and a bundle whose `included_chairs` column is NULL.
+    # That last one is the onboarding-checklist state on every new tenant — the bundle
+    # IS chosen, so appending "which equipment?" would ask for something the director
+    # has already given.
+    def _open_bundle(shown: str) -> str:
+        return f"{shown} · which equipment?" if not bundle_set else shown
+
     t = _as_int(total)
     e = _as_int(extra)
     if t is None and e is None:
@@ -271,13 +288,13 @@ def chairs_for_display(
         # nothing to count and nothing to bill, and a number on that row would be an
         # answer nobody gave. This is the ruled text.
         if wanted:
-            return "chairs"
+            return _open_bundle("chairs")
         # ⚠️ AND THE OVERAGE SAYS SO IN ITS OWN WORDS. "extra chairs" with no number
         # is a real outstanding question — `assess` blocks on it — so the row must
         # show that something about chairs was said rather than staying blank, which
         # is what it did until today and is why the mention vanished silently.
         if extra_pending:
-            return "extra chairs"
+            return _open_bundle("extra chairs")
         return None
 
     # ⚠️ NO BUNDLE, NO CONVERSION — the same refusal `billable_extra_chairs` makes, and
@@ -286,10 +303,12 @@ def chairs_for_display(
     # shows what the director actually said, labelled with the sense they said it in.
     if included is None:
         if t is not None:
-            return write_for_a_human(str(t), "count")
+            return _open_bundle(write_for_a_human(str(t), "count"))
         if e == 0:
-            return "none extra"
-        return f"{e} extra chair" if e == 1 else f"{e} extra chairs"
+            return _open_bundle("none extra")
+        return _open_bundle(
+            f"{e} extra chair" if e == 1 else f"{e} extra chairs"
+        )
 
     if t is not None and e is not None and max(0, t - included) != e:
         a, b = chairs_readings(included, total, extra)

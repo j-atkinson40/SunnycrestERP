@@ -307,11 +307,44 @@ const MARK_CLASS: Record<string, string> = {
  * So the wording is the FALLBACK, used when there is nothing to show. The state still
  * drives the colour and the mark, which is what says the row is not finished.
  */
-function valueText(state: string, value: string | null): string {
+function valueText(
+  state: string,
+  value: string | null,
+  secondary: string | null = null,
+): string {
   if (value) return value
+  // ⚠️ A ROW HOLDING ANYTHING SAID IS NEVER "Not mentioned", BY RULING (James,
+  // 2026-11-02): *"Same rule for any row: a row holding anything said is never 'Not
+  // mentioned'."* This function took only the state and the PRIMARY value, so a row
+  // whose content was in its SECONDARY fell through every branch to the last line —
+  // and the pane printed "Not mentioned yet" on the Equipment row with "2 chairs"
+  // rendered directly beneath it. James: *"It can't be both."*
+  //
+  // ⚠️ THE SERVER STATE WAS ALREADY RIGHT, WHICH IS WHY THIS IS THE WHOLE FIX. The row
+  // came back `state: "partial"` with `secondary_value: "2 chairs"` — measured — and
+  // `partial` was in none of the branches here. Defect 3c for the third time: the
+  // state and the appearance disagreeing, now at the last layer that can still get it
+  // wrong.
+  //
+  // ⚠️ AND THE SECONDARY IS PROMOTED RATHER THAN PREFIXED. A row with no primary has
+  // nothing to put in front of it; `rowSecondary` below returns null in exactly this
+  // case so the words are not printed twice.
+  if (secondary) return secondary
   if (state === "needed") return "Still needed"
   if (state === "not_configured") return "Not configured for this licensee"
   return "Not mentioned yet"
+}
+
+/**
+ * The secondary line to render under a row, or null when there is none to render.
+ *
+ * ⚠️ NULL WHEN THE SECONDARY IS ALREADY THE ROW'S TEXT. `valueText` promotes a
+ * secondary to the primary line when there is no primary value; printing it again
+ * underneath would read as "2 chairs / 2 chairs".
+ */
+function rowSecondary(value: string | null, secondary: string | null): string | null {
+  if (!secondary) return null
+  return value ? secondary : null
 }
 
 /** The two columns of the capture grid, by James's direction (2026-10-13).
@@ -397,6 +430,7 @@ export function CapturePane({
   pickRequest,
   answerRequest,
   askedFieldId = null,
+  focusedFieldId = null,
   onAskAgain,
   focusRequest,
   onApproved,
@@ -430,6 +464,8 @@ export function CapturePane({
    *  server field would not disagree today and would the moment one of them gained a
    *  fallback. */
   readonly askedFieldId?: string | null
+  /** The field the office CLICKED, or null. ⚠️ NOT `askedFieldId` — see below. */
+  readonly focusedFieldId?: string | null
   /** Ask a question again, because the office clicked its row.
    *
    *  ⚠️ IT GOES UP TO THE HOST, NOT STRAIGHT TO THE SERVER. "Clicking a row asks that
@@ -618,8 +654,21 @@ export function CapturePane({
   // `[sessionId, text]` so that a click does not fire a request; its closure would
   // therefore capture whatever the focus was when the text last changed. A ref reads
   // the current value at send time without adding a dependency that re-triggers.
-  const askedFieldIdRef = useRef<string | null>(askedFieldId)
-  askedFieldIdRef.current = askedFieldId
+  // ⚠️ THE CLICKED FIELD RIDES THE TEXT PUT, NOT THE ASKED ONE (ruling a, 2026-11-02).
+  // This was `askedFieldId`, which falls back to the server's own `guidedFieldId` — so
+  // every keystroke echoed the previous question back as `?asking=`, and the server,
+  // which honours `asking` for an answered field so that clicking a finished row can
+  // re-ask it, obligingly asked it again. The question never advanced past the first
+  // field in the sentence.
+  //
+  // ⚠️ AND THE ORIGINAL REASON FOR SENDING IT AT ALL IS A CLICK, which is why the
+  // narrower value is the right one rather than a compromise. The service's own
+  // comment says it: "A director who clicks a row and then TYPES the answer gets a
+  // `setCaptureText` response, and without this that response would compose the
+  // question for the server's next field and the clicked row would lose its outline
+  // mid-answer." `focusedFieldId` is exactly that click and nothing else.
+  const askedFieldIdRef = useRef<string | null>(focusedFieldId)
+  askedFieldIdRef.current = focusedFieldId
   useEffect(() => {
     if (sessionId === undefined) return
     // ⚠️ THE OPENING LINE WAS ALREADY EXTRACTED BY `start`, so the first effect run on
@@ -1326,11 +1375,15 @@ export function CapturePane({
                           ? r.value
                           : asking
                             ? ASKING_TEXT
-                            : valueText(r.state, r.value)}
+                            : valueText(r.state, r.value, r.secondary_value)}
                       </span>
-                      {r.secondary_value ? (
+                      {/* ⚠️ `rowSecondary`, NOT `r.secondary_value`, SINCE 2026-11-02.
+                          `valueText` promotes a secondary to the row's own line when
+                          there is no primary value, so printing it here as well would
+                          read "2 chairs / 2 chairs". */}
+                      {rowSecondary(r.value, r.secondary_value) ? (
                         <span className="col-start-2 min-w-0 text-micro text-content-muted">
-                          {r.secondary_value}
+                          {rowSecondary(r.value, r.secondary_value)}
                         </span>
                       ) : null}
                     </button>
@@ -1556,12 +1609,20 @@ export function CapturePane({
                 <div className="text-micro uppercase tracking-wide text-content-subtle">
                   {r.label}
                 </div>
+                {/* ⚠️ PROMOTED THE SAME WAY AS THE CAPTURE SURFACE, AND IT HAD TO BE
+                    OR THIS SURFACE WOULD HAVE GOT WORSE. It read `r.value ?? "None"`;
+                    once `rowSecondary` stopped printing the secondary under a row with
+                    no primary, a chairs-only Equipment row here would have read "None"
+                    with nothing beneath it — the same "it can't be both" defect
+                    wearing a different word. */}
                 <div className="text-body-sm text-content-strong">
-                  {r.value ?? "None"}
+                  {r.value ?? r.secondary_value ?? "None"}
                 </div>
-                {r.secondary_value ? (
+                {/* ⚠️ THE SUMMARY SURFACE, GUARDED THE SAME WAY — see `rowSecondary`.
+                    Two render sites for one rule is how they would come to disagree. */}
+                {rowSecondary(r.value, r.secondary_value) ? (
                   <div className="text-micro text-content-muted">
-                    {r.secondary_value}
+                    {rowSecondary(r.value, r.secondary_value)}
                   </div>
                 ) : null}
               </div>

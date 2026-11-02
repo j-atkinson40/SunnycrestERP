@@ -572,6 +572,10 @@ tests/test_any_field_in_any_order.py
 # which stocks BOTH lowering-device packages at different prices because that
 # price difference is the whole reason an ambiguous family asks.
 tests/test_equipment_only_orders_are_real.py
+# Rulings a/b/c of 2026-11-02, from check 3 of James's walk. Reads testco and
+# rolls back every nested transaction it opens; starts sessions, writes nothing
+# that survives.
+tests/test_opas_never_asks_a_settled_question.py
 tests/test_r212_price_alignment.py
 tests/test_a_name_is_shown_the_same_way_everywhere.py
 tests/test_the_question_line.py

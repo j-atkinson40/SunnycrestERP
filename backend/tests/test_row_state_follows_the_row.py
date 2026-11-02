@@ -208,7 +208,11 @@ def test_a_row_showing_ONLY_a_SECONDARY_is_PARTIAL_not_not_mentioned(db, session
     """
     row, _ = _composed_row(db, session, ["12 chairs"], row_id="cemetery_equipment")
     assert row["value"] is None, row
-    assert row["secondary_value"] == "12 chairs", row
+    # ⚠️ "· which equipment?" SINCE RULING c (2026-11-02). The row has to say both
+    # things at once — what was said and what is still needed — because this is the
+    # only place the pairing appears: the guided question above the bar says "What
+    # equipment?" and the count lives here.
+    assert row["secondary_value"] == "12 chairs · which equipment?", row
     assert row["state"] == RowState.PARTIAL.value, row
     # ⚠️ AND NO FIELD IS NAMED AS MISSING, which is the honest report: nothing in this
     # row is required. The block comes from `approval.assess`, not from the row.

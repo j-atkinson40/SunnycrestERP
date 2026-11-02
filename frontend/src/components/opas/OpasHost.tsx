@@ -2468,6 +2468,23 @@ export function OpasHost() {
                   // pane re-derive it is what stops the sentence and the outline
                   // naming different fields.
                   askedFieldId={askedField}
+                  // ⚠️ THE CLICKED FIELD, NOT THE ASKED ONE, AND THE TWO ARE DIFFERENT
+                  // THINGS (ruling a, 2026-11-02). `askedField` falls back to the
+                  // server's own `guidedFieldId`, so passing it here made the pane
+                  // echo the LAST QUESTION back to the server as `?asking=` on every
+                  // text PUT — and the server honours `asking` for an ANSWERED field
+                  // by design, because clicking a finished row to change it is ruled
+                  // behaviour. The result: the question pinned itself to the first
+                  // field ever asked. James typed "riverside 2 chairs", the funeral
+                  // home came back captured with a green check, and Opas went on
+                  // asking "Which funeral home?" with Hopkins/Riverside pills.
+                  //
+                  // ⚠️ MEASURED, NOT INFERRED. `read_state(... asking=None)` returns
+                  // `question_field_id = 'deceased_name'` for that text;
+                  // `read_state(... asking="funeral_home")` returns `funeral_home`.
+                  // The server is right either way — it is answering the question the
+                  // client asked.
+                  focusedFieldId={focusField}
                   onAskAgain={askAgain}
                   focusRequest={focusRequest[pane.id]}
                   onApproved={(order) => onApproved(pane.id, order)}

@@ -202,12 +202,16 @@ def test_a_count_with_NO_BUNDLE_is_not_converted_into_a_sense_nobody_said(world)
     included count neither sense can be expressed as the other, so the row says what
     the director said — and says which sense it is."""
     db, cid, uid = world
+    # ⚠️ AND IT ASKS FOR THE BUNDLE IN THE SAME BREATH, SINCE RULING c (2026-11-02):
+    # *"Equipment row with chairs but no bundle reads '2 chairs · which equipment?' in
+    # the partial style."* The sense the director used is still preserved — that is what
+    # this test is about — and the row now also says what is outstanding.
     total = _equipment_row(db, cid, uid, "12 chairs")
     assert total["value"] is None, total
-    assert total["secondary_value"] == "12 chairs", total
+    assert total["secondary_value"] == "12 chairs · which equipment?", total
     extras = _equipment_row(db, cid, uid, "extra chairs 4")
     assert extras["value"] is None, extras
-    assert extras["secondary_value"] == "4 extra chairs", extras
+    assert extras["secondary_value"] == "4 extra chairs · which equipment?", extras
 
 
 def test_a_bundle_with_no_chairs_mentioned_has_NO_secondary(world):
@@ -281,6 +285,17 @@ def test_the_derivation_is_hand_proven_and_not_recomputed_by_the_code_under_test
     assert chairs_for_display(8, "12", "4") == "12 chairs (4 extra)"
     assert chairs_for_display(0, "10", None) == "10 chairs (10 extra)"
     assert chairs_for_display(0, None, "10") == "10 chairs (10 extra)"
-    assert chairs_for_display(None, "12", None) == "12 chairs"
-    assert chairs_for_display(None, None, "4") == "4 extra chairs"
+    # ⚠️ `bundle_set=True` HERE, AND THAT IS THE DISTINCTION RULING c TURNS ON. These
+    # two rows are "a bundle IS chosen but its `included_chairs` column is NULL" — the
+    # state of every new tenant until the onboarding checklist runs — so the count
+    # cannot be converted and the row must NOT go on asking for a bundle it has.
+    assert chairs_for_display(None, "12", None, bundle_set=True) == "12 chairs"
+    assert chairs_for_display(None, None, "4", bundle_set=True) == "4 extra chairs"
+    # and with no bundle at all, the same two carry the question
+    assert chairs_for_display(None, "12", None, bundle_set=False) == (
+        "12 chairs · which equipment?"
+    )
+    assert chairs_for_display(None, None, "4", bundle_set=False) == (
+        "4 extra chairs · which equipment?"
+    )
     assert chairs_for_display(8, "12", "6") == "12 chairs (4 extra) or 14 chairs (6 extra)"

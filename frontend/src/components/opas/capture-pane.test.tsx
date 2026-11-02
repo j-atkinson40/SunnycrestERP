@@ -361,6 +361,100 @@ describe("the rows", () => {
     )
   })
 
+  it("a row whose only content is its SECONDARY never reads 'Not mentioned yet'", async () => {
+    /**
+     * ⚠️ RULING c (James, 2026-11-02), FROM CHECK 3 OF HIS WALK. He typed "riverside 2
+     * chairs" and the Equipment row read **"Not mentioned yet"** with **"2 chairs"**
+     * rendered directly beneath it. His words: *"It can't be both."*
+     *
+     * ⚠️ THE SERVER STATE WAS ALREADY RIGHT, WHICH IS WHY THIS TEST IS HERE AND NOT IN
+     * the backend suite. The row came back `state: "partial"` with
+     * `secondary_value: "2 chairs · which equipment?"` — measured — and `valueText`
+     * took only the state and the PRIMARY value, so `partial` matched none of its
+     * branches and fell through to the last line. Defect 3c for the third time, at the
+     * last layer that can still get it wrong.
+     *
+     * ⚠️ AND THE SECONDARY IS PROMOTED, NOT DUPLICATED. `rowSecondary` returns null
+     * when there is no primary, so the words appear once — a row reading
+     * "2 chairs / 2 chairs" would be the fix wearing the bug.
+     */
+    const user = userEvent.setup()
+    vi.mocked(startCapture).mockResolvedValue(
+      state({
+        surface: {
+          id: "capture",
+          rows: [{ row_id: "cemetery_equipment", label: "Equipment",
+                   state: "partial", value: null,
+                   secondary_value: "2 chairs · which equipment?" }],
+        },
+      }) as never,
+    )
+    openOverlay()
+    await type(user, "start an order")
+
+    const row = await waitFor(() =>
+      screen.getByTestId("capture-row-cemetery_equipment"),
+    )
+    expect(row).toHaveTextContent("2 chairs · which equipment?")
+    expect(row).not.toHaveTextContent("Not mentioned yet")
+    // ⚠️ ONCE, NOT TWICE. `textContent` would contain the phrase either way; counting
+    // occurrences is what catches the duplicate.
+    const shown = row.textContent ?? ""
+    expect(shown.split("2 chairs · which equipment?").length - 1).toBe(1)
+    // ⚠️ AND THE STATE STILL DRIVES THE CHROME, so the row is styled unfinished — the
+    // "partial style" half of the ruling.
+    expect(row).toHaveAttribute("data-state", "partial")
+  })
+
+  it("STILL prints the state wording when a row holds nothing at all", async () => {
+    /** ⚠️ THE CONTROL ON THE RULING. "Never 'Not mentioned yet' alongside a value" must
+     *  not become "never 'Not mentioned yet'" — an untouched optional row still has to
+     *  say it holds nothing, or the pane reads as full. */
+    const user = userEvent.setup()
+    vi.mocked(startCapture).mockResolvedValue(
+      state({
+        surface: {
+          id: "capture",
+          rows: [{ row_id: "cemetery_equipment", label: "Equipment",
+                   state: "not_mentioned", value: null, secondary_value: null }],
+        },
+      }) as never,
+    )
+    openOverlay()
+    await type(user, "start an order")
+
+    await waitFor(() =>
+      expect(screen.getByTestId("capture-row-cemetery_equipment")).toHaveTextContent(
+        "Not mentioned yet",
+      ),
+    )
+  })
+
+  it("keeps the secondary UNDER the primary when there is a primary", async () => {
+    /** ⚠️ THE OTHER HALF OF `rowSecondary`, AND WITHOUT IT THE PROMOTION COULD HAVE
+     *  SWALLOWED THE SECONDARY LINE ENTIRELY. A done Equipment row shows the bundle on
+     *  top and the chairs beneath — ruling E's shape, unchanged by ruling c. */
+    const user = userEvent.setup()
+    vi.mocked(startCapture).mockResolvedValue(
+      state({
+        surface: {
+          id: "capture",
+          rows: [{ row_id: "cemetery_equipment", label: "Equipment", state: "done",
+                   value: "Full Equipment",
+                   secondary_value: "12 chairs (4 extra)" }],
+        },
+      }) as never,
+    )
+    openOverlay()
+    await type(user, "start an order")
+
+    const row = await waitFor(() =>
+      screen.getByTestId("capture-row-cemetery_equipment"),
+    )
+    expect(row).toHaveTextContent("Full Equipment")
+    expect(row).toHaveTextContent("12 chairs (4 extra)")
+  })
+
   it("shows a PARTIAL value rather than the state wording, unlike the prototype", async () => {
     // ⚠️ A DELIBERATE DEVIATION, FOUND BY WALKING IT ON DEV. The prototype shows a value
     // only when `done` (`:409`) — right for its ONE-FIELD rows. Our Service row composes

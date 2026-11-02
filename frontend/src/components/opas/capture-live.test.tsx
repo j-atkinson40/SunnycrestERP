@@ -241,6 +241,54 @@ describe("the debounce", () => {
     )
   })
 
+  it("SENDS NO `asking` WHILE THE DIRECTOR IS TYPING — ruling a, 2026-11-02", async () => {
+    /**
+     * ⚠️ THIS IS THE WHOLE OF CHECK 3's FIRST DEFECT, AND IT IS A CLIENT BUG WEARING A
+     * SERVER SYMPTOM. The pane used to pass `askedFieldId` as the fourth argument, and
+     * `askedField` in the host falls back to the server's own `guidedFieldId` — so
+     * every keystroke echoed the PREVIOUS question back as `?asking=`, and the server,
+     * which honours `asking` for an ANSWERED field so that clicking a finished row can
+     * re-ask it, obligingly asked it again. The question pinned itself to the first
+     * field ever asked: James typed "riverside 2 chairs", the funeral home came back
+     * captured with a green check, and Opas went on asking "Which funeral home?".
+     *
+     * ⚠️ MEASURED ON THE SERVER BEFORE THE CHANGE:
+     *     read_state(..., asking=None)           -> question_field_id='deceased_name'
+     *     read_state(..., asking="funeral_home") -> question_field_id='funeral_home'
+     * The server was right both times. It was answering the question the client asked.
+     *
+     * ⚠️ AND THE SERVER SIDE IS LEFT ALONE DELIBERATELY. Refusing answered fields in
+     * its `asking` validation would break click-to-change, which is ruled behaviour —
+     * `test_opas_never_asks_a_settled_question.py` pins that it still works.
+     *
+     * ⚠️ THE ASSERTION IS THE FOURTH ARGUMENT, not the question on screen, because
+     * that argument is the whole mechanism. A test of the rendered question would pass
+     * against a mock whose response happened not to echo it.
+     */
+    // ⚠️ THE MOCK MUST CARRY A `question_field_id`, AND THE FIRST VERSION OF THIS TEST
+    // DID NOT — so `askedField` was null either way and a break test that restored the
+    // echo left all 52 tests GREEN. The default `state()` has no question field, which
+    // made the assertion true for a reason unrelated to the rule. This is the condition
+    // the defect needs: the server has asked about a field, and the director keeps
+    // typing.
+    vi.mocked(startCapture).mockResolvedValue(
+      state({ question_field_id: "funeral_home" }) as never,
+    )
+    vi.mocked(setCaptureText).mockResolvedValue(
+      state({ question_field_id: "funeral_home" }) as never,
+    )
+    const bar = await openOrder()
+    vi.mocked(setCaptureText).mockClear()
+
+    await user.type(bar, "riverside 2 chairs")
+    await settle()
+
+    expect(vi.mocked(setCaptureText).mock.calls.length).toBeGreaterThan(0)
+    for (const call of vi.mocked(setCaptureText).mock.calls) {
+      expect(call[3], "the pane echoed a question back as ?asking=").toBeNull()
+    }
+  })
+
   it("SENDS AN EMPTY STRING when the bar is cleared", async () => {
     // ⚠️ THE CLEARED BAR IS A REAL EDIT. Skipping the call would leave the rows
     // showing values for words that are no longer on screen — the exact defect

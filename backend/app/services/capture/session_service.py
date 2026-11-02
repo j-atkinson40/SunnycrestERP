@@ -836,6 +836,14 @@ def read_state(
         # is the first layer that sees the raw answers.
         wanted=bool(rendered_answers.get(CHAIRS_WANTED_FLAG)),
         extra_pending=bool(rendered_answers.get(CHAIRS_EXTRA_PENDING_FLAG)),
+        # ⚠️ WHETHER A BUNDLE WAS CHOSEN, WHICH IS NOT THE SAME QUESTION AS WHETHER ITS
+        # INCLUDED COUNT IS READABLE (ruling c). `included_chairs_for` returns None for
+        # a NULL `included_chairs` column too — the state of every new tenant until the
+        # onboarding checklist runs — and in that case the bundle IS set, so the row
+        # must not go on asking for one.
+        bundle_set=bool(
+            (rendered_answers.get("cemetery_equipment") or "").strip()
+        ),
     )
     rendered = resolve_surface(
         surface, resolved, rendered_answers, done_signal=said_done,
@@ -1264,7 +1272,11 @@ def _guided(
     # QUESTIONS. `missing` is required-and-unanswered, so the four fields that are
     # never required — equipment, the Legacy series, the Legacy print and the Life's
     # Reflections symbol — were never asked at all. See `guided_field`.
-    field_id = guided_field(state)
+    # ⚠️ THE ANSWERS GO IN BECAUSE THE CHAIRS FLAGS ARE NOT IN THE PARTITION. Ruling b
+    # (2026-11-02) puts the equipment question ahead of the queue when a chair count is
+    # open, and `chairs_wanted` / `chairs_extra_pending` are keys the template does not
+    # declare, so `CaptureState`'s five sets cannot see them.
+    field_id = guided_field(state, row.values or {})
 
     # ⚠️ THE CLICKED ROW WINS, AND ONLY WHILE IT IS STILL BEING ASKED. That is the
     # prototype's own rule — `if(S.focus&&applicable(S.focus)&&!S.f[S.focus])return
