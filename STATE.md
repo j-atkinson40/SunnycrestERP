@@ -108,6 +108,46 @@ the answer…"*
   home?" with pills, which was CORRECT for text that had captured nothing.** The bug was
   that it kept asking after "2 chairs" arrived. Reported, not changed.
 
+### The deploy, verified on his exact text against Sunnycrest's real data
+
+| half | result |
+|---|---|
+| CI run 41509925406 | Backend CI **success**, Frontend CI **success** (after a re-run — see the flake below) |
+| backend | `api.getbridgeable.com/api/health` `commit` = **`e376779a`** = `HEAD`, `db: connected` |
+| frontend | served bundle **`index-DeQ9jXtB.js`** — a new hash, where the previous commit served `index-DvhJUms9.js` |
+
+    'riverside 2 chairs'                 -> funeral_home 'Riverside Memorial Chapel'
+                                            asks 'cemetery_equipment' / "What equipment?"
+                                            row  '2 chairs · which equipment?'
+    'riverside full equipment 2 chairs'  -> asks 'deceased_name'
+                                            row  '2 chairs'   (no stray question)
+
+⚠️ **AND THE FRONTEND HALF OF RULING c HAS NO STRING MARKER TO GREP, which is stated as a
+limit rather than papered over.** `valueText`'s promotion and `rowSecondary` are LOGIC,
+and the prop rename minifies — so the two-sided marker check used on the previous two
+deploys cannot be run here. `"Not mentioned yet"` is still in the bundle and must be: an
+empty row still says it. What verifies this half is the vitest pair (the promotion and
+its control) plus the bundle hash changing; the WORDS the row shows are server-side and
+are verified above.
+
+### ⚠️ CI WENT RED ONCE ON AN UNRELATED FLAKE, AND IT IS EVIDENCE RATHER THAN A RETRY
+
+- **2026-11-03** — `DocumentsTab.test.tsx :: Save fires documentBlocksService.update
+  immediately` failed in CI and the same commit passed on re-run. **Four things say it
+  is not this commit's doing:** it passes locally (21/21); nothing under
+  `src/lib/runtime-host/` references any module changed here (checked by grep over the
+  import graph); the previous CI run on the same tree was green; and the red run's
+  frontend suite took **206s against 54s locally**, roughly 4× slower.
+- **2026-11-03** — ⚠️ **THE SHAPE IS `waitFor`'s 1-SECOND DEFAULT ON A LOADED RUNNER.**
+  That test chains three sequential `waitFor` blocks through a React render. A re-run
+  passing is not a fix and is not reported as one — it is the second data point that
+  makes "intermittent" the diagnosis rather than "broken".
+- **2026-11-03** — **NEW SWEEP ITEM (9): tests that depend on how fast the machine is.**
+  Sibling of item 3 (tests that depend on the calendar) and item 4 (tests that depend on
+  leftover local data) — same family, third axis. A `waitFor` with a default timeout
+  inside a chain is the shape; `findBy*` or an explicit timeout is the repair. Not fixed
+  here: it is a file this slice does not own, and the ruling was about check 3.
+
 ### Gates, with denominators
 
 | gate | result | of what |
@@ -990,6 +1030,15 @@ not a cached predecessor. The file was restored and the tree re-checked clean af
   7. **NEW 2026-10-30 — `conditions.py` HAS NO `And`/`Or`/`Not`, and that absence has now shaped a design.** James: *"The proper fix is the 'and' and 'or' combinators I parked earlier. This becomes their first real use, so it goes in the sweep, and nothing gets bolted on now."*
      - **2026-10-30** — ⚠️ **FIRST CONSUMER, NAMED:** restoring the capture-time ask for a numberless `"extra chairs"`. The honest condition is `chairs_mentioned AND neither-number-answered`, which is unexpressible today — which is why the executor reached for a third field, and why that field had to be removed again.
      - **2026-10-30** — ⚠️ **AND THE ABSENCE IS NOT ONLY AN INCONVENIENCE: IT PUSHED A DESIGN TOWARD A STRUCTURAL WEAKENING.** A field with no row is a second entry in the schema's orphan set, which `test_the_only_unmappable_unconditional_field_is_the_named_one` permits exactly one of. The combinators remove the pressure rather than the guard. ⚠️ **NO SECOND ORPHAN** (ruled).
+  9. **NEW 2026-11-03 — TESTS THAT DEPEND ON HOW FAST THE MACHINE IS.** Sibling of item
+     3 (the calendar) and item 4 (leftover local data) — same family, third axis.
+     `DocumentsTab.test.tsx :: Save fires documentBlocksService.update immediately`
+     failed in CI and passed on re-run of the same commit; it passes locally, nothing
+     under `src/lib/runtime-host/` imports anything that changed, and the red run's
+     frontend suite took 206s against 54s locally. The shape is `waitFor`'s 1-second
+     default inside a chain of three sequential waits; `findBy*` or an explicit timeout
+     is the repair. ⚠️ **A RE-RUN PASSING IS A SECOND DATA POINT, NOT A FIX**, and the
+     inventory for this item is every `waitFor` chain in the frontend suite.
   8. **2026-10-29 — a RULE, not a cleanup: nothing may decide pass/fail by matching words in test output.** James, after the inventory came back empty: *"The repo's gates decide by exit code, so there's no grep to fix. The fifth sweep item becomes a rule: nothing may decide pass/fail by matching words in test output. It doesn't need a cleanup pass."* The original form — count `ERROR` as well as `FAILED` — is subsumed: a harness reading an exit code cannot miss either, and a harness reading words can always miss a third one.
 
 - **2026-10-29** — ⚠️ **ITEM 5's INVENTORY CAME BACK EMPTY IN COMMITTED CODE, AND THAT IS THE FINDING RATHER THAN A DISAPPOINTMENT.** The instance that prompted it was an ad-hoc break-test harness typed into a session, not a file. Searched: every `*.sh`, `*.yml`, `*.yaml` and `*.py` outside `node_modules`/`.venv` for a grep that reads `FAILED` to decide an outcome — **zero**. The repo's gates decide by EXIT CODE, which counts errors for free. `ci.yml`'s vitest block parses `status === "failed"` but is a REPORTER (`exit 0`), and its own comment at line 231 already names the exact condition: *"vitest exits 1 on an UNHANDLED error regardless of how many tests passed."*
