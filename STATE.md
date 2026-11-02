@@ -29,6 +29,27 @@ renders *"Which one? 1–N"* for any pick, so the new `cemetery_equipment` pick 
 discriminator `"package"` and the new vault pill both arrive through surfaces that were
 already generic.
 
+### The deploy, verified — and the two instruments say different things
+
+| half | result |
+|---|---|
+| CI run 41477145027 | Backend CI **success**, Frontend CI **success** |
+| backend | `api.getbridgeable.com/api/health` `commit` = **`4958f52600a0…`** = `HEAD`, `db: connected` |
+| frontend | no change — `git show --name-only 4958f526 -- frontend/` is EMPTY |
+
+⚠️ **AND THE THREE RULINGS WERE EXERCISED AGAINST SUNNYCREST'S REAL DATA, READ-ONLY** —
+`"lowering device and grass"` bills `Lowering Device & Grass` with the vault absent and
+NOT missing; `"lowering device"` asks with *Device only / Device & grass*;
+`"section A, lot 2"`, `"section A lot 2"` and `"lot 2"` all keep what was said; and
+`"chairs"` still reaches `chairs_wanted` rather than the vault.
+
+⚠️ **THAT CHECK VERIFIES THE RULINGS AGAINST PRODUCTION DATA, NOT THE DEPLOYED BINARY,
+AND THE DIFFERENCE IS WORTH KEEPING STRAIGHT.** `railway run` executes LOCAL code with
+production environment variables, so what it proves is that the rules are right about
+Sunnycrest's actual catalogue and products — which is the thing a dev database cannot
+show, since testco stocks different equipment. What proves the deployed code is this
+commit is the `/api/health` hash above.
+
 ### Ruling 1 — equipment-only orders are real
 
 - **2026-11-02** — `vault.required_when` is now
