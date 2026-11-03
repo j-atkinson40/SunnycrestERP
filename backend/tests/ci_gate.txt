@@ -723,3 +723,11 @@ tests/test_rulebook.py
 tests/test_migration_safety.py
 tests/test_pick_modifier.py
 tests/test_held_words.py
+
+# Weekly payroll dues reports (r220). Pure-engine goldens + rule edges + the
+# API/DB round trip. Added at ship time because they pass — and flagged here
+# because a manifest grown only by adding what passes converges on covering only
+# what passes (CLAUDE.md §11). These three are NEW coverage, not a reshuffle.
+tests/test_payroll_dues_golden.py
+tests/test_payroll_engine_rule_edges.py
+tests/test_payroll_week_api_e2e.py

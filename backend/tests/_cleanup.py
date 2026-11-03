@@ -76,6 +76,23 @@ from sqlalchemy import text
 #: order built from `pg_constraint`, not another hand-added line. See
 #: `docs/investigations/2026-09-23-litter-clean-applied.md`.
 _PURGE_STATEMENTS = [
+    # Weekly payroll dues reports (r220). Child-before-parent, and BEFORE the
+    # users delete further down: `payroll_weeks.approved_by` → users.id carries
+    # ON DELETE NO ACTION, which is the dominant convention for user references
+    # here (195 of 284 such FKs) and is deliberate — an approval that silently
+    # lost its approver is not an audit trail. The consequence is the other half
+    # of that choice, stated per CLAUDE.md §5: deleting a user who approved a
+    # payroll week RAISES until the week is gone, so these four lines must
+    # precede the users delete rather than follow it.
+    #
+    # payroll_week_lines / payroll_week_results carry no tenant_id of their own
+    # and are reached through payroll_weeks.
+    "DELETE FROM payroll_week_results WHERE week_id IN (SELECT id FROM payroll_weeks WHERE tenant_id = ANY(:ids))",
+    "DELETE FROM payroll_week_lines WHERE week_id IN (SELECT id FROM payroll_weeks WHERE tenant_id = ANY(:ids))",
+    "DELETE FROM payroll_weeks WHERE tenant_id = ANY(:ids)",
+    "DELETE FROM payroll_rates WHERE employee_id IN (SELECT id FROM payroll_report_employees WHERE tenant_id = ANY(:ids))",
+    "DELETE FROM payroll_rule_sets WHERE tenant_id = ANY(:ids)",
+    "DELETE FROM payroll_report_employees WHERE tenant_id = ANY(:ids)",
     # Email classification substrate. Classifications reference email_messages
     # AND workflow_runs/workflows (workflow_run_id / selected_workflow_id) — so
     # delete them before those. Then messages → threads → accounts (each

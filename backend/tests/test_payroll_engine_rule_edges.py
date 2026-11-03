@@ -382,3 +382,83 @@ def test_fmt_exact_preserves_value_not_just_appearance():
 
     for raw in ("13236.25275000", "707.87660000", "1.2750", "0.0100"):
         assert D(fmt_exact(D(raw))) == D(raw), f"{raw} changed value"
+
+
+# ------------------------------------------------------- purity of the engine
+
+def test_the_engine_cannot_reach_a_database():
+    """⚠️ A STATIC GUARD ON THE DISPATCH'S "no DB access" REQUIREMENT.
+
+    Purity is the property that makes every golden figure above hand-provable: a
+    function that cannot open a session cannot pass because of fixture state
+    (CLAUDE.md §11 "a test can pass because data is MISSING"). But purity is also
+    exactly the kind of invariant that rots silently — one convenient
+    `db.query(...)` inside `compute_dues` for a rate lookup, and every test here
+    still passes while the claim stops being true.
+
+    So it is asserted over the module's IMPORTS, by parsing the source, rather
+    than trusted. Checked on the three modules that must stay pure; `service.py`
+    is deliberately excluded because its whole job is the database.
+    """
+    import ast
+    import pathlib
+
+    import app.services.payroll.engine as engine_mod
+
+    pure_modules = ["engine.py", "money.py", "rules.py"]
+    forbidden = ("sqlalchemy", "app.database", "app.models", "app.api",
+                 "psycopg2", "app.services.payroll.service")
+
+    root = pathlib.Path(engine_mod.__file__).parent
+    checked = 0
+    for name in pure_modules:
+        path = root / name
+        assert path.exists(), f"{name} missing — the guard is pointed at nothing"
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        imported: list[str] = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported += [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.append(node.module)
+        for mod in imported:
+            for bad in forbidden:
+                assert not mod.startswith(bad), (
+                    f"{name} imports {mod!r} — the calculation engine must not "
+                    f"be able to reach a database. Move the lookup into "
+                    f"app/services/payroll/service.py and pass the value in."
+                )
+        checked += 1
+
+    # ⚠️ NON-ZERO CONTROL. "No forbidden imports" is satisfied by a loop that
+    # examined nothing at all, so the count is asserted before the absence is
+    # believed (CLAUDE.md §11 — require the control to be NON-ZERO).
+    assert checked == 3, f"expected to check 3 modules, checked {checked}"
+
+
+def test_the_purity_guard_can_actually_fail():
+    """Positive control for the guard above, proving it is not vacuous.
+
+    Rather than editing a shipped module to break it, the same check is run
+    against `service.py` — which legitimately DOES import sqlalchemy. If the
+    guard cannot see that, it cannot see a regression in the pure modules
+    either.
+    """
+    import ast
+    import pathlib
+
+    import app.services.payroll.engine as engine_mod
+
+    path = pathlib.Path(engine_mod.__file__).parent / "service.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    imported: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported += [a.name for a in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.append(node.module)
+
+    assert any(m.startswith("sqlalchemy") for m in imported), (
+        "service.py should import sqlalchemy; if it does not, the detector "
+        "above is matching nothing and its green means nothing"
+    )

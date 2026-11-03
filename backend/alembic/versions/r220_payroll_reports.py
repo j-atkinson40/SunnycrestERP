@@ -43,6 +43,34 @@ employee. That is a claim about the export format and is recorded here so it can
 be revisited if a real Payentry sample disagrees; the parser is deliberately
 unwritten pending that sample (spec §7.4).
 
+### What each FK does on DELETE, both halves
+
+⚠️ **STATED BECAUSE A CONSTRAINT DEFINES BEHAVIOUR ON DELETE AS WELL AS ON
+INSERT** (CLAUDE.md §5). Taking the `ON DELETE` default silently is how a delete
+that used to work starts raising.
+
+    tenant_id -> companies.id            ON DELETE CASCADE
+        A purged tenant takes its payroll rows with it. Matches the cascade
+        other tenant-scoped columns use, so a company delete is not newly
+        blocked by this module.
+
+    employee_id -> payroll_report_employees.id   ON DELETE CASCADE
+    week_id     -> payroll_weeks.id              ON DELETE CASCADE
+        Children follow their parent.
+
+    approved_by -> users.id              ON DELETE NO ACTION  (the default,
+                                         chosen deliberately)
+        ⚠️ THE OTHER HALF: deleting a user who approved a payroll week now
+        RAISES until that week is gone. That is intended — an approval that
+        silently lost its approver is not an audit trail — and it matches the
+        dominant convention here (195 of 284 FKs to `users.id` are NO ACTION;
+        69 are SET NULL, 20 CASCADE). The cost is that any routine deleting
+        users must clear payroll weeks first, so `tests/_cleanup.py` was
+        extended in the same change, with the payroll statements ordered before
+        its users delete. Verified both directions: deleting the user first
+        raises `payroll_weeks_approved_by_fkey`, and the helper's order
+        completes.
+
 ### Rate precision is load-bearing
 
 `payroll_rates.reg_rate` / `ot_rate` are Numeric(12, 4), not (12, 2). The

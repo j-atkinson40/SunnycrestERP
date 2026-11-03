@@ -2,6 +2,96 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 2026-11-03 — payroll weekly dues reports: backend, reporting only
+
+James's dispatch of 2026-11-03. Replaces the accountant's Excel workbook for weekly union
+dues reporting. **NO UI** — the surface is prototyped separately. Does not run payroll and
+does not touch the planned Check integration. Spec: `docs/specs/payroll-reports.md`.
+
+**Migration head: `r219_capture_held_words` → `r220_payroll_reports`** (2026-11-03). Six
+new tables, purely additive — no existing table altered, no backfill, no data written.
+
+### What shipped (2026-11-03)
+
+- **2026-11-03** — `r220_payroll_reports`: `payroll_report_employees`, `payroll_rates`,
+  `payroll_rule_sets`, `payroll_weeks`, `payroll_week_lines`, `payroll_week_results`.
+  Tenant-scoped, `String(36)` ids, `Numeric` throughout. Applied to `bridgeable_dev` and
+  round-tripped (6 tables → 0 → 6).
+- **2026-11-03** — `app/services/payroll/`: `money` (Decimal discipline), `rules`
+  (versioned constants), `engine` (pure, no DB), `parsers` + `column_mapping` (pluggable),
+  `reports`, `validation`, `service` (DB orchestration).
+- **2026-11-03** — API at `/api/v1/payroll-reports/*`, 7 endpoints, accountant/admin only.
+  The role gate **imports** `ACCOUNTING_ROLES` from `completeness.py` rather than
+  restating it, per that module's own note about two producers of one fact.
+- **2026-11-03** — 91 tests across 3 files: 32 week-44 goldens, 33 rule edges, 26 API/DB
+  round trip. `tests/ci_gate.txt` denominator moved **264 → 267**.
+- **2026-11-03** — `scripts/seed_payroll_week44.py`: ensure-only, preserve-aware, refuses
+  `ENVIRONMENT=production`. Seeded `sunnycrest` on dev (41 rows); second run created 0.
+  The seeded week calculates to the golden totals through the real service.
+- **2026-11-03** — `tests/_cleanup.py` extended with the six payroll tables, ordered
+  BEFORE its `users` delete. Verified both directions: deleting the approver first raises
+  `payroll_weeks_approved_by_fkey`; the helper's order completes.
+
+### ⚠️ The dispatch's own golden total was wrong, and it was ruled rather than absorbed
+
+- **2026-11-03** — The dispatch stated `total hours 479.24`. Summing `dues_hours` over all
+  13 members gives **520.44**; the 41.20 difference is exactly E13's hours, and 479.24 is
+  the running total through **E12**. The stated hours total had a DIFFERENT POPULATION than
+  the other two totals on the same report — dues (193.93) and wage (13236.25) are both
+  13-row. Consistent with a workbook SUM range one row short on one column.
+- **2026-11-03** — **Ruled 520.44** (James, same day). The formula was NOT adjusted to
+  reach either figure; the mismatch was reported before any test was written. This is the
+  first known defect the module corrects relative to the workbook, and the accountant will
+  see a week-44 hours total differing from their records by 41.20. Every other golden —
+  13 per-member values, total dues, total wage, vacation 975.47, and the full null-OT
+  comparison — re-derived EXACTLY.
+- **2026-11-03** — Reports now emit `totals.row_count` on every table, and the CSV total
+  row reads `TOTAL (n=13)`. A total printed beside its population cannot repeat this
+  silently.
+
+### ⚠️ Break-testing found a blind spot the goldens could not see (2026-11-03)
+
+- **2026-11-03** — 12 deliberate engine defects were applied. Five turned the goldens red
+  correctly. **Three did not fire at all**, and one of those was not predicted:
+  swapping `ROUND_HALF_UP` for `ROUND_HALF_EVEN` left **all 32 golden assertions green**,
+  because no value in the week-44 fixture lands on an exact half-cent. The dispatch names
+  `ROUND_HALF_UP` explicitly; it could have been wrong in production with a green gate.
+  The other two (`vac_hrs` dropped, sick hours never added) were predicted from the
+  fixture's zeros — but a prediction is not evidence, and the break test is.
+- **2026-11-03** — Eight of thirteen line inputs are identically zero on every golden row
+  (`ny_covid_hrs`, `sick_hrs`, `bereavement_hrs`, `ot2_hrs`, `vac_hrs`, `stonebucks_amt`,
+  `misc_amt`, `vac_amt`), so the sick flags cannot be discriminated by week 44 at all.
+  `test_payroll_engine_rule_edges.py` covers each with nonzero hand-computed values plus
+  all four sick-flag combinations (four distinct answers).
+- **2026-11-03** — A latent report bug was found END TO END, not by reading:
+  `Decimal("40.0000").normalize()` is `4E+1`, so a 40-hour week rendered as `4E+1`. Rows
+  and totals had been formatted by different code — members read `47` beside a total
+  reading `520.4400`. One `fmt_exact` now serves both, pinned by a regression test.
+
+### Newly deferred / open (2026-11-03)
+
+- **2026-11-03** — **STOPPED before the real Payentry parser**, per the dispatch, pending
+  a sample export (outside the repo; never to be committed). The stop is ENFORCED, not
+  documented: `column_mappings/payentry.json` ships `verified: false` and
+  `require_verified` raises → 422 with the remedy in the message. A second format,
+  `bridgeable_csv`, is verified because this module DEFINES it, and unblocks the path.
+- **2026-11-03** — Open for the accountant: sick-time asymmetry (spec §7.2), remittance
+  grouping `week_end_date` vs `check_date` (§7.3), and **newly surfaced** — `winter_hrs`
+  and `weeks_pay` are stored but appear in NEITHER dues formula (§7.5), and whether the
+  initiation fee is owed on a zero-hours week (§7.6). All four are pinned by
+  characterization tests so a ruling produces a failing test rather than silent drift.
+
+### ⚠️ This module was pushed to main inside someone else's commit (2026-11-03)
+
+- **2026-11-03** — `aef73307` ("Slice 2 push 1") committed **51 files, 18 of them this
+  payroll module**, and was **pushed to `origin/main`**. Its message describes only the
+  Opas capture work. The dispatch asked for a local commit with specific paths and no push
+  until review; that constraint was honoured by this session and overtaken by a parallel
+  one. Railway auto-deploys from main with nothing gating it, so `r220` will apply to
+  staging and production on the next deploy. **Blast radius is small by construction** —
+  six new empty tables, no existing table touched, routes gated to accountant/admin and
+  reading nothing, and the Payentry mapping failing closed — but it was not reviewed.
+
 ## 2026-11-03 — slice 2, frontend push 1: words fly, Tab places or holds, held words have a home
 
 James's order of 2026-10-28, items 1–3. **Push 2 (items 4–6) is NOT in this commit.**

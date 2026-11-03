@@ -280,6 +280,48 @@ The parser is a pluggable interface plus a column-mapping config. The real Payen
 is **not** written; per the dispatch, build stops before it pending a sample export. The
 sample lives outside the repo and must never be committed.
 
+**The stop is enforced, not documented.** `column_mappings/payentry.json` ships with
+`verified: false`, and `ColumnMapping.require_verified` RAISES on it — the upload endpoint
+returns 422 with the remedy in the message. A guessed mapping that half-matched a real
+export would be the worst outcome available: it would read the file, match some columns,
+default the rest to zero, and emit dues that are confidently wrong for every member whose
+hours fell in an unmatched column. A registered no-op parser would have the same problem
+and be invisible at runtime, so the refusal is loud instead.
+
+**To finish it:** obtain a sample, confirm the real header strings, replace the guessed
+values, set `verified: true`, and record the sample's md5 in `sample_digest` so a later
+format change is detectable. A digest is part of the citation, not a courtesy.
+
+**A second format ships and is verified:** `bridgeable_csv` is this module's OWN canonical
+weekly CSV. It is verified because the module *defines* it — the headers are normative
+rather than observed. It exists so the upload → calculate → report → approve path is
+usable and testable while the Payentry format is unknown. It is **not** a Payentry parser
+and must not be offered as one.
+
+### 7.5 `winter_hrs` and `weeks_pay` are stored but are not dues inputs
+
+Neither appears in the `dues_wage` or `dues_hours` formula as specified. `winter_hrs` is
+an **hour** column excluded from `dues_hours` while every other hour column is included,
+and `weeks_pay` is a **money** column excluded from `dues_wage`.
+
+This may well be intentional — but it is the same shape as the sick-time asymmetry in
+§7.2, and it was not called out in the dispatch, so it is recorded here rather than
+assumed. Current behaviour is pinned by a characterization test
+(`test_payroll_engine_rule_edges.py::test_winter_hours_and_weeks_pay_do_not_move_dues`)
+so that a ruling either way produces a failing test that names the change, instead of the
+behaviour drifting with nothing to notice.
+
+**Question for the accountant:** should `winter_hrs` be in `dues_hours`? And is
+`weeks_pay` a reporting-only column?
+
+### 7.6 Initiation fee on a zero-hours week
+
+The dispatch states `if dues_hours == 0 → dues = 0` before the initiation-fee clause, and
+"the employee's first dues week" reads as a week in which dues actually arise. So a member
+with no hours is **not** charged the initiation fee and remains due it the following week.
+This reading is implemented and pinned by a test; if the fee is owed regardless of hours,
+the test fails and says so.
+
 ## 8. Reports
 
 Each returns structured data and supports CSV export.
@@ -311,7 +353,35 @@ FastAPI, accountant/admin role only:
 
 Recalculating an approved week is **refused**. Approval is terminal for calculation.
 
-## 10. Out of scope
+## 10. What the golden fixture proves, and what it does not
+
+Stated because "the golden tests pass" otherwise reads as broader coverage than it is. The
+goldens were **break-tested against twelve deliberate engine defects**; five fired, and
+three did not fire at all until dedicated tests were added:
+
+| Break | Red before | Red after |
+|---|---|---|
+| cap ignored (`capped = a`) | 14 ✓ | — |
+| cap always binds (`capped = b`) | 14 ✓ | — |
+| zero-hours guard removed | 7 ✓ | — |
+| NULL ot_rate derives 1.0x not 1.5x | 15 ✓ | — |
+| `dues_wage` rounded before a/b | 11 ✓ | — |
+| **`ROUND_HALF_EVEN` instead of `ROUND_HALF_UP`** | **0 ✗** | 5 ✓ |
+| **`vac_hrs` dropped from `dues_hours`** | **0 ✗** | 1 ✓ |
+| **sick hours never added to `dues_hours`** | **0 ✗** | 3 ✓ |
+| sick wage flag ignored | — | 2 ✓ |
+| initiation fee not added | — | 1 ✓ |
+| vacation split naive rounding | — | 1 ✓ |
+| stonebucks `csr_count == 0` guard removed | — | 1 ✓ |
+| float accepted instead of refused | — | 1 ✓ |
+| `fmt_exact` reverts to bare `normalize()` | — | 1 ✓ |
+
+⚠️ **The rounding row is the one worth reading.** `ROUND_HALF_UP` is named explicitly in
+the dispatch, and no value in the week-44 fixture lands on an exact half-cent — so the
+rounding mode could have been wrong in production with all 32 golden assertions green.
+That was not predicted; it was found by breaking the thing and watching nothing happen.
+
+## 10a. Out of scope
 
 No UI. Does not run payroll. Does not touch existing accounting, payroll-adjacent
 reconciliation, or anomaly code. Does not touch the planned Check integration.

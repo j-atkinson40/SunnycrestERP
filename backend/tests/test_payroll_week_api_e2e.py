@@ -84,6 +84,41 @@ def _csv_for_week44() -> bytes:
     return buf.getvalue().encode("utf-8")
 
 
+def _reset_tenant_payroll(db, tenant_id: str) -> None:
+    """Delete this tenant's payroll rows, and ONLY this tenant's.
+
+    ⚠️ **TENANT-SCOPED ON PURPOSE. THE FIRST VERSION WAS `DELETE FROM t WHERE
+    1=1`,** which reads as a harmless module-local reset and is not one: these
+    tables are shared across tenants, so it would have deleted the seeded
+    `sunnycrest` week-44 fixture — and any real payroll data on the same
+    database — every time this file ran. A test that mutates state outside its
+    own tenant makes every later run measure a different world (CLAUDE.md §11
+    "a gate that mutates shared state is not repeatable"), and this one would
+    have destroyed the very fixture the staging seed exists to create.
+
+    Child rows are reached through their parents rather than by a bare table
+    sweep, because `payroll_week_lines` and `payroll_week_results` carry no
+    tenant_id of their own.
+    """
+    db.execute(text(
+        "DELETE FROM payroll_week_results WHERE week_id IN "
+        "(SELECT id FROM payroll_weeks WHERE tenant_id = :t)"
+    ), {"t": tenant_id})
+    db.execute(text(
+        "DELETE FROM payroll_week_lines WHERE week_id IN "
+        "(SELECT id FROM payroll_weeks WHERE tenant_id = :t)"
+    ), {"t": tenant_id})
+    db.execute(text("DELETE FROM payroll_weeks WHERE tenant_id = :t"), {"t": tenant_id})
+    db.execute(text(
+        "DELETE FROM payroll_rates WHERE employee_id IN "
+        "(SELECT id FROM payroll_report_employees WHERE tenant_id = :t)"
+    ), {"t": tenant_id})
+    db.execute(text("DELETE FROM payroll_rule_sets WHERE tenant_id = :t"), {"t": tenant_id})
+    db.execute(text(
+        "DELETE FROM payroll_report_employees WHERE tenant_id = :t"
+    ), {"t": tenant_id})
+
+
 @pytest.fixture(scope="module")
 def seeded():
     """Rule set + 13 anonymized employees + their rates.
@@ -94,8 +129,7 @@ def seeded():
 
     db = SessionLocal()
     try:
-        for t in PAYROLL_CHILD_TABLES:
-            db.execute(text(f"DELETE FROM {t} WHERE 1=1"))  # module-local reset
+        _reset_tenant_payroll(db, TESTCO_ID)
         db.commit()
 
         # ⚠️ A REAL USER ROW. `payroll_weeks.approved_by` is FK-constrained to
@@ -146,8 +180,7 @@ def seeded():
         db.commit()
         yield {"rule_set_id": rule_set.id, "employee_ids": ids}
 
-        for t in PAYROLL_CHILD_TABLES:
-            db.execute(text(f"DELETE FROM {t} WHERE 1=1"))
+        _reset_tenant_payroll(db, TESTCO_ID)
         db.execute(text("DELETE FROM users WHERE id = :i"), {"i": APPROVER_ID})
         db.commit()
     finally:
