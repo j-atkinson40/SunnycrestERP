@@ -466,6 +466,85 @@ def place_held(
     return state
 
 
+class SuggestionAnswer(BaseModel):
+    """Yes or No to "Did you mean X?" about a held chip."""
+
+    held_id: str
+    accept: bool
+
+
+class PrefixOfferAnswer(BaseModel):
+    """Yes or No to "Did you mean X, instead of Y?".
+
+    ⚠️ IDENTIFIED BY `(field_id, term)` RATHER THAN AN INDEX. The offers are rebuilt from
+    the text on every extraction, so an index names whichever offer landed in that slot
+    by the time the answer arrives — which, on a bar the director is still typing into,
+    is a different question from the one they answered.
+    """
+
+    field_id: str
+    term: str
+    accept: bool
+
+
+@router.post("/sessions/{session_id}/suggestion")
+def answer_suggestion(
+    session_id: str,
+    body: SuggestionAnswer,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Answer a typo suggestion. Slice 2, clause 5.
+
+    ⚠️ A STALE ANSWER IS 200, NOT AN ERROR. The chip may have been dropped, edited or
+    placed between the question being drawn and the click landing — all ordinary things
+    on a live pane — and `answered: false` says so without turning a race into a red
+    banner over an intact order.
+    """
+    try:
+        _row, term = session_service.answer_suggestion(
+            db, session_id,
+            company_id=current_user.company_id, user_id=current_user.id,
+            held_id=body.held_id, accept=body.accept,
+        )
+    except session_service.SessionNotFound:
+        raise HTTPException(status_code=404, detail="capture session not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    db.commit()
+    state = _state(db, session_id, current_user)
+    return {**state, "answered": term is not None}
+
+
+@router.post("/sessions/{session_id}/prefix-offer")
+def answer_prefix_offer(
+    session_id: str,
+    body: PrefixOfferAnswer,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Answer a "did you mean X instead of Y?" offer. Slice 2, clause 5.
+
+    ⚠️ YES GOES THROUGH `answer`, so it inherits the vault acceptance check and the
+    clear-what-no-longer-fits note rather than writing a field behind them.
+    """
+    try:
+        _row, note = session_service.answer_prefix_offer(
+            db, session_id,
+            company_id=current_user.company_id, user_id=current_user.id,
+            field_id=body.field_id, term=body.term, accept=body.accept,
+        )
+    except session_service.SessionNotFound:
+        raise HTTPException(status_code=404, detail="capture session not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    db.commit()
+    state = _state(db, session_id, current_user)
+    if note is not None:
+        state = {**state, "cleared_note": note}
+    return state
+
+
 @router.post("/sessions/{session_id}/choose")
 def choose(
     session_id: str,

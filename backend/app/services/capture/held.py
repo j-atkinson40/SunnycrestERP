@@ -183,6 +183,26 @@ def _is_label_word(word: str) -> bool:
     return _norm(word).strip(".,;:'\u2019") in NOISE_WORDS
 
 
+def _suggest_from(raw: object) -> tuple[str, str, int] | None:
+    """Read a stored `suggest` back, tolerating anything that is not one.
+
+    ⚠️ TOLERANT BECAUSE THE COLUMN PREDATES THE FIELD. Rows written before `suggest`
+    existed have no key, and a row written by a future shape must not take the session
+    down — a held word is recoverable text, and refusing to parse the whole list because
+    one chip's hint is malformed would lose the words themselves.
+    """
+    if not isinstance(raw, dict):
+        return None
+    term = raw.get("term")
+    kind = raw.get("kind")
+    distance = raw.get("distance")
+    if not isinstance(term, str) or not term:
+        return None
+    if not isinstance(distance, int):
+        return None
+    return (term, str(kind or ""), distance)
+
+
 def did_you_mean(word: str, terms) -> Suggestion | None:
     """The single term `word` is a typo of, or None.
 
@@ -316,6 +336,23 @@ class HeldWord:
     #: about that word again." Stored as the terms declined rather than a bare flag, so
     #: editing the word to something else can still be suggested about.
     declined: list[str] = field(default_factory=list)
+    #: The one term this word is probably a typo of, computed when the word was HELD.
+    #:
+    #: ⚠️ COMPUTED AT HOLD TIME, NOT AT READ TIME, AND THE HOT PATH DECIDED IT.
+    #: `did_you_mean` is an edit-distance scan over every vocabulary term AND every
+    #: meaningful word inside each term — on this tenant, 115 terms expanding to a few
+    #: hundred candidates. A read happens once per typing pause; a hold happens once per
+    #: word the engine could not place. Computing it per read would pay that scan for
+    #: every chip on every keystroke-burst, forever, to produce an answer that cannot
+    #: change unless the word or the vocabulary does.
+    #:
+    #: ⚠️ AND IT IS RECOMPUTED ON AN EDIT, because the word changing is exactly when the
+    #: answer changes — `edit_held` re-runs it, which is also where `declined` is
+    #: cleared, by clause 5's ruling.
+    #:
+    #: `(term, kind, distance)`, or None when the word is not a near-miss of exactly one
+    #: term. None is the common case and is not a failure.
+    suggest: tuple[str, str, int] | None = None
 
     def as_dict(self) -> dict:
         out: dict = {"word": self.word, "origin": self.origin}
@@ -323,6 +360,12 @@ class HeldWord:
             out["id"] = self.held_id
         if self.declined:
             out["declined"] = list(self.declined)
+        if self.suggest is not None:
+            term, kind, distance = self.suggest
+            # ⚠️ THE WIRE SHAPE IS AN OBJECT, NOT THE TUPLE. A three-element array would
+            # make the client index by position into a value whose order nothing on that
+            # side documents.
+            out["suggest"] = {"term": term, "kind": kind, "distance": distance}
         return out
 
     def with_id(self, held_id: str) -> "HeldWord":
@@ -360,6 +403,7 @@ class HeldWord:
             origin=origin if origin in (ORIGIN_TYPED, ORIGIN_EDITED, ORIGIN_DRAGGED)
             else ORIGIN_TYPED,
             declined=[str(d) for d in declined] if isinstance(declined, list) else [],
+            suggest=_suggest_from(raw.get("suggest")),
         )
 
 

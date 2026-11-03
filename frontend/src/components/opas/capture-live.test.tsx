@@ -91,6 +91,11 @@ vi.mock("@/services/opas-capture-service", () => ({
   // `placedFromBar` above: a double that omits what the component imports fails at
   // CALL time, so this was absent until a test actually clicked Approve.
   approveCapture: vi.fn(),
+  // ⚠️ ADDED 2026-11-03 for clause 5. Same lesson as `placedFromBar` and
+  // `approveCapture` above: a double that omits what the component imports fails at
+  // CALL time, so it is absent until a test actually answers a correction.
+  answerSuggestion: vi.fn(),
+  answerPrefixOffer: vi.fn(),
 }))
 vi.mock("@/services/opas-catalog-service", () => ({
   resolvePhrase: vi.fn(async () => ({ candidates: [], discriminators: [] })),
@@ -107,6 +112,8 @@ import {
   answerCapture,
   approveCapture,
   choosePick,
+  answerPrefixOffer,
+  answerSuggestion,
   dropHeld,
   holdWords,
   placeHeld,
@@ -2154,5 +2161,106 @@ describe("sweep item 2 — the notice names what actually happened", () => {
       () => expect(vi.mocked(setCaptureText).mock.calls.length).toBeGreaterThan(1),
       { timeout: 4000 },
     )
+  })
+})
+
+
+describe('slice 2 clause 5 — a correction answered end to end', () => {
+  /**
+   * ⚠️ THIS EXISTS BECAUSE THE EQUIVALENT SEAM WAS FOUND UNREACHED IN PUSH 1. Deleting
+   * the host's `onPlaceHeld` wiring then left all 1,003 opas tests green, because the
+   * component suite covered the pill's branches with its own mock and nothing exercised
+   * host -> ref -> pane -> service. Clause 5 adds two more of exactly that shape, so
+   * each gets an assertion rather than being inferred from its two ends.
+   */
+  function asking(pills: readonly Record<string, unknown>[], over = {}) {
+    return state({
+      question: "Did you mean Monticello?",
+      question_hint: "Instead of “montcello”, which Opas could not place.",
+      question_field_id: null,
+      pills,
+      held_words: [{ id: "h1", word: "montcello", origin: "typed" }],
+      ...over,
+    })
+  }
+
+  async function open(pills: readonly Record<string, unknown>[]) {
+    const s = asking(pills)
+    vi.mocked(startCapture).mockResolvedValue(s as never)
+    vi.mocked(setCaptureText).mockResolvedValue(s as never)
+    vi.mocked(answerSuggestion).mockResolvedValue(state() as never)
+    vi.mocked(answerPrefixOffer).mockResolvedValue(state() as never)
+    await openOrder()
+    await waitFor(() => expect(screen.getByText("Yes")).toBeInTheDocument())
+  }
+
+  it("Yes on a typo reaches answerSuggestion through the host and the pane", async () => {
+    await open([
+      { value: "yes", label: "Yes", sub: "Monticello",
+        suggest_held_id: "h1", accept: true },
+      { value: "no", label: "No", sub: "keep my word",
+        suggest_held_id: "h1", accept: false },
+    ])
+    await user.click(screen.getByText("Yes"))
+    await waitFor(() =>
+      expect(answerSuggestion).toHaveBeenCalledWith("sess-1", "h1", true),
+    )
+    // ⚠️ AND NOT THROUGH `/answer`, which is the whole reason the route is separate.
+    expect(answerCapture).not.toHaveBeenCalled()
+  })
+
+  it("No on a typo reaches it with accept=false", async () => {
+    await open([
+      { value: "yes", label: "Yes", suggest_held_id: "h1", accept: true },
+      { value: "no", label: "No", suggest_held_id: "h1", accept: false },
+    ])
+    await user.click(screen.getByText("No"))
+    await waitFor(() =>
+      expect(answerSuggestion).toHaveBeenCalledWith("sess-1", "h1", false),
+    )
+  })
+
+  it("Yes on a prefix offer carries the field and term all the way", async () => {
+    await open([
+      { value: "yes", label: "Yes", sub: "Johnson Funeral Home",
+        offer_field_id: "funeral_home", offer_term: "Johnson Funeral Home",
+        accept: true },
+      { value: "no", label: "No", sub: "keep Hopkins Funeral Home",
+        offer_field_id: "funeral_home", offer_term: "Johnson Funeral Home",
+        accept: false },
+    ])
+    await user.click(screen.getByText("Yes"))
+    await waitFor(() =>
+      expect(answerPrefixOffer).toHaveBeenCalledWith(
+        "sess-1", "funeral_home", "Johnson Funeral Home", true,
+      ),
+    )
+  })
+
+  it("the question and its INSTEAD-OF hint are both on screen", async () => {
+    /** ⚠️ `instead of …` IS RULED, and the question is unanswerable without it — the
+     *  director has to see what it would replace. Asserted on the rendered text rather
+     *  than on the state, because the server composing it and the pane showing it are
+     *  two different claims. */
+    const s = asking(
+      [
+        { value: "yes", label: "Yes",
+          offer_field_id: "funeral_home", offer_term: "Johnson Funeral Home",
+          accept: true },
+      ],
+      {
+        question: "Did you mean Johnson Funeral Home?",
+        question_hint: "Instead of Hopkins Funeral Home, which is there now.",
+      },
+    )
+    vi.mocked(startCapture).mockResolvedValue(s as never)
+    vi.mocked(setCaptureText).mockResolvedValue(s as never)
+    await openOrder()
+    await waitFor(() =>
+      expect(screen.getByText(/Did you mean Johnson Funeral Home/)).toBeInTheDocument(),
+    )
+    expect(
+      screen.getByText(/Instead of Hopkins Funeral Home, which is there now/),
+    ).toBeInTheDocument()
   })
 })

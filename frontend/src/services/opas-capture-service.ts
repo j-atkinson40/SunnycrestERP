@@ -167,6 +167,17 @@ export interface CaptureState {
      *  by text alone would show the director their answer in the row AND still-unplaced
      *  underneath it. */
     readonly held_id?: string
+    /** Set on the Yes/No pills of a "Did you mean X?" TYPO question. Slice 2 clause 5.
+     *
+     *  ⚠️ IT CHANGES THE ENDPOINT, which is the only reason the client needs it. Yes and
+     *  No look like ordinary pills and are answered through `/suggestion`, not
+     *  `/answer` — there is no field to store "yes" into. */
+    readonly suggest_held_id?: string
+    /** Set on the Yes/No pills of a PREFIX OFFER. Answered through `/prefix-offer`. */
+    readonly offer_field_id?: string
+    readonly offer_term?: string
+    /** Which of Yes/No this pill is. Present only on a correction's pills. */
+    readonly accept?: boolean
   }[]
   /** Present only once the vault has made this order a cremation.
    *
@@ -216,6 +227,33 @@ export interface CaptureState {
    *  These have left the text: they survive the next keystroke, carry an id so a drag
    *  can name one, and are dropped only by the ×. */
   readonly held_words: readonly HeldWord[]
+  /** "Did you mean X?" about a held word — a TYPO the engine spotted.
+   *
+   *  ⚠️ THE SERVER WITHHOLDS THESE WHILE A PICK IS OPEN, so the client does not filter.
+   *  James, item 4: *"an open pick has priority."* One place decides what the office is
+   *  being asked; a client that filtered too would be a second opinion, and the two
+   *  would eventually disagree. */
+  readonly did_you_mean?: readonly {
+    readonly held_id: string
+    readonly word: string
+    readonly term: string
+    readonly kind: string
+    readonly distance: number
+  }[]
+  /** "Did you mean X, instead of Y?" — a correct ABBREVIATION, offered rather than
+   *  applied because the field was already settled by a name typed out in full.
+   *
+   *  ⚠️ NOT THE SAME SHAPE AS A TYPO, AND `instead_of` IS WHY. The question is only
+   *  answerable if the director can see what it would replace. `distance` would be a
+   *  lie here — a prefix is an exact match of a shorter string — which is why the
+   *  server keeps them in two lists rather than one with a zero in it. */
+  readonly prefix_offers?: readonly {
+    readonly word: string
+    readonly term: string
+    /** The FIELD this would fill — `PrefixOffer.kind` is a field id at its source. */
+    readonly kind: string
+    readonly instead_of: string
+  }[]
   /** ⚠️ A COMBINATION THE VAULT DOES NOT ALLOW — AND NOT THE SAME THING AS
    *  `unrecognized`. The extractor understood both phrases; they contradict each
    *  other ("Continental 34" offers only `nameplate_only`; "nameplate and vinyl"
@@ -652,5 +690,45 @@ export async function answerWhy(
     draft?: string
     rule_id?: string | null
   }>(`${BASE}/${sessionId}/why`, body)
+  return r.data
+}
+
+/**
+ * Yes or No to "Did you mean X?" about a held chip. Slice 2, clause 5.
+ *
+ * ⚠️ A STALE ANSWER IS A 200 WITH `answered: false`, NOT AN ERROR. The chip may have
+ * been dropped, edited or placed between the question being drawn and the click
+ * landing — all ordinary on a live pane.
+ */
+export async function answerSuggestion(
+  sessionId: string,
+  heldId: string,
+  accept: boolean,
+): Promise<CaptureState> {
+  const r = await apiClient.post<CaptureState>(`${BASE}/${sessionId}/suggestion`, {
+    held_id: heldId,
+    accept,
+  })
+  return r.data
+}
+
+/**
+ * Yes or No to "Did you mean X, instead of Y?". Slice 2, clause 5.
+ *
+ * ⚠️ IDENTIFIED BY `(fieldId, term)` RATHER THAN BY INDEX. The offers are rebuilt from
+ * the text on every extraction, so an index names whichever offer landed in that slot
+ * by the time the answer arrives — a different question from the one the office read.
+ */
+export async function answerPrefixOffer(
+  sessionId: string,
+  fieldId: string,
+  term: string,
+  accept: boolean,
+): Promise<CaptureState> {
+  const r = await apiClient.post<CaptureState>(`${BASE}/${sessionId}/prefix-offer`, {
+    field_id: fieldId,
+    term,
+    accept,
+  })
   return r.data
 }

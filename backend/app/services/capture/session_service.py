@@ -26,6 +26,7 @@ from __future__ import annotations
 import logging
 import re
 import uuid
+import dataclasses
 from dataclasses import asdict
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -338,6 +339,12 @@ def set_text(
     # needs only `values` — re-extracting there would double the cost of every read
     # and give two places that decide what the text means.
     row.switches = [asdict(sw) for sw in ex.switches]
+    # ⚠️ STORED HERE BECAUSE A READ CANNOT RECOMPUTE IT. `PrefixOffer` lives on
+    # `TextExtraction`, not on the `CaptureState` a read gets from `evaluate_typed`, so
+    # `read_state` would have to re-run the extractor on the hot path to see one. The
+    # three lines above persist extraction output for the same reason; this is the
+    # fourth member of that family.
+    _store_prefix_offers(row, ex.prefix_offers)
     # ⚠️ REMEMBERED ON THE INSTANCE, NOT IN THE DATABASE. "somebody just tried to
     # finish this" is a fact about this request, not about the order — a later plain
     # read must not find the rows amber. The route reads it off the returned row.
@@ -504,6 +511,7 @@ def take_switch(
         row.unrecognized = list(ex.unrecognized)
         row.pending_picks = [asdict(pk) for pk in ex.picks]
         row.switches = [asdict(sw) for sw in ex.switches]
+        _store_prefix_offers(row, ex.prefix_offers)
     else:
         values = dict(row.values or {})
         values[field_id] = to_value
@@ -597,6 +605,62 @@ def _held_list(row) -> list[HeldWord]:
         if rec is not None:
             out.append(rec)
     return out
+
+
+def _with_suggestion(db, *, tenant_id: str, word: HeldWord) -> HeldWord:
+    """Attach the one term `word` is probably a typo of, if there is exactly one.
+
+    ⚠️ COMPUTED ONCE PER HOLD, NOT PER READ, which is the whole reason it is stored.
+    `did_you_mean` scans every vocabulary term and every meaningful word inside each
+    term; a read happens on every typing pause and the answer cannot change unless the
+    word or the vocabulary does.
+
+    ⚠️ AND A DECLINED TERM IS NOT RE-SUGGESTED. Clause 5: *"No keeps it held and never
+    asks about that word again."* `declined` holds the TERMS the office rejected — not
+    field ids, which is a mistake this file's neighbour made and which is recorded in
+    `pills.held_pills_for` — so the check compares the suggestion to that list.
+
+    ⚠️ FAILURE IS SILENT AND THE WORD SURVIVES. A vocabulary read that raises must not
+    cost the director their held word: the chip is their text, and a missing hint is a
+    missing hint.
+    """
+    try:
+        from app.services.capture.held import did_you_mean
+        from app.services.capture.vocabulary import build_vocabulary
+
+        hit = did_you_mean(word.word, build_vocabulary(db, tenant_id=tenant_id))
+    except Exception:
+        logger.warning("did_you_mean failed for %r", word.word[:40], exc_info=True)
+        return word
+    if hit is None:
+        return word
+    if hit.term in (word.declined or []):
+        return dataclasses.replace(word, suggest=None)
+    return dataclasses.replace(word, suggest=(hit.term, hit.kind, hit.distance))
+
+
+def _store_prefix_offers(row, offers) -> None:
+    """Write fresh offers, keeping any the office has already said No to.
+
+    ⚠️ WITHOUT THIS, "NO" LASTS ONE KEYSTROKE. `extract_text` rebuilds the offers from
+    text that still contains the abbreviation, so an offer the director declined is
+    regenerated on the next pause and asked again — forever. Clause 5's *"never asks
+    about that word again"* has to survive re-extraction, and re-extraction is the only
+    thing that writes this column.
+
+    ⚠️ CARRIED BY `(kind, term)` RATHER THAN BY POSITION. The list is rebuilt from
+    scratch each time and its order follows the text, so an index would mark whichever
+    offer happened to land in that slot.
+    """
+    declined = {
+        (o.get("kind"), o.get("term"))
+        for o in (row.prefix_offers or [])
+        if o.get("declined")
+    }
+    row.prefix_offers = [
+        {**o, "declined": True} if (o.get("kind"), o.get("term")) in declined else o
+        for o in (asdict(po) for po in offers)
+    ]
 
 
 def _store_held(row, words: list[HeldWord]) -> None:
@@ -701,7 +765,12 @@ def hold_words(
     for raw in words:
         word = str(raw or "").strip()
         if word:
-            held.append(HeldWord(word=word, origin=ORIGIN_TYPED))
+            held.append(
+                _with_suggestion(
+                    db, tenant_id=company_id,
+                    word=HeldWord(word=word, origin=ORIGIN_TYPED),
+                )
+            )
     _store_held(row, held)
     db.flush()
     return set_text(
@@ -747,8 +816,16 @@ def edit_held(
     text_word = str(word or "").strip()
     if not text_word:
         raise ValueError("a held word cannot be edited to nothing — use the × to drop it")
+    # ⚠️ THE SUGGESTION IS RECOMPUTED, NOT CARRIED. The edit is the one event that can
+    # change the answer: "montecello" may be a typo of a vault and "green pastures" of
+    # nothing, and keeping the old hint would offer a correction for a word that is no
+    # longer on screen. `declined` clears for the same reason, which is why
+    # `_with_suggestion` gets a word with an EMPTY declined list here.
     _store_held(row, [
-        HeldWord(word=text_word, held_id=w.held_id, origin=ORIGIN_EDITED)
+        _with_suggestion(
+            db, tenant_id=company_id,
+            word=HeldWord(word=text_word, held_id=w.held_id, origin=ORIGIN_EDITED),
+        )
         if w.held_id == held_id else w
         for w in _held_list(row)
     ])
@@ -791,6 +868,300 @@ def place_held(
     _store_held(row, [w for w in _held_list(row) if w.held_id != held_id])
     db.flush()
     return row, note
+
+
+def answer_suggestion(
+    db: Session, session_id: str, *, company_id: str, user_id: str,
+    held_id: str, accept: bool,
+) -> tuple[CaptureSession, str | None]:
+    """Yes or No to "Did you mean X?" about a held word. Slice 2, clause 5.
+
+    Returns the session and the term that was offered, or `None` when the chip or its
+    suggestion has gone — a stale answer is not an error.
+
+    ⚠️ YES APPENDS THE TERM TO THE TEXT AND RE-EXTRACTS, RATHER THAN WRITING A FIELD,
+    AND THAT IS THE WHOLE REASON THERE IS NO `kind`-TO-FIELD TABLE HERE. `did_you_mean`'s
+    own docstring says it: *"Yes on 'Did you mean Monticello?' replaces the word and
+    re-extracts … If the suggestion carried a resolved value instead, it would be a
+    second answer to 'which Monticello' and could disagree with that rule."*
+
+    Measured on testco: the vocabulary's kinds are `funeral_home`, `cemetery`, `vault`,
+    `product`, `vault_alias`, `equipment`, `chairs`, `service_location`,
+    `personalization`, `legacy_print` — and three of those do NOT name a field.
+    `product` is any tenant product, `chairs` could be `chairs_total` or
+    `chairs_extra`, `legacy_print` is two fields. A table mapping kind to field would
+    have to GUESS for those, which is a second opinion about what a word means next to
+    the extractor's. Putting the term in the text asks the one authority instead.
+
+    ⚠️ NO KEEPS THE CHIP AND REMEMBERS THE TERM, by clause 5 — *"No keeps it held and
+    never asks about that word again."* The TERM is recorded rather than a flag, so
+    editing the word later can still be suggested about; `HeldWord.declined` exists for
+    exactly this and `edit_held` clears it.
+    """
+    row = _load(db, session_id, company_id=company_id, user_id=user_id)
+    if row.status == STATUS_APPROVED:
+        return row, None
+
+    held = _held_list(row)
+    target = next((w for w in held if w.held_id == held_id), None)
+    if target is None or target.suggest is None:
+        return row, None
+    term, kind, _distance = target.suggest
+
+    if not accept:
+        _store_held(row, [
+            dataclasses.replace(
+                w, suggest=None, declined=list(w.declined or []) + [term],
+            )
+            if w.held_id == held_id else w
+            for w in held
+        ])
+        db.flush()
+        _log_suggestion_answer(
+            db, company_id=company_id, user_id=user_id,
+            word=target.word, term=term, kind=kind, accepted=False,
+        )
+        return row, term
+
+    # ⚠️ THE CHIP GOES FIRST, SO A REFUSED RE-EXTRACTION CANNOT LEAVE THE WORD TWICE.
+    # If the term went into the text while the chip stayed, the next read would show the
+    # corrected value in its row AND the typo still sitting in "Not placed yet".
+    _store_held(row, [w for w in held if w.held_id != held_id])
+    db.flush()
+
+    text = (row.full_text or "").strip()
+    # ⚠️ APPENDED, NOT SUBSTITUTED, BECAUSE THE TYPO IS NO LONGER IN THE TEXT. Clause 1
+    # removed it when the word was held, so there is nothing to replace — and extraction
+    # reads the whole text rather than a position, so where the term sits does not change
+    # which field it fills.
+    set_text(
+        db, session_id, company_id=company_id, user_id=user_id,
+        text=f"{text} {term}".strip(),
+    )
+    _log_suggestion_answer(
+        db, company_id=company_id, user_id=user_id,
+        word=target.word, term=term, kind=kind, accepted=True,
+    )
+    return _load(db, session_id, company_id=company_id, user_id=user_id), term
+
+
+def answer_prefix_offer(
+    db: Session, session_id: str, *, company_id: str, user_id: str,
+    field_id: str, term: str, accept: bool,
+) -> tuple[CaptureSession, str | None]:
+    """Yes or No to "Did you mean X, instead of Y?". Slice 2, clause 5.
+
+    Returns the session and the note `answer` produced, or `None`.
+
+    ⚠️ `PrefixOffer.kind` IS A FIELD ID — `kind=field_id` at its construction site — so
+    unlike a typo suggestion this one knows exactly where it goes, and Yes is an ordinary
+    `answer` write. It therefore inherits the vault acceptance check and
+    `clear_what_no_longer_fits` for free, which is why it does not write `resolutions`
+    itself.
+
+    ⚠️ NO MUST BE REMEMBERED OR THE QUESTION RETURNS ON THE NEXT KEYSTROKE. The offer is
+    recomputed by `extract_text` from text that still contains the abbreviation, so a
+    rejection that lived only in the client would be re-asked forever. The decline is
+    marked on the stored offer and `set_text` carries it forward by `(field_id, term)`.
+    """
+    row = _load(db, session_id, company_id=company_id, user_id=user_id)
+    if row.status == STATUS_APPROVED:
+        return row, None
+
+    offers = list(row.prefix_offers or [])
+    match = next(
+        (o for o in offers
+         if o.get("kind") == field_id and o.get("term") == term),
+        None,
+    )
+    if match is None:
+        return row, None
+
+    if not accept:
+        row.prefix_offers = [
+            {**o, "declined": True}
+            if o.get("kind") == field_id and o.get("term") == term else o
+            for o in offers
+        ]
+        db.flush()
+        _log_suggestion_answer(
+            db, company_id=company_id, user_id=user_id,
+            word=str(match.get("word") or ""), term=term, kind=field_id,
+            accepted=False, instead_of=str(match.get("instead_of") or "") or None,
+        )
+        return row, None
+
+    _row, note = answer(
+        db, session_id, company_id=company_id, user_id=user_id,
+        field_id=field_id, value=term,
+    )
+    _log_suggestion_answer(
+        db, company_id=company_id, user_id=user_id,
+        word=str(match.get("word") or ""), term=term, kind=field_id,
+        accepted=True, instead_of=str(match.get("instead_of") or "") or None,
+    )
+    return _row, note
+
+
+def _log_suggestion_answer(
+    db: Session, *, company_id: str, user_id: str | None,
+    word: str, term: str, kind: str, accepted: bool,
+    instead_of: str | None = None,
+) -> None:
+    """Clause 6: every Yes and No reaches the decision log, and a Yes seeds an alias.
+
+    James, 2026-10-28 clause 6: *"log accepts/rejects to the decision log, accepted
+    pairs become alias candidates."*
+
+    ⚠️ THE ANSWER IS LOGGED, NOT THE OFFER, AND THE HOT PATH DECIDED IT. An offer is
+    recomputed on every read; `record_capture_open`'s own docstring warns about exactly
+    this — *"ONCE PER SESSION, NOT PER KEYSTROKE … a row per pause would bury the
+    opening sentence in fifty near-duplicates of itself and make the set unusable."* One
+    row per decision is the evidence worth keeping.
+
+    ⚠️ AND IT NEVER RAISES. `decision_log` swallows its own failures by design and rolls
+    back first, because a logging failure becoming a request failure one step later is
+    the shape that module is written to avoid. The alias write below takes the same care
+    for the same reason: the director answered a question, and that must not fail because
+    an aside could not be recorded.
+    """
+    # ⚠️ THE ALIAS IS SEEDED BEFORE THE LOG WRITE, AND THE ORDER IS LOAD-BEARING.
+    # `decision_log.record_ask` calls `db.commit()` — it commits the CALLER's pending
+    # work, not just its own row. Seeding first therefore puts the alias candidate and
+    # the decision row in ONE commit: two records of one event, landing together or not
+    # at all. Logging first left the alias flushed-but-uncommitted, to be picked up by
+    # whatever committed next — measured, that was a LATER answer's log write, so an
+    # alias from one decision was being committed by a different one.
+    if accepted:
+        _seed_alias_candidate(
+            db, company_id=company_id, word=word, term=term, kind=kind,
+        )
+
+    try:
+        from app.services.order_list import decision_log
+
+        decision_log.record_ask(
+            db,
+            company_id=company_id,
+            user_id=user_id,
+            phrase=word,
+            # ⚠️ `outcome` IS DERIVED FROM THE BODY by `record_ask`'s `_outcome_for`, so
+            # the shape below is the message rather than a status we assert twice.
+            body={
+                "did_you_mean": {
+                    "word": word,
+                    "term": term,
+                    "kind": kind,
+                    "accepted": accepted,
+                    **({"instead_of": instead_of} if instead_of else {}),
+                }
+            },
+            surface="bar",
+            proposed_by="rules",
+        )
+    except Exception:
+        logger.warning("decision log write failed for %r", word[:40], exc_info=True)
+
+
+#: The vocabulary kinds whose terms name a row in `products`.
+#:
+#: ⚠️ NARROW ON PURPOSE, AND MEASURED RATHER THAN GUESSED. An alias row needs a
+#: `canonical_product_id`, so only kinds whose term IS a product name can become one.
+#: Measured on testco's vocabulary: `vault` (34 terms), `vault_alias` (33), `product`
+#: (14) and `equipment` (6) name products; `funeral_home` (13), `cemetery` (3),
+#: `service_location` (4), `personalization` (6) and `chairs` (2) do not. An accepted
+#: cemetery typo is still logged — it is just not a PRODUCT alias, and inventing one
+#: would put a cemetery's name in a column that joins to products.
+#:
+#: ⚠️ IT IS DEFENCE-IN-DEPTH AND ONE AVOIDED QUERY, *NOT* THE CORRECTNESS GUARD, AND A
+#: BREAK TEST SAID SO. Deleting this check leaves every test green: the product lookup
+#: below already returns early for a term no product is named after — measured, testco
+#: has no product called "Hopkins Funeral Home". What it buys is not issuing a query per
+#: accepted non-product correction, and independence from that lookup if a tenant ever
+#: names a product after a funeral home.
+#:
+#: ⚠️ AND IT CANNOT BE TESTED INDEPENDENTLY THROUGH `_seed_alias_candidate`, because
+#: that function swallows every exception by design — so a probe that raises to prove
+#: the guard short-circuited is caught and logged rather than observed. The enumeration
+#: test pins the SET instead, which makes widening it a reviewed act; the guard's own
+#: short-circuit has no observable effect and is documented rather than asserted.
+#: CLAUDE.md §11: a guard described as load-bearing when it is defensive misleads the
+#: next reader worse than silence.
+_PRODUCT_KINDS = ("vault", "vault_alias", "product", "equipment")
+
+
+def _seed_alias_candidate(
+    db: Session, *, company_id: str, word: str, term: str, kind: str,
+) -> None:
+    """An accepted correction becomes an UNCONFIRMED alias. Clause 6.
+
+    ⚠️ `is_confirmed=False` IS WHAT MAKES IT A CANDIDATE AND NOT A DECISION. One
+    director's Yes to "did you mean Monticello?" is evidence that the office types
+    `montcello`, not authority to teach the resolver a new name for every order after
+    it. `ProductAlias` already carries exactly this distinction, so the candidate is
+    expressible without a new table or a new column.
+
+    ⚠️ AND IT IS SKIPPED RATHER THAN GUESSED WHEN THE TERM IS NOT A PRODUCT. See
+    `_PRODUCT_KINDS`: a `canonical_product_id` that does not point at a product is worse
+    than an absent row, because the resolver would join on it.
+    """
+    if kind not in _PRODUCT_KINDS:
+        return
+    try:
+        from sqlalchemy import func
+
+        from app.models.product import Product
+        from app.models.product_alias import ProductAlias
+
+        norm = " ".join(str(word or "").split()).casefold()
+        if not norm:
+            return
+        product = (
+            db.query(Product)
+            .filter(
+                Product.company_id == company_id,
+                func.lower(func.trim(Product.name)) == term.strip().casefold(),
+            )
+            .first()
+        )
+        if product is None:
+            # ⚠️ NO PRODUCT, NO ROW. `did_you_mean` suggests INTERIOR WORDS too — the
+            # headline case corrects "montcello" to "Monticello", which is a word inside
+            # `Monticello Burial Vault` and is not itself a product name. Writing an
+            # alias with a null canonical id would be a row the resolver cannot use.
+            return
+        # ⚠️ IDEMPOTENT ON (company, normalized alias, product). The same typo gets
+        # corrected by the same office repeatedly, and one candidate per pair is the
+        # evidence; fifty are noise.
+        exists = (
+            db.query(ProductAlias)
+            .filter(
+                ProductAlias.company_id == company_id,
+                ProductAlias.alias_text_normalized == norm,
+                ProductAlias.canonical_product_id == product.id,
+            )
+            .first()
+        )
+        if exists is not None:
+            return
+        db.add(ProductAlias(
+            company_id=company_id,
+            alias_text=word,
+            alias_text_normalized=norm,
+            canonical_product_id=product.id,
+            # ⚠️ BELOW 1.0 BECAUSE ONE YES IS ONE DATA POINT. The column defaults to 1.0
+            # for a hand-made alias, which this is not.
+            confidence=0.5,
+            source="did_you_mean",
+            is_confirmed=False,
+        ))
+        db.flush()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        logger.warning("alias candidate write failed for %r", word[:40], exc_info=True)
 
 
 def answer(
@@ -1198,6 +1569,45 @@ def read_state(
         # `origin` and not a shape invented at this boundary. `held.HeldWord` is the
         # one definition; a serializer that renamed its keys here would be the second.
         "held_words": [w.as_dict() for w in _held_list(row)],
+        # ⚠️ "DID YOU MEAN…?" — TWO SOURCES, ONE PILL ROW, AND AN OPEN PICK OUTRANKS
+        # BOTH. James, 2026-10-28 item 4: *"an open pick has priority."* A pick is a
+        # question the director must answer before the order can move; a correction is
+        # Opas volunteering. Offering both at once asks two questions in one row and
+        # makes the numbered answers ambiguous — ⌃1 would mean two things.
+        #
+        # ⚠️ AND THE PRIORITY IS APPLIED HERE RATHER THAN IN THE CLIENT, so there is one
+        # place that decides. A client that filtered would be a second opinion about
+        # what the office is being asked, and the two would eventually disagree.
+        "did_you_mean": (
+            []
+            if row.pending_picks
+            else [
+                {
+                    "held_id": w.held_id,
+                    "word": w.word,
+                    "term": w.suggest[0],
+                    "kind": w.suggest[1],
+                    "distance": w.suggest[2],
+                }
+                for w in _held_list(row)
+                if w.suggest is not None and w.held_id
+            ]
+        ),
+        # ⚠️ A PREFIX OFFER IS NOT A TYPO, AND `instead_of` IS WHY IT IS A SEPARATE LIST.
+        # The word is a correct abbreviation of a real record; it is offered rather than
+        # applied only because the field was already settled by a name the director
+        # typed out (James, 2026-10-29: *"a partial match is too weak to replace
+        # something already settled"*). So the question has to show what it would
+        # REPLACE — "Did you mean Johnson Funeral Home, instead of Hopkins?" — and a
+        # list that shared the typo shape could not carry that.
+        "prefix_offers": (
+            []
+            if row.pending_picks
+            # ⚠️ A DECLINED OFFER IS NOT SERVED, and the flag rather than deletion is
+            # what lets `_store_prefix_offers` recognise it again after the next
+            # re-extraction rebuilds the list.
+            else [o for o in (row.prefix_offers or []) if not o.get("declined")]
+        ),
         # ⚠️ A SEPARATE LIST FROM `unrecognized`, BY NATURE NOT BY TASTE. The extractor
         # understood these phrases; they contradict each other. Reporting a conflict as
         # "not understood" would send the director back to re-type words that were read
@@ -1641,6 +2051,88 @@ def _guided(
                     ),
                 ]
             ]
+
+        # ── "Did you mean…?" — one correction, asked ahead of the field question ─────
+        #
+        # ⚠️ COMPOSED HERE, WITH THE OTHER QUESTIONS, AND THAT IS THE WHOLE REASON Yes
+        # AND No ARE ORDINARY PILLS. The question, its hint and its pills are server-
+        # composed by design; putting a second question-renderer in the client would be
+        # a second opinion about what the office is being asked. Coming through the
+        # normal pill row, Yes/No inherit the ⌃1/⌃2 chord, the arrow keys and Enter on
+        # a highlight for free — none of which a bespoke strip would have.
+        #
+        # ⚠️ ONE AT A TIME, AND A TYPO BEFORE AN ABBREVIATION. Two corrections in one
+        # pill row would make the numbered answers ambiguous, which is the same reason
+        # an open pick outranks both. A typo is ranked first because it is the stronger
+        # claim: the word is WRONG, where a prefix offer's word is right and merely
+        # weaker than what is already settled.
+        #
+        # ⚠️ AND IT PRE-EMPTS THE FIELD QUESTION, WHICH IS A CHOICE AND NOT A RULING.
+        # James ruled that an open pick has priority and said nothing about a correction
+        # versus the next field question. One pill row cannot hold two questions, so an
+        # order had to be picked: pick > correction > field question, on the grounds
+        # that a correction is about words already on screen and is one keypress to
+        # dismiss. Owed to him as a ruling; the alternative is to show the field
+        # question and surface corrections somewhere else entirely.
+        # ⚠️ COMPUTED FROM THE ROW, NOT FROM `out`, AND MY FIRST VERSION READ `out` AND
+        # SILENTLY DID NOTHING. `did_you_mean` and `prefix_offers` are built into the
+        # OTHER dict — the big state literal with `held_words` and `pending_picks` —
+        # which is merged with this question block later. So `out.get("did_you_mean")`
+        # was always empty here and the correction never replaced the field question.
+        # Reading the row removes the dependency on merge order entirely.
+        _suggests = (
+            []
+            if row.pending_picks
+            else [
+                {"held_id": w.held_id, "word": w.word, "term": w.suggest[0]}
+                for w in _held_list(row)
+                if w.suggest is not None and w.held_id
+            ]
+        )
+        _offers = (
+            []
+            if row.pending_picks
+            else [o for o in (row.prefix_offers or []) if not o.get("declined")]
+        )
+        correction = None
+        for _d in _suggests:
+            correction = {
+                "question": f"Did you mean {_d['term']}?",
+                "hint": f"Instead of “{_d['word']}”, which Opas could not place.",
+                "pills": [
+                    {"value": "yes", "label": "Yes", "sub": _d["term"],
+                     "suggest_held_id": _d["held_id"], "accept": True},
+                    {"value": "no", "label": "No", "sub": "keep my word",
+                     "suggest_held_id": _d["held_id"], "accept": False},
+                ],
+            }
+            break
+        if correction is None:
+            for _o in _offers:
+                correction = {
+                    "question": f"Did you mean {_o['term']}?",
+                    # ⚠️ `instead_of` IS THE QUESTION'S OTHER HALF, by ruling — *"showing
+                    # 'instead of …'"*. The question is unanswerable without it: the
+                    # director has to see that the field currently says Hopkins.
+                    "hint": f"Instead of {_o['instead_of']}, which is there now.",
+                    "pills": [
+                        {"value": "yes", "label": "Yes", "sub": _o["term"],
+                         "offer_field_id": _o["kind"], "offer_term": _o["term"],
+                         "accept": True},
+                        {"value": "no", "label": "No", "sub": f"keep {_o['instead_of']}",
+                         "offer_field_id": _o["kind"], "offer_term": _o["term"],
+                         "accept": False},
+                    ],
+                }
+                break
+        if correction is not None:
+            out["question"] = correction["question"]
+            out["question_hint"] = correction["hint"]
+            out["pills"] = correction["pills"]
+            # ⚠️ THE ASKED FIELD IS CLEARED SO NO ROW IS OUTLINED. The pane outlines the
+            # row `question_field_id` names; leaving it set would light up the cemetery
+            # row while Opas asks about a word, and the two would look like one question.
+            out["question_field_id"] = None
 
         # ── the Review action ───────────────────────────────────────────────────────
         #

@@ -107,6 +107,27 @@ def narrow_town(raw: str, known: frozenset[str], *, strict: bool = False) -> str
         return ""
     if not words:
         return ""
+    # ⚠️ IMPORTED HERE BECAUSE IT WAS NEVER IMPORTED AT ALL, AND THIS RAISED
+    # `NameError` IN PRODUCTION. `NOISE_WORDS` lives in `capture.noise`; this module
+    # referenced it at this line and in two comments and imported it nowhere, so every
+    # call that reached the non-strict fallback with an unrecognised town crashed —
+    # `extract_text(text="st marys in buffalo")` raises, which is an HTTP 500 on a
+    # perfectly ordinary sentence about a cemetery in a town the tenant has no record
+    # of.
+    #
+    # ⚠️ IT WAS UNREACHABLE FROM THE STRICT PATH, WHICH IS WHY NOTHING CAUGHT IT. The
+    # bare-town form added on 2026-10-29 calls with `strict=True` and returns two lines
+    # above; only the explicit `in <town>` form falls through to here, and only when the
+    # town is not one the tenant holds. Every test of the bare form therefore passed
+    # over a line that could not run.
+    #
+    # ⚠️ AND IT IS A LOCAL IMPORT RATHER THAN A MODULE-LEVEL ONE, matching
+    # `held._is_label_word`, which takes the same list the same way and says why: a
+    # module-level import of the extractor's own tables is what
+    # `test_only_the_typed_path_imports_the_extractor` forbids. `noise` is the leaf
+    # module both sides are allowed to take it from.
+    from app.services.capture.noise import NOISE_WORDS
+
     keep = [words[0]]
     for w in words[1:]:
         if w.casefold().strip(".,'") in NOISE_WORDS:

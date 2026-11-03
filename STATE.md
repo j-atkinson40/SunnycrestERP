@@ -2,6 +2,179 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 2026-11-03 — slice 2 push 2: "Did you mean…?", the wrong town, and the decision log
+
+Items 4, 5 and 6 of James's order of 2026-10-28. Slice 2 is now complete.
+
+### ⚠️ BOTH PRODUCERS EXISTED AND NEITHER HAD A CONSUMER
+
+Measured before building anything: `did_you_mean` had **zero callers in `app/`**, and
+`PrefixOffer` was built by `extract_text` into a field nothing read. Correct, documented,
+unreachable — CLAUDE.md's *complete machinery behind an unprovisioned entrance*. So this
+push is mostly wiring, and every test is also the first evidence the path runs.
+
+### Item 4 — the two offers, and why they are two
+
+    Suggestion   a TYPO        "montcello" -> Monticello      distance 1
+    PrefixOffer  an ABBREVIATION, offered not applied, because the field was already
+                 settled by a name typed out in full — so it must show `instead_of`
+
+The headline case works end to end: `montcello` → "Did you mean Monticello?" → Yes →
+`vault = "Monticello Burial Vault"`, chip gone, text corrected.
+
+**Yes/No are ORDINARY PILLS, composed on the server**, which is where this codebase
+composes questions. That was the whole design decision and it pays for itself: the
+correction inherits the ⌃1/⌃2 chord, the arrow keys and Enter-on-highlight for free,
+none of which a bespoke strip would have had.
+
+⚠️ **AND THERE IS NO `kind`-TO-FIELD TABLE, DELIBERATELY.** Yes appends the term to the
+text and re-extracts, which is what `did_you_mean`'s own docstring prescribes. Measured:
+of the vocabulary's ten kinds, **three do not name a field** — `product` is any tenant
+product, `chairs` could be `chairs_total` or `chairs_extra`, `legacy_print` is two
+fields. A mapping would have to guess for those, next to the extractor that already
+knows. Putting the term in the text asks the one authority instead.
+
+⚠️ **ORDERING: pick > correction > field question. The last step is MINE, not a ruling.**
+James ruled that an open pick has priority and said nothing about a correction versus the
+next field question. One pill row cannot hold two questions, so I chose: a correction is
+about words already on screen and is one keypress to dismiss. **Owed to him** — the
+alternative is to keep the field question and surface corrections elsewhere.
+
+### Item 6 — the decision log, and what an accepted pair becomes
+
+Every Yes and No writes one `OpasDecision`. An accepted pair ALSO seeds a
+`ProductAlias` with `is_confirmed=False`, `confidence=0.5`, `source="did_you_mean"` —
+unconfirmed rows *are* candidates, so no new table was needed.
+
+⚠️ **THE ANSWER IS LOGGED, NOT THE OFFER.** An offer is recomputed on every read;
+`record_capture_open`'s own docstring warns about exactly this — a row per pause would
+bury the evidence in near-duplicates. One row per decision.
+
+⚠️ **AND THE ALIAS IS SEEDED BEFORE THE LOG WRITE, WHICH IS LOAD-BEARING.**
+`decision_log.record_ask` calls `db.commit()` — it commits the CALLER's pending work, not
+just its own row. Logging first left the alias flushed-but-uncommitted, to be picked up by
+whatever committed next; measured, that was a LATER answer's log write, so one decision's
+alias was being committed by a different one. Seeding first puts both records of one
+event in one commit.
+
+### Item 5 — case 3, which was already half-built, and a crash behind it
+
+`towns.py` documents the three cases and defers case 3 for the BARE form, with an
+explicit end condition: *"CASE 3 BECOMES SAFE ONCE CLAUSE 1 LANDS … The deferral is until
+then, not forever."* Measured now:
+
+    explicit "in <right town>"    absorbed, no question          case 1 ✓
+    explicit "in <wrong town>"    ASKS (a pick)                  case 3 ✓ already worked
+    bare "<wrong town>"           ignored, cemetery survives      deferred
+
+⚠️ **AND MEASURING IT FOUND A LIVE HTTP 500.** `towns.narrow_town` references
+`NOISE_WORDS` and **`towns.py` imports it nowhere** — so `"st marys in buffalo"`, a
+cemetery in a town the tenant holds no record of, raised
+`NameError: name 'NOISE_WORDS' is not defined`. Reachable only through the explicit form
+with an unknown town, because the bare form returns at `strict=True` two lines earlier —
+so every test of the bare form passed over a line that could not run. Fixed with the
+local import `held._is_label_word` uses, and for the same stated reason: a module-level
+import of the extractor's tables would trip
+`test_only_the_typed_path_imports_the_extractor`.
+
+⚠️ **LIFTING THE BARE-FORM DEFERRAL IS NOT TAKEN UNILATERALLY.** Clause 1 landed, so the
+precondition is met in the CLIENT — but the safety argument rests on the cemetery already
+being a RESOLUTION when the town is read, and whether it is depends on client timing the
+server cannot guarantee. The current behaviour is pinned by a test that says it is a
+deferral rather than a bug. **Owed to James as a ruling.**
+
+### ⚠️ A BUG OF MINE FROM THIS MORNING, FOUND WHILE READING `declined`
+
+`pills.held_pills_for` had `if field_id in declined: continue`, documented as "a word the
+office has already said No to for this field". **`HeldWord.declined` holds TERMS, not
+field ids** — its own comment says so and `session_service` says it twice. So the guard
+compared a field id against product names and could never match. **And my test agreed
+with it**, because its fixture passed `declined=("vault",)`: both halves written from one
+misreading, confirming each other. Nothing writes `declined` yet, so there was no
+production evidence to contradict it. CLAUDE.md §11's fixtures-modelled-on-the-
+implementation, committed by me eight hours earlier.
+
+Removed rather than corrected: the list answers *"has the office rejected this
+CORRECTION of this word"*, which governs the suggestion — not whether a word may be filed
+into a field the director explicitly dragged it to. Implemented properly in clause 5,
+where it belongs, and the test now pins that the pill is offered REGARDLESS of `declined`
+with a real term in the list.
+
+### A peer's correction, verified rather than taken
+
+The payroll session asked for `prefix_offers` to be `JSONB(none_as_null=True)`. Measured
+before acting: on plain `JSONB`, assigning Python `None` stores the JSON value `null` and
+`prefix_offers IS NULL` is **FALSE** — which would have defeated the rule my own
+migration docstring argues for at length. Their `r221`/`r224` precedent is cited in both
+the model and the migration. Applied and re-measured both directions.
+
+### Break matrix
+
+| Break | Fired |
+|---|---|
+| pick priority removed | ✅ |
+| No stops recording the declined TERM | ✅ |
+| Yes keeps the chip | ✅ |
+| edit carries the hint instead of recomputing | ✅ |
+| prefix decline not carried across re-extraction | ✅ |
+| alias not idempotent | ✅ |
+| alias written CONFIRMED | ✅ |
+| suggestion branch deleted from `takePill` | ✅ 7 tests |
+| `accept` checked for truthiness, not `!== undefined` | ✅ 3 |
+| correction branches moved BELOW the field guard | ✅ 9 |
+| host stops routing `onAnswerSuggestion` | ✅ 2 |
+| the snake→camel mapping dropped | ✅ 2 |
+
+⚠️ **ONE BREAK DID NOT FIRE AND IS RECORDED AS DEFENSIVE.** Deleting
+`if kind not in _PRODUCT_KINDS` left everything green: the product lookup beneath it
+already refuses a term no product is named after. So that guard is defence-in-depth plus
+one avoided query, **not** the correctness guard — and it cannot be asserted
+independently, because `_seed_alias_candidate` swallows every exception by design, so a
+probe raising inside it is caught rather than observed. The enumeration test pins the SET
+instead, which makes widening it deliberate, and the docstring says plainly that this is
+not evidence the guard prevents anything today.
+
+### Gates
+
+Frontend: `tsc -b` 0 errors; 385 files / **5548** tests, 0 failures; floor raised here
+(+12, reconciled from runtime counts: guided-question 57→65, capture-live 89→93); build
+clean. Backend: the 37 capture-related gate files pass **659 / 5 skipped**; all three new
+test files classified in `ci_gate.txt`.
+
+⚠️ **ONE TEARDOWN ERROR, AND IT IS NOT THIS WORK.** `COMPANY LITTER: 4503 → 4504` fired
+on the last test of the combined run. My three new files create **zero** companies
+(grepped), run clean alone (33 passed), and there were **six concurrent pytest processes**
+from the payroll session at the time. The tripwire measures the whole database rather than
+the run, which is sweep item 4 reaching the instrument.
+
+Migration `r228_capture_prefix_offers`, chained off `r227` by agreement with that session.
+
+### ⚠️ AND I ALMOST COMMITTED OVER THE OTHER SESSION'S STATE ENTRIES
+
+Read-modify-write on `STATE.md` in a shared checkout. I read the file, built my entry,
+and wrote `header + entry + body` — and between the read and the write the payroll
+session had committed edits to three of its own 2026-11-03 bullets. My write restored the
+copy I had read, silently reverting theirs.
+
+⚠️ **AND `git diff` MADE IT LOOK HARMLESS.** It reported 171 added / 3 removed, which
+reads as a MOVE when the added block is large — and `grep -c` for the three bullets
+returned **3**, because my older copies of those same lines were still present and
+matched. Two instruments agreeing that nothing was lost, both wrong, because both were
+answering "is this text present" rather than "is HEAD's text present".
+
+What found it was a **set comparison**: every non-blank line of `HEAD:STATE.md` checked
+for membership in mine. That returned exactly 3 absent, which is the claim that matters.
+CLAUDE.md's *compare sets, not counts* — here applied to lines rather than test ids.
+
+Fixed by rebuilding the file as `HEADER + my entry + HEAD's body`, so nothing of theirs
+could survive as my older copy, and re-verified: **0 of their lines missing, diff now 147
+added / 0 removed.**
+
+**The rule for a shared checkout: never read-modify-write a file both sessions append
+to.** Rebuild it from `HEAD` and prepend, and verify by set membership rather than by
+reading a diff. This is the third cost of the shared tree today, after `git add -A`
+publishing 20 of their files and their dirty `role-management.tsx` disabling my `tsc`.
+
 ## 2026-11-03 — the suggestion attribute: every check passes, which is the finding
 
 James's walk reported macOS inline suggestions still showing in the bar on `f662421b`

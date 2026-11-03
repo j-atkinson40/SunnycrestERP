@@ -27,6 +27,7 @@ import {
   GuidedQuestion,
   paneBottomPx,
   type GuidedQuestionProps,
+  type GuidedPill,
 } from "./GuidedQuestion"
 
 const PILLS = [
@@ -1032,5 +1033,140 @@ describe("slice 2 item 3 — a held word is the open question's first pill", () 
      *  offering what this home usually orders, and the `sub` is what says so. */
     mountHeld()
     expect(screen.getByText("not placed yet")).toBeInTheDocument()
+  })
+})
+
+
+describe('slice 2 clause 5 — "Did you mean…?" Yes and No', () => {
+  /**
+   * ⚠️ FOUR ROUTES OUT OF A PILL NOW, and this file has warned about that fork since
+   * the act/answer split: *"separate call sites deciding separately is how one of them
+   * ends up storing 'review' into a field."* Push 1 lifted the decision into one
+   * `takePill`; these two branches were added there rather than to the chord and the
+   * click separately, and every route in is covered below for that reason.
+   *
+   * ⚠️ AND A CORRECTION HAS NO FIELD. The server clears `question_field_id` while it
+   * asks about a word, so the Yes/No branches sit BEFORE the `field === null` guard —
+   * a pill reaching that guard would be silently inert, which is the failure this suite
+   * exists to catch.
+   */
+  const TYPO = [
+    { value: "yes", label: "Yes", sub: "Monticello",
+      suggestHeldId: "h1", accept: true },
+    { value: "no", label: "No", sub: "keep my word",
+      suggestHeldId: "h1", accept: false },
+  ]
+  const OFFER = [
+    { value: "yes", label: "Yes", sub: "Johnson Funeral Home",
+      offerFieldId: "funeral_home", offerTerm: "Johnson Funeral Home", accept: true },
+    { value: "no", label: "No", sub: "keep Hopkins Funeral Home",
+      offerFieldId: "funeral_home", offerTerm: "Johnson Funeral Home", accept: false },
+  ]
+
+  function mountCorrection(
+    pills: readonly GuidedPill[],
+    over: Partial<GuidedQuestionProps> = {},
+  ) {
+    const onAnswer = vi.fn()
+    const onAnswerSuggestion = vi.fn()
+    const onAnswerPrefixOffer = vi.fn()
+    render(
+      <GuidedQuestion
+        question="Did you mean Monticello?"
+        hint="Instead of “montcello”, which Opas could not place."
+        /* ⚠️ `null`, AS THE SERVER SENDS IT. A correction outlines no row. */
+        fieldId={null}
+        pills={pills}
+        barHeight={46}
+        barWidth="600px"
+        stacked={false}
+        barIsEmpty
+        pickModifier="control"
+        onAnswer={onAnswer}
+        onAnswerSuggestion={onAnswerSuggestion}
+        onAnswerPrefixOffer={onAnswerPrefixOffer}
+        {...over}
+      />,
+    )
+    return { onAnswer, onAnswerSuggestion, onAnswerPrefixOffer }
+  }
+
+  it("YES on a typo answers the suggestion, not the field", async () => {
+    const user = userEvent.setup()
+    const h = mountCorrection(TYPO)
+    await user.click(screen.getByText("Yes"))
+    expect(h.onAnswerSuggestion).toHaveBeenCalledWith("h1", true)
+    expect(h.onAnswer).not.toHaveBeenCalled()
+  })
+
+  it("NO on a typo sends accept=false, not nothing", async () => {
+    /** ⚠️ `false` IS MEANINGFUL, which is why the fork tests `accept !== undefined`
+     *  rather than truthiness. A truthiness check would make the No pill inert and
+     *  look exactly like a missing handler. */
+    const user = userEvent.setup()
+    const h = mountCorrection(TYPO)
+    await user.click(screen.getByText("No"))
+    expect(h.onAnswerSuggestion).toHaveBeenCalledWith("h1", false)
+  })
+
+  it("YES on a prefix offer carries the FIELD and the TERM", async () => {
+    const user = userEvent.setup()
+    const h = mountCorrection(OFFER)
+    await user.click(screen.getByText("Yes"))
+    expect(h.onAnswerPrefixOffer).toHaveBeenCalledWith(
+      "funeral_home", "Johnson Funeral Home", true,
+    )
+    expect(h.onAnswerSuggestion).not.toHaveBeenCalled()
+    expect(h.onAnswer).not.toHaveBeenCalled()
+  })
+
+  it("NO on a prefix offer keeps what is there", async () => {
+    const user = userEvent.setup()
+    const h = mountCorrection(OFFER)
+    await user.click(screen.getByText("No"))
+    expect(h.onAnswerPrefixOffer).toHaveBeenCalledWith(
+      "funeral_home", "Johnson Funeral Home", false,
+    )
+  })
+
+  it("the MODIFIER CHORD answers a correction the same way a click does", () => {
+    /** ⚠️ THE ROUTE THAT WOULD HAVE BEEN FORGOTTEN, and the whole reason the decision
+     *  was lifted into one function in push 1. ⌃1 goes through the keydown effect, not
+     *  the click handler. */
+    const h = mountCorrection(TYPO)
+    fireEvent.keyDown(document, { code: "Digit1", key: "1", ctrlKey: true })
+    expect(h.onAnswerSuggestion).toHaveBeenCalledWith("h1", true)
+  })
+
+  it("⌃2 takes the NO pill", () => {
+    const h = mountCorrection(TYPO)
+    fireEvent.keyDown(document, { code: "Digit2", key: "2", ctrlKey: true })
+    expect(h.onAnswerSuggestion).toHaveBeenCalledWith("h1", false)
+  })
+
+  it("a correction pill is INERT when no one is listening", async () => {
+    /** ⚠️ IT MUST NOT FALL THROUGH TO `onAnswer`. With `fieldId: null` it cannot, but a
+     *  future edit that moved the branches below the field guard would make it try —
+     *  and with a field present it would store "yes" into that field, which is exactly
+     *  the defect this file's oldest warning describes. */
+    const user = userEvent.setup()
+    const h = mountCorrection(TYPO, {
+      onAnswerSuggestion: undefined,
+      fieldId: "vault",
+    })
+    await user.click(screen.getByText("Yes"))
+    expect(h.onAnswer).not.toHaveBeenCalled()
+  })
+
+  it("an ordinary pill still answers its field, beside a correction's shape", () => {
+    /** ⚠️ THE CONTROL. Without it every test above passes against a build that routed
+     *  EVERY pill to a correction handler. */
+    const h = mountCorrection(
+      [{ value: "Bronze Triune", label: "Bronze Triune" }],
+      { fieldId: "vault" },
+    )
+    fireEvent.keyDown(document, { code: "Digit1", key: "1", ctrlKey: true })
+    expect(h.onAnswer).toHaveBeenCalledWith("vault", "Bronze Triune")
+    expect(h.onAnswerSuggestion).not.toHaveBeenCalled()
   })
 })

@@ -48,6 +48,8 @@ import {
   approveCapture,
   choosePick,
   readCapture,
+  answerPrefixOffer,
+  answerSuggestion,
   dropHeld,
   editHeld,
   holdWords,
@@ -480,6 +482,8 @@ export function CapturePane({
   onWordLeft,
   tabRef,
   placeHeldRef,
+  answerSuggestionRef,
+  answerPrefixOfferRef,
 }: {
   /** The bar's completion vocabulary, for clause 1's LOOKAHEAD.
    *
@@ -519,6 +523,14 @@ export function CapturePane({
    *  the pills render above the bar (host) and the session lives here (pane). */
   readonly placeHeldRef?: RefObject<
     ((heldId: string, fieldId: string) => void) | null
+  >
+  /** The host hands a correction's Yes/No to the pane. Same split as `tabRef`: the
+   *  pills render above the bar, the session lives here. */
+  readonly answerSuggestionRef?: RefObject<
+    ((heldId: string, accept: boolean) => void) | null
+  >
+  readonly answerPrefixOfferRef?: RefObject<
+    ((fieldId: string, term: string, accept: boolean) => void) | null
   >
   /** The pick modifier's glyph, from the user's preference — ⌃ for James, ⌥ by
    *  default. ⚠️ THREADED IN RATHER THAN READ HERE so the pane and the pills cannot
@@ -1027,6 +1039,41 @@ export function CapturePane({
     }
   }, [placeHeldRef])
 
+  const answerASuggestion = useCallback((heldId: string, accept: boolean) => {
+    const sid = stateRef.current?.session_id
+    if (sid === undefined) return
+    void answerSuggestion(sid, heldId, accept)
+      .then((next) => setState(next))
+      .catch(() => {})
+  }, [])
+
+  const answerAnOffer = useCallback(
+    (fieldId: string, term: string, accept: boolean) => {
+      const sid = stateRef.current?.session_id
+      if (sid === undefined) return
+      void answerPrefixOffer(sid, fieldId, term, accept)
+        .then((next) => setState(next))
+        .catch(() => {})
+    },
+    [],
+  )
+
+  /** ⚠️ PUBLISHED LIKE `tabRef` AND `placeHeldRef`, for the same reason: the pills live
+   *  above the bar (the host owns them, so they survive the pane being tucked) and the
+   *  session lives here. */
+  useEffect(() => {
+    if (answerSuggestionRef !== undefined) {
+      answerSuggestionRef.current = (h, a) => suggestTarget.current(h, a)
+    }
+    if (answerPrefixOfferRef !== undefined) {
+      answerPrefixOfferRef.current = (f, t, a) => offerTarget.current(f, t, a)
+    }
+    return () => {
+      if (answerSuggestionRef !== undefined) answerSuggestionRef.current = null
+      if (answerPrefixOfferRef !== undefined) answerPrefixOfferRef.current = null
+    }
+  }, [answerSuggestionRef, answerPrefixOfferRef])
+
   const placeAHeldWord = useCallback(
     (heldId: string, fieldId: string) => {
       const sid = stateRef.current?.session_id
@@ -1041,6 +1088,10 @@ export function CapturePane({
   /** ⚠️ A REF TO THE CALLBACK so the effect above does not re-run on its identity. */
   const placeHeldRefTarget = useRef(placeAHeldWord)
   placeHeldRefTarget.current = placeAHeldWord
+  const suggestTarget = useRef(answerASuggestion)
+  suggestTarget.current = answerASuggestion
+  const offerTarget = useRef(answerAnOffer)
+  offerTarget.current = answerAnOffer
 
   const dropAHeldWord = useCallback((heldId: string) => {
     const sid = stateRef.current?.session_id
@@ -1374,11 +1425,18 @@ export function CapturePane({
       // — and a pill arriving with `held_id` into a type reading `heldId` would be
       // silently `undefined`, routing a held pill through `/answer` and stranding the
       // chip. Typed as the service's own pill shape, so the mapping cannot drift.
-      guidedPills: (state?.pills ?? []).map((p) =>
-        p.held_id !== undefined && p.held_id !== ""
-          ? { ...p, heldId: p.held_id }
-          : p,
-      ),
+      // ⚠️ ONE PLACE TRANSLATES snake_case TO camelCase, and every key that needs it is
+      // listed here. The server speaks snake; `GuidedPill` is camel; most pill fields
+      // happen to be spelled the same in both, so only these four need naming — and a
+      // field arriving under its snake name into a camel type is silently `undefined`,
+      // which routes a correction pill to `/answer` and strands the question.
+      guidedPills: (state?.pills ?? []).map((p) => ({
+        ...p,
+        ...(p.held_id ? { heldId: p.held_id } : {}),
+        ...(p.suggest_held_id ? { suggestHeldId: p.suggest_held_id } : {}),
+        ...(p.offer_field_id ? { offerFieldId: p.offer_field_id } : {}),
+        ...(p.offer_term ? { offerTerm: p.offer_term } : {}),
+      })),
       cremation: state?.cremation?.label ?? null,
       clearedNote,
       sessionId: state?.session_id ?? null,

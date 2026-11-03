@@ -100,6 +100,14 @@ export interface GuidedPill {
   /** The held chip this pill files. ⚠️ ROUTES TO `onPlaceHeld`, NOT `onAnswer` — see
    *  `held_id` on the service's pill type for why the endpoint differs. */
   readonly heldId?: string
+  /** Yes/No on a "Did you mean X?" TYPO question. Routes to `onAnswerSuggestion`. */
+  readonly suggestHeldId?: string
+  /** Yes/No on a PREFIX OFFER. Routes to `onAnswerPrefixOffer`. */
+  readonly offerFieldId?: string
+  readonly offerTerm?: string
+  /** Which of Yes/No. ⚠️ CHECKED FOR `undefined` RATHER THAN TRUTHINESS at the fork,
+   *  because `false` is the No pill and is meaningful. */
+  readonly accept?: boolean
 }
 
 /** The one action a pill can carry today. */
@@ -170,6 +178,13 @@ export interface GuidedQuestionProps {
    *  removes the chip. Sending a held pill through `onAnswer` would leave the word in
    *  the row and in the strip at once. */
   readonly onPlaceHeld?: (heldId: string, fieldId: string) => void
+  /** Answer a typo suggestion. ⚠️ A FOURTH ROUTE OUT OF A PILL, and the reason is the
+   *  same as the other three: the pill looks identical and the WRITE is different. */
+  readonly onAnswerSuggestion?: (heldId: string, accept: boolean) => void
+  /** Answer a prefix offer. */
+  readonly onAnswerPrefixOffer?: (
+    fieldId: string, term: string, accept: boolean,
+  ) => void
   /**
    * How much room this surface takes ABOVE the bar, so the capture pane can sit clear
    * of it.
@@ -221,6 +236,8 @@ export function GuidedQuestion({
   onAnswer,
   onAct,
   onPlaceHeld,
+  onAnswerSuggestion,
+  onAnswerPrefixOffer,
   onHeightAbove,
 }: GuidedQuestionProps) {
   const pillsRef = useRef<HTMLDivElement | null>(null)
@@ -334,6 +351,22 @@ export function GuidedQuestion({
         onAct?.(pill.act)
         return
       }
+      // ⚠️ THE CORRECTION BRANCHES COME BEFORE THE `field === null` GUARD, and that
+      // ordering is deliberate. A "Did you mean…?" question has NO field — the server
+      // clears `question_field_id` so no row is outlined while Opas asks about a word —
+      // so a Yes/No pill reaching a field check would be silently inert.
+      if (pill.suggestHeldId !== undefined && pill.accept !== undefined) {
+        onAnswerSuggestion?.(pill.suggestHeldId, pill.accept)
+        return
+      }
+      if (
+        pill.offerFieldId !== undefined &&
+        pill.offerTerm !== undefined &&
+        pill.accept !== undefined
+      ) {
+        onAnswerPrefixOffer?.(pill.offerFieldId, pill.offerTerm, pill.accept)
+        return
+      }
       if (field === null) return
       // ⚠️ HELD BEFORE PLAIN, because a held pill has BOTH a value and a chip — its
       // `value` is the word, so the plain branch would appear to work and quietly
@@ -344,7 +377,7 @@ export function GuidedQuestion({
       }
       onAnswer(field, pill.value)
     },
-    [onAct, onAnswer, onPlaceHeld],
+    [onAct, onAnswer, onPlaceHeld, onAnswerSuggestion, onAnswerPrefixOffer],
   )
 
   useEffect(() => {

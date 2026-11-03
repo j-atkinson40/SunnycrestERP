@@ -613,9 +613,26 @@ def held_pills_for(
     default: the failure mode of offering too much is a pill row the office learns to
     ignore, which costs the good pills too.
 
-    ⚠️ DECLINED CHIPS ARE NOT OFFERED. A word the office has already said No to for
-    this field must not come back as a pill — that is clause 5's `declined` list,
-    honoured here so push 2 does not have to retrofit it.
+    ⚠️ THE `declined` LIST IS *NOT* CONSULTED HERE, AND MY FIRST VERSION CONSULTED IT
+    WRONGLY. It read `if field_id in declined: continue`, described as "a word the office
+    has already said No to for this field". `HeldWord.declined` holds **TERMS**, not
+    field ids — its own comment says so, and `session_service` says it twice:
+    *"stores the declined TERMS rather than a bare flag"*. So the guard compared a field
+    id against a list of product names and could never match: dead code wearing a
+    docstring.
+
+    ⚠️ AND THE TEST AGREED WITH IT, which is why nothing caught it. The fixture passed
+    `declined=("vault",)` — a field id — because I wrote both halves from one
+    misreading. CLAUDE.md §11's "fixtures modelled on the implementation": two things
+    derived from the same wrong reading confirm each other and look like agreement.
+    Nothing writes `declined` yet either, so there was no production evidence to
+    contradict it.
+
+    It is removed rather than corrected because the list is about a different question.
+    `declined` answers *"has the office rejected this CORRECTION of this word"* — clause
+    5's "No keeps it held and never asks about that word again" — and that governs the
+    did-you-mean suggestion, not whether a word may be filed into a field a director
+    explicitly dragged or picked it for.
     """
     if field_id is None or not held:
         return []
@@ -628,9 +645,6 @@ def held_pills_for(
         text = getattr(word, "word", "") or ""
         held_id = getattr(word, "held_id", "") or ""
         if not text or not held_id:
-            continue
-        declined = getattr(word, "declined", None) or ()
-        if field_id in declined:
             continue
         try:
             if not check(db, tenant_id, text):
