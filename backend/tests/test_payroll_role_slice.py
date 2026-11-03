@@ -235,3 +235,103 @@ def test_r222_granted_accountant_and_deliberately_not_accounting():
         "admin was granted payroll.view explicitly; it holds a wildcard and "
         "should not carry enumerated rows"
     )
+
+
+# ------------------------------- r223: the role exists in EVERY tenant
+
+
+def test_every_company_has_a_payroll_role_with_the_right_areas_and_permissions():
+    """⚠️ r223. The Payroll role ships ready-made, the way Admin does, so nobody
+    ever builds it by hand — because a hand-made one would have
+    `limited_to_areas = NULL` and reach everything (RoleCreate carried no such
+    field until this arc, and production had zero `payroll` roles).
+
+    Asserted as a COUNT EQUALITY against companies, not as "some exist": a
+    migration that created one role for one tenant would satisfy a weaker check.
+    """
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        # ⚠️ "COMPANIES THAT HAVE ANY ROLES", NOT "ALL COMPANIES". The first
+        # version compared `count(payroll roles) == count(companies)` and was
+        # ORDER-DEPENDENT: a sibling test holding a transient company open made
+        # it 3125 vs 3126 and red, for a reason that had nothing to do with r223.
+        #
+        # A bare company with no roles at all is not a gap — r223's invariant is
+        # that a tenant which has a role catalog has THIS role in it. That is
+        # both the precise claim and immune to fixtures appearing mid-run.
+        gaps = db.execute(text(
+            "SELECT count(*) FROM companies c "
+            "WHERE EXISTS (SELECT 1 FROM roles r WHERE r.company_id = c.id) "
+            "  AND NOT EXISTS (SELECT 1 FROM roles r "
+            "                  WHERE r.company_id = c.id AND r.slug = 'payroll')"
+        )).scalar()
+        companies = db.execute(text(
+            "SELECT count(*) FROM companies c "
+            "WHERE EXISTS (SELECT 1 FROM roles r WHERE r.company_id = c.id)"
+        )).scalar()
+        roles = db.execute(text("SELECT count(*) FROM roles WHERE slug='payroll'")).scalar()
+        correct_areas = db.execute(text(
+            "SELECT count(*) FROM roles WHERE slug='payroll' "
+            "AND limited_to_areas::text = '[\"payroll\"]'"
+        )).scalar()
+        both_perms = db.execute(text(
+            "SELECT count(*) FROM ("
+            "  SELECT r.id FROM roles r JOIN role_permissions rp ON rp.role_id = r.id"
+            "  WHERE r.slug='payroll'"
+            "    AND rp.permission_key IN ('payroll.view','payroll.approve')"
+            "  GROUP BY r.id HAVING count(*) = 2"
+            ") x"
+        )).scalar()
+        systemic = db.execute(text(
+            "SELECT count(*) FROM roles WHERE slug='payroll' AND is_system IS TRUE"
+        )).scalar()
+    finally:
+        db.close()
+
+    assert companies > 0, "no companies with roles — this test would assert nothing"
+    assert gaps == 0, (
+        f"{gaps} company/companies have a role catalog but no 'payroll' role — "
+        f"r223 was supposed to cover every one"
+    )
+    assert roles >= companies, f"{roles} payroll roles for {companies} companies with roles"
+    assert correct_areas == roles, f"{roles - correct_areas} payroll role(s) not area-limited"
+    assert both_perms == roles, f"{roles - both_perms} payroll role(s) missing a permission"
+    assert systemic == roles, "the payroll role must be is_system, like admin"
+
+
+def test_the_seeder_still_creates_it_for_a_new_company():
+    """r223 backfills what exists; `seed_default_roles` must keep covering what
+    comes next, or the gap reopens for every company created from tomorrow."""
+    import uuid as _uuid
+    from app.database import SessionLocal
+    from app.models.company import Company
+    from app.services.role_service import seed_default_roles
+
+    db = SessionLocal()
+    cid = str(_uuid.uuid4())
+    slug = f"payroll-seedprobe-{cid[:8]}"
+    try:
+        db.add(Company(id=cid, slug=slug, name="Payroll Seed Probe"))
+        db.flush()
+        seed_default_roles(db, cid)
+        db.commit()
+
+        row = db.execute(text(
+            "SELECT r.limited_to_areas::text, "
+            "(SELECT string_agg(rp.permission_key, ',' ORDER BY rp.permission_key) "
+            " FROM role_permissions rp WHERE rp.role_id = r.id) "
+            "FROM roles r WHERE r.company_id=:c AND r.slug='payroll'"
+        ), {"c": cid}).first()
+        assert row is not None, "seed_default_roles did not create a payroll role"
+        assert row[0] == '["payroll"]'
+        assert row[1] == "payroll.approve,payroll.view"
+    finally:
+        db.execute(text(
+            "DELETE FROM role_permissions WHERE role_id IN "
+            "(SELECT id FROM roles WHERE company_id=:c)"), {"c": cid})
+        db.execute(text("DELETE FROM roles WHERE company_id=:c"), {"c": cid})
+        db.execute(text("DELETE FROM companies WHERE id=:c"), {"c": cid})
+        db.commit()
+        db.close()

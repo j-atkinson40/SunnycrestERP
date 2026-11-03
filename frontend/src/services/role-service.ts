@@ -5,6 +5,7 @@ import type {
   RoleCreate,
   RoleResponse,
   RoleUpdate,
+  KnownAreasResponse,
 } from "@/types/role";
 
 export const roleService = {
@@ -57,6 +58,12 @@ export const roleService = {
     const response = await apiClient.get<PermissionRegistry>(
       "/roles/permissions/registry"
     );
+    return response.data;
+  },
+
+  /** Fetch the area vocabulary a role may be limited to. */
+  async getKnownAreas(): Promise<KnownAreasResponse> {
+    const response = await apiClient.get<KnownAreasResponse>("/roles/areas");
     return response.data;
   },
 

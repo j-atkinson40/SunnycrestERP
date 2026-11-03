@@ -34,7 +34,14 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Respon
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db, require_permission
+from app.api.deps import get_db, require_admin, require_permission
+from app.models.company import Company
+from app.services import audit_service
+from app.services.payroll.data_gate import (
+    PAYROLL_DATA_ENABLED,
+    assert_payroll_data_enabled,
+    is_payroll_data_enabled,
+)
 from app.models.payroll_report import PayrollWeek
 from app.models.user import User
 from app.services.payroll import service as payroll_service
@@ -160,6 +167,13 @@ async def upload_export(
         raise HTTPException(413, f"Export exceeds {MAX_UPLOAD_BYTES} bytes")
     if not content:
         raise HTTPException(422, "Export is empty")
+
+    # ⚠️ THE DATA SWITCH, CHECKED BEFORE THE BYTES ARE INTERPRETED. Off by
+    # default per tenant. This is the enforced half of "no payroll data until
+    # two-step sign-in exists" — before 2026-11-03 that was an agreement between
+    # people, and anyone holding payroll.view could import an export.
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    assert_payroll_data_enabled(company)
 
     payload = ExportPayload(
         filename=file.filename or "upload",
@@ -311,3 +325,59 @@ def approve(
 
     db.commit()
     return {"week": _week_payload(week), "locked": True}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The payroll data switch. Admin only — NOT payroll.view.
+#
+# ⚠️ GATED ON `require_admin`, DELIBERATELY NARROWER THAN THE REST OF THIS
+# MODULE. Everything above answers to `payroll.view` so the payroll role can use
+# it; this decides whether payroll data may exist at all, which is a tenant-level
+# decision and not the payroll reviewer's to make. A payroll-limited user passes
+# the area check on this router and is then refused here, which is the correct
+# order of refusals.
+
+
+@router.get("/settings/data-enabled")
+def get_data_enabled(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Is payroll data loading enabled for this company?"""
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    return {
+        "setting": PAYROLL_DATA_ENABLED,
+        "enabled": is_payroll_data_enabled(company),
+    }
+
+
+@router.put("/settings/data-enabled")
+def set_data_enabled(
+    enabled: bool = Form(...),
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Turn payroll data loading on or off. Audited.
+
+    ⚠️ AUDITED BECAUSE THIS IS THE DECISION, NOT A PREFERENCE. Turning it on is
+    the moment a tenant accepts that pay rates and hours may be stored, and the
+    record should say who did that and when. A no-op write records nothing, so
+    the trail stays readable.
+    """
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    before = is_payroll_data_enabled(company)
+    if before == enabled:
+        return {"setting": PAYROLL_DATA_ENABLED, "enabled": before, "changed": False}
+
+    company.set_setting(PAYROLL_DATA_ENABLED, bool(enabled))
+    audit_service.log_action(
+        db,
+        current_user.company_id,
+        "payroll_data_enabled_changed",
+        "company",
+        current_user.company_id,
+        user_id=current_user.id,
+        changes={PAYROLL_DATA_ENABLED: {"before": before, "after": bool(enabled)}},
+    )
+    db.commit()
+    return {"setting": PAYROLL_DATA_ENABLED, "enabled": bool(enabled), "changed": True}

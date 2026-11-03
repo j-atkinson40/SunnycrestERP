@@ -415,3 +415,61 @@ def test_a_limited_user_reaches_her_OWN_area(client, actors):
     assert not (isinstance(detail, dict) and detail.get("code") == "area_restricted"), (
         f"her own area was refused by the AREA guard: {r.status_code} {r.text[:200]}"
     )
+
+
+def test_a_null_area_list_is_stored_as_SQL_NULL_not_JSON_null():
+    """⚠️ REGRESSION. r221 declared `limited_to_areas` as plain `JSONB`, and
+    SQLAlchemy writes Python `None` into a JSONB column as the JSON VALUE `null`
+    unless the column says `none_as_null=True`. So every role the seeder created
+    held `'null'`, and `limited_to_areas IS NULL` was FALSE for all of them.
+
+    The area guard was never affected — it tests the Python value, and JSON null
+    reads back as `None` — so nobody gained or lost access. What broke was every
+    SQL query over the column, including r223's divergence check and three
+    assertions in this repo's own tests.
+
+    ⚠️ **AND A DEV DATABASE CANNOT SEE IT.** Local roles predate the column and
+    `seed_default_roles` skips roles that already exist, so nothing local was
+    ever inserted with `None`. CI builds from scratch and failed on the first
+    run — the "suite that has only ever run against one database state" shape.
+    This test creates the row itself, so it does not depend on which database it
+    runs against.
+    """
+    import uuid as _uuid
+    from app.database import SessionLocal
+    from app.models.company import Company
+    from app.models.role import Role
+
+    db = SessionLocal()
+    cid = str(_uuid.uuid4())
+    try:
+        db.add(Company(id=cid, slug=f"jsonnull-reg-{cid[:8]}", name="JSON null regression"))
+        db.flush()
+        role = Role(company_id=cid, name="Unlimited", slug="unlimited-probe",
+                    limited_to_areas=None)
+        db.add(role)
+        db.commit()
+
+        row = db.execute(text(
+            "SELECT limited_to_areas IS NULL AS sql_null, "
+            "       jsonb_typeof(limited_to_areas) AS json_type "
+            "FROM roles WHERE id = :i"
+        ), {"i": role.id}).first()
+
+        assert row.sql_null is True, (
+            "limited_to_areas=None stored something that is not SQL NULL "
+            f"(jsonb_typeof={row.json_type!r}) — the column needs "
+            "JSONB(none_as_null=True), and every IS NULL query over it is wrong"
+        )
+        assert row.json_type is None, f"jsonb_typeof returned {row.json_type!r}"
+
+        # And the Python read-back is None either way, which is why the guard
+        # never misbehaved — asserted so the next reader does not mistake this
+        # for a security bug.
+        db.expire_all()
+        assert db.query(Role).filter(Role.id == role.id).first().limited_to_areas is None
+    finally:
+        db.execute(text("DELETE FROM roles WHERE company_id=:c"), {"c": cid})
+        db.execute(text("DELETE FROM companies WHERE id=:c"), {"c": cid})
+        db.commit()
+        db.close()

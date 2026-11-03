@@ -1540,6 +1540,29 @@ production anyway, migrations included. A reader who believes the deleted gate
 exists concludes a red channel is holding things back. It is not holding anything
 back, which is worse.
 
+⚠️ **[CORRECTED 2026-11-03 — THE CHANNEL WAS REPAIRED AND THIS LINE WAS NOT
+UPDATED WITH IT.** The 2026-10-06 measurement above was true on 2026-10-06 and is
+left as written, because the lesson it teaches is the point. It is no longer a
+description of the present.
+
+Re-measured 2026-11-03 by enumerating `ci.yml`'s run history rather than a
+default listing: **81 successes in the last 200 runs**, and the most recent
+success is **`d54b4caa`, 2026-11-02T19:50:04Z**. Three failures follow it —
+`aef73307`, `a845d2d1`, `06c72fd5` — all three attributable to the payroll arc
+and all three fixed within it.
+
+So "CI last passed 2026-09-23" is **stale by six weeks**, and the inference a
+reader would draw from it — *a red run is normal here, so a red run tells you
+nothing* — is now FALSE and dangerous in the opposite direction. On 2026-11-03 a
+red CI run caught two real defects a local database could not see: a seed that
+exited 1 on a tenant CI does not have, and a JSONB column storing JSON `null`
+where every `IS NULL` query expected SQL NULL. Treating red as the baseline would
+have shipped both.
+
+⚠️ The standing question — *when did this last pass?* — is what found this entry
+to be stale, asked of the entry itself. It is owed to canon as much as to a
+gate.]
+
 The Railway start script `backend/railway-start.sh` runs after every deploy:
 
 1. `alembic upgrade head` — apply pending migrations.
@@ -2042,6 +2065,10 @@ Measured on run `37457088736`, 2026-10-06:
 Nothing failed. The job was red. **CI last passed 2026-09-23 and this is why — 42
 runs and 89 commits**, every one of which deployed, because nothing gates a deploy
 (see §7's corrected staging-deploy note).
+
+⚠️ **[CORRECTED 2026-11-03: see §7's staging-deploy note for the re-measurement.
+`ci.yml` last succeeded on `d54b4caa`, 2026-11-02, with 81 successes in the last
+200 runs. The 2026-10-06 figures stand as a record of that date only.]**
 
 ⚠️ **NOTE THE HOST FILE. The class is not DocumentsTab's.** This entry names it the
 "r21/DocumentsTab class" and hedges with "often surfacing via"; the observed instance
@@ -2758,7 +2785,10 @@ question §11 already says has no natural trigger — is owed on any channel who
 output needs interpreting before it can be read.
 
 Measured 2026-10-06. CI last passed 2026-09-23, **42 runs and 89 commits**
-earlier. Two backend tests had been failing for weeks; both parties read "green
+earlier. ⚠️ **[CORRECTED 2026-11-03 — re-measured: `ci.yml` last succeeded on
+`d54b4caa`, 2026-11-02, with 81 successes in the last 200 runs. The channel was
+repaired and this entry was not updated with it; the 2026-10-06 figures describe
+that date. The teaching stands, and this correction is an instance of it.]** Two backend tests had been failing for weeks; both parties read "green
 except those two" as green; one had built a delta-arithmetic practice that
 depended on the baseline staying put, and a third failure would have looked
 identical. Eleven commits went out in a single session, each reporting VERIFIED

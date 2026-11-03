@@ -250,18 +250,6 @@ PERMISSION_DISPLAY_NAMES: dict[str, str] = {
 ADMIN_DEFAULT_PERMISSIONS: list[str] = []  # Wildcard — handled by permission_service.py
 
 ACCOUNTANT_DEFAULT_PERMISSIONS = [
-    # ⚠️ ADDED 2026-11-03 TO PRESERVE EXISTING ACCESS, NOT TO WIDEN IT. Until
-    # this date the payroll report endpoints gated on ROLE SLUG — ("admin",
-    # "accountant") — so an accountant already reached them. Swapping those
-    # gates to `require_permission("payroll.view")` would have REMOVED that
-    # access silently if this key were not added here.
-    #
-    # ⚠️ AND SEEDING DOES NOT BACKFILL: `role_service.seed_default_roles` skips a
-    # role that already exists (role_service.py:144-156), so an accountant row
-    # that predates today does NOT acquire this from the seed. Sunnycrest's
-    # accountant needs it granted explicitly — see the report for the one-liner.
-    "payroll.view",
-    "payroll.approve",
     "financials.view",
     "financials.invoices.view",
     "financials.invoices.create",
@@ -309,7 +297,31 @@ ACCOUNTANT_DEFAULT_PERMISSIONS = [
 ]
 
 # Backward compat alias
+#: ⚠️ AN ALIAS, WHICH IS WHY THE PAYROLL KEYS ARE NOT IN THE LIST ABOVE.
+#: `accounting` and `accountant` are two different slugs sharing one permission
+#: list. The old payroll gate compared the literal string `"accountant"`, so a
+#: user on `accounting` was ALREADY refused — and r222 deliberately excluded that
+#: slug for exactly that reason.
+#:
+#: Putting `payroll.view` into the shared list therefore WIDENED access through
+#: the alias: measured in CI on a freshly-seeded database, 4 `accounting` roles
+#: acquired it, contradicting the migration sitting next to it. My dev database
+#: hid this completely, because its roles predate the change and
+#: `seed_default_roles` skips roles that already exist — so the grant only
+#: appears where roles are created fresh.
+#:
+#: The keys now hang off the `accountant` ENTRY in `_SYSTEM_ROLES`, not off this
+#: list. Test: `test_payroll_role_slice.py::test_r222_granted_accountant_and_
+#: deliberately_not_accounting`.
 ACCOUNTING_DEFAULT_PERMISSIONS = ACCOUNTANT_DEFAULT_PERMISSIONS
+
+#: The payroll keys an `accountant` gets ON TOP of the shared list, preserving
+#: the access the old slug gate gave them. Deliberately NOT part of
+#: ACCOUNTANT_DEFAULT_PERMISSIONS, so the `accounting` alias does not inherit it.
+ACCOUNTANT_PAYROLL_PERMISSIONS = [
+    "payroll.view",
+    "payroll.approve",
+]
 
 OFFICE_STAFF_DEFAULT_PERMISSIONS = [
     "operations.view",

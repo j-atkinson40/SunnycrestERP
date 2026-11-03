@@ -42,7 +42,21 @@ class Role(Base):
     # every newly-created role limited, and a model default is invisible to
     # `information_schema` and to the drift guard (CLAUDE.md §5, "a DEFAULT can
     # live in more than one layer").
-    limited_to_areas: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # ⚠️ `none_as_null=True` IS LOAD-BEARING. Without it, SQLAlchemy writes
+    # Python `None` into a JSONB column as the JSON value `null`, NOT as SQL
+    # NULL — so `limited_to_areas IS NULL` is FALSE for every role created that
+    # way, and `jsonb_typeof` returns 'null'. Proven 2026-11-03: a Role inserted
+    # with `limited_to_areas=None` stored `'null'`.
+    #
+    # The area GUARD was never affected — it reads the Python value, and JSON
+    # null reads back as None — so there was no security consequence. What broke
+    # was every SQL query: r223's divergence check would have called every
+    # seeded role divergent, and three of my own assertions were wrong. My dev
+    # database hid it because its roles predate the column and the seeder skips
+    # roles that already exist; CI builds fresh and caught it immediately.
+    limited_to_areas: Mapped[list | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
 
     created_by: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=True

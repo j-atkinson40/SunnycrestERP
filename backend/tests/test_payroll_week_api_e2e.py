@@ -152,6 +152,21 @@ def seeded():
             ))
             db.flush()
 
+        # ⚠️ THE PAYROLL DATA SWITCH IS TURNED ON HERE, DELIBERATELY AND
+        # LOCALLY. It is off by default per tenant (app/services/payroll/
+        # data_gate.py) so no payroll export can be imported before tenant
+        # invites and two-step sign-in exist. This suite's whole subject is the
+        # import path, so it enables the switch for testco and says so —
+        # a fixture that quietly worked around the gate would be a fixture that
+        # hid the gate's absence if it ever regressed.
+        # `test_payroll_data_switch.py` is what proves the OFF state refuses.
+        from app.models.company import Company as _Company
+        from app.services.payroll.data_gate import PAYROLL_DATA_ENABLED as _KEY
+
+        _co = db.query(_Company).filter(_Company.id == TESTCO_ID).first()
+        _co.set_setting(_KEY, True)
+        db.commit()
+
         rule_set = PayrollRuleSet(
             id=str(uuid.uuid4()), tenant_id=TESTCO_ID, effective_date=date(2026, 1, 1)
         )
@@ -182,6 +197,13 @@ def seeded():
 
         _reset_tenant_payroll(db, TESTCO_ID)
         db.execute(text("DELETE FROM users WHERE id = :i"), {"i": APPROVER_ID})
+        # Return the tenant to the default-off state. A test that leaves a
+        # safety switch ON is a test that disarms the next run.
+        from app.models.company import Company as _Company2
+        from app.services.payroll.data_gate import PAYROLL_DATA_ENABLED as _KEY2
+        _co2 = db.query(_Company2).filter(_Company2.id == TESTCO_ID).first()
+        if _co2 is not None:
+            _co2.set_setting(_KEY2, False)
         db.commit()
     finally:
         db.close()

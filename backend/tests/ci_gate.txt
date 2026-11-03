@@ -741,3 +741,8 @@ tests/test_service_territories_requires_login.py
 tests/test_area_limited_roles.py
 tests/test_payroll_role_slice.py
 tests/test_role_writes_are_audited.py
+
+# Payroll 1 blocker fix (2026-11-03). The enforced payroll data switch, and
+# areas being administrable rather than seed-only.
+tests/test_payroll_data_switch.py
+tests/test_role_areas_administrable.py

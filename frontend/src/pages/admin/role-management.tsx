@@ -109,9 +109,125 @@ function PermissionChecklist({
   );
 }
 
+/**
+ * "Limit to areas" — the control that makes an area-limited role reachable by an
+ * admin rather than only by a seed.
+ *
+ * ⚠️ UNCHECKED MEANS UNLIMITED, AND THAT IS SAID OUT LOUD. Before this control
+ * existed, a role built here got `limited_to_areas = null`, which is NOT limited
+ * — so a hand-made "Payroll" role reached every endpoint with no per-user gate
+ * and looked correct. The copy below exists so the default is not a silent one.
+ */
+/**
+ * ⚠️ RENDERED IN EVERY PLACE A ROLE IS LISTED, which is the point. A limited
+ * role is refused everything outside its areas on the SERVER; an admin who
+ * cannot see that from the list will assign one believing it is ordinary and cut
+ * someone off from the rest of the app.
+ */
+function AreaBadge({ areas }: { areas: string[] | null }) {
+  if (areas === null) return null;
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full bg-status-info-muted px-2 py-0.5 text-caption text-status-info"
+      title={
+        areas.length
+          ? `Limited to: ${areas.join(", ")}. Everything else is refused by the server.`
+          : "Limited to no areas — refused everything except sign-in."
+      }
+    >
+      {areas.length ? `limited: ${areas.join(", ")}` : "limited: none"}
+    </span>
+  );
+}
+
+
+function AreaLimitControl({
+  areas,
+  selected,
+  onChange,
+  alwaysAvailable,
+}: {
+  areas: string[];
+  selected: string[] | null;
+  onChange: (next: string[] | null) => void;
+  alwaysAvailable: string[];
+}) {
+  const limited = selected !== null;
+
+  return (
+    <div className="space-y-3 rounded-base border border-border-subtle bg-surface-sunken p-3">
+      <label className="flex items-start gap-2">
+        <input
+          type="checkbox"
+          className="mt-1"
+          checked={limited}
+          onChange={(e) => onChange(e.target.checked ? [] : null)}
+        />
+        <span className="text-body-sm">
+          <span className="font-medium text-content-strong">
+            Limit this role to specific areas
+          </span>
+          <span className="block text-content-muted">
+            Unlimited roles can reach the whole app. A limited role is refused
+            everything outside its areas by the server, not just hidden in the
+            menu.
+          </span>
+        </span>
+      </label>
+
+      {limited && (
+        <div className="space-y-2 pl-6">
+          {areas.length === 0 && (
+            <p className="text-body-sm text-status-warning">
+              No areas are defined yet, so this role would reach nothing but
+              sign-in and its own settings.
+            </p>
+          )}
+          {areas.map((area) => {
+            const on = (selected ?? []).includes(area);
+            return (
+              <label key={area} className="flex items-center gap-2 text-body-sm">
+                <input
+                  type="checkbox"
+                  checked={on}
+                  onChange={() =>
+                    onChange(
+                      on
+                        ? (selected ?? []).filter((a) => a !== area)
+                        : [...(selected ?? []), area],
+                    )
+                  }
+                />
+                <span className="text-content-base">{area}</span>
+              </label>
+            );
+          })}
+          {selected !== null && selected.length === 0 && (
+            <p className="text-body-sm text-status-warning">
+              No areas selected — this role will be refused everything except
+              sign-in and its own preferences.
+            </p>
+          )}
+          {alwaysAvailable.length > 0 && (
+            <p className="pt-1 text-caption text-content-subtle">
+              Always available regardless of area:{" "}
+              {alwaysAvailable.join(", ")}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 export default function RoleManagement() {
   const { hasPermission } = useAuth();
   const [roles, setRoles] = useState<RoleResponse[]>([]);
+  const [knownAreas, setKnownAreas] = useState<string[]>([]);
+  const [alwaysAvailable, setAlwaysAvailable] = useState<string[]>([]);
+  const [createAreas, setCreateAreas] = useState<string[] | null>(null);
+  const [editAreas, setEditAreas] = useState<string[] | null>(null);
   const [registry, setRegistry] = useState<PermissionRegistry>({});
   const [loading, setLoading] = useState(true);
 
@@ -137,12 +253,20 @@ export default function RoleManagement() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [rolesData, registryData] = await Promise.all([
+      const [rolesData, registryData, areasData] = await Promise.all([
         roleService.getRoles(),
         roleService.getPermissionRegistry(),
+        // ⚠️ Fetched, never hardcoded. The server's KNOWN_AREAS is what the
+        // RoleCreate validator and the area guard both read; a second copy here
+        // would drift, and the failure mode is an admin offered an area the
+        // server then 422s — or an area missing from the picker that nobody can
+        // grant.
+        roleService.getKnownAreas(),
       ]);
       setRoles(rolesData);
       setRegistry(registryData);
+      setKnownAreas(areasData.areas);
+      setAlwaysAvailable(areasData.always_available);
     } catch {
       toast.error("Failed to load roles");
     } finally {
@@ -161,6 +285,7 @@ export default function RoleManagement() {
     setCreateSlug("");
     setCreateDesc("");
     setCreatePerms(new Set());
+    setCreateAreas(null);
     setCreateError("");
     setSlugManual(false);
   }
@@ -178,6 +303,7 @@ export default function RoleManagement() {
         slug,
         description: createDesc.trim() || undefined,
         permission_keys: Array.from(createPerms),
+        limited_to_areas: createAreas,
       });
       setCreateOpen(false);
       resetCreateForm();
@@ -195,6 +321,7 @@ export default function RoleManagement() {
     setEditName(role.name);
     setEditDesc(role.description || "");
     setEditPerms(new Set(role.permission_keys));
+    setEditAreas(role.limited_to_areas ?? null);
     setEditError("");
   }
 
@@ -206,6 +333,10 @@ export default function RoleManagement() {
       await roleService.updateRole(editRole.id, {
         name: editName.trim(),
         description: editDesc.trim() || undefined,
+        // Always sent from the editor, because the editor always shows the
+        // current value — so "what is on screen" is what is saved. `null` here
+        // means unlimited, which the server distinguishes from an omitted field.
+        limited_to_areas: editAreas,
       });
       // Update permissions (only if not system admin)
       if (!(editRole.is_system && editRole.slug === "admin")) {
@@ -311,6 +442,15 @@ export default function RoleManagement() {
                     onChange={setCreatePerms}
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label>Areas</Label>
+                  <AreaLimitControl
+                    areas={knownAreas}
+                    selected={createAreas}
+                    onChange={setCreateAreas}
+                    alwaysAvailable={alwaysAvailable}
+                  />
+                </div>
               </div>
               <DialogFooter>
                 <Button
@@ -339,9 +479,10 @@ export default function RoleManagement() {
           const userCount: number = 0 // TODO: add user_count to role API response
           return (
             <div key={role.id} className="rounded-lg border bg-white p-3 space-y-1">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="text-lg">{icons[role.slug] || "⚙"}</span>
                 <span className="font-semibold text-sm">{role.name}</span>
+                <AreaBadge areas={role.limited_to_areas} />
               </div>
               <p className="text-xs text-muted-foreground">{role.description}</p>
               <p className="text-[11px] text-muted-foreground/60">
@@ -389,7 +530,10 @@ export default function RoleManagement() {
                 <TableRow key={role.id}>
                   <TableCell className="font-medium">
                     <div>
-                      {role.name}
+                      <span className="inline-flex flex-wrap items-center gap-2">
+                        {role.name}
+                        <AreaBadge areas={role.limited_to_areas} />
+                      </span>
                       {role.description && (
                         <p className="text-xs text-muted-foreground">
                           {role.description}
@@ -502,6 +646,17 @@ export default function RoleManagement() {
                   registry={registry}
                   selected={editPerms}
                   onChange={setEditPerms}
+                />
+              </div>
+            )}
+            {editRole && !(editRole.is_system && editRole.slug === "admin") && (
+              <div className="space-y-2">
+                <Label>Areas</Label>
+                <AreaLimitControl
+                  areas={knownAreas}
+                  selected={editAreas}
+                  onChange={setEditAreas}
+                  alwaysAvailable={alwaysAvailable}
                 />
               </div>
             )}

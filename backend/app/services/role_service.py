@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.core.permissions import (
     ACCOUNTANT_DEFAULT_PERMISSIONS,
+    ACCOUNTANT_PAYROLL_PERMISSIONS,
     ACCOUNTING_DEFAULT_PERMISSIONS,
     DISPATCHER_DEFAULT_PERMISSIONS,
     DRIVER_DEFAULT_PERMISSIONS,
@@ -92,7 +93,13 @@ _SYSTEM_ROLES = [
         "name": "Accountant",
         "slug": "accountant",
         "description": "Full financial access, view-only on operations",
-        "permissions": ACCOUNTANT_DEFAULT_PERMISSIONS,
+        # ⚠️ CONCATENATED HERE, NOT MERGED INTO THE SHARED LIST. The `accounting`
+        # slug below uses an ALIAS of ACCOUNTANT_DEFAULT_PERMISSIONS, so adding
+        # the payroll keys there granted them to `accounting` too — which the
+        # old slug gate never did, and which r222 deliberately excluded. Keeping
+        # them on this entry preserves the accountant's access without widening
+        # anyone else's.
+        "permissions": ACCOUNTANT_DEFAULT_PERMISSIONS + ACCOUNTANT_PAYROLL_PERMISSIONS,
     },
     {
         # ⚠️ THE FIRST AREA-LIMITED SYSTEM ROLE. `limited_to_areas` makes
@@ -263,6 +270,9 @@ def create_role(
         name=data.name,
         slug=data.slug,
         description=data.description,
+        # Validated against KNOWN_AREAS by the schema, so an unknown key never
+        # reaches here. None = not limited.
+        limited_to_areas=data.limited_to_areas,
         is_system=False,
         created_by=actor_id,
     )
@@ -322,6 +332,24 @@ def update_role(
                 detail="Cannot deactivate system roles",
             )
         role.is_active = data.is_active
+
+    # ⚠️ `model_fields_set`, NOT `is not None`. Omitting `limited_to_areas` means
+    # "leave the areas alone"; sending it as `null` means "make this role
+    # unlimited". A null check cannot distinguish those, so clearing a limit
+    # would be impossible — and an area limit you can set but never lift is a
+    # trap, not a control.
+    if "limited_to_areas" in data.model_fields_set:
+        if role.is_system and role.slug == "admin":
+            # Admin holds a permission wildcard; area-limiting it would produce a
+            # role that passes every permission check and is refused by the area
+            # guard — incoherent, and a fast way to lock a tenant out of its own
+            # settings.
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="The admin role cannot be limited to areas.",
+            )
+        role.limited_to_areas = data.limited_to_areas
+
     role.modified_by = actor_id
 
     new_data = {"name": role.name, "description": role.description,
