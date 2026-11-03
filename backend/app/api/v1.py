@@ -5,7 +5,9 @@ All new routes should be registered here. The bare /api/ prefix is
 kept as a deprecated alias that adds a Deprecation header.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+
+from app.api.area_guard import enforce_area_limit
 
 from app.api.routes import (
     accounting,
@@ -199,7 +201,27 @@ from app.api.routes import (   # noqa: E402 — continuation of main import
     work_orders,
 )
 
-v1_router = APIRouter()
+# ⚠️ ONE CENTRAL AREA CHECK, ATTACHED HERE AND NOWHERE ELSE.
+#
+# `enforce_area_limit` refuses a user on an area-limited role any tenant
+# endpoint that is not tagged `area:<key>` for one of their areas, plus the
+# common set in `app/core/areas.py`. Default deny: an UNTAGGED endpoint is
+# refused.
+#
+# It is on the router constructor rather than on each `include_router` call
+# below so a new router cannot be added without it — which is the whole reason
+# it exists. Measured 2026-11-03: 1063 of 1920 tenant endpoints had no per-user
+# gate, and 886 had no handler-level check either; gating them one at a time was
+# 886 chances to miss one, plus every future endpoint.
+#
+# For a role with `limited_to_areas IS NULL` — which is every existing role, by
+# construction, because r221 did not backfill — this is a single indexed role
+# lookup and a return. Behaviour for those users is unchanged.
+#
+# ⚠️ IT MUST STAY ON `v1_router` ITSELF, NOT ON THE TWO MOUNTS IN main.py. The
+# router is mounted twice (at `/api/v1` and at the deprecated `/api` alias); a
+# dependency on one mount would leave the other as a way around the guard.
+v1_router = APIRouter(dependencies=[Depends(enforce_area_limit)])
 
 # --- Route registration (alphabetical) ---
 v1_router.include_router(
@@ -893,7 +915,10 @@ v1_router.include_router(
 v1_router.include_router(
     payroll_reports.router,
     prefix="/payroll-reports",
-    tags=["Payroll Reports"],
+    # `area:payroll` is what an area-limited payroll role is allowed to reach.
+    # Declared here, at the router registration layer, so it cannot drift from
+    # the routes it describes. See app/core/areas.py.
+    tags=["Payroll Reports", "area:payroll"],
 )
 
 # V-1e: Accounting admin sub-tree under /vault/accounting/*
