@@ -1358,6 +1358,27 @@ so the link the whole catalog design resolves through was unreachable. **The dri
 guard is blind in both directions here**: it cannot see a DB column the model omits
 (DB-extra is noise by design) and it cannot see a model default the DB never had.
 
+⚠️ **[CORRECTED 2026-11-03] "UNREACHABLE" IS NO LONGER TRUE, AND ITS EXPIRY IS THE
+POINT.** Measured on production 2026-11-03: **3 of 11 sunnycrest products carry a `variant_template_id`**, one of them `Monticello Burial Vault`. The *declared nowhere* half may still hold and is not
+re-measured here; the reachability half is dead. This is the **expired premise** of §11
+in its own canon: a sentence that was accurate when written, that nothing signalled the
+transition of, and that reads identically on the day it stops being true.
+
+⚠️ **AND SOMETHING WAS WAITING BEHIND IT.** `evaluate_typed` leaves its resolution
+`None` on exactly that link path and `read_state` dereferenced it — a deterministic HTTP
+500 on every read of such a session, which blanked a director's pane mid-capture on
+2026-11-03. The code was four months old; **the data armed it**, which is the
+`is_manufactured` shape from §5 arriving in the opposite direction: there a default
+asserted something nobody measured, here a measured zero went on being quoted after it
+stopped being so.
+
+⚠️ **THE FIGURE ITSELF WAS NEVER IN THIS FILE**, and a session reported that it was. The
+2026-11-03 follow-up asked for CLAUDE.md's "0 of 39 rows" to be updated; CLAUDE.md has
+never contained that figure in any form. It lived in `DECISIONS.md`, two STATE entries
+and an investigation doc — all now marked — and the citation naming this file was
+constructed in a report about a stale count. **A location is a claim and gets grepped
+like one.**
+
 ### Timestamp column convention — two conventions in active use
 
 The codebase has two conventions for "last modified" timestamps. **Verify the actual column name on the target table before writing raw SQL UPDATE statements.** Don't assume `updated_at` exists everywhere.

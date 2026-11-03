@@ -33,6 +33,12 @@ The path from a tenant's product to it is declared in full —
 
 ```
 products.variant_template_id: 0 of 39 rows carry a value
+    [CORRECTED 2026-11-03 — this reading was true on 2026-10-27 and is now
+     stale. Measured on production 2026-11-03: 3 of 11 sunnycrest products carry a `variant_template_id`, one of them `Monticello Burial Vault`. The catalogue work linked
+     products in the interval. This zero is the figure that was quoted forward
+     into DECISIONS and STATE, and while it stood the linked resolution path
+     was treated as unreachable — which is how a deterministic 500 on that
+     path stayed armed until a director walked into it.]
 [sunnycrest]  0 of 10 active products reach a form
 [testco]      0 of 25 active products reach a form
 ```

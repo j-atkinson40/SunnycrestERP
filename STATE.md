@@ -72,6 +72,26 @@ link the whole catalog design resolves through was unreachable". The *declared n
 half may still hold; **"unreachable" does not** — three sunnycrest products resolve
 through it today, and that is what armed the 500. I have not touched it.
 
+### NEW SWEEP ITEM (10): a fixture that needs a tenant cannot run in CI
+
+**The gap, stated as the item:** CI runs migrations and **no seeds**, so there is no
+`testco` and no tenant products. Any test needing a real tenant row either skips in CI or
+has to build its own tenant — so the paths that only exist *for* a tenant get covered by
+monkeypatch or not at all.
+
+**Its first instance, owed from today:** a real linked product ROW exercising
+`_link_lookup`'s inner join on `variant_template_id`. The branch above it is covered in
+CI by `test_a_linked_vault_does_not_500_the_pane.py`, which stubs `linked_variant` and
+needs no data; the JOIN is not. Platform variant templates DO exist in CI (migrations
+`r191`/`r195` insert them, 52 rows locally), so the only missing piece is a tenant and a
+product — which `tests/_cleanup.py::purge_companies_by_slug` can tear down.
+
+⚠️ **AND IT IS A FAMILY, NOT ONE FIXTURE** — sibling of item 4 (tests that depend on
+leftover local data) seen from the other side. Item 4 is "the local database has too
+much"; this is "CI's has nothing", and the same test is coupled to both. A test that
+passes locally *because* a seed ran and skips in CI *because* none did is green in both
+places and evidence in neither.
+
 ### Gates
 
 Frontend: 385 files / **5530** tests, 0 failures; floor raised in this commit (+1 file,

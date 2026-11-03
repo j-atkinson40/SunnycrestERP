@@ -2930,6 +2930,19 @@ exact (case-insensitive, trimmed) **name** — the only available join, since
 `variant_template_id` is NULL on every tenant product on production. A name that
 matches nothing blocks approval and says which product is missing.
 
+⚠️ **[CORRECTED 2026-11-03]** The clause "`variant_template_id` is NULL on every tenant
+product on production" was true when written and is now false. Measured on production 2026-11-03: **3 of 11 sunnycrest products carry a `variant_template_id`**, one of them `Monticello Burial Vault`.
+**The decision this paragraph records does not change** — vault and equipment lines are
+still priced by name, and that is still the right join for the reason given. What changed
+is the premise's *reason*: name-matching was described as "the only available join", and
+a link now exists for some products. Anything else inferred from NULL-everywhere needs
+re-measuring before it is relied on.
+
+⚠️ **AND THE STALE ZERO HAD A COST.** `read_state` dereferenced the resolution that
+`evaluate_typed` leaves as `None` on the linked path — unreachable while nothing was
+linked, and a deterministic HTTP 500 the moment something was. It blanked a director's
+pane mid-capture on 2026-11-03. See STATE.md's entry of that date.
+
 ⚠️ **IT REFUSES TO CREATE A MISSING CUSTOMER** (Q2 from the investigation). A funeral
 home with no `customers` row blocks with "No customer record for X — add it before
 approving". Creating a counterparty as a side effect of approving an order is a
