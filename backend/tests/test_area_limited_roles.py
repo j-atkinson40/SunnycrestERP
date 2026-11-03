@@ -227,22 +227,43 @@ def test_the_guard_returns_early_for_a_null_areas_role(actors):
         db.close()
 
 
-def test_no_existing_role_anywhere_was_backfilled():
-    """r221 added the column and wrote nothing. If a later migration or seed
-    starts populating it, every tenant's behaviour changes at once."""
+def test_the_only_limited_roles_are_the_ones_declared_limited():
+    """⚠️ A RATCHET OVER WHICH ROLES ARE LIMITED, not a blanket "none are".
+
+    This asserted `non_null == 0` and was correct until the `payroll` role landed
+    — the first DELIBERATELY limited role. Loosening it to "ignore payroll" would
+    have made it blind to the next role that acquires areas by accident, which is
+    the thing actually worth guarding: a stray `limited_to_areas` on `office` or
+    `driver` would silently narrow every such user's reach across every tenant.
+
+    So the invariant is membership: the set of limited role slugs in the database
+    must equal the set declared limited in `_SYSTEM_ROLES`. Both directions fail
+    loudly — an undeclared role acquiring areas, and a declared one losing them.
+    """
     from app.database import SessionLocal
+    from app.services.role_service import _SYSTEM_ROLES
+
+    declared = {r["slug"] for r in _SYSTEM_ROLES if r.get("limited_to_areas") is not None}
+    assert declared, "no system role declares areas — this test would assert nothing"
+
     db = SessionLocal()
     try:
-        total, non_null = db.execute(text(
-            "SELECT count(*), count(limited_to_areas) FROM roles "
-            "WHERE id NOT LIKE 'area-probe-%'"
-        )).first()
+        total = db.execute(text(
+            "SELECT count(*) FROM roles WHERE id NOT LIKE 'area-probe-%'"
+        )).scalar()
+        limited = {r[0] for r in db.execute(text(
+            "SELECT DISTINCT slug FROM roles "
+            "WHERE limited_to_areas IS NOT NULL AND id NOT LIKE 'area-probe-%'"
+        )).fetchall()}
     finally:
         db.close()
+
     assert total > 0, "no roles examined — the query is not reaching the table"
-    assert non_null == 0, (
-        f"{non_null} of {total} roles have limited_to_areas set; r221 must not "
-        f"backfill and nothing else should have"
+    unexpected = limited - declared
+    assert unexpected == set(), (
+        f"role slug(s) carry limited_to_areas without declaring it in "
+        f"_SYSTEM_ROLES: {sorted(unexpected)}. A role limited by accident "
+        f"narrows every user on it, at every tenant."
     )
 
 

@@ -60,6 +60,12 @@ PERMISSION_CATEGORIES: dict[str, dict[str, list[str]]] = {
         "knowledge_base": ["view", "edit"],
         "training": ["view", "edit", "admin"],
     },
+    # Weekly payroll dues review. A narrow area on purpose: the `payroll` system
+    # role is `limited_to_areas=["payroll"]`, so these two keys plus the common
+    # shell set are the whole of what that role can reach. See app/core/areas.py.
+    "payroll": {
+        "payroll": ["view", "approve"],
+    },
     "settings": {
         "settings": ["view"],
         "settings.users": ["manage"],
@@ -167,6 +173,8 @@ def _slug_to_name(slug: str) -> str:
 # Used in the UI for human-readable permission names
 
 PERMISSION_DISPLAY_NAMES: dict[str, str] = {
+    "payroll.view": "View payroll reports",
+    "payroll.approve": "Approve a payroll week",
     "financials.view": "View Financials",
     "financials.invoices.view": "View Invoices",
     "financials.invoices.create": "Create Invoices",
@@ -242,6 +250,18 @@ PERMISSION_DISPLAY_NAMES: dict[str, str] = {
 ADMIN_DEFAULT_PERMISSIONS: list[str] = []  # Wildcard — handled by permission_service.py
 
 ACCOUNTANT_DEFAULT_PERMISSIONS = [
+    # ⚠️ ADDED 2026-11-03 TO PRESERVE EXISTING ACCESS, NOT TO WIDEN IT. Until
+    # this date the payroll report endpoints gated on ROLE SLUG — ("admin",
+    # "accountant") — so an accountant already reached them. Swapping those
+    # gates to `require_permission("payroll.view")` would have REMOVED that
+    # access silently if this key were not added here.
+    #
+    # ⚠️ AND SEEDING DOES NOT BACKFILL: `role_service.seed_default_roles` skips a
+    # role that already exists (role_service.py:144-156), so an accountant row
+    # that predates today does NOT acquire this from the seed. Sunnycrest's
+    # accountant needs it granted explicitly — see the report for the one-liner.
+    "payroll.view",
+    "payroll.approve",
     "financials.view",
     "financials.invoices.view",
     "financials.invoices.create",
@@ -478,6 +498,14 @@ LEGACY_DESIGNER_DEFAULT_PERMISSIONS = [
 ]
 
 # ── Role slug → default permissions mapping ──────────────────────────────────
+
+#: The payroll role holds payroll and nothing else. `dashboard.view` is NOT here:
+#: the area guard refuses /dashboard anyway (it carries no area tag), so granting
+#: the permission would be a grant that reads as access and produces none.
+PAYROLL_DEFAULT_PERMISSIONS = [
+    "payroll.view",
+    "payroll.approve",
+]
 
 ROLE_DEFAULTS: dict[str, list[str]] = {
     "admin": ADMIN_DEFAULT_PERMISSIONS,

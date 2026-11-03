@@ -203,6 +203,7 @@ import HistoryPage from "@/pages/delivery/history";
 import DeliveryDetailPage from "@/pages/delivery/delivery-detail";
 import RouteDetailPage from "@/pages/delivery/route-detail";
 import CarriersPage from "@/pages/delivery/carriers";
+import PayrollHome from "@/pages/payroll/payroll-home";
 import SchedulingBoardPage from "@/pages/delivery/scheduling-board";
 import BOMListPage from "@/pages/bom/bom-list";
 import BOMDetailPage from "@/pages/bom/bom-detail";
@@ -613,6 +614,21 @@ export function renderTenantSlugRoutes(
                     }
                   >
                     <Route path="dashboard" element={<Dashboard />} />
+                  </Route>
+
+                  {/* Payroll — weekly union dues review (Payroll 1).
+                      The permission gate here is the UI half; the server half
+                      is `require_permission("payroll.view")` on every
+                      /api/v1/payroll-reports route PLUS the area guard, which
+                      refuses a payroll-limited role everything that is not
+                      tagged `area:payroll`. A UI-only restriction is not a
+                      restriction. */}
+                  <Route
+                    element={
+                      <ProtectedRoute requiredPermission="payroll.view" />
+                    }
+                  >
+                    <Route path="payroll" element={<PayrollHome />} />
                   </Route>
 
                   {/* THE FRONT DOOR (note arc session 5, 2026-09-10).

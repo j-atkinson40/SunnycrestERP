@@ -2,6 +2,89 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 2026-11-03 — Payroll 1: the accountant can sign in, and sees only payroll
+
+James's rulings of 2026-11-03 on the Payroll 1 findings. Three commits, in order.
+Findings: `docs/investigations/2026-11-03-payroll-1-accountant-login-and-role.md`.
+
+**Migration head: `r220_payroll_reports` → `r221_role_limited_to_areas` →
+`r222_grant_payroll_to_accountant_roles`** (2026-11-03).
+
+### What shipped (2026-11-03)
+
+- **2026-11-03** — `GET /settings/service-territories` now requires a signed-in user
+  of that company (`service_territory.py:27`). It was the ONLY tenant endpoint that
+  returned tenant data with no authentication: it depended on `get_current_company`,
+  which resolves from the `X-Company-Slug` header. Re-measured after: **0 offenders**
+  of 1859 company-resolving routes, 3 excluded by name (login/refresh/register).
+- **2026-11-03** — `r221` adds `roles.limited_to_areas` (JSONB, nullable, no default,
+  **not backfilled** — 0 of 3533 existing roles carry a value). NULL = not limited;
+  `[]` = limited to nothing.
+- **2026-11-03** — `enforce_area_limit` (`app/api/area_guard.py`), attached once on the
+  `v1_router` constructor. Default deny: a user on a limited role is refused any tenant
+  endpoint not tagged `area:<key>` for one of their areas, plus the common set
+  (`app/core/areas.py`). Both router mounts covered — 1920/1920 under `/api/v1` and
+  under the `/api` alias.
+- **2026-11-03** — `payroll` permission category (`payroll.view`, `payroll.approve`);
+  `Payroll` system role, the FIRST area-limited role (`limited_to_areas=["payroll"]`);
+  nav item + `/payroll` empty shell page.
+- **2026-11-03** — `payroll_reports.py`: all 7 call sites moved from the
+  `ACCOUNTING_ROLES` slug comparison to `require_permission("payroll.view")`, and the
+  router tagged `area:payroll`.
+- **2026-11-03** — `role_service` audit calls enriched: delete now snapshots the
+  permission set it held, permission changes log as `permissions_changed` (was
+  `updated`, indistinguishable from a rename) with `granted`/`revoked` deltas, and
+  `limited_to_areas` is recorded on create/update/delete.
+
+### ⚠️ The gate swap would have removed an existing accountant's access (2026-11-03)
+
+- **2026-11-03** — `seed_default_roles` SKIPS roles that already exist
+  (`role_service.py:144-156`), so adding `payroll.view` to
+  `ACCOUNTANT_DEFAULT_PERMISSIONS` reaches NEW tenants only. Measured: all 26 payroll
+  e2e tests went red on the swap. `r222` grants `payroll.view` + `payroll.approve` to
+  every role with slug `accountant` (55 rows), which preserves a MEASURED fact — the
+  old slug gate admitted exactly `("admin", "accountant")` — rather than inventing one.
+  `admin` is untouched (wildcard) and `accounting` is untouched (56 roles, a different
+  slug the old gate never admitted).
+
+### ⚠️ A Phase 1 finding of mine was wrong, and the test caught it (2026-11-03)
+
+- **2026-11-03** — The findings said "roles.py has zero `log_action` calls, so changing
+  what a role may do is NOT audited". The route file does have zero; `role_service.py`
+  has FOUR, and already recorded old/new permission sets. I measured the route layer
+  and claimed it about role writes. Caught because the first draft of the audit test
+  added route-level logging and found **two** `created` rows per create — a test
+  asserting "at least one row" would have shipped the duplicate. Findings corrected in
+  place with the original wording preserved.
+
+### Open items (2026-11-03) — NOT in this dispatch
+
+- **2026-11-03 — NEXT SECURITY ARC: the 1063 for UNLIMITED roles.** Area limiting
+  closes them for a LIMITED role only. Every existing non-admin role at Sunnycrest —
+  office, production, dispatcher, driver, accountant — can still read journal entries,
+  GL accounts and email threads. Counts: **946** endpoints whose only auth dependency
+  is `get_current_user`, **117** more with per-TENANT module gating only (which asks
+  "is this module on for this company", never "may this user"), = **1063 of 1920
+  reachable with no per-user gate**; **886** of the 946 have no handler-level check
+  either. The 11 proven reachable by a zero-permission user:
+  `journal-entries/entries`, `journal-entries/gl-accounts`,
+  `price-management/current-prices`, `price-management/versions`, `companies`,
+  `companies/search`, `fh/cases`, `agents/alerts`, `agents/activity-log`,
+  `agents/periods/locked`, `email/threads`. Three Vault services carry
+  `required_permission=None` — `documents`, `intelligence`, `notifications`
+  (`hub_registry.py:116,150,167`). `capture.py` contributes **19** unchecked WRITE
+  endpoints, which is why Opas stays admin-only.
+  **Trigger: next security arc, before any second non-admin user type ships.**
+- **2026-11-03 — PRECONDITION OF PAYROLL 2: two-step sign-in for tenant users.** Does
+  not exist — `POST /auth/login` is a single call. Portal users have lockout and
+  recovery (`app/services/portal/auth.py`); tenant users have neither. **No real
+  payroll data loads until it exists for payroll-limited users** — pay rates and hours
+  should not sit behind a password alone. The `/payroll` page is deliberately
+  data-free for this reason, and its docstring says so.
+- **2026-11-03 — Opas stays admin-only.** `OpasHost.tsx:2229`. Her payroll-only Opas
+  is a later slice. Opening it to a non-admin without gating `capture.py` would hand
+  her order capture.
+
 ## 2026-11-03 — payroll weekly dues reports: backend, reporting only
 
 James's dispatch of 2026-11-03. Replaces the accountant's Excel workbook for weekly union

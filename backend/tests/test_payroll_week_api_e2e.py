@@ -394,9 +394,15 @@ def test_11_reports_still_readable_after_approval(client):
     assert body["totals"]["row_count"] == 13
 
 
-def test_12_a_non_accounting_role_is_refused(client):
+def test_12_a_role_without_the_payroll_permission_is_refused(client):
     """⚠️ ENFORCED AT THE ENDPOINT, not in the UI. The gate is the only thing
-    standing between a token holder and another department's payroll."""
+    standing between a token holder and another department's payroll.
+
+    Renamed from `test_12_a_non_accounting_role_is_refused`: the question is no
+    longer "is your role named accountant" but "do you hold payroll.view", and a
+    test name that still says accounting would send the next reader to the wrong
+    mechanism.
+    """
     from app.database import SessionLocal
 
     db = SessionLocal()
@@ -421,7 +427,17 @@ def test_12_a_non_accounting_role_is_refused(client):
         ):
             r = getattr(client, method)(path)
             assert r.status_code == 403, f"{method} {path} must refuse a driver"
-            assert "accounting responsibility" in r.json()["detail"]
+            # ⚠️ UPDATED 2026-11-03 WITH THE MECHANISM, NOT JUST THE MESSAGE.
+            # This asserted the old slug gate's prose ("...is the tenant's
+            # accounting responsibility"). The gate is now
+            # `require_permission("payroll.view")`, so the refusal names the
+            # permission instead. Asserting the permission KEY rather than a
+            # sentence means the next copy edit does not break the test while a
+            # change to what is actually required still does.
+            detail = r.json()["detail"]
+            assert "payroll.view" in str(detail), (
+                f"{method} {path} refused, but not for the payroll permission: {detail}"
+            )
     finally:
         # Restore the accountant the fixture installed, rather than rebuilding
         # one here — two producers of the same test identity would drift.

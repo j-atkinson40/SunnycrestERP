@@ -3,11 +3,22 @@
 Accountant/admin only. Reporting only: nothing here runs payroll, pays anyone,
 or touches the planned Check integration.
 
-⚠️ **THE ROLE GATE IMPORTS `ACCOUNTING_ROLES` RATHER THAN RESTATING IT.**
-"Who may see the tenant's dues reports" is the same question as "who may see the
-tenant's books review", and `completeness.py` already answers it with a note
-saying plainly that two literals with the same contents are two producers of one
-fact waiting to drift apart. So this module consumes that constant.
+⚠️ **GATED ON A PERMISSION, NOT ON A ROLE NAME — CHANGED 2026-11-03.** These
+endpoints originally imported `ACCOUNTING_ROLES` from `completeness.py` —
+`("admin", "accountant")` — and refused every other slug. That was right while
+those were the only two candidates and WRONG the moment a third role existed:
+a user on the new `payroll` role holds `payroll.view` but her slug is
+`payroll`, so the slug gate would have refused her from the very endpoints this
+module exists to serve.
+
+Gating on `require_permission("payroll.view")` also means per-user overrides
+(`UserPermissionOverride`) work here for free, which a slug comparison could
+never honour.
+
+Existing access is preserved rather than widened: `payroll.view` was added to
+`ACCOUNTANT_DEFAULT_PERMISSIONS`, because an accountant already reached these
+endpoints through the old slug gate and must keep doing so. Admin is unaffected —
+`get_user_permissions` returns every key for the admin role.
 
 ⚠️ **APPROVAL REFUSES, IT DOES NOT WARN.** Recalculating or re-importing an
 approved week returns 409. Enforced in the service layer; the route only
@@ -23,8 +34,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Respon
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, get_db
-from app.api.routes.completeness import ACCOUNTING_ROLES, _role_slug
+from app.api.deps import get_db, require_permission
 from app.models.payroll_report import PayrollWeek
 from app.models.user import User
 from app.services.payroll import service as payroll_service
@@ -41,16 +51,12 @@ router = APIRouter()
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 
-def _require_payroll_role(db: Session, user: User) -> str:
-    slug = _role_slug(db, user)
-    if slug not in ACCOUNTING_ROLES:
-        raise HTTPException(
-            403,
-            f"The weekly payroll dues reports are the tenant's accounting "
-            f"responsibility; you hold '{slug}'. They belong to "
-            f"{' or '.join(ACCOUNTING_ROLES)}.",
-        )
-    return slug
+#: The permission every endpoint in this module requires. One name, read by all
+#: seven routes, so they cannot drift apart. `payroll.approve` exists in the
+#: catalogue and is deliberately unused until the approve flow is designed in
+#: slice 2 — approving is gated on `payroll.view` today, which is what the
+#: 2026-11-03 dispatch specified.
+PAYROLL_PERMISSION = "payroll.view"
 
 
 def _get_week(db: Session, week_id: str, tenant_id: str) -> PayrollWeek:
@@ -100,7 +106,7 @@ def _week_payload(week: PayrollWeek) -> dict:
 
 @router.get("/formats")
 def list_formats(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(PAYROLL_PERMISSION)),
     db: Session = Depends(get_db),
 ):
     """Available column mappings and whether each is verified.
@@ -108,7 +114,6 @@ def list_formats(
     Surfaced so the unverified state of the Payentry mapping is visible before
     someone tries an upload, rather than only in the 422 they get back.
     """
-    _require_payroll_role(db, current_user)
     from app.services.payroll.column_mapping import load_mapping
 
     out = []
@@ -125,10 +130,9 @@ def list_formats(
 
 @router.get("/weeks")
 def list_weeks(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(PAYROLL_PERMISSION)),
     db: Session = Depends(get_db),
 ):
-    _require_payroll_role(db, current_user)
     weeks = db.execute(
         select(PayrollWeek)
         .where(PayrollWeek.tenant_id == current_user.company_id)
@@ -143,14 +147,13 @@ async def upload_export(
     week_number: int = Form(...),
     week_end_date: date = Form(...),
     format_key: str = Form("payentry"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(PAYROLL_PERMISSION)),
     db: Session = Depends(get_db),
 ):
     """Upload a payroll export and create (or replace) the week's lines.
 
     Idempotent on (tenant, week_end_date). An approved week refuses with 409.
     """
-    _require_payroll_role(db, current_user)
 
     content = await file.read()
     if len(content) > MAX_UPLOAD_BYTES:
@@ -193,11 +196,10 @@ async def upload_export(
 @router.post("/weeks/{week_id}/calculate")
 def calculate(
     week_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(PAYROLL_PERMISSION)),
     db: Session = Depends(get_db),
 ):
     """Compute dues for the week. Refuses on an approved week."""
-    _require_payroll_role(db, current_user)
     week = _get_week(db, week_id, current_user.company_id)
 
     try:
@@ -223,10 +225,9 @@ def get_week_report(
     week_id: str,
     report_key: str,
     fmt: str = Query("json", pattern="^(json|csv)$"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(PAYROLL_PERMISSION)),
     db: Session = Depends(get_db),
 ):
-    _require_payroll_role(db, current_user)
     week = _get_week(db, week_id, current_user.company_id)
 
     try:
@@ -260,7 +261,7 @@ def monthly_remittance(
     year: int = Query(..., ge=2000, le=2100),
     month: int = Query(..., ge=1, le=12),
     fmt: str = Query("json", pattern="^(json|csv)$"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(PAYROLL_PERMISSION)),
     db: Session = Depends(get_db),
 ):
     """Per-member dues for a calendar month.
@@ -269,7 +270,6 @@ def monthly_remittance(
     `meta.group_by` so a stored or exported report states the rule that produced
     it instead of leaving a reader to assume today's default.
     """
-    _require_payroll_role(db, current_user)
     try:
         table = payroll_service.monthly_remittance(
             db, tenant_id=current_user.company_id, year=year, month=month
@@ -296,11 +296,10 @@ def monthly_remittance(
 @router.post("/weeks/{week_id}/approve")
 def approve(
     week_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(PAYROLL_PERMISSION)),
     db: Session = Depends(get_db),
 ):
     """Approve the week, locking it against recalculation."""
-    _require_payroll_role(db, current_user)
     week = _get_week(db, week_id, current_user.company_id)
 
     try:

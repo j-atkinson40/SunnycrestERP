@@ -238,11 +238,34 @@ audited (`auth.py:63-76`, action `"login"`, entity `"session"`, with IP and user
   `audit_service.compute_changes` + `log_action(db, company_id, "updated", "user", ...)`
   at :328-333. So the grant lands as an `updated`/`user` row carrying the before and
   after `role_id` in `changes`.
-- ❌ **Changing what the role may DO is NOT audited.**
-  `app/api/routes/roles.py` contains **zero** `log_action` calls (measured). So
-  `POST /roles`, `PATCH /roles/{id}` and `PUT /roles/{id}/permissions` leave no audit
-  row. The record will show that she was put on the `payroll` role; it will not show
-  what `payroll` could reach at the time, nor who widened it later.
+- ⚠️ **CORRECTED 2026-11-03, AND THE ERROR IS MINE.** This entry read:
+
+  > ❌ **Changing what the role may DO is NOT audited.** `app/api/routes/roles.py`
+  > contains **zero** `log_action` calls (measured). So `POST /roles`,
+  > `PATCH /roles/{id}` and `PUT /roles/{id}/permissions` leave no audit row.
+
+  The measurement was right and the claim was wrong. `app/api/routes/roles.py` does
+  have zero — but `app/services/role_service.py` has **four**, and
+  `set_role_permissions` already recorded old and new permission sets
+  (`role_service.py:389`). I measured the ROUTE file and made a claim about role
+  WRITES, which is a different population: the same constructed-scope error the canon
+  names, committed inside an investigation about measurement. A grep of the route
+  layer cannot see auditing that lives in the service it delegates to.
+
+  ⚠️ **It was caught by needing the data, not by review** — the first draft of
+  `tests/test_role_writes_are_audited.py` added a second set of `log_action` calls at
+  the route layer and found **two** `created` rows per create. Had the test only
+  asserted "at least one row", the duplicate would have shipped and this entry would
+  still read as true.
+
+  **What was actually missing, and is now fixed in the service** (commit 3):
+  - `delete_role` recorded only name and slug, not the permission set it held — and
+    after a delete there is nothing left to read;
+  - a permission change and a rename both logged action `"updated"`, so the one change
+    that moves a security boundary was indistinguishable in the list; it is now
+    `"permissions_changed"`;
+  - `limited_to_areas` (r221) was recorded nowhere, and for an area-limited role that
+    field is more decisive than the permission list.
 
 That asymmetry matters for a payroll role specifically, because the role's permission set
 is the whole security boundary being claimed. Adding one `log_action` to

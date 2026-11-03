@@ -10,6 +10,7 @@ from app.core.permissions import (
     LEGACY_DESIGNER_DEFAULT_PERMISSIONS,
     MANAGER_DEFAULT_PERMISSIONS,
     OFFICE_STAFF_DEFAULT_PERMISSIONS,
+    PAYROLL_DEFAULT_PERMISSIONS,
     PRODUCTION_DEFAULT_PERMISSIONS,
     get_all_permission_keys,
 )
@@ -94,6 +95,20 @@ _SYSTEM_ROLES = [
         "permissions": ACCOUNTANT_DEFAULT_PERMISSIONS,
     },
     {
+        # ⚠️ THE FIRST AREA-LIMITED SYSTEM ROLE. `limited_to_areas` makes
+        # `enforce_area_limit` refuse every tenant endpoint that is not tagged
+        # `area:payroll`, plus the common shell set — so this role's reach is
+        # the two permissions below AND nothing else, enforced on the server.
+        #
+        # Every other entry in this list omits `limited_to_areas`, which means
+        # NULL, which means unrestricted — today's behaviour, unchanged.
+        "name": "Payroll",
+        "slug": "payroll",
+        "description": "Weekly payroll dues review only. Sees nothing else.",
+        "permissions": PAYROLL_DEFAULT_PERMISSIONS,
+        "limited_to_areas": ["payroll"],
+    },
+    {
         "name": "Accounting",
         "slug": "accounting",
         "description": "Full financial access, view-only on operations",
@@ -160,6 +175,12 @@ def seed_default_roles(db: Session, company_id: str) -> tuple[Role, Role]:
             slug=role_def["slug"],
             description=role_def["description"],
             is_system=True,
+            # ⚠️ `.get`, DEFAULTING TO None, NOT []. An absent key means "no area
+            # restriction established" and must stay NULL; `[]` would mean
+            # "limited to nothing" and would lock every role out of everything.
+            # The two are different values and the difference is the whole design
+            # (r221, app/core/areas.py).
+            limited_to_areas=role_def.get("limited_to_areas"),
         )
         db.add(role)
         db.flush()
@@ -255,8 +276,21 @@ def create_role(
     audit_service.log_action(
         db, company_id, "created", "role", role.id,
         user_id=actor_id,
-        changes={"name": data.name, "slug": data.slug,
-                 "permission_keys": data.permission_keys},
+        changes={
+            # Identity fields are bare on CREATE: there is no prior value, and
+            # {"before": None} for a name that never existed reads as a change
+            # rather than a birth. Collections still use pairs so a diff against
+            # a later change lines up.
+            "name": data.name,
+            "slug": data.slug,
+            "permission_keys": {"before": [], "after": sorted(data.permission_keys)},
+            # ⚠️ RECORDED BECAUSE IT IS THE SECURITY BOUNDARY (r221). A role's
+            # areas decide what it can reach AT ALL — more decisive than its
+            # permission list, since `enforce_area_limit` refuses everything
+            # outside them. A role created limited and later widened to NULL
+            # would otherwise leave no trace of the widening.
+            "limited_to_areas": {"before": None, "after": role.limited_to_areas},
+        },
     )
 
     db.commit()
@@ -273,7 +307,9 @@ def update_role(
 ) -> Role:
     role = get_role(db, role_id, company_id)
 
-    old_data = {"name": role.name, "description": role.description, "is_active": role.is_active}
+    old_data = {"name": role.name, "description": role.description,
+                "is_active": role.is_active,
+                "limited_to_areas": role.limited_to_areas}
 
     if data.name is not None:
         role.name = data.name
@@ -288,7 +324,9 @@ def update_role(
         role.is_active = data.is_active
     role.modified_by = actor_id
 
-    new_data = {"name": role.name, "description": role.description, "is_active": role.is_active}
+    new_data = {"name": role.name, "description": role.description,
+                "is_active": role.is_active,
+                "limited_to_areas": role.limited_to_areas}
     changes = audit_service.compute_changes(old_data, new_data)
     if changes:
         audit_service.log_action(
@@ -322,10 +360,24 @@ def delete_role(
             detail=f"Cannot delete role with {user_count} assigned user(s). Reassign them first.",
         )
 
+    # ⚠️ SNAPSHOT WHAT IT HELD, BEFORE IT IS GONE. This recorded only name and
+    # slug until 2026-11-03. After the delete there is nothing left to read, and
+    # "a role called payroll was deleted" without its permission set and areas
+    # is a note that something happened, not an audit trail.
     audit_service.log_action(
         db, company_id, "deleted", "role", role.id,
         user_id=actor_id,
-        changes={"name": role.name, "slug": role.slug},
+        # Every field is a before/after pair, uniformly. A snapshot that mixes
+        # bare values with pairs makes a reader learn which is which per field.
+        changes={
+            "name": {"before": role.name, "after": None},
+            "slug": {"before": role.slug, "after": None},
+            "permission_keys": {
+                "before": sorted(rp.permission_key for rp in role.permissions),
+                "after": [],
+            },
+            "limited_to_areas": {"before": role.limited_to_areas, "after": None},
+        },
     )
 
     db.delete(role)
@@ -365,10 +417,24 @@ def set_role_permissions(
 
     new_keys = sorted(permission_keys)
     if old_keys != new_keys:
+        # ⚠️ ACTION RENAMED "updated" -> "permissions_changed" (2026-11-03).
+        # A rename and a permission grant both logged as "updated", so the one
+        # change that moves a security boundary was indistinguishable from a
+        # typo fix in the audit list. Safe to rename: no code reads this string
+        # (checked), and the audit route exposes `action` only as a
+        # caller-supplied filter.
+        #
+        # Deltas are recorded ALONGSIDE the full sets, not instead of them: a
+        # reader wants "what was granted" without diffing two 200-item lists,
+        # and wants the full sets to reconstruct the boundary as it stood.
         audit_service.log_action(
-            db, company_id, "updated", "role", role.id,
+            db, company_id, "permissions_changed", "role", role.id,
             user_id=actor_id,
-            changes={"permission_keys": {"old": old_keys, "new": new_keys}},
+            changes={
+                "permission_keys": {"before": old_keys, "after": new_keys},
+                "granted": sorted(set(new_keys) - set(old_keys)),
+                "revoked": sorted(set(old_keys) - set(new_keys)),
+            },
         )
 
     db.commit()

@@ -731,3 +731,12 @@ tests/test_held_words.py
 tests/test_payroll_dues_golden.py
 tests/test_payroll_engine_rule_edges.py
 tests/test_payroll_week_api_e2e.py
+
+# Payroll 1 (2026-11-03). The unauthenticated-endpoint ratchet, the area-limited
+# default-deny guard, the payroll role slice, and role-write auditing. Added at
+# ship time because they pass — flagged because a manifest grown only by adding
+# what passes converges on covering only what passes (CLAUDE.md §11).
+tests/test_service_territories_requires_login.py
+tests/test_area_limited_roles.py
+tests/test_payroll_role_slice.py
+tests/test_role_writes_are_audited.py

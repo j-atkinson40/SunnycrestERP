@@ -120,6 +120,20 @@ function getManufacturingNav(
       requiresModule: "driver_delivery",
       functionalArea: "funeral_scheduling",
     },
+    // Weekly payroll dues review. The permission is the whole gate here: a user
+    // on the area-limited `payroll` role sees this item and nothing else in the
+    // sidebar, because `filterByPermission` drops every other item she lacks.
+    //
+    // interim-entrance: remove when Opas can open this page. Opas stays
+    // admin-only for now (James, 2026-11-03), so a nav item is this page's only
+    // entrance and CLAUDE.md §11 requires the marker rather than silence.
+    {
+      label: "Payroll",
+      href: "/payroll",
+      icon: "Receipt",
+      permission: "payroll.view",
+      aliases: ["payroll", "dues", "union dues"],
+    },
   ];
   sections.push({
     title: "",
