@@ -1218,11 +1218,38 @@ def read_state(
         # form takes the burial vault and offers the urn vault, because a pick there
         # asks a question whose answer the office already knows.
         "switches": list(row.switches or []),
-        "vault_resolution": {
-            "resolved": bool(resolution.variant_template_id),
-            "candidates": [c.sku for c in resolution.candidates],
-            "discriminators": [d.value for d in resolution.discriminators],
-        },
+        # ⚠️ `resolution` IS `None` WHENEVER THE VAULT RESOLVED THROUGH THE LINKED
+        # VARIANT, AND THIS LINE USED TO DEREFERENCE IT UNCONDITIONALLY — a
+        # deterministic HTTP 500 on every read of such a session. `evaluate_typed`:
+        #
+        #     resolution = None
+        #     if linked is not None:        # products.variant_template_id populated
+        #         vault_product_id = linked.variant_template_id
+        #     else:
+        #         resolution = resolve_vault(build_index(db), phrase or None)
+        #
+        # so `resolution is None` is exactly `linked is not None` — the vault IS
+        # resolved, by the stronger of the two paths, and the crash said otherwise.
+        #
+        # ⚠️ IT WAS A LATENT BUG ARMED BY DATA, NOT BY CODE. Both lines predate
+        # 2026-11-03; the linked path was unreachable while nothing was linked —
+        # CLAUDE.md still records `variant_template_id` as "populated on 0 of 39 rows"
+        # on sunnycrest. Measured on production 2026-11-03: **3 of 11**, one of them
+        # `Monticello Burial Vault`. So the catalogue work armed it, and the first
+        # director to type a linked product lost their pane to it.
+        #
+        # ⚠️ AND THE 500 IS WHAT BLANKED JAMES'S ORDER, not a lost session. Session
+        # 8a3ea0aa still held all three captured values after the crash; the pane threw
+        # the screen away, which is the separate defect the retry ruling fixes.
+        "vault_resolution": (
+            {
+                "resolved": bool(resolution.variant_template_id),
+                "candidates": [c.sku for c in resolution.candidates],
+                "discriminators": [d.value for d in resolution.discriminators],
+            }
+            if resolution is not None
+            else {"resolved": True, "candidates": [], "discriminators": []}
+        ),
         "surface": {
             "id": rendered.surface_id,
             # ⚠️ THE SUBJECT WAS COMPUTED AND THROWN AWAY HERE, AND THAT IS WHY THE

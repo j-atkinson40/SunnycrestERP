@@ -87,6 +87,10 @@ vi.mock("@/services/opas-capture-service", () => ({
   dropHeld: vi.fn(),
   editHeld: vi.fn(),
   placeHeld: vi.fn(),
+  // ⚠️ ADDED 2026-11-03 for the refused-approve case. The same lesson as
+  // `placedFromBar` above: a double that omits what the component imports fails at
+  // CALL time, so this was absent until a test actually clicked Approve.
+  approveCapture: vi.fn(),
 }))
 vi.mock("@/services/opas-catalog-service", () => ({
   resolvePhrase: vi.fn(async () => ({ candidates: [], discriminators: [] })),
@@ -101,6 +105,7 @@ vi.mock("@/contexts/focus-context", () => ({ useFocus: () => ({ isOpen: false })
 
 import {
   answerCapture,
+  approveCapture,
   choosePick,
   dropHeld,
   holdWords,
@@ -1808,5 +1813,260 @@ describe("slice 2 — two senders, one in-flight guard", () => {
     // spans catch up.
     expect(bar).toHaveValue("order for monticello")
     release.fn?.(state())
+  })
+})
+
+
+describe("slice 2 — a failed request never blanks the order", () => {
+  /**
+   * James's walk, 2026-11-03: the pane showed only "The order did not reach the server"
+   * and every captured field vanished.
+   *
+   * ⚠️ NOTHING WAS LOST. Session 8a3ea0aa still held
+   * `{vault, funeral_home, cemetery_equipment}` after the crash, and so did the server.
+   * The pane threw away the SCREEN — which is the worst version of this bug, because
+   * the only thing actually broken was the director's belief that their work survived.
+   *
+   * ⚠️ THE SERVER CAUSE WAS SEPARATE AND IS FIXED SEPARATELY: `read_state` dereferenced
+   * a `None` resolution whenever a vault resolved through its linked variant, a
+   * deterministic 500. See `test_a_linked_vault_does_not_500_the_pane.py`. These tests
+   * are about the pane's response to ANY failure, which is what the ruling is about —
+   * "the order is lost only if the server confirms it is".
+   */
+  function captured(over: Record<string, unknown> = {}) {
+    return state({
+      values: { funeral_home: "Hopkins Funeral Home" },
+      answered: ["funeral_home"],
+      surface: {
+        id: "capture",
+        rows: [
+          { row_id: "funeral_home", label: "Funeral Home", state: "done",
+            field_ids: ["funeral_home"], edit_target: "funeral_home",
+            value: "Hopkins Funeral Home", secondary_value: null },
+          { row_id: "vault", label: "Vault / Product", state: "done",
+            field_ids: ["vault"], edit_target: "vault",
+            value: "Monticello Burial Vault", secondary_value: null },
+        ],
+      },
+      ...over,
+    })
+  }
+
+  it("keeps every captured field on screen when a request FAILS", async () => {
+    /** ⚠️ JAMES'S OWN RULED TEST: *"fail one PUT mid-capture → pane still shows every
+     *  field."* */
+    vi.mocked(startCapture).mockResolvedValue(captured() as never)
+    const bar = await openOrder()
+    await waitFor(() =>
+      expect(screen.getByText("Hopkins Funeral Home")).toBeInTheDocument(),
+    )
+
+    // the next extraction fails, every attempt
+    vi.mocked(setCaptureText).mockRejectedValue(new Error("500"))
+    await user.type(bar, "monticello Burial")
+    await settle()
+
+    // ⚠️ BOTH ROWS STILL THERE. Before the fix the pane returned a bare sentence and
+    // neither was rendered at all.
+    expect(screen.getByText("Hopkins Funeral Home")).toBeInTheDocument()
+    expect(screen.getByText("Monticello Burial Vault")).toBeInTheDocument()
+    expect(screen.getByTestId("capture-pane")).toBeInTheDocument()
+  })
+
+  it("says so in ONE LINE, and says the order is safe", async () => {
+    /** ⚠️ THE COPY IS PART OF THE RULING. "The order did not reach the server" answered
+     *  a question nobody asked and implied the opposite of the truth — the order HAD
+     *  reached the server; only the newest keystrokes had not. */
+    vi.mocked(startCapture).mockResolvedValue(captured() as never)
+    const bar = await openOrder()
+    vi.mocked(setCaptureText).mockRejectedValue(new Error("500"))
+    await user.type(bar, "monticello")
+    await settle()
+
+    const notice = await screen.findByTestId("capture-notice")
+    expect(notice).toHaveTextContent(/your order is safe/i)
+
+    // ⚠️ IT WAITS FOR THE RETRIES TO EXHAUST, AND THE FIRST VERSION DID NOT — which a
+    // break test exposed. Routing the final failure back to `setError` left this green,
+    // because the assertion ran while only the FIRST attempt had failed and the notice
+    // was still the mid-retry one. The claim is about where a SETTLED failure lands, so
+    // the test has to reach the settled state.
+    await waitFor(
+      () =>
+        expect(screen.getByTestId("capture-notice")).toHaveTextContent(
+          /Still reconnecting/i,
+        ),
+      { timeout: 6000 },
+    )
+    // ⚠️ AND IT IS STILL A NOTICE, NOT THE ERROR. `capture-error` is the branch that
+    // used to replace the pane; after every retry has failed it must still be absent.
+    expect(screen.queryByTestId("capture-error")).not.toBeInTheDocument()
+    expect(screen.getByText("Hopkins Funeral Home")).toBeInTheDocument()
+  })
+
+  it("RETRIES, rather than giving up on one failure", async () => {
+    /** ⚠️ COUNTED, NOT ASSUMED. One call would satisfy "it failed and said so"; the
+     *  ruling asks for retry with backoff, and only the count can tell them apart. */
+    vi.mocked(startCapture).mockResolvedValue(captured() as never)
+    const bar = await openOrder()
+    vi.mocked(setCaptureText).mockClear()
+    vi.mocked(setCaptureText).mockRejectedValue(new Error("500"))
+    await user.type(bar, "x")
+    await waitFor(
+      () => expect(vi.mocked(setCaptureText).mock.calls.length).toBeGreaterThan(1),
+      { timeout: 4000 },
+    )
+  })
+
+  it("a retry that SUCCEEDS clears the notice", async () => {
+    /** ⚠️ WHAT MAKES IT A NOTICE RATHER THAN AN ERROR: it leaves no trace once the
+     *  words land. A notice that stuck around after recovery would train the office to
+     *  ignore it, which is the same cost as a pill row that is sometimes wrong. */
+    vi.mocked(startCapture).mockResolvedValue(captured() as never)
+    const bar = await openOrder()
+    vi.mocked(setCaptureText)
+      .mockRejectedValueOnce(new Error("500"))
+      .mockResolvedValue(captured({ full_text: "monticello" }) as never)
+    await user.type(bar, "monticello")
+    // ⚠️ THE NOTICE MUST APPEAR BEFORE ITS DISAPPEARANCE MEANS ANYTHING, AND MY FIRST
+    // VERSION SKIPPED THIS. `waitFor(() => expect(…).not.toBeInTheDocument())` is
+    // satisfied at t=0 — before the first failure has even registered — so the test
+    // passed against a pane that never cleared the notice at all. A break test proved
+    // it: removing `setNotice(null)` on success left this green. An absence asserted
+    // without first establishing the presence is not a check.
+    await screen.findByTestId("capture-notice")
+    await waitFor(
+      () => expect(screen.queryByTestId("capture-notice")).not.toBeInTheDocument(),
+      { timeout: 6000 },
+    )
+    expect(screen.getByText("Hopkins Funeral Home")).toBeInTheDocument()
+  })
+
+  it("an error with NO state still replaces the pane", async () => {
+    /** ⚠️ THE CONTROL, and it is what stops the fix from going too far. When the
+     *  session never started there is no order to preserve, and a notice floating over
+     *  an empty pane would say "your order is safe" about nothing. */
+    vi.mocked(startCapture).mockRejectedValue(new Error("500"))
+    render(
+      <OpasProvider>
+        <OpasHost />
+      </OpasProvider>,
+    )
+    await user.click(screen.getByTestId("opas-sphere"))
+    await user.type(screen.getByTestId("opas-input"), "start an order")
+    await waitFor(() => expect(screen.getByTestId("capture-error")).toBeInTheDocument())
+    expect(screen.queryByTestId("capture-rows")).not.toBeInTheDocument()
+  })
+})
+
+
+describe("slice 2 — a refused approve keeps the order on screen", () => {
+  /**
+   * ⚠️ THIS EXISTS BECAUSE A BREAK TEST FOUND THE OTHER TESTS BLIND TO IT. Restoring
+   * the old `if (error)` early return — the line that blanked James's pane — left every
+   * one of them green, because after the fix nothing in those tests sets `error` at
+   * all: transient failures became notices. The error branch still had one live
+   * producer, a refused approve, and no test asserted that the order survived it.
+   *
+   * A refused approve reports the server's BLOCKERS, which are statements ABOUT the
+   * order — so hiding the order to show them is the one layout that cannot work.
+   */
+  it("shows the blockers AND still shows the captured order", async () => {
+    vi.mocked(startCapture).mockResolvedValue(state() as never)
+    vi.mocked(setCaptureText).mockResolvedValue(
+      state({
+        status: "review",
+        values: { funeral_home: "Hopkins Funeral Home" },
+        answered: ["funeral_home"],
+        lines: [
+          { kind: "vault", description: "Monticello Burial Vault", product_id: "p1",
+            unit_price: "1250.00", quantity: "1", line_total: "1250.00" },
+        ],
+        total: "1250.00",
+        blockers: [],
+        can_approve: true,
+      }) as never,
+    )
+    vi.mocked(approveCapture).mockRejectedValue({
+      response: {
+        data: { detail: { blockers: ["No customer record for Hopkins Funeral Home."] } },
+      },
+    })
+    const bar = await openOrder()
+    await user.type(bar, "monticello")
+    await settle()
+    await user.click(await screen.findByTestId("capture-approve"))
+
+    await waitFor(() =>
+      expect(screen.getByTestId("capture-error")).toHaveTextContent(
+        /No customer record/i,
+      ),
+    )
+    // ⚠️ THE HALF THE OLD TEST DID NOT ASSERT, and the half the early return broke:
+    // the order is still there to act on. Without this line the test passes whether
+    // the error sits BESIDE the order or REPLACES it.
+    expect(screen.getByTestId("capture-pane")).toBeInTheDocument()
+    expect(screen.getByText("Monticello Burial Vault")).toBeInTheDocument()
+  })
+})
+
+
+describe("the bar refuses the operating system's suggestions", () => {
+  /**
+   * James's walk, 2026-11-03: *"Tab fights your Mac's suggestions."*
+   *
+   * ⚠️ FIVE ATTRIBUTES, AND FOUR OF THEM WERE ALREADY THERE — which is exactly why the
+   * fifth went unnoticed. macOS Sonoma's **inline predictive text** is a separate
+   * feature from autocorrect: Chrome draws its own grey completion after the caret and
+   * gives it TAB. So two grey suggestions competed for one key in the bar, ours and the
+   * system's, and the system's often won. `writingsuggestions` is the only switch for
+   * it, and there is no React prop for it.
+   *
+   * ⚠️ THE TEST ASSERTS THE RENDERED DOM, NOT THE SOURCE, which is what catches an
+   * attribute that compiles and renders nothing at all.
+   *
+   * ⚠️ IT DOES NOT CATCH A CAMELCASED SPELLING, AND THAT IS MEASURED RATHER THAN
+   * ASSUMED. A break test spelling it `writingSuggestions` left this suite GREEN:
+   * React 19 lowercases unknown attributes, so both forms arrive in the DOM as
+   * `writingsuggestions`. The comment in `OpasHost` originally claimed the opposite —
+   * a plausible reason that was simply false. Recorded here so nobody reads this
+   * suite as proof of a spelling rule it cannot see.
+   */
+  const EXPECTED: ReadonlyArray<readonly [string, string]> = [
+    ["spellcheck", "false"],
+    ["autocorrect", "off"],
+    ["autocapitalize", "off"],
+    ["autocomplete", "off"],
+    ["writingsuggestions", "false"],
+  ]
+
+  it.each(EXPECTED)("sets %s=%s on the bar", async (attr, value) => {
+    vi.mocked(startCapture).mockResolvedValue(state() as never)
+    render(
+      <OpasProvider>
+        <OpasHost />
+      </OpasProvider>,
+    )
+    await user.click(screen.getByTestId("opas-sphere"))
+    const bar = screen.getByTestId("opas-input")
+    expect(bar.getAttribute(attr)).toBe(value)
+  })
+
+  it("the bar is the ONLY completion — our ghost, and nothing else", async () => {
+    /** ⚠️ THE CLAIM BEHIND THE FIVE, stated once: every suggestion source the platform
+     *  offers is off, so Tab has exactly one meaning. Asserted as a set so a future
+     *  edit that drops one attribute fails here rather than in a director's hands. */
+    vi.mocked(startCapture).mockResolvedValue(state() as never)
+    render(
+      <OpasProvider>
+        <OpasHost />
+      </OpasProvider>,
+    )
+    await user.click(screen.getByTestId("opas-sphere"))
+    const bar = screen.getByTestId("opas-input")
+    const missing = EXPECTED.filter(([a, v]) => bar.getAttribute(a) !== v).map(
+      ([a]) => a,
+    )
+    expect(missing).toEqual([])
   })
 })

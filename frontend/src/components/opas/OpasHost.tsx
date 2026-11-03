@@ -2750,6 +2750,36 @@ export function OpasHost() {
               autoCorrect="off"
               autoCapitalize="off"
               autoComplete="off"
+              /* ⚠️ THE FIFTH ONE, AND THE OTHER FOUR DO NOT COVER IT. macOS Sonoma's
+                 inline predictive text is a SEPARATE feature from autocorrect: Chrome
+                 and Safari draw their own grey completion after the caret and give it
+                 TAB. So two grey suggestions competed for one key in James's bar — the
+                 system's and ours — and the system's often won.
+
+                 ⚠️ `writingsuggestions` IS THE ONLY SWITCH FOR IT. There is no React
+                 prop; it is a plain HTML attribute (WHATWG, 2024) and React passes
+                 unknown attributes through.
+
+                 ⚠️ AND MY FIRST COMMENT HERE WAS WRONG IN A WAY A BREAK TEST CAUGHT:
+                 it claimed `writingSuggestions` camelCased "would be silently
+                 dropped". Measured — React 19 LOWERCASES unknown attributes, so both
+                 spellings reach the DOM as `writingsuggestions` and the camelCase
+                 break left the test green. The lowercase spelling is still what gets
+                 written, because it is the attribute's actual name and leaning on a
+                 framework's normalisation is a dependency nobody declared. But the
+                 reason is "it is correct", not "the other way breaks".
+
+                 ⚠️ SPREAD THROUGH A CAST BECAUSE REACT'S TYPES LAG THE STANDARD.
+                 `TextareaHTMLAttributes` has no `writingsuggestions`, so writing it as
+                 a normal prop fails `tsc -b`. The cast is local and names ONE
+                 attribute; augmenting `TextareaHTMLAttributes` globally would loosen
+                 every textarea in the app to buy this one line.
+
+                 ⚠️ AND IT IS RIGHT HERE RATHER THAN A PREFERENCE because this is a
+                 COMMAND BAR, not prose. A director typing "monticello 34" wants no
+                 opinion from the operating system about the next word; our ghost is
+                 the only completion that knows the tenant's catalogue. */
+              {...({ writingsuggestions: "false" } as Record<string, string>)}
               data-entry-mode={entryMode ? "true" : "false"}
               value={entryMode ? entryValue : text}
               onChange={(e) => {

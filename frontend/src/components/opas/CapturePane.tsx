@@ -275,6 +275,28 @@ const FOOTER_HINT = "Click any line to change it."
 const ROW_CARET_CLASS =
   "outline outline-1 outline-[rgba(138,164,189,0.55)] bg-[rgba(138,164,189,0.07)]"
 
+/**
+ * Retrying a text request that did not arrive. Ruled 2026-11-03.
+ *
+ * ⚠️ THREE ATTEMPTS AND NOT MORE. The failure that produced this ruling was a
+ * DETERMINISTIC 500 (a linked vault crashed the serializer), so an unbounded retry
+ * would ask forever and hide a permanent fault behind a spinner. Bounded, the notice
+ * eventually stands and says what is true.
+ */
+export const RETRY_ATTEMPTS = 3
+
+/** First backoff step; doubles per attempt — 400ms, 800ms, 1.6s. */
+export const RETRY_BASE_MS = 400
+
+/** ⚠️ IT SAYS THE ORDER IS SAFE, because that is the director's actual question. The
+ *  old copy — "The order did not reach the server" — answered a question nobody asked
+ *  and implied the opposite of the truth. */
+export const RETRY_NOTICE = "Reconnecting — your order is safe"
+
+/** After the last attempt. Still a notice: the order is on screen and on the server. */
+export const STALLED_NOTICE =
+  "Still reconnecting — your order is safe. The last words you typed have not been read yet."
+
 const ROW_CLASS: Record<string, string> = {
   done: "border-[rgba(74,160,110,0.35)] bg-[rgba(74,160,110,0.05)]",
   needed: "border-[rgba(224,168,74,0.55)] bg-[rgba(224,168,74,0.08)]",
@@ -568,6 +590,25 @@ export function CapturePane({
 }) {
   const [state, setState] = useState<CaptureState | null>(null)
   const [error, setError] = useState<string | null>(null)
+  /**
+   * A one-line notice over a pane that still shows the order.
+   *
+   * ⚠️ SEPARATE FROM `error` BECAUSE THEY ARE DIFFERENT CLAIMS, and conflating them
+   * cost James his whole screen on 2026-11-03. `error` means "there is nothing to
+   * show"; a notice means "what you see is real, and the last thing you did has not
+   * landed yet". The pane used to render only `error` and return early, so a single
+   * failed keystroke replaced three captured fields with one red sentence.
+   *
+   * ⚠️ AND THE ORDER WAS NEVER LOST — session 8a3ea0aa still held
+   * `{vault, funeral_home, cemetery_equipment}` after the crash. The pane threw away
+   * the SCREEN, not the data, which is the worst version: nothing was broken except
+   * the director's belief that their work had survived.
+   *
+   * James's ruling: *"a failed request never clears captured state. Keep the last good
+   * state on screen, retry with backoff, and show a one-line notice that says so; the
+   * order is lost only if the server confirms it is."*
+   */
+  const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   // ⚠️ LATCHED, UNLIKE EVERY OTHER PIECE OF PANE STATE, and the exception is deliberate.
   // `captureVoice`'s whole design is "a pure function of what is true right now, so no
@@ -1056,28 +1097,70 @@ export function CapturePane({
   askedFieldIdRef.current = focusedFieldId
   useEffect(() => {
     if (sessionId === undefined) return
+    // ⚠️ CAPTURED INTO A CONST BECAUSE THE SENDER IS NOW A NAMED FUNCTION. TypeScript
+    // carries the `undefined` guard above into an arrow function called immediately,
+    // but not into a hoisted `function` declaration that could be invoked later — so
+    // the retry rewrite turned a narrowed `string` back into `string | undefined`.
+    // `tsc -b` caught it; the plain `tsc --noEmit` the gate used to run would not have
+    // reached this file's project.
+    const sid = sessionId
     // ⚠️ THE OPENING LINE WAS ALREADY EXTRACTED BY `start`, so the first effect run on
     // a restored or just-started session would re-send identical text for no reason.
     // Skipping when the server's text already equals ours costs one comparison and
     // removes a request per mount.
     if (state?.full_text === text) return
-    const timer = window.setTimeout(() => {
+    /**
+     * Send the text, and keep trying if it does not arrive.
+     *
+     * ⚠️ RETRY WITH BACKOFF, BY RULING, AND THE BACKOFF IS NOT POLITENESS. The cause of
+     * James's failure was a deterministic 500 — a linked vault crashed the serializer —
+     * so retrying instantly would have hammered a request that could never succeed,
+     * three times in a few hundred milliseconds, and still ended on a notice. Doubling
+     * from 400ms gives a transient failure room to clear and a permanent one time to
+     * be visible as what it is.
+     *
+     * ⚠️ AND THE ATTEMPTS ARE BOUNDED. An unbounded retry on a deterministic 500 is a
+     * client that never stops asking, which is worse than a notice — it hides the
+     * failure behind an animation forever and burns the tenant's request budget.
+     * `RETRY_ATTEMPTS` of them, then the notice stands until the next keystroke.
+     */
+    const timers: number[] = []
+
+    function send(attempt: number) {
       const seq = seqRef.current.issue()
       setInFlight(true)
       // ⚠️ THE CLICKED ROW RIDES THE EXTRACTION. A director who clicks a row and then
       // TYPES the answer gets this response, and without the field the server would
       // compose the question for ITS next choice and the outline would jump away
       // mid-answer.
-      void setCaptureText(sessionId, text, seq, askedFieldIdRef.current)
+      void setCaptureText(sid, text, seq, askedFieldIdRef.current)
         .then((next) => {
           // ⚠️ THE DROP. A response that arrives behind a newer one describes text the
           // director has already changed; applying it makes the pane show an older
           // reading, which looks like the extractor failing to see words on screen.
           if (!seqRef.current.accept(next.seq ?? seq)) return
           setState(next)
+          // ⚠️ THE NOTICE CLEARS ON ARRIVAL, which is what makes it a notice rather
+          // than an error. A retry that succeeds leaves no trace.
+          setNotice(null)
         })
         .catch(() => {
-          setError("The order did not reach the server")
+          if (attempt < RETRY_ATTEMPTS) {
+            setNotice(RETRY_NOTICE)
+            timers.push(
+              window.setTimeout(
+                () => send(attempt + 1),
+                RETRY_BASE_MS * 2 ** attempt,
+              ),
+            )
+            return
+          }
+          // ⚠️ NO `setError` HERE ANY MORE. This was
+          // `setError("The order did not reach the server")`, and that single line
+          // blanked the pane: the error branch returned before the order could render.
+          // The order is on screen and on the server; only the last keystroke is
+          // unaccounted for, and that is all this says.
+          setNotice(STALLED_NOTICE)
         })
         .finally(() => {
           // ⚠️ CLEARED UNCONDITIONALLY, INCLUDING FOR A DROPPED RESPONSE. Gating this
@@ -1086,8 +1169,10 @@ export function CapturePane({
           // placeholder ruling forbids.
           setInFlight(false)
         })
-    }, EXTRACT_DEBOUNCE_MS)
-    return () => window.clearTimeout(timer)
+    }
+
+    timers.push(window.setTimeout(() => send(0), EXTRACT_DEBOUNCE_MS))
+    return () => timers.forEach((t) => window.clearTimeout(t))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, text])
 
@@ -1108,7 +1193,8 @@ export function CapturePane({
         seqRef.current.accept(seqRef.current.issue())
         setState(next)
       } catch {
-        setError("That choice did not reach the server")
+        // ⚠️ A NOTICE, NOT AN ERROR — the order is still on screen. See `notice`.
+        setNotice("That choice did not reach the server — the order is safe")
       } finally {
         setBusy(false)
       }
@@ -1128,7 +1214,7 @@ export function CapturePane({
         seqRef.current.accept(seqRef.current.issue())
         setState(next)
       } catch {
-        setError("That change did not reach the server")
+        setNotice("That change did not reach the server — the order is safe")
       } finally {
         setBusy(false)
       }
@@ -1163,7 +1249,7 @@ export function CapturePane({
         setState(next)
         setClearedNote(next.cleared_note ?? null)
       } catch {
-        setError("That answer did not reach the server")
+        setNotice("That answer did not reach the server — the order is safe")
       } finally {
         setBusy(false)
       }
@@ -1365,7 +1451,13 @@ export function CapturePane({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state?.status, sessionId, busy])
 
-  if (error) {
+  // ⚠️ `&& !state` IS THE WHOLE FIX FOR THE BLANKED PANE. This read `if (error)` and
+  // returned a bare sentence, so any failed request hid an order that was still
+  // perfectly intact in `state` — and still intact on the server. An error replaces the
+  // pane only when there is genuinely nothing to replace: a session that never
+  // started. Once there is state, a failure is a NOTICE over the order, never instead
+  // of it.
+  if (error && !state) {
     return (
       <div className="p-4 text-body-sm text-status-error" data-testid="capture-error">
         {error}
@@ -1540,6 +1632,42 @@ export function CapturePane({
 
   return (
     <div className="flex flex-col gap-3 p-3" data-testid="capture-pane">
+      {/* ── a one-line status over an INTACT order, never instead of it ───────────
+          Ruled 2026-11-03 after one failed keystroke blanked James's pane: the error
+          branch returned before the rows could render, so three captured fields were
+          replaced by a single red sentence — while the session still held every one of
+          them and the server did too.
+
+          ⚠️ IT SITS HERE, ABOVE BOTH SURFACES, AND THE FIRST VERSION DID NOT. I put it
+          inside the capturing branch, next to the held strip, and
+          `capture-pane.test.tsx` failed on the REVIEW path — a refused approve renders
+          the summary surface, which that branch never reaches. The blockers from a
+          refused approve are statements ABOUT the order, so the one place they cannot
+          go is a layout that hides it. Found by a test, not by reading.
+
+          ⚠️ `capture-error` KEEPS ITS TESTID. It is the same claim to the same reader;
+          only its placement changed. A fresh testid would have let the existing test
+          pass by being re-pointed, which is §11's "taught the defect as the
+          specification". */}
+      {notice !== null && (
+        <div
+          data-testid="capture-notice"
+          role="status"
+          className="rounded-base border border-[rgba(224,168,74,0.4)] bg-[rgba(224,168,74,0.08)] px-2.5 py-1 text-micro text-[rgb(224,168,74)]"
+        >
+          {notice}
+        </div>
+      )}
+      {error !== null && (
+        <div
+          data-testid="capture-error"
+          role="alert"
+          className="rounded-base border border-status-error/40 bg-status-error-muted px-2.5 py-1 text-micro text-status-error"
+        >
+          {error}
+        </div>
+      )}
+
       {/* header — prototype `:413` */}
       {/* ── the header — the prototype's `.ph` ────────────────────────────────────
           ⚠️ REPLACED 2026-10-27 BY RULING. James, after walking the screen: "The pane

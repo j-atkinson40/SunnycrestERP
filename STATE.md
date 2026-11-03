@@ -2,6 +2,137 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 2026-11-03 — the three walk bugs, and a 500 that had been waiting for a linked vault
+
+James's walk of `aef73307`. Three separate bugs; the first had two causes.
+
+### ⚠️ BUG 1a — THE SERVER CAUSE, AND IT WAS NOT WHAT THE SCREEN SAID
+
+The pane read "The order did not reach the server". The order had reached the server and
+was sitting in it. Measured on production session `8a3ea0aa` (sunnycrest, 17:30–17:33
+UTC), which still held
+`{vault: Monticello Burial Vault, funeral_home: Hopkins Funeral Home, cemetery_equipment: full_equipment}`
+after the failure.
+
+Calling `read_state` on that exact session, read-only, on production:
+
+    AttributeError: 'NoneType' object has no attribute 'variant_template_id'
+    session_service.py:1222  "resolved": bool(resolution.variant_template_id)
+
+`evaluate_typed` sets `resolution = None` and builds one only in its ELSE branch:
+
+    resolution = None
+    if linked.via is not None:      # products.variant_template_id is populated
+        vault_product_id = linked.variant_template_id
+    else:
+        resolution = resolve_vault(build_index(db), phrase or None)
+
+So `resolution is None` is exactly "the vault resolved through its TENANT LINK" — the
+stronger of the two paths — and the serializer dereferenced it anyway. **A deterministic
+500 on every read of such a session**, which is why retrying could not have helped.
+
+⚠️ **A LATENT BUG ARMED BY DATA, NOT BY CODE.** Both lines predate the walk; they are in
+`d54b4caa`. The linked path was unreachable while nothing was linked — CLAUDE.md §11
+still records `products.variant_template_id` as "populated on 0 of 39 rows" on
+sunnycrest. **Measured on production 2026-11-03: 3 of 11**, one of them
+`Monticello Burial Vault`. The catalogue work armed it and James was the first to walk
+into it.
+
+⚠️ **AND THE HAZARD WAS WRITTEN DOWN, ONE LAYER IN.** The comment above
+`resolution = None` says it is bound on both paths precisely so the link path cannot
+raise `NameError`, and warns the crash would be *"reachable in production and in no test
+on a dev database, where nothing is linked."* That guard was right and created this one:
+the `None` it introduced to prevent a `NameError` became an `AttributeError` in a caller
+nobody re-read.
+
+### ⚠️ BUG 1b — AND THE PANE THREW AWAY THE SCREEN, WHICH IS WORSE
+
+`CapturePane` had `if (error) { return <one red sentence/> }`. An early return, above
+everything. So one failed request replaced three captured fields — intact in `state`,
+intact on the server — with a sentence claiming the opposite.
+
+Per ruling: the error branch now needs `&& !state`, so it fires only for a session that
+never started. With state present a failure is a **one-line notice over the intact
+order**, the text request **retries with backoff** (3 attempts, 400ms doubling), and the
+notice **clears on arrival**. Copy changed too: *"Reconnecting — your order is safe"*,
+because "did not reach the server" answered a question nobody asked and implied the
+opposite of the truth.
+
+⚠️ **THE REFUSED-APPROVE PATH FOUND ITS OWN PLACEMENT BUG.** I first put the notice
+inside the capturing branch; `capture-pane.test.tsx` failed on review, because a refused
+approve renders the summary surface. Its blockers are statements ABOUT the order, so the
+one layout that cannot work is the one that hides it. Both now render above both
+surfaces, and `capture-error` **keeps its testid** — a new one would have let the
+existing test pass by being re-pointed.
+
+### ⚠️ BUG 2 — AND IT IS NOT WHERE THE SYMPTOM POINTED
+
+"8 chairs" split: `chairs` to the strip, `8` stranded. The natural reading is that clause
+1 moves single words. **It does not** — measured against the real extractor, every one of
+these is ONE span:
+
+    "8 chairs"                   (0,8)  captured  chairs_total
+    "st marys"                   (0,8)  captured  cemetery
+    "lowering device and grass"  (0,25) captured  cemetery_equipment
+    "section A, lot 2"           (0,16) captured  grave_location
+    "monticello Burial Vault"    (0,23) captured  vault
+
+The splitter was **Tab's `lastWordOf` fallback**, which I added the same morning so Tab
+would not feel like a dead key when spans were stale. It counted spaces and knew nothing
+about spans. Deleted rather than made smarter, per ruling: Tab acts on spans or waits.
+Waiting costs one keypress; splitting costs the director their number, and they have to
+notice it first.
+
+⚠️ Session `8a3ea0aa` carries the fingerprint: `held_words: ['Vault']` with the bar at
+`"monticello Burial"` — Tab tore the last word off a phrase the server had read whole.
+
+### BUG 3 — the fifth attribute
+
+The bar already set `spellCheck`, `autoCorrect`, `autoCapitalize`, `autoComplete`. macOS
+inline predictive text is a **separate** feature with its own switch,
+`writingsuggestions`, and Chrome gives its grey completion TAB — so two ghosts competed
+for one key. Now set, asserted on the **rendered DOM** for all five.
+
+⚠️ **UNVERIFIABLE FROM HERE, AND JAMES MUST CHECK.** jsdom has no inline predictive text,
+so no test in this repo can show whether the grey suggestions are actually gone in real
+Chrome on macOS. If they persist it is a system-level setting
+(System Settings → Keyboard → "Show inline predictive text").
+
+### ⚠️ A FALSE REASON OF MINE, CAUGHT BY A BREAK TEST
+
+I wrote that `writingSuggestions` camelCased "would be silently dropped". A break test
+spelling it that way left the suite **green**: React 19 lowercases unknown attributes, so
+both forms arrive as `writingsuggestions`. Corrected in both places. The lowercase
+spelling stays because it is the attribute's name, not because the other breaks.
+
+### Break matrix — five of the new assertions were blind
+
+| Break | Fired |
+|---|---|
+| early return blanks the pane again | ✅ (only after the refused-approve test was added) |
+| settled failure sets the fatal error | ✅ (only after waiting for retries to EXHAUST) |
+| no retry, one attempt | ✅ |
+| notice never clears on success | ✅ (only after asserting the notice APPEARS first) |
+| Tab's last-word fallback restored | ✅ 4 tests |
+| the 500 guard removed | ✅ 2 tests |
+| `writingsuggestions` removed | ✅ 2 tests |
+
+⚠️ **THREE OF MY OWN NEW TESTS WERE NON-DISCRIMINATING AND ARE RECORDED WHERE THEY SIT.**
+"Keeps every field on screen" passed with the blanking restored, because after the fix
+nothing in those tests sets `error` at all. "Says so in one line" passed with the error
+restored, because it asserted while only the FIRST attempt had failed. And "a retry that
+succeeds clears the notice" asserted an absence that was **already true at t=0** —
+`waitFor(() => expect(…).not.toBeInTheDocument())` is satisfied before the first failure
+registers. All three now establish the presence before asserting the absence, or wait for
+the settled state.
+
+### Gates
+
+Frontend: `tsc -b` 0 errors; 384 files / **5512** tests, 0 failures; floor raised in this
+commit (+17, reconciled from RUNTIME counts — the first attempt said +18 from a baseline
+taken mid-session); build clean. Backend: the 32 capture-related gate files pass
+**605 / 4 skipped / 0 failures**; both new test files classified in `ci_gate.txt`.
+
 ## 2026-11-03 — Payroll 1 close-out: deployed, measured on production, one blocker
 
 James pushed `a845d2d1`; the CI repair `06c72fd5` followed. Production deploy confirmed.

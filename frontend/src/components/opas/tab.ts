@@ -58,23 +58,10 @@ export interface TabHold {
 export interface TabNothing {
   readonly kind: "nothing"
   /** Why, for the test to name and for a future flash line to say out loud. */
-  readonly why: "empty" | "pick-open" | "not-capturing"
+  readonly why: "empty" | "pick-open" | "not-capturing" | "no-span"
 }
 
 export type TabAction = TabPlace | TabHold | TabNothing
-
-/** The last whitespace-delimited word, with its offsets. */
-export function lastWordOf(
-  text: string,
-): { readonly word: string; readonly start: number; readonly end: number } | null {
-  const end = text.replace(/\s+$/, "").length
-  if (end === 0) return null
-  const before = text.slice(0, end)
-  const sp = before.lastIndexOf(" ")
-  const nl = before.lastIndexOf("\n")
-  const start = Math.max(sp, nl) + 1
-  return { word: text.slice(start, end), start, end }
-}
 
 export interface TabInput {
   readonly text: string
@@ -140,8 +127,7 @@ export function whatTabDoes(input: TabInput): TabAction {
     }
   }
 
-  // ⚠️ THE UNRECOGNIZED SPAN IS PREFERRED OVER THE LAST WORD, so a two-word phrase
-  // Opas could not place is held WHOLE. `"order for green pastures"` holds
+  // ⚠️ THE UNRECOGNIZED SPAN, WHOLE. `"order for green pastures"` holds
   // `green pastures`, not `pastures` — a held chip the director has to reassemble is
   // worse than no chip, because the cemetery's name is the thing they typed.
   if (fresh) {
@@ -165,11 +151,22 @@ export function whatTabDoes(input: TabInput): TabAction {
     }
   }
 
-  // ⚠️ AND WITH NO USABLE SPANS AT ALL, THE LAST WORD IS HELD RATHER THAN NOTHING
-  // HAPPENING. This is the stale-extraction path and the mid-typing path, which is to
-  // say the common one. A Tab that silently does nothing while the director waits for
-  // their word to go somewhere reads as a dead key.
-  const last = lastWordOf(text)
-  if (last === null) return { kind: "nothing", why: "empty" }
-  return { kind: "hold", word: last.word, start: last.start, end: last.end }
+  // ⚠️ NO SPAN, NO MOVE — AND THIS REPLACED A LAST-WORD FALLBACK THAT BROKE JAMES'S
+  // WALK. The old code ended `const last = lastWordOf(text)` and held it, on the
+  // reasoning that a Tab doing nothing reads as a dead key. It reads worse than that:
+  // he typed `"8 chairs"`, Tab took `chairs` alone into the strip, and `8` sat in the
+  // bar as a word Opas cannot place by itself.
+  //
+  // ⚠️ THE ENGINE HAD IT RIGHT THE WHOLE TIME, measured 2026-11-03: `"8 chairs"` is
+  // ONE span, `(start=0, end=8, captured, ('chairs_total',))`. So does `"st marys"`
+  // (0-8, cemetery), `"lowering device and grass"` (0-25, cemetery_equipment),
+  // `"section A, lot 2"` (0-16, grave_location) and `"monticello Burial Vault"`
+  // (0-23, vault). Every one is a phrase the server read as a unit, and `lastWordOf`
+  // knew nothing about any of them — it counted spaces.
+  //
+  // James's ruling: *"Words leave the bar by the server's SPANS, never by single word
+  // — a multi-word span leaves as one unit or not at all."* So the fallback is gone
+  // rather than made smarter. Tab with no usable span waits, which costs one keypress
+  // once the extraction lands; splitting a phrase costs the director their number.
+  return { kind: "nothing", why: "no-span" }
 }

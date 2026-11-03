@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from "vitest"
 
-import { lastWordOf, whatTabDoes, type TabInput } from "./tab"
+import { whatTabDoes, type TabInput } from "./tab"
 import type { CaptureSpan, VocabTerm } from "@/services/opas-capture-service"
 
 const span = (
@@ -67,13 +67,26 @@ describe("Tab places the word the caret is still on", () => {
   it("will not place a span with NO resolved value", () => {
     /** ⚠️ THE VALUE IS WHAT GETS RECORDED, so a captured span whose field holds nothing
      *  has nothing to write. Placing it would put `undefined` in the order and clear
-     *  the word out of the bar — the director's text gone and no row to show for it. */
-    const got = whatTabDoes(input({ values: {} }))
-    expect(got).toMatchObject({ kind: "hold", word: "monticello" })
+     *  the word out of the bar — the director's text gone and no row to show for it.
+     *
+     *  ⚠️ IT NOW WAITS RATHER THAN HOLDING, changed by the 2026-11-03 ruling. It used
+     *  to fall through to the last-word fallback, which would have parked a word the
+     *  server UNDERSTOOD into "Not placed yet" — and parked only the tail of it. The
+     *  span is captured; the value simply has not landed. Waiting is the honest answer
+     *  to "not yet", and holding would have been a claim that Opas could not read it. */
+    expect(whatTabDoes(input({ values: {} }))).toEqual({
+      kind: "nothing",
+      why: "no-span",
+    })
   })
 
   it("will not place a span carrying TWO fields", () => {
-    /** `"1948 to 2026"` is one span for two fields; one word cannot fly to two rows. */
+    /** `"1948 to 2026"` is one span for two fields; one word cannot fly to two rows.
+     *
+     *  ⚠️ AND IT IS THE CLEAREST CASE FOR DROPPING THE LAST-WORD FALLBACK. The old code
+     *  held `"2026"` — one end of a date RANGE, torn off and parked as if it were an
+     *  unplaceable word, while `"1948 to"` stayed in the bar. That is the `"8 chairs"`
+     *  defect with a worse blast radius, because both halves read as plausible. */
     const got = whatTabDoes(
       input({
         text: "order for 1948 to 2026",
@@ -82,7 +95,7 @@ describe("Tab places the word the caret is still on", () => {
         values: { date_of_birth: "1948-01-01", date_of_death: "2026-01-01" },
       }),
     )
-    expect(got).toMatchObject({ kind: "hold" })
+    expect(got).toEqual({ kind: "nothing", why: "no-span" })
   })
 })
 
@@ -116,20 +129,26 @@ describe("Tab holds what Opas cannot place", () => {
     ).toEqual({ kind: "hold", word: "green pastures", start: 10, end: 24 })
   })
 
-  it("holds the last word when the extraction is STALE", () => {
-    /** ⚠️ THE ASYMMETRY THAT MAKES TAB USEFUL MID-TYPING. Stale spans cannot PLACE — the
-     *  cut would take the wrong characters — but holding reads the last word out of the
-     *  current text and needs no span, so Tab still works a keystroke behind the server,
-     *  which is where a person typing always is. */
-    const got = whatTabDoes(input({ spansForText: "order for mont" }))
-    expect(got).toEqual({ kind: "hold", word: "monticello", start: 10, end: 20 })
+  it("does NOTHING when the extraction is STALE", () => {
+    /** ⚠️ CHANGED BY RULING 2026-11-03, AND THE OLD BEHAVIOUR BROKE JAMES'S WALK. This
+     *  used to hold the LAST WORD, on the reasoning that stale spans cannot place but
+     *  holding needs no span — so Tab stayed useful a keystroke behind the server.
+     *  What it actually did was split phrases: `"8 chairs"` lost its number.
+     *
+     *  Waiting costs one keypress. Splitting costs the director their number, and they
+     *  have to notice it happened first. */
+    expect(whatTabDoes(input({ spansForText: "order for mont" }))).toEqual({
+      kind: "nothing",
+      why: "no-span",
+    })
   })
 
-  it("holds the last word when there are NO spans at all", () => {
-    const got = whatTabDoes(
-      input({ text: "order for blargle", spans: [], spansForText: null, values: {} }),
-    )
-    expect(got).toEqual({ kind: "hold", word: "blargle", start: 10, end: 17 })
+  it("does NOTHING when there are no spans at all", () => {
+    expect(
+      whatTabDoes(
+        input({ text: "order for blargle", spans: [], spansForText: null, values: {} }),
+      ),
+    ).toEqual({ kind: "nothing", why: "no-span" })
   })
 })
 
@@ -178,27 +197,131 @@ describe("what Tab refuses", () => {
   })
 })
 
-describe("lastWordOf", () => {
-  it("ignores trailing whitespace", () => {
-    expect(lastWordOf("order for hopkins   ")).toEqual({
-      word: "hopkins",
+describe("a multi-word span leaves as ONE UNIT or not at all", () => {
+  /**
+   * James's walk, 2026-11-03: he typed `"8 chairs"`, Tab took `chairs` into the strip
+   * alone, and `8` stayed in the bar as a word Opas cannot place by itself.
+   *
+   * ⚠️ THE ENGINE WAS NEVER WRONG ABOUT THESE, measured against the real extractor on
+   * 2026-11-03 — every one is a SINGLE span:
+   *
+   *     "8 chairs"                  (0,8)  captured  chairs_total
+   *     "st marys"                  (0,8)  captured  cemetery
+   *     "lowering device and grass"  (0,25) captured  cemetery_equipment
+   *     "section A, lot 2"          (0,16) captured  grave_location
+   *     "monticello Burial Vault"   (0,23) captured  vault
+   *
+   * The splitter was `lastWordOf`, which counted spaces and knew nothing about any of
+   * them. It is deleted rather than made smarter: the spans already carry the grouping,
+   * so any second opinion about word boundaries is a second source of truth.
+   *
+   * ⚠️ EACH CASE CARRIES A TRAILING WORD so gate 1 lets the phrase go. At the very end
+   * of the text Tab is what releases it, which the first test below asserts directly.
+   */
+  const CASES: ReadonlyArray<{
+    readonly phrase: string
+    readonly fieldId: string
+    readonly value: string
+  }> = [
+    { phrase: "8 chairs", fieldId: "chairs_total", value: "8" },
+    { phrase: "st marys", fieldId: "cemetery", value: "St. Mary's Cemetery" },
+    {
+      phrase: "lowering device and grass",
+      fieldId: "cemetery_equipment",
+      value: "lowering_device_and_grass",
+    },
+    { phrase: "section A, lot 2", fieldId: "grave_location", value: "Section A, Lot 2" },
+    {
+      phrase: "monticello Burial Vault",
+      fieldId: "vault",
+      value: "Monticello Burial Vault",
+    },
+  ]
+
+  it.each(CASES)("places %s whole", ({ phrase, fieldId, value }) => {
+    const text = `order for ${phrase}`
+    const got = whatTabDoes(
+      input({
+        text,
+        spans: [
+          { start: 10, end: 10 + phrase.length, state: "captured", field_ids: [fieldId] },
+        ] as never,
+        spansForText: text,
+        values: { [fieldId]: value },
+      }),
+    )
+    // ⚠️ THE WHOLE PHRASE, AND THE OFFSETS THAT COVER IT. A `text` of just the last
+    // word would cut only that word out of the bar and strand the rest — which is
+    // precisely the defect, expressed as offsets rather than as a word.
+    expect(got).toEqual({
+      kind: "place",
+      fieldId,
+      text: phrase,
       start: 10,
-      end: 17,
+      end: 10 + phrase.length,
     })
   })
 
-  it("handles a single word and an empty string", () => {
-    expect(lastWordOf("hopkins")).toEqual({ word: "hopkins", start: 0, end: 7 })
-    expect(lastWordOf("")).toBeNull()
-    expect(lastWordOf("   ")).toBeNull()
+  it("'8 chairs' lands on chairs as 8", () => {
+    /** ⚠️ JAMES'S OWN ASSERTION: *"'8 chairs' must land on chairs as 8."* The VALUE is
+     *  what reaches the order, and it comes from the server's `values` — not from the
+     *  phrase, and not from the digit the client could have parsed out of it. */
+    const text = "order for 8 chairs"
+    const got = whatTabDoes(
+      input({
+        text,
+        spans: [
+          { start: 10, end: 18, state: "captured", field_ids: ["chairs_total"] },
+        ] as never,
+        spansForText: text,
+        values: { chairs_total: "8" },
+      }),
+    )
+    expect(got).toMatchObject({ kind: "place", fieldId: "chairs_total", text: "8 chairs" })
+    // the number the row will show, from the server
+    expect(
+      input({ values: { chairs_total: "8" } }).values.chairs_total,
+    ).toBe("8")
   })
 
-  it("splits on a NEWLINE too, because the bar is a textarea", () => {
-    /** The bar became a `<textarea>` for wrapping, so a pasted order can carry one. */
-    expect(lastWordOf("order for\nhopkins")).toEqual({
-      word: "hopkins",
-      start: 10,
-      end: 17,
-    })
+  it("an UNRECOGNIZED multi-word span is HELD whole", () => {
+    /** The other half of the ruling. A cemetery Opas has never heard of is two or three
+     *  words, and holding `pastures` alone hands the director a chip they have to
+     *  reassemble — the name they typed, broken up. */
+    const text = "order for green pastures thursday"
+    expect(
+      whatTabDoes(
+        input({
+          text,
+          spans: [{ start: 10, end: 24, state: "unrecognized", field_ids: [] }] as never,
+          spansForText: text,
+          values: {},
+        }),
+      ),
+    ).toEqual({ kind: "hold", word: "green pastures", start: 10, end: 24 })
+  })
+
+  it("NEVER emits a fragment of a span", () => {
+    /** ⚠️ THE INVARIANT BEHIND ALL OF THE ABOVE, asserted as a property rather than
+     *  case by case: whatever Tab returns, its offsets are exactly some span's offsets.
+     *  A future shortcut that trimmed or split a phrase would fail here even if it
+     *  passed every named case. */
+    const text = "order for 8 chairs and st marys x"
+    const spans = [
+      { start: 10, end: 18, state: "captured", field_ids: ["chairs_total"] },
+      { start: 23, end: 31, state: "captured", field_ids: ["cemetery"] },
+    ]
+    const got = whatTabDoes(
+      input({
+        text,
+        spans: spans as never,
+        spansForText: text,
+        values: { chairs_total: "8", cemetery: "St. Mary's Cemetery" },
+      }),
+    )
+    expect(got.kind).not.toBe("nothing")
+    const edges = spans.map((sp) => `${sp.start}-${sp.end}`)
+    const moved = got as { readonly start: number; readonly end: number }
+    expect(edges).toContain(`${moved.start}-${moved.end}`)
   })
 })
