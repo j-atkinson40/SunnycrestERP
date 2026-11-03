@@ -253,14 +253,6 @@ export function OpasHost() {
   const placeHeldRef = useRef<
     ((heldId: string, fieldId: string) => void) | null
   >(null)
-  /** A correction's Yes/No. Same split as `tabRef` — the pills render here, the session
-   *  lives in the pane. */
-  const answerSuggestionRef = useRef<
-    ((heldId: string, accept: boolean) => void) | null
-  >(null)
-  const answerPrefixOfferRef = useRef<
-    ((fieldId: string, term: string, accept: boolean) => void) | null
-  >(null)
   /** ⚠️ WHERE THE CARET IS, SO THE PANE CAN LIGHT THE ROW IT IS INSIDE. Tracked from
    *  the events that can move it — typing, clicking and arrowing — rather than polled,
    *  because a poll would either lag the caret or run forever. */
@@ -2483,8 +2475,6 @@ export function OpasHost() {
                   mirrorRef={mirrorRef}
                   tabRef={tabRef}
                   placeHeldRef={placeHeldRef}
-                  answerSuggestionRef={answerSuggestionRef}
-                  answerPrefixOfferRef={answerPrefixOfferRef}
                   onWordLeft={(next) => opas.setEntryText(pane.id, next)}
                   caretFieldIds={fieldsAtCaret(
                     status?.spans,
@@ -2931,15 +2921,6 @@ export function OpasHost() {
              removes the chip — and the answer channel can only carry a field and a
              value, so routing it there would strand the chip in the strip. */
           onPlaceHeld={(heldId, fieldId) => placeHeldRef.current?.(heldId, fieldId)}
-          /* ⚠️ STRAIGHT TO THE PANE, like the held-word pill. A correction's Yes/No has
-             no field to store a value into — the server clears `question_field_id` while
-             it asks — so the answer channel cannot carry it. */
-          onAnswerSuggestion={(heldId, accept) =>
-            answerSuggestionRef.current?.(heldId, accept)
-          }
-          onAnswerPrefixOffer={(fieldId, term, accept) =>
-            answerPrefixOfferRef.current?.(fieldId, term, accept)
-          }
           onHeightAbove={setGuidedH}
         />
       )}

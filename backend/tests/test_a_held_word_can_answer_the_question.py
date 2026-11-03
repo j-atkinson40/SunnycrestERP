@@ -159,22 +159,38 @@ class TestWhatIsNeverOffered:
         _admit(monkeypatch)
         assert held_pills_for(None, tenant_id="t", field_id="vault", held=[]) == []
 
-    def test_a_DECLINED_word_is_not_re_offered(self, monkeypatch):
-        """⚠️ CLAUSE 5'S LIST, HONOURED HERE SO PUSH 2 DOES NOT HAVE TO RETROFIT IT.
+    def test_the_DECLINED_list_is_not_consulted_here(self, monkeypatch):
+        """⚠️ THIS TEST ASSERTED THE OPPOSITE AND PASSED, WHICH IS THE FINDING.
 
-        A word the office has already said No to for this field must not come back as
-        a pill — re-offering a rejected suggestion is the behaviour that makes an
-        assistant feel like it is not listening.
+        It was `test_a_DECLINED_word_is_not_re_offered`, and it built its fixture with
+        `declined=("vault",)` — a FIELD ID. `HeldWord.declined` holds **TERMS**; its own
+        comment says so and `session_service` says it twice. So the guard it exercised,
+        `if field_id in declined`, compared a field id against a list of product names
+        and could never match. Code and test were written from one misreading and
+        confirmed each other — CLAUDE.md §11's fixtures-modelled-on-the-implementation,
+        with no production evidence to contradict it because nothing writes `declined`
+        yet.
+
+        The guard is now gone rather than corrected, because the list answers a
+        different question: *has the office rejected this CORRECTION of this word*
+        (clause 5), which governs the did-you-mean suggestion — not whether a word may
+        be filed into a field the director explicitly dragged or picked it for. A chip
+        whose suggestion was declined is still a perfectly good answer to "which vault?"
+        if the director picks it.
+
+        What this pins is that the pill is offered REGARDLESS of `declined`, with a
+        real term in the list, so a future edit cannot reintroduce the field-id
+        comparison and pass.
         """
-        seen = _admit(monkeypatch)
+        _admit(monkeypatch)
         word = _held("monticello 34")
-        word = type(word)(**{**word.__dict__, "declined": ("vault",)})
-        assert held_pills_for(
+        word = type(word)(
+            **{**word.__dict__, "declined": ["Monticello Burial Vault"]}
+        )
+        pills = held_pills_for(
             None, tenant_id="t", field_id="vault", held=[word]
-        ) == []
-        # ⚠️ AND IT WAS REFUSED BEFORE THE CHECK RAN, not by the check answering No —
-        # otherwise this test would pass against a declined list nobody reads.
-        assert seen == []
+        )
+        assert [p.label for p in pills] == ["monticello 34"]
 
     def test_a_chip_with_no_id_is_skipped(self, monkeypatch):
         """A chip with no identity cannot be placed, so offering it is a dead pill."""

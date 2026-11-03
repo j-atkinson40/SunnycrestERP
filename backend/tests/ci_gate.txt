@@ -743,7 +743,6 @@ tests/test_payroll_role_slice.py
 tests/test_role_writes_are_audited.py
 
 tests/test_the_vault_resolution_may_be_absent.py
-tests/test_did_you_mean.py
 tests/test_the_wrong_town_asks.py
 # Payroll 1 blocker fix (2026-11-03). The enforced payroll data switch, and
 # areas being administrable rather than seed-only.

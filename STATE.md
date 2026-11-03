@@ -2,6 +2,95 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 2026-11-03 — push 2 REVERTED: I chained a migration off an uncommitted revision
+
+`a58708c1` shipped `r228_capture_prefix_offers` with
+`down_revision = "r227_tenant_invite_email_template"`. **r225, r226 and r227 are
+untracked in the shared working tree** — the payroll session has never committed them. So
+`alembic upgrade head` failed on main and both gates died at that step: Backend CI with
+**0 failed tests**, Seed Idempotency Gate at `alembic upgrade head`. Frontend CI green.
+
+⚠️ **PRODUCTION WAS FROZEN, NOT BROKEN, AND THE DISTINCTION IS THE DESIGN WORKING.**
+`/api/health` kept reporting `6a82311b`; `alembic_version` stayed `r224`; the
+`prefix_offers` column was absent. Three readings agreeing that the deploy aborted and
+production kept the last good build — `railway-prep.sh`'s `if ! alembic upgrade head`,
+the R-3.1.3 fail-loud discipline. Nothing was wrong for users; nothing could ship.
+
+### ⚠️ THE INSTRUMENT ANSWERED AN ADJACENT QUESTION — A NEW INSTANCE
+
+I asked the payroll session for the head, got `r227` (accurate about their tree), and
+"verified" with **`alembic heads`** — which reads the **FILESYSTEM**, including their
+untracked files. It confirmed a head that does not exist in git.
+
+That is §11's instrument-answering-an-adjacent-question with a new face: not a pipe
+eating a status, not `find` over a symlink, not `grep -c` counting lines — **a migration
+tool reporting on a working tree while I was asking about a branch.** The version that
+cannot lie:
+
+    git ls-tree -r HEAD --name-only | grep alembic/versions
+
+### Why the fix was a revert and not a re-point
+
+**Re-pointing `r228` at `r224` was refused**: their `r225` also points at `r224`, so the
+moment it lands `r224` has two children and alembic refuses on multiple heads.
+
+**Asking them to push was refused by them, correctly, and the reasoning is worth keeping.**
+James holds the push. Beyond that, their `r225` enforces two-step sign-in, which confines
+every admin to the enrolment area on deploy — and James is Sunnycrest's **only** admin, so
+an unattended push locks him out of production with no second admin to reset him. His
+instruction was to push while at a desk with his phone. A peer asking cannot authorise
+that, and neither of us tried to.
+
+### ⚠️ WHAT WAS KEPT, AND WHY A WHOLESALE REVERT WOULD HAVE COST TWO REAL FIXES
+
+`a58708c1` carried three independent things. Only the feature depended on the migration:
+
+    REVERTED   the "Did you mean…?" feature: r228, the model column, the endpoints,
+               the suggestion plumbing, the frontend pills, test_did_you_mean.py
+    KEPT       towns.py's missing `NOISE_WORDS` import — a LIVE HTTP 500 on
+               "st marys in buffalo". Reverting it would have re-armed a production
+               crash to fix a chain-ordering mistake.
+    KEPT       pills.py's removal of the dead `declined` guard, which compared a field
+               id against a list of TERMS and could never match.
+    KEPT       test_the_wrong_town_asks.py — the crash fix's own regression test, which
+               references nothing from push 2 (grepped: 0 hits).
+
+So the revert was surgical rather than `git revert`, and each exception is named above
+because "reverted push 2" would otherwise read as having undone the crash fix too.
+
+### ⚠️ AND THE SHARED INDEX IS AS DANGEROUS AS THE SHARED TREE
+
+From the payroll session, who nearly hit it: had they staged their 78 files for review
+while I ran `git commit`, **my commit would have taken theirs** — `aef73307`'s mechanism
+without needing `git add -A` at all. They staged nothing. I verified
+`git diff --cached --name-status` against an explicit list of my own 15 paths
+immediately before committing, and will from now on.
+
+They also measured the hazard live: my changed-file set **grew from 14 to 15 between their
+two passes** as I worked, so an `-A` at either moment would have published my in-flight
+push-2 work. Same error, opposite direction, same day.
+
+**Fifth cost of the shared checkout today**, after `git add -A` publishing 20 of their
+files, their dirty `role-management.tsx` disabling my `tsc`, my read-modify-write
+reverting three of their STATE bullets, and `alembic heads` reading their uncommitted
+migrations as real.
+
+### Re-landing
+
+Push 2 is whole in this session's history at `a58708c1` and re-lands unchanged off `r227`
+once James pushes their work — nothing about the feature was wrong, only the revision's
+parent. Its full record, including the 12 break tests and the two owed rulings
+(correction-vs-field-question ordering; lifting the bare-form town deferral), is in the
+`a58708c1` commit body and in the push-2 entry that commit added to this file.
+
+### Gates on the reverted state
+
+Frontend: `tsc -b` 0 errors; 385 files / **5536** tests, 0 failures — back to the
+pre-push-2 floor, which `test:assert-size` confirms exactly; build clean. The migration
+graph was verified **from the git index rather than the filesystem**: `r228` absent,
+`r225`–`r227` absent, and the five referenced-but-missing parents are byte-identical to
+the set at `6a82311b`, the last green commit — pre-existing, not mine.
+
 ## 2026-11-03 — slice 2 push 2: "Did you mean…?", the wrong town, and the decision log
 
 Items 4, 5 and 6 of James's order of 2026-10-28. Slice 2 is now complete.
@@ -7282,4 +7371,14 @@ the other.
 
   **2026-11-03 — Frontend shipped:** `src/pages/accept-invite.tsx` (public), `src/pages/two-step-setup.tsx` (enrol + verify + recovery codes in one page, because which one she needs is a fact about the server's records and not about anything she did), the login redirect (non-fatal by design — a broken probe degrades to a confusing screen, never to a user wrongly let through), the admin "Reset two-step" row action, and `EmployeeCreationWizard`'s office track moved from password-in-body to invite. The production/delivery track still creates directly: it authenticates by username + PIN and has no email to invite.
 
-  ⚠️ **2026-11-03 — CLAUDE.md §11's CI-gate figure is stale: `tests/ci_gate.txt` selects 275 of 555 test files, not 169 of 446.** Measured by enumerating the manifest. Not corrected in CLAUDE.md — Sonnet may not write there.
+⚠️ **2026-11-03 — MAIN IS DEPLOY-FROZEN ON A DANGLING MIGRATION CHAIN, AND I DECLINED TO FIX IT BY PUSHING.** The capture session's `a58708c1` landed `r228_capture_prefix_offers` with `down_revision = "r227_tenant_invite_email_template"`, and **r225, r226 and r227 are untracked in the shared working tree** — mine, unpushed. So `alembic upgrade head` refuses from a clean checkout, `railway-prep.sh:84`'s fail-loud block aborts the deploy, and no commit after `6a82311b` can ship.
+
+  **Production is NOT down — it is frozen, and that distinction is the fail-loud design working.** Measured: `GET api.getbridgeable.com/api/health` returns `status: healthy`, `commit: 6a82311b`, `db: connected`. The R-3.1.3 discipline caught the broken chain before it touched the schema and production kept the last good build. Nothing is broken for users; nothing can ship.
+
+  ⚠️ **I WAS ASKED TO FIX IT BY PUSHING r225–r227 AND REFUSED, FOR THREE REASONS.** (1) James said "Push is James's" and "James pushes"; a peer cannot authorise it. (2) **Pushing would cause the exact outage James planned around, with himself as the single point of failure** — the moment r225 deploys, every admin is confined to the enrolment area for the whole app, and he is Sunnycrest's only admin, with no second person able to reset him if enrolment fails. His instruction was to push only when at his desk with his phone. (3) r226 makes `users.hashed_password` nullable and adds a CHECK to the auth table, which is not a schema change to ship unreviewed and unattended. Resolution: the capture session reverts r228 and re-lands it off r227 after James pushes.
+
+  ⚠️ **THE DIAGNOSIS IS A NEW INSTANCE OF THE INSTRUMENT-ANSWERING-AN-ADJACENT-QUESTION SHAPE, AND IT IS WORTH CANON.** They verified the head with `alembic heads`, **which reads the FILESYSTEM — including untracked files — not the repository.** It confirmed a head that does not exist in git. Not a pipe eating a status, not a symlink, not `grep -c` counting lines: a migration tool reporting on a working tree while the question was about a branch. The version that cannot lie is `git ls-tree -r HEAD --name-only | grep alembic/versions`, which is how I confirmed their report rather than trusting my own tree.
+
+  **AND THE ROOT CAUSE IS THE SHARED CHECKOUT, WHICH IS WHAT JAMES'S WORKTREE RULING IS FOR.** They could not see r227 was untracked because my files sit in the tree we share — the same hazard as `aef73307`'s `git add -A` publishing 20 of my untracked payroll files, pointing the other way. Once at me, once at them, same day.
+
+    ⚠️ **2026-11-03 — CLAUDE.md §11's CI-gate figure is stale: `tests/ci_gate.txt` selects 275 of 555 test files, not 169 of 446.** Measured by enumerating the manifest. Not corrected in CLAUDE.md — Sonnet may not write there.

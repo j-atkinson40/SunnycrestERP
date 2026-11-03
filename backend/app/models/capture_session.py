@@ -139,32 +139,6 @@ class CaptureSession(Base):
     #: something about every session row that predates r209, and nothing measured one.
     switches: Mapped[list | None] = mapped_column(JSONB, nullable=True)
 
-    #: The "did you mean X instead of Y?" offers, from `extract_text`. Slice 2 push 2.
-    #:
-    #: ⚠️ STORED RATHER THAN RECOMPUTED, FOR THE REASON `switches` IS. `PrefixOffer`
-    #: lives on `TextExtraction`, not on the `CaptureState` a read gets back from
-    #: `evaluate_typed` — so `read_state` would have to re-run the whole extractor to
-    #: see one, on the hot path. The three fields above are the same shape of thing
-    #: persisted for the same reason; this is the fourth.
-    #:
-    #: ⚠️ NULLABLE WITH NO `default=`, DELIBERATELY. §5's two-layer note: a model default
-    #: and a server default are separate, and this column has neither. Every session
-    #: older than the column had offers computed and never written down, so an empty
-    #: list would assert "there were none" about rows nobody measured.
-    #: ⚠️ `none_as_null=True` IS LOAD-BEARING AND PLAIN `JSONB` WOULD HAVE BROKEN THIS
-    #: COLUMN'S OWN STATED RULE. Measured: assigning Python `None` to a plain `JSONB`
-    #: column stores the JSON value `null`, and `prefix_offers IS NULL` then evaluates
-    #: FALSE — so the "not established" state this column is documented to express
-    #: becomes unqueryable the moment any caller writes `None`.
-    #:
-    #: Precedent, from the payroll session on 2026-11-03: `r221` declared
-    #: `limited_to_areas` as plain `JSONB`, `None` stored JSON `null`, and every
-    #: `IS NULL` query over it was silently false — it took `r224` to normalise the rows
-    #: afterwards. `switches` above does not warn you because nothing assigns it `None`.
-    prefix_offers: Mapped[list | None] = mapped_column(
-        JSONB(none_as_null=True), nullable=True
-    )
-
     #: What OPAS proposed for each field, so a change can be told from a first fill.
     #:
     #: ⚠️ IT EXISTS FOR ONE OF THE THREE WAYS A FIELD CHANGES, and the other two need
