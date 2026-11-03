@@ -287,3 +287,43 @@ describe("two chips", () => {
     expect(onDrop).toHaveBeenCalledTimes(1)
   })
 })
+
+describe("the chip editor refuses the operating system's suggestions too", () => {
+  /**
+   * ⚠️ THE BAR GOT ALL FIVE ON 2026-11-03 AND THIS BOX GOT TWO, in the same component
+   * family. It is the field you type a corrected cemetery name into — a word Opas did
+   * NOT recognise, which is precisely the text an autocorrector rewrites. "montecello"
+   * becoming "Montecito" would read as the editor losing the fix.
+   *
+   * ⚠️ AND IT IS ASSERTED ON THE RENDERED DOM for the same reason as the bar's: a
+   * misspelled or camelCased attribute compiles, renders nothing, and looks like a fix.
+   */
+  const EXPECTED: ReadonlyArray<readonly [string, string]> = [
+    ["spellcheck", "false"],
+    ["autocorrect", "off"],
+    ["autocapitalize", "off"],
+    ["autocomplete", "off"],
+    ["writingsuggestions", "false"],
+  ]
+
+  function openTheEditor() {
+    setup()
+    const chip = screen.getByTestId("capture-held-word-h1")
+    fireEvent.pointerDown(chip, { button: 0, clientX: 100, clientY: 100 })
+    fireEvent.pointerUp(window, { clientX: 100, clientY: 100 })
+    return screen.getByTestId("capture-held-edit")
+  }
+
+  it.each(EXPECTED)("sets %s=%s on the inline editor", (attr, value) => {
+    expect(openTheEditor().getAttribute(attr)).toBe(value)
+  })
+
+  it("the editor and the bar refuse the SAME set", () => {
+    /** ⚠️ THE INVARIANT, so the next field added to this overlay is compared against a
+     *  list rather than against whichever sibling someone happened to copy. The bar's
+     *  half of this lives in `capture-live.test.tsx`; both read the same five. */
+    const box = openTheEditor()
+    const missing = EXPECTED.filter(([a, v]) => box.getAttribute(a) !== v).map(([a]) => a)
+    expect(missing).toEqual([])
+  })
+})

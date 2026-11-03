@@ -218,8 +218,24 @@ export function HeldStrip({ held, onPlace, onDrop, onEdit, busy }: HeldStripProp
                 data-testid="capture-held-edit"
                 autoFocus
                 value={draft}
+                /* ⚠️ ALL FIVE, AND THIS INPUT HAD ONLY TWO UNTIL 2026-11-03. The bar
+                   got the full set when James hit the Tab/suggestion conflict; this
+                   box — the one you type a corrected cemetery name into — kept
+                   `spellCheck` and `autoComplete` and nothing else. So autocorrect
+                   was live on the field whose entire purpose is a word Opas did NOT
+                   recognise, which is exactly the text an autocorrector will rewrite.
+                   "montecello" -> "Montecito" is the failure, and it would look like
+                   the editor losing the typo fix.
+
+                   ⚠️ FOUND BY GREPPING THE SIBLINGS, NOT BY A REPORT. The bar was
+                   fixed and this was not, in the same component family — CLAUDE.md's
+                   "ask where else this pattern appears OF THE FILE before closing".
+                   Here it was the next file along. */
                 spellCheck={false}
                 autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                {...({ writingsuggestions: "false" } as Record<string, string>)}
                 /* ⚠️ WIDTH IN `ch` FROM THE DRAFT, as the prototype does. A fixed-width
                    box either clips a cemetery's name or leaves a gap beside "smith". */
                 style={{ width: `${Math.max(4, draft.length + 1)}ch` }}

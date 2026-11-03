@@ -2,6 +2,70 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 2026-11-03 — the suggestion attribute: every check passes, which is the finding
+
+James's walk reported macOS inline suggestions still showing in the bar on `f662421b`
+despite `writingsuggestions="false"`. His bug report named two hypotheses. **Both come
+back clean**, and that is what makes the result useful rather than disappointing.
+
+### ⚠️ HYPOTHESIS 1 — "the attributes are on the wrong node". THEY ARE NOT.
+
+The bar is a real `<textarea>` (`OpasHost.tsx:2725`, `data-testid="opas-input"`) carrying
+all five. The mirror beside it is `aria-hidden="true"` with `pointerEvents: "none"`, has
+no `contenteditable` and no `tabIndex` — it cannot take focus and cannot receive a
+keystroke. There is no hidden input and no overlay. **The only focusable node in the
+overlay is the textarea**, and the suite asserts all five on it in the rendered DOM.
+
+### ⚠️ HYPOTHESIS 2 — "Chrome is too old, or it does not apply here". NEITHER.
+
+Measured from two independent sources rather than recalled:
+
+    Chrome   124   (2024-04-16)      Edge 124      Safari 18      Firefox: never
+    applies to <input>, <textarea> and contenteditable
+
+So it applies to a `<textarea>` and has been in Chrome for over two years. **MDN's
+"limited availability" banner is about FIREFOX only** — "Baseline availability blocked
+since September 2024 by Firefox" — and reading that banner as "Chrome may not have it"
+is the trap: a true statement about cross-browser baseline, used to answer a
+Chrome-specific question.
+
+### WHAT THAT LEAVES, AND IT CHANGES WHAT THE FIX CAN BE
+
+`writingsuggestions` governs **the browser's own** writing suggestions. macOS
+"Show inline predictive text" is an **operating-system IME** feature surfaced through the
+system text-input path, and **no web-platform attribute disables an OS IME.** If James's
+setting toggle removes the grey text, the cause is the OS — and the page **cannot** block
+it for the office, which contradicts the assumption in the bug report that it should.
+That is the decisive experiment and it is his to run.
+
+If the toggle does NOT remove them, the attribute is being ignored or overridden by an
+extension, and the live-DOM read becomes the next step.
+
+⚠️ **I COULD NOT READ THE DEPLOYED DOM.** The Chrome extension reports "Browser extension
+is not connected", so the one check that distinguishes "React emitted it" from "the
+string merely shipped in the bundle" is unrun. What IS verified: the literal
+`writingsuggestions` is present in the deployed bundle `/assets/index-nHtuK_mH.js`, and
+that literal exists only in `f662421b`. The one-liner for James is in the report.
+
+### ⚠️ AND THE GREP FOUND A REAL SECOND GAP — THE CHIP EDITOR HAD TWO OF FIVE
+
+`HeldStrip`'s inline edit `<input>` — the box you type a corrected name into after
+clicking a held chip — carried `spellCheck` and `autoComplete` and nothing else. So
+**autocorrect was live on the one field whose entire purpose is a word Opas did not
+recognise**, which is exactly the text an autocorrector rewrites: `montecello` →
+`Montecito`, looking like the editor losing the typo fix. Now all five, asserted on the
+rendered DOM, with a same-set invariant shared with the bar's own test so the next field
+added here is compared against a list rather than against whichever sibling got copied.
+
+⚠️ **FOUND BY GREPPING THE SIBLINGS, NOT BY A REPORT**, and it is CLAUDE.md's own
+"ask where else this pattern appears OF THE FILE before closing" — here the next file
+along in the same component family, fixed the same morning, two of five.
+
+### Gates
+
+Frontend: `tsc -b` 0 errors in my paths; 385 files / **5536** tests, 0 failures; floor
+raised in this commit (+6: HeldStrip 18 → 24); build clean.
+
 ## 2026-11-03 — follow-ups: the notice names the layer, and the absent resolution gets a ratchet
 
 ### 1 — sweep item 2: one message for every failure, naming the wrong one
@@ -7020,3 +7084,29 @@ the other.
   ⚠️ **FOUR OF MY EIGHT BREAK TESTS DID NOT FIRE, AND THREE OF THOSE WERE DEFECTS IN MY TESTS.** (1) The short-word floor: my fixture offered three terms all within 2 of "flg", so the TIE guard returned None and removing the floor left it green — §11 shape 6, asserting the right thing for the wrong reason. Fixed to one term, with a control proving that term IS suggestible at the threshold. (2) The exact-match guard: there are TWO (an early `return None` and a `continue` on zero distance) and removing the first leaves the second — but they are NOT equivalent, since the early return abandons the scan while the `continue` keeps looking and would suggest a different nearby term. Fixture now distinguishes them. (3) One break never applied (a quoting error) and was briefly read as passing. (4) ⚠️ **And the tie guard really IS doubled**: breaking the early exit alone leaves every test green because the final `len(found) == 1` answers the same question. Both broken together reddens it. **The early exit is an optimisation, not the guard, and the code now says so** rather than implying otherwise — §11, a guard whose protection is supplied by a layer beneath it.
 
   **Still to build, in rough dependency order:** the held-word column and its expand-only migration; clause 2's name rule in the extractor (skipping `_NOISE_WORDS`); clause 4's retry-after-each-answer, drag and in-place edit; clause 5's question in `_guided`, below the pick; clause 6's log verbs and the alias-candidate record; and the whole of the frontend — the flight animation measured client-side off the mirror, the removal from the bar, the opener flying to the pane title, Tab's new second job, and the "not placed yet" strip.
+
+- **2026-11-03 — Payroll 2, invites and two-step: BUILT, NOT PUSHED. Migration head `r225_two_step_sign_in` → `r226_tenant_user_invites` → `r227_tenant_invite_email_template`.** Rulings 1–6 of James's dispatch of 2026-11-03. Enforcement is on the token's `mfa` claim at `app/api/area_guard.py:126`, checked BEFORE the unlimited-role early return because four of the five required production users hold unlimited roles.
+
+  ⚠️ **2026-11-03 — THE BLAST RADIUS OF "REQUIRED" IS THE WHOLE APP, NOT PAYROLL, AND IT IS MEASURED.** Ruling 2 says a required user without the claim reaches only `mfa_enroll` plus the 7-entry shell allowlist — so an unenrolled admin cannot use ANY of Bridgeable until they enrol, not merely the payroll area. Admins hold payroll keys through the `get_user_permissions` wildcard (`permission_service.py:43`), so this is every admin at every tenant. **On deploy day James cannot use the app until he enrols.** That is what the ruling says; it is recorded here because the scope is wider than the word "payroll" suggests.
+
+  **2026-11-03 — The regression was A/B'd rather than assumed.** Population bounded first: **55 of 555 test files mint a tenant token** (11 inside the 275-file CI gate), and only those can be affected. Same 55 run twice, `requires_two_step` forced False for the baseline, failures compared **as sets**: **145 red only with enforcement on** (caused by two-step, across 37 files), **4 red in both** (pre-existing, NOT ours — `test_workflow_scope_phase8a` ×2, `test_workflow_scope_latency_phase8a` ×1, `test_health_triage_p2_wrapped` ×1), and **15 red only with enforcement OFF** — the two-step suite itself, which is the positive control proving the manipulation landed.
+
+  **2026-11-03 — The fix is one helper, `tests/_two_step.py::tenant_token`, defaulting to `mfa=True`.** Those suites test what happens AFTER sign-in. ⚠️ **The default is a hazard and carries two mitigations**: `test_two_step_sign_in.py` deliberately does NOT use the helper (it mints tokens directly, so enforcement keeps a suite that cannot be exempted by changing a default here), and the helper's `mfa=False` variant is exercised, so it can still produce a token the guard refuses.
+
+  **2026-11-03 — Ruling 4, invites.** `app/services/tenant_invite.py`, `app/api/routes/invites.py` (two PUBLIC endpoints — she has no credential yet; the 256-bit single-use token is what gates them), `POST /users/invite` (admin). Token stored as **sha256**, single-use by CLEARING the hash, 72h expiry. 26 tests, 5 break-tested.
+
+  ⚠️ **2026-11-03 — `users.hashed_password` IS NOW NULLABLE, and that is a loud-to-quiet trade with a guard on it.** An invited user exists before a password does. Only **three** tenant reads existed (`auth_service.py:212` login, `auth_service.py:394` change_password, `user_service.py:195` a WRITE); both reads now refuse `None` explicitly, because `verify_password(plain, None)` raises and would have made an invited user's first sign-in attempt a **500** rather than a refusal — a 500 on a known email is also an existence oracle. The quiet half is that a code path forgetting a password would now create an unloggable account silently, so `ck_users_password_or_invite` requires a password OR an outstanding invite; the forgotten-password bug still fails at insert, by name.
+
+  ⚠️ **2026-11-03 — THE INVITE ENDPOINT RETURNS NO LINK, WHICH MAKES EMAIL DELIVERY LOAD-BEARING.** A link sets her password, so handing it to the admin is the disclosure ruling 4 forbids under another name. Consequence: **if email is not configured for a tenant, inviting cannot complete** — the response reports `email_sent: false` rather than falling back to returning the link. `POST /users` with a temporary password stays available for that case; it is one of the six password-in-body callers ruling 4 deliberately keeps.
+
+  **2026-11-03 — Ruling 3, the sole-admin lockout: BUILT, at 46 lines of code against the ruling's ~50 budget.** `POST /api/platform/admin/tenants/{company_id}/users/{user_id}/two-step/reset`, platform realm. Measured first: impersonation does NOT rescue her — it mints `mfa: True` (`impersonation_service.py:73`), so a platform admin can act AS her, but acting as her makes the tenant reset endpoint see a self-clear and refuse. The existing paths genuinely terminate. ⚠️ Its audit row cannot name the platform actor in `audit_logs.user_id` (FK to `users.id`, verified against the live schema), so `user_id` is NULL and the actor is in `changes` — the limitation CLAUDE.md records, handled rather than worked around.
+
+  **2026-11-03 — Ruling 5, non-production seed enrolment.** `two_step.enrol_for_non_production` on a published fixed secret, refusing when ENVIRONMENT says production. ⚠️ The refusal is a **deny-union** over the env var AND `settings.ENVIRONMENT`, because `settings` is read once at import and a later `os.environ` write does not reach it; disagreement between the two refuses rather than permits. ⚠️ **And enrolment alone does NOT get a seeded demo admin past the guard** — the guard reads the claim, not the row. What the seed buys is a *computable* code, not an exemption; there is a test pinning exactly that.
+
+  **2026-11-03 — DEFERRED, named so it is not discovered later: platform-admin sign-in still has no second step.** `get_current_platform_user` is a separate realm with its own identity store, and nothing in this slice touched it. A platform admin can still reach every tenant with a password alone.
+
+  **2026-11-03 — CLEANUP ITEM, found while copying its shape: `portal_users.invite_token` and `invite_token_expires_at` are DEAD COLUMNS, and the portal's invite token is stored in PLAINTEXT.** `invite_portal_user` (`app/services/portal/user_service.py:164-183`) generates a token and writes it to **`recovery_token`**, in the clear; the only writes to `invite_token` anywhere are the two `= None` clears in `set_portal_password` (`app/services/portal/auth.py:261-262`), clearing a field that is always already NULL. So `r42`'s partial unique index on it has never had a row to index, and **a read of `portal_users` is a set of working invite links**. Not fixed here — the portal flow is outside this dispatch and changing it needs its own break tests.
+
+  **2026-11-03 — Frontend shipped:** `src/pages/accept-invite.tsx` (public), `src/pages/two-step-setup.tsx` (enrol + verify + recovery codes in one page, because which one she needs is a fact about the server's records and not about anything she did), the login redirect (non-fatal by design — a broken probe degrades to a confusing screen, never to a user wrongly let through), the admin "Reset two-step" row action, and `EmployeeCreationWizard`'s office track moved from password-in-body to invite. The production/delivery track still creates directly: it authenticates by username + PIN and has no email to invite.
+
+  ⚠️ **2026-11-03 — CLAUDE.md §11's CI-gate figure is stale: `tests/ci_gate.txt` selects 275 of 555 test files, not 169 of 446.** Measured by enumerating the manifest. Not corrected in CLAUDE.md — Sonnet may not write there.
