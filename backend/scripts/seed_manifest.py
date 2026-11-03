@@ -59,6 +59,31 @@ TIERS: dict[str, tuple[str, str]] = {
         "2 sample saved orders for the Compose-templates demo. Same unguarded "
         "`pick_tenant` fallback as seed_quotes. Local dev and CI only.",
     ),
+    # ⚠️ TARGETS ONE NAMED TENANT, SO IT IS NOT PART OF BUILDING A DATABASE.
+    # `seed_payroll_week44` seeds the anonymized week-44 dues fixture into
+    # `sunnycrest` specifically, and exits 1 when that tenant is absent — which
+    # is correct for an ops tool and wrong for the canonical runner, because CI
+    # builds a database with no `sunnycrest` in it.
+    #
+    # Measured: it broke Backend CI at the "Seed the canonical set" step on
+    # a845d2d1 — `[seed_payroll_week44] no tenant with slug 'sunnycrest'` ->
+    # rc=1 -> `[seed-dev] FAILED: 1 seed(s) failed`. The step fails before the
+    # test gate runs, so one undeclared seed took the whole job down.
+    #
+    # Declared `manual` rather than softened to exit 0, because the tier is read
+    # ONCE per boot and LOGGED WITH THIS REASON, where an in-script "skip if the
+    # tenant is missing" is a guard that would also hide a real misuse — someone
+    # running it against the wrong database would get silence instead of a
+    # refusal.
+    "seed_payroll_week44": (
+        "manual",
+        "Week-44 union dues fixture for the `sunnycrest` tenant only "
+        "(anonymized E01-E13). Ensure-only and preserve-aware; refuses on "
+        "ENVIRONMENT=production. Exits 1 when the tenant is absent, so it must "
+        "not run in the canonical sequence, which builds databases that have no "
+        "sunnycrest. Run it by hand per tenant: "
+        "`python -m scripts.seed_payroll_week44 --tenant-slug sunnycrest`.",
+    ),
     "seed_nl_demo_data": (
         "manual",
         "Phase 4 NL-overlay demo companies and cases, written against `testco` by "
