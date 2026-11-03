@@ -2,6 +2,92 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 2026-11-03 — Payroll 1 close-out: deployed, measured on production, one blocker
+
+James pushed `a845d2d1`; the CI repair `06c72fd5` followed. Production deploy confirmed.
+
+### Deployed and measured (2026-11-03)
+
+- **2026-11-03** — Production serves `a845d2d1`, `/api/health` → `{"status":"healthy",
+  "environment":"production","db":"connected"}`. Migration head ON PRODUCTION:
+  **`r222_grant_payroll_to_accountant_roles`** — so r220, r221 and r222 all applied.
+- **2026-11-03** — **r222 granted 4 roles, not 55.** Measured read-only on production via
+  the Railway `production` env (SELECT-only session; same method as the S-0 gate):
+  one `accountant` role per tenant across **hopkins-fh, st-marys, sunnycrest, testco**,
+  each receiving `payroll.view` + `payroll.approve`. My local figure was 55 — that was
+  `bridgeable_dev`, a different subject, which is exactly why the dispatch said to
+  measure on production rather than inherit the count.
+- **2026-11-03** — `accounting` roles granted: **0** of 4 present, as intended — that slug
+  never had payroll access under the old gate.
+- **2026-11-03** — `roles`: 48 total, **0** with `limited_to_areas` set. r221 did not
+  backfill, confirmed on production.
+- **2026-11-03** — All four payroll tables empty on production (`payroll_weeks`,
+  `payroll_report_employees`, `payroll_week_lines`, `payroll_week_results` = 0).
+
+### ⚠️ BLOCKER — the Payroll role cannot be created correctly on production today
+
+- **2026-11-03** — **No role with slug `payroll` exists on production** (measured). So the
+  Payroll role cannot be assigned to anyone yet.
+- **2026-11-03** — **And creating it through the admin UI would produce an UNLIMITED
+  role.** `RoleCreate` carries `name` / `slug` / `description` / `permission_keys` and
+  **no `limited_to_areas`**; `RoleUpdate` carries no it either (`app/schemas/role.py:6,13`).
+  `seed_default_roles` is the only writer of that column (`role_service.py:183`), and it
+  runs at company registration (`auth_service.py:40`) or from seed scripts — never
+  retroactively for an existing tenant. A hand-made "Payroll" role would therefore have
+  `limited_to_areas = NULL`, which means NOT area-limited, which means the holder reaches
+  all 1063 unguarded endpoints. That is precisely the failure the slice exists to prevent,
+  and it would look correct in the UI.
+- **2026-11-03** — Two fixes, either of which unblocks it; both are code and neither was in
+  the close-out dispatch:
+  **(a)** a small idempotent data migration ensuring the `payroll` role per existing
+  company, mirroring `seed_default_roles`' skip-if-exists; and/or
+  **(b)** expose `limited_to_areas` on `RoleCreate`/`RoleUpdate`, validated against
+  `KNOWN_AREAS`. (b) is arguably already implied by the ruling "add a setting to a role
+  that says limited to these areas" — without it, areas can be seeded but never
+  administered, so James cannot hand an area to anyone himself.
+  **Recommend (b), with (a) for sunnycrest.** Awaiting James.
+
+### ⚠️ Two CI failures, both ours, and a stale canon entry (2026-11-03)
+
+- **2026-11-03** — `aef73307` Backend CI / "Run scoped test gate":
+  `test_ci_membership::test_every_backend_test_file_is_classified` — my three payroll test
+  files were in neither `ci_gate.txt` nor `ci_excluded.txt`. 1 failed, 4414 passed. Fixed
+  by the `ci_gate.txt` entries in `779af43a`.
+- **2026-11-03** — `a845d2d1` Backend CI / "Seed the canonical set": `seed_payroll_week44`
+  exits 1 when `sunnycrest` is absent, and the canonical runner runs every `seed_*.py` not
+  declared in the manifest. One undeclared seed failed the step before the test gate ran,
+  so 4414 tests never executed on that commit. Fixed in `06c72fd5` by declaring it
+  `manual` — the tier is read once per boot and logged with its reason, where an in-script
+  skip would also hide a real misuse.
+- **2026-11-03** — ⚠️ **CLAUDE.md §11 is STALE about this channel.** It records "CI last
+  passed 2026-09-23, 42 runs and 89 commits". Measured today: `ci.yml` succeeded on
+  `48d3c8ae`, `9058c17f`, `e376779a` and `d54b4caa`, all 2026-11-02. The channel was
+  repaired and the entry was not updated with it — so "CI is red anyway" was not available
+  as an excuse, and both red runs are ours. Canon not edited (not Sonnet's to edit);
+  flagged for an Opus session.
+
+### Payroll 2 preconditions — no real payroll data loads until BOTH exist (2026-11-03)
+
+- **2026-11-03 — PRECONDITION 1: tenant user invite flow.** Reuse the portal invite
+  mechanism (`portal_users.invite_token`, `app/services/portal/auth.py`, r42/r43), which
+  already does this for portal identities: single-use token, expiry, and the user setting
+  their own password on first sign-in. **No password in any request body** — today
+  `user_service.create_user` takes `data.password` (`user_service.py:212`) and
+  `POST /users/{id}/reset-password` takes one too, so creating her account requires a
+  credential to exist in a request, which is why James creates her by hand for Payroll 1.
+- **2026-11-03 — PRECONDITION 2: two-step sign-in for tenant users.** Does not exist;
+  `POST /auth/login` is a single call. **Required for any role holding a payroll
+  permission, optional for others** — so the requirement is a property of the permission
+  set, not of a hard-coded role list, and a future area inherits it by holding a payroll
+  key rather than by being remembered.
+- **2026-11-03** — ⚠️ **AND THE WRITE PATH IS ALREADY OPEN TO HER.** All seven payroll
+  endpoints gate on `payroll.view`, including `POST /weeks/upload`, `/calculate` and
+  `/approve` — so `payroll.view` is not read-only and she could import an export before
+  two-step exists. The empty page does not prevent it; the API is live independently of
+  the UI. "No real payroll data until two-step" is currently an agreement, not an enforced
+  property. Smallest enforcement: gate the three write endpoints on `payroll.approve` and
+  withhold that key from her role until Payroll 2. Raised with James; his call.
+
 ## 2026-11-03 — Payroll 1: the accountant can sign in, and sees only payroll
 
 James's rulings of 2026-11-03 on the Payroll 1 findings. Three commits, in order.
