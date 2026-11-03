@@ -26,10 +26,29 @@ class SaveTerritoriesRequest(BaseModel):
 
 @router.get("/service-territories")
 def get_service_territories(
+    # ⚠️ `current_user` IS LOAD-BEARING AND IS NOT READ IN THE BODY. It is the
+    # authentication. Until 2026-11-03 this endpoint depended only on
+    # `get_current_company`, which resolves from the `X-Company-Slug` HEADER
+    # (`app/api/company_resolver.py:8`) and authenticates nothing — so anyone
+    # who knew a tenant slug could read that tenant's territories, its
+    # `delivery_area_configured` flag and its `facility_state`. Measured as the
+    # only such endpoint in the tenant realm.
+    #
+    # `get_current_user` supplies the same-company half too: it 401s when
+    # `token_company_id != company.id` (`app/api/deps.py:63-67`) and loads the
+    # user filtered on `User.company_id == company.id` (:72-76). So no further
+    # check belongs here, and adding one would imply the dependency does less
+    # than it does.
+    #
+    # Do not "clean up" this unused parameter. The ratchet in
+    # `tests/test_service_territories_requires_login.py` fails if any tenant
+    # route resolves a company without requiring a user.
+    current_user: User = Depends(get_current_user),
     company: Company = Depends(get_current_company),
     db: Session = Depends(get_db),
 ):
-    """Get current service territories for the company."""
+    """Get current service territories for the company. Requires a signed-in
+    user OF THAT COMPANY."""
     territories = (
         db.query(ManufacturerServiceTerritory)
         .filter(ManufacturerServiceTerritory.company_id == company.id)
