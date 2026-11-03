@@ -33,7 +33,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
 from app.core.permissions import (
-    ACCOUNTANT_DEFAULT_PERMISSIONS,
+    ACCOUNTANT_FULL_PERMISSIONS,
     OFFICE_STAFF_DEFAULT_PERMISSIONS,
     DRIVER_DEFAULT_PERMISSIONS,
     PRODUCTION_DEFAULT_PERMISSIONS,
@@ -378,7 +378,14 @@ def _seed_roles(db: Session):
     ]
     # Permission sets per role (admin gets wildcard via permission_service, no rows needed)
     role_permissions_map = {
-        "accountant": ACCOUNTANT_DEFAULT_PERMISSIONS,
+        # ⚠️ `ACCOUNTANT_FULL_PERMISSIONS`, which includes the payroll keys.
+        # This file is a SECOND producer of the accountant role, independent of
+        # `_SYSTEM_ROLES`. When the payroll keys were moved off the shared list
+        # to stop the `accounting` alias inheriting them, this line kept reading
+        # the base list and testco's accountant silently lost payroll access —
+        # 28 CI failures, invisible locally because the dev accountant predated
+        # the change and the seeder skips existing roles.
+        "accountant": ACCOUNTANT_FULL_PERMISSIONS,
         "office_staff": OFFICE_STAFF_DEFAULT_PERMISSIONS,
         "driver": DRIVER_DEFAULT_PERMISSIONS,
         "production": PRODUCTION_DEFAULT_PERMISSIONS,

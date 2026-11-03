@@ -58,12 +58,20 @@ router = APIRouter()
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 
-#: The permission every endpoint in this module requires. One name, read by all
-#: seven routes, so they cannot drift apart. `payroll.approve` exists in the
-#: catalogue and is deliberately unused until the approve flow is designed in
-#: slice 2 — approving is gated on `payroll.view` today, which is what the
-#: 2026-11-03 dispatch specified.
-PAYROLL_PERMISSION = "payroll.view"
+#: ─────────────────────────────────────────────────────────────────────────────
+#: THREE DIFFERENT ANSWERS TO "WHO MAY DO THIS", split 2026-11-03 on James's
+#: ruling. One permission previously meant both "can look" and "can change";
+#: those separate the moment somebody needs to look without approving.
+#:
+#:   READ  = payroll.view     — look at reports, and recompute them.
+#:   WRITE = payroll.approve  — approve a week, which freezes its figures.
+#:   LOAD  = require_admin    — import an export. Later this becomes the
+#:                              payroll job's own system actor; the accountant
+#:                              never needs to load data herself.
+#:
+#: Her role holds both permissions, so none of this changes anything for her.
+PAYROLL_READ = "payroll.view"
+PAYROLL_WRITE = "payroll.approve"
 
 
 def _get_week(db: Session, week_id: str, tenant_id: str) -> PayrollWeek:
@@ -113,7 +121,7 @@ def _week_payload(week: PayrollWeek) -> dict:
 
 @router.get("/formats")
 def list_formats(
-    current_user: User = Depends(require_permission(PAYROLL_PERMISSION)),
+    current_user: User = Depends(require_permission(PAYROLL_READ)),
     db: Session = Depends(get_db),
 ):
     """Available column mappings and whether each is verified.
@@ -137,7 +145,7 @@ def list_formats(
 
 @router.get("/weeks")
 def list_weeks(
-    current_user: User = Depends(require_permission(PAYROLL_PERMISSION)),
+    current_user: User = Depends(require_permission(PAYROLL_READ)),
     db: Session = Depends(get_db),
 ):
     weeks = db.execute(
@@ -154,12 +162,23 @@ async def upload_export(
     week_number: int = Form(...),
     week_end_date: date = Form(...),
     format_key: str = Form("payentry"),
-    current_user: User = Depends(require_permission(PAYROLL_PERMISSION)),
+    # ⚠️ ADMIN ONLY, NOT payroll.view. Loading hours is the act that brings pay
+    # data into existence, and the payroll reviewer never needs to do it: in the
+    # finished shape it is the background payroll job running under its own
+    # system actor (James, 2026-11-03). Until that actor exists, an admin does
+    # it by hand.
+    #
+    # The data switch below is a SECOND, independent gate on the same endpoint:
+    # this one asks "are you allowed to load", the switch asks "may this tenant
+    # hold payroll data at all". The future job actor will pass the first and
+    # still have to satisfy the second.
+    current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     """Upload a payroll export and create (or replace) the week's lines.
 
-    Idempotent on (tenant, week_end_date). An approved week refuses with 409.
+    Admin only. Idempotent on (tenant, week_end_date); an approved week refuses
+    with 409, and a tenant whose payroll data switch is off refuses with 403.
     """
 
     content = await file.read()
@@ -210,10 +229,36 @@ async def upload_export(
 @router.post("/weeks/{week_id}/calculate")
 def calculate(
     week_id: str,
-    current_user: User = Depends(require_permission(PAYROLL_PERMISSION)),
+    # ⚠️ `payroll.view`, AND HERE IS THE SHOWING. The ruling is that calculate
+    # may be a read permission if and only if it is a deterministic recompute
+    # from already-loaded data with no other side effect.
+    #
+    # Measured against `app/services/payroll/service.py::calculate_week`, its
+    # complete set of writes is:
+    #   :270  deletes ITS OWN prior results for this week
+    #   :319  inserts the recomputed result rows
+    #   :341  week.status = "calculated"
+    #   :342  week.calculated_at = now()
+    #
+    # Nothing else. No other table, no money, nothing outside this payroll week.
+    # Same lines + same rule set -> identical `values` JSON, so running it twice
+    # produces the same figures; `status` is already "calculated" by the second
+    # run, and `calculated_at` is the only field that differs — a timestamp
+    # recording the recompute itself.
+    #
+    # ⚠️ THE ONE ARGUMENT FOR `payroll.approve` INSTEAD: `status` advancing
+    # imported -> calculated is what makes a week eligible for approval
+    # (`approve_week` refuses anything not "calculated"), so calculate is a
+    # prerequisite step and not purely an observation. It is left on read
+    # because a look-only reviewer who could not recompute could not see
+    # figures for a week nobody had calculated — and reports read STORED
+    # results, so she still cannot change an approved week's numbers. Flip this
+    # one constant to PAYROLL_WRITE if that reading is wrong.
+    current_user: User = Depends(require_permission(PAYROLL_READ)),
     db: Session = Depends(get_db),
 ):
-    """Compute dues for the week. Refuses on an approved week."""
+    """Recompute dues for the week from loaded data. Refuses on an approved
+    week. Deterministic — see the note on the dependency above."""
     week = _get_week(db, week_id, current_user.company_id)
 
     try:
@@ -239,7 +284,7 @@ def get_week_report(
     week_id: str,
     report_key: str,
     fmt: str = Query("json", pattern="^(json|csv)$"),
-    current_user: User = Depends(require_permission(PAYROLL_PERMISSION)),
+    current_user: User = Depends(require_permission(PAYROLL_READ)),
     db: Session = Depends(get_db),
 ):
     week = _get_week(db, week_id, current_user.company_id)
@@ -275,7 +320,7 @@ def monthly_remittance(
     year: int = Query(..., ge=2000, le=2100),
     month: int = Query(..., ge=1, le=12),
     fmt: str = Query("json", pattern="^(json|csv)$"),
-    current_user: User = Depends(require_permission(PAYROLL_PERMISSION)),
+    current_user: User = Depends(require_permission(PAYROLL_READ)),
     db: Session = Depends(get_db),
 ):
     """Per-member dues for a calendar month.
@@ -310,10 +355,15 @@ def monthly_remittance(
 @router.post("/weeks/{week_id}/approve")
 def approve(
     week_id: str,
-    current_user: User = Depends(require_permission(PAYROLL_PERMISSION)),
+    # ⚠️ `payroll.approve`, NOT `payroll.view`. Approval is the irreversible
+    # step — it freezes the figures and refuses further recalculation — so it is
+    # the one action in this module that a look-only reviewer must not be able
+    # to take.
+    current_user: User = Depends(require_permission(PAYROLL_WRITE)),
     db: Session = Depends(get_db),
 ):
-    """Approve the week, locking it against recalculation."""
+    """Approve the week, locking it against recalculation. Requires
+    `payroll.approve`."""
     week = _get_week(db, week_id, current_user.company_id)
 
     try:

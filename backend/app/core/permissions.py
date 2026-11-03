@@ -323,6 +323,26 @@ ACCOUNTANT_PAYROLL_PERMISSIONS = [
     "payroll.approve",
 ]
 
+#: ⚠️ **THE ONE ANSWER TO "WHAT DOES AN ACCOUNTANT GET", AND THERE WERE THREE
+#: PRODUCERS OF IT.** `_SYSTEM_ROLES` builds the role for new companies and
+#: `scripts/seed_staging.py:381` builds it for testco — independently. Moving the
+#: payroll keys out of the shared list to un-widen the `accounting` alias fixed
+#: the alias and silently stripped payroll from the seed_staging accountant,
+#: because that file composes its own list.
+#:
+#: Measured: CI went red with 28 failures on the accountant identity while the
+#: same tests passed locally, because my dev accountant predated the change and
+#: the seeder skips roles that already exist. Two defects in one arc from the
+#: same cause — one fact with more than one producer.
+#:
+#: Every producer of the accountant role now reads THIS. The `accounting` slug
+#: continues to read `ACCOUNTING_DEFAULT_PERMISSIONS`, which is the base alias
+#: and carries no payroll keys. The difference between the two is asserted by
+#: `test_payroll_role_slice.py::test_accountant_and_accounting_differ_by_exactly_payroll`.
+ACCOUNTANT_FULL_PERMISSIONS = (
+    ACCOUNTANT_DEFAULT_PERMISSIONS + ACCOUNTANT_PAYROLL_PERMISSIONS
+)
+
 OFFICE_STAFF_DEFAULT_PERMISSIONS = [
     "operations.view",
     "orders.view",

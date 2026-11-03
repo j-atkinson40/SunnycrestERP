@@ -103,6 +103,11 @@ def client():
     return TestClient(app)
 
 
+#: ⚠️ UPLOADS GO AS AN **ADMIN**, SINCE THE 2026-11-03 SPLIT. `POST /weeks/upload`
+#: is admin-only now, so uploading as the accountant would be refused by the ADMIN
+#: gate and this file would be asserting the wrong refusal — green for a reason
+#: unrelated to the switch it exists to test. The accountant's own refusal is
+#: asserted once, below, precisely so the two are told apart.
 def _upload(client, token):
     return client.post(UPLOAD, headers={"Authorization": f"Bearer {token}", **HEADERS},
                        files={"file": ("w.csv", _csv(), "text/csv")},
@@ -129,10 +134,12 @@ def test_upload_is_refused_while_the_switch_is_off(client, tokens):
     """⚠️ THE BREAK TEST. Before the switch this returned 201 and created a week.
     Measured: adding the gate turned 24 of the 26 payroll e2e tests red until
     that suite enabled the switch deliberately."""
-    r = _upload(client, tokens["accountant"])
+    r = _upload(client, tokens["admin"])
     assert r.status_code == 403, f"{r.status_code}: {r.text[:200]}"
     detail = r.json()["detail"]
-    assert detail["code"] == "payroll_data_disabled"
+    assert detail["code"] == "payroll_data_disabled", (
+        f"refused, but not by the SWITCH: {detail}"
+    )
     assert detail["setting"] == PAYROLL_DATA_ENABLED
     assert "two-step" in detail["message"], "the message must say what unblocks it"
 
@@ -140,7 +147,7 @@ def test_upload_is_refused_while_the_switch_is_off(client, tokens):
 def test_no_week_was_created_by_the_refused_upload(client, tokens):
     """A refusal that still wrote a row would be worse than no refusal."""
     from app.database import SessionLocal
-    _upload(client, tokens["accountant"])
+    _upload(client, tokens["admin"])
     db = SessionLocal()
     try:
         n = db.execute(text(
@@ -169,7 +176,7 @@ def test_upload_is_allowed_once_the_switch_is_on(client, tokens, _switch_off):
     """⚠️ THE ALLOW PATH. Without it the gate could be a blanket refusal and every
     test above would still pass — which is an outage, not a feature."""
     _switch_off(True)
-    r = _upload(client, tokens["accountant"])
+    r = _upload(client, tokens["admin"])
     assert r.status_code != 403, f"still refused with the switch on: {r.text[:200]}"
     assert r.status_code == 201, f"{r.status_code}: {r.text[:300]}"
 
@@ -278,3 +285,24 @@ def test_the_switch_is_per_company():
     finally:
         db.close()
     assert others == 0, f"{others} other tenant(s) have payroll data enabled"
+
+
+def test_the_accountant_is_refused_upload_by_the_ADMIN_gate_not_the_switch(
+    client, tokens, _switch_off
+):
+    """⚠️ TWO REFUSALS ON ONE ENDPOINT, AND WHICH ONE FIRED MATTERS.
+
+    With the switch ON, an accountant is still refused — by `require_admin`,
+    because loading hours is not the payroll reviewer's job (2026-11-03 ruling).
+    Asserting the DISTINCTION is what keeps this file honest: without it, the
+    switch tests could pass while the switch did nothing, simply because every
+    caller happened to be admin-refused.
+    """
+    _switch_off(True)
+    r = _upload(client, tokens["accountant"])
+    assert r.status_code == 403
+    detail = r.json()["detail"]
+    assert detail == "Admin access required", (
+        f"expected the admin refusal, got {detail!r}"
+    )
+    assert not (isinstance(detail, dict) and detail.get("code") == "payroll_data_disabled")

@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.core.permissions import (
     ACCOUNTANT_DEFAULT_PERMISSIONS,
-    ACCOUNTANT_PAYROLL_PERMISSIONS,
+    ACCOUNTANT_FULL_PERMISSIONS,
     ACCOUNTING_DEFAULT_PERMISSIONS,
     DISPATCHER_DEFAULT_PERMISSIONS,
     DRIVER_DEFAULT_PERMISSIONS,
@@ -96,10 +96,13 @@ _SYSTEM_ROLES = [
         # ⚠️ CONCATENATED HERE, NOT MERGED INTO THE SHARED LIST. The `accounting`
         # slug below uses an ALIAS of ACCOUNTANT_DEFAULT_PERMISSIONS, so adding
         # the payroll keys there granted them to `accounting` too — which the
-        # old slug gate never did, and which r222 deliberately excluded. Keeping
-        # them on this entry preserves the accountant's access without widening
-        # anyone else's.
-        "permissions": ACCOUNTANT_DEFAULT_PERMISSIONS + ACCOUNTANT_PAYROLL_PERMISSIONS,
+        # old slug gate never did, and which r222 deliberately excluded.
+        #
+        # ⚠️ READ FROM `ACCOUNTANT_FULL_PERMISSIONS`, NOT COMPOSED HERE.
+        # Composing it inline left `scripts/seed_staging.py` — a third,
+        # independent producer — building an accountant with no payroll keys,
+        # which took CI red with 28 failures.
+        "permissions": ACCOUNTANT_FULL_PERMISSIONS,
     },
     {
         # ⚠️ THE FIRST AREA-LIMITED SYSTEM ROLE. `limited_to_areas` makes

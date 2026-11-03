@@ -261,15 +261,34 @@ def test_every_company_has_a_payroll_role_with_the_right_areas_and_permissions()
         # A bare company with no roles at all is not a gap — r223's invariant is
         # that a tenant which has a role catalog has THIS role in it. That is
         # both the precise claim and immune to fixtures appearing mid-run.
+        # ⚠️ SCOPED TO TENANTS THAT WENT THROUGH `seed_default_roles`, detected by
+        # the presence of its `employee` role. This is the THIRD scoping of this
+        # assertion, and the two rejected ones are the lesson:
+        #
+        #   count(payroll roles) == count(companies)
+        #       order-dependent — a sibling test's transient company made it
+        #       3125 vs 3126.
+        #   "every company that has any role"
+        #       coupled to OTHER suites' litter — `test_peek_latency` hand-makes
+        #       a company with a single `admin` role, and one created after r223
+        #       ran has no payroll role and never will.
+        #
+        # A global invariant over a shared table inherits every other test's
+        # leavings. Tying it to the seeder's signature asks the question that is
+        # actually r223's to answer: does a tenant with a real role CATALOG have
+        # this role in it. A hand-made fixture row with one role is not a tenant.
+        # Companies created after r223 are the SEEDER's responsibility, which
+        # `test_the_seeder_still_creates_it_for_a_new_company` covers.
         gaps = db.execute(text(
             "SELECT count(*) FROM companies c "
-            "WHERE EXISTS (SELECT 1 FROM roles r WHERE r.company_id = c.id) "
+            "WHERE EXISTS (SELECT 1 FROM roles r "
+            "              WHERE r.company_id = c.id AND r.slug = 'employee') "
             "  AND NOT EXISTS (SELECT 1 FROM roles r "
             "                  WHERE r.company_id = c.id AND r.slug = 'payroll')"
         )).scalar()
         companies = db.execute(text(
-            "SELECT count(*) FROM companies c "
-            "WHERE EXISTS (SELECT 1 FROM roles r WHERE r.company_id = c.id)"
+            "SELECT count(*) FROM companies c WHERE EXISTS "
+            "(SELECT 1 FROM roles r WHERE r.company_id = c.id AND r.slug = 'employee')"
         )).scalar()
         roles = db.execute(text("SELECT count(*) FROM roles WHERE slug='payroll'")).scalar()
         correct_areas = db.execute(text(
@@ -290,7 +309,10 @@ def test_every_company_has_a_payroll_role_with_the_right_areas_and_permissions()
     finally:
         db.close()
 
-    assert companies > 0, "no companies with roles — this test would assert nothing"
+    assert companies > 0, (
+        "no seeded tenants found — the discriminator ('has an employee role') "
+        "matched nothing, so this test would assert nothing"
+    )
     assert gaps == 0, (
         f"{gaps} company/companies have a role catalog but no 'payroll' role — "
         f"r223 was supposed to cover every one"
@@ -335,3 +357,174 @@ def test_the_seeder_still_creates_it_for_a_new_company():
         db.execute(text("DELETE FROM companies WHERE id=:c"), {"c": cid})
         db.commit()
         db.close()
+
+
+# ─────────────────────────────────────── the three-way permission split
+
+
+def _mk_role(db, slug: str, perms: list[str]):
+    """A non-system, UNLIMITED role holding exactly `perms`."""
+    import uuid as _uuid
+    from app.models.role import Role
+    from app.models.role_permission import RolePermission
+
+    db.execute(text("DELETE FROM users WHERE id = :u"), {"u": f"split-{slug}-user"})
+    ids = [r[0] for r in db.execute(text(
+        "SELECT id FROM roles WHERE company_id=:c AND slug=:s"
+    ), {"c": TESTCO_ID, "s": slug}).fetchall()]
+    for rid in ids:
+        db.execute(text("DELETE FROM role_permissions WHERE role_id=:r"), {"r": rid})
+        db.execute(text("DELETE FROM roles WHERE id=:r"), {"r": rid})
+    role = Role(id=str(_uuid.uuid4()), company_id=TESTCO_ID, name=slug, slug=slug,
+                is_system=False, is_active=True)
+    db.add(role)
+    db.flush()
+    for k in perms:
+        db.add(RolePermission(id=str(_uuid.uuid4()), role_id=role.id, permission_key=k))
+    return role
+
+
+@pytest.fixture
+def view_only():
+    """A user holding `payroll.view` and NOT `payroll.approve`.
+
+    ⚠️ This user is the whole reason the split exists. Before 2026-11-03 one
+    permission meant both "can look" and "can change"; she is the first caller
+    for whom those differ.
+    """
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    uid = "split-payroll-view-only-user"
+    try:
+        role = _mk_role(db, "split-payroll-view-only", ["payroll.view"])
+        db.execute(text("DELETE FROM users WHERE id=:u"), {"u": uid})
+        db.add(User(id=uid, email=f"{uid}@testco.example.com",
+                    hashed_password="not-a-credential", first_name="View",
+                    last_name="Only", role_id=role.id, company_id=TESTCO_ID))
+        db.commit()
+        yield create_access_token({"sub": uid, "company_id": TESTCO_ID})
+    finally:
+        db.execute(text("DELETE FROM users WHERE id=:u"), {"u": uid})
+        ids = [r[0] for r in db.execute(text(
+            "SELECT id FROM roles WHERE company_id=:c AND slug='split-payroll-view-only'"
+        ), {"c": TESTCO_ID}).fetchall()]
+        for rid in ids:
+            db.execute(text("DELETE FROM role_permissions WHERE role_id=:r"), {"r": rid})
+            db.execute(text("DELETE FROM roles WHERE id=:r"), {"r": rid})
+        db.commit()
+        db.close()
+
+
+def _auth(token):
+    return {"Authorization": f"Bearer {token}", **HEADERS}
+
+
+def test_view_only_is_refused_upload_because_it_is_admin_only(client, view_only):
+    """⚠️ BREAK TEST. Until the split, `payroll.view` opened the import path."""
+    r = client.post("/api/v1/payroll-reports/weeks/upload", headers=_auth(view_only),
+                    files={"file": ("w.csv", b"file_number\nE01\n", "text/csv")},
+                    data={"week_number": 44, "week_end_date": "2026-10-31",
+                          "format_key": "bridgeable_csv"})
+    assert r.status_code == 403, f"{r.status_code}: {r.text[:200]}"
+    assert "Admin" in r.text or "admin" in r.text
+
+
+def test_view_only_is_refused_approve(client, view_only):
+    """⚠️ BREAK TEST. Approval freezes the figures, so a look-only reviewer must
+    not reach it. It answered to `payroll.view` until the split."""
+    r = client.post("/api/v1/payroll-reports/weeks/does-not-matter/approve",
+                    headers=_auth(view_only))
+    assert r.status_code == 403, f"{r.status_code}: {r.text[:200]}"
+    assert "payroll.approve" in r.text
+
+
+def test_view_only_can_still_look(client, view_only):
+    """The point of splitting: looking without approving is now expressible."""
+    r = client.get("/api/v1/payroll-reports/formats", headers=_auth(view_only))
+    assert r.status_code == 200, f"{r.status_code}: {r.text[:200]}"
+    r2 = client.get("/api/v1/payroll-reports/weeks", headers=_auth(view_only))
+    assert r2.status_code == 200
+
+
+def test_view_only_can_recompute_because_calculate_is_a_deterministic_read(
+    client, view_only
+):
+    """Calculate stays on `payroll.view`, and the refusal it gives must be about
+    the WEEK, not about the permission — otherwise a look-only reviewer could
+    not see figures for an uncalculated week."""
+    r = client.post("/api/v1/payroll-reports/weeks/no-such-week/calculate",
+                    headers=_auth(view_only))
+    assert r.status_code == 404, (
+        f"expected 404 (no such week), got {r.status_code} — if this is 403 the "
+        f"permission was changed and a view-only reviewer can no longer recompute: "
+        f"{r.text[:200]}"
+    )
+
+
+def test_the_payroll_role_user_is_unchanged_by_the_split(client, tokens):
+    """⚠️ THE RULING'S OWN CONDITION. Her role holds BOTH permissions, so the
+    split must be invisible to her. Only upload moves out of her reach, and that
+    is deliberate — she never loads data."""
+    assert _get(client, tokens["payroll"], PAYROLL_OK).status_code == 200
+    # approve now needs payroll.approve, which she has; a 404/409 means the
+    # permission passed and the week is simply absent.
+    r = client.post("/api/v1/payroll-reports/weeks/no-such-week/approve",
+                    headers=_auth(tokens["payroll"]))
+    assert r.status_code != 403, f"she lost approve: {r.text[:200]}"
+    # upload is admin-only, so she is refused — by design.
+    up = client.post("/api/v1/payroll-reports/weeks/upload",
+                     headers=_auth(tokens["payroll"]),
+                     files={"file": ("w.csv", b"file_number\nE01\n", "text/csv")},
+                     data={"week_number": 44, "week_end_date": "2026-10-31",
+                           "format_key": "bridgeable_csv"})
+    assert up.status_code == 403, "upload must be admin-only even for the payroll role"
+
+
+def test_accountant_and_accounting_differ_by_exactly_payroll():
+    """⚠️ A RATCHET OVER ONE FACT WITH THREE PRODUCERS.
+
+    `accounting` is an ALIAS of the accountant base list, so a payroll key put
+    in that list reaches both slugs — which the old gate never did. Moving the
+    keys out fixed the alias and broke `scripts/seed_staging.py`, a third
+    independent producer that kept reading the base list: 28 CI failures on the
+    accountant identity, invisible locally because the dev accountant predated
+    the change and the seeder skips existing roles.
+
+    Both defects in this arc came from the same cause — one fact with more than
+    one producer. This asserts the relationship rather than any one list, so a
+    FOURTH producer composing its own set shows up here.
+    """
+    from app.core.permissions import (
+        ACCOUNTANT_FULL_PERMISSIONS,
+        ACCOUNTANT_PAYROLL_PERMISSIONS,
+        ACCOUNTING_DEFAULT_PERMISSIONS,
+    )
+    from app.services.role_service import _SYSTEM_ROLES
+
+    delta = set(ACCOUNTANT_FULL_PERMISSIONS) - set(ACCOUNTING_DEFAULT_PERMISSIONS)
+    assert delta == set(ACCOUNTANT_PAYROLL_PERMISSIONS), (
+        f"accountant and accounting differ by {sorted(delta)}, expected exactly "
+        f"{sorted(ACCOUNTANT_PAYROLL_PERMISSIONS)}"
+    )
+    assert not [k for k in ACCOUNTING_DEFAULT_PERMISSIONS if k.startswith("payroll")], (
+        "the `accounting` list carries a payroll key — the alias has re-widened"
+    )
+
+    by_slug = {r["slug"]: r for r in _SYSTEM_ROLES}
+    assert set(ACCOUNTANT_FULL_PERMISSIONS) == set(by_slug["accountant"]["permissions"])
+    assert not [k for k in by_slug["accounting"]["permissions"] if k.startswith("payroll")]
+
+    # ⚠️ AND seed_staging MUST READ THE SAME CONSTANT, not compose its own. This
+    # is a source check rather than an import because that module requires
+    # DATABASE_URL at import time.
+    import pathlib
+    src = (pathlib.Path(__file__).resolve().parents[1]
+           / "scripts" / "seed_staging.py").read_text(encoding="utf-8")
+    assert "ACCOUNTANT_FULL_PERMISSIONS" in src, (
+        "seed_staging.py no longer reads the canonical accountant set — it is an "
+        "independent producer of that role and will drift again"
+    )
+    assert "ACCOUNTANT_DEFAULT_PERMISSIONS" not in src, (
+        "seed_staging.py still references the base list, which omits payroll"
+    )

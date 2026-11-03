@@ -137,9 +137,18 @@ def seeded():
         # user who does not exist is not an audit trail. The first version of
         # this fixture used a bare fake id and the FK caught it, which is the
         # constraint doing its job rather than being in the way.
+        # ⚠️ ADMIN, NOT ACCOUNTANT, SINCE 2026-11-03. `POST /weeks/upload` is
+        # admin-only now — loading hours is not the payroll reviewer's job, and
+        # becomes the payroll job's system actor later. An admin holds every
+        # permission by wildcard, so this one identity can drive the whole
+        # upload -> calculate -> report -> approve walk this suite is about.
+        #
+        # That an ACCOUNTANT still reaches the read side is asserted separately,
+        # in test_payroll_role_slice.py::test_admin_and_accountant_still_reach_payroll,
+        # which is where r222's behaviour-preservation belongs.
         role_row = db.execute(text(
-            "SELECT id FROM roles WHERE slug = 'accountant' LIMIT 1"
-        )).first()
+            "SELECT id FROM roles WHERE company_id = :c AND slug = 'admin' LIMIT 1"
+        ), {"c": TESTCO_ID}).first()
         if role_row is not None and db.get(User, APPROVER_ID) is None:
             db.add(User(
                 id=APPROVER_ID,
@@ -216,12 +225,12 @@ def client(seeded):
 
     db = SessionLocal()
     row = db.execute(text(
-        "SELECT id FROM roles WHERE slug = 'accountant' LIMIT 1"
-    )).first()
+        "SELECT id FROM roles WHERE company_id = :c AND slug = 'admin' LIMIT 1"
+    ), {"c": TESTCO_ID}).first()
     if row is None:
         db.close()
-        pytest.skip("no 'accountant' role in this database — run the role seed")
-    accountant_role_id = row[0]
+        pytest.skip("no 'admin' role in this database — run the role seed")
+    admin_role_id = row[0]
     db.close()
 
     class _User:
@@ -232,7 +241,7 @@ def client(seeded):
         # asserts nothing, so "same errors before and after" proves nothing.
         id = APPROVER_ID
         company_id = TESTCO_ID
-        role_id = accountant_role_id
+        role_id = admin_role_id
         email = "accountant@testco.com"
         is_active = True
 
@@ -243,14 +252,14 @@ def client(seeded):
         finally:
             s.close()
 
-    def _as_accountant():
+    def _as_admin():
         return _User()
 
     app.dependency_overrides[get_db] = _override_db
-    app.dependency_overrides[get_current_user] = _as_accountant
+    app.dependency_overrides[get_current_user] = _as_admin
     try:
         c = TestClient(app)
-        c.restore_accountant = _as_accountant   # used by the role-gate test
+        c.restore_admin = _as_admin   # used by the role-gate test
         yield c
     finally:
         app.dependency_overrides.pop(get_db, None)
@@ -463,4 +472,4 @@ def test_12_a_role_without_the_payroll_permission_is_refused(client):
     finally:
         # Restore the accountant the fixture installed, rather than rebuilding
         # one here — two producers of the same test identity would drift.
-        app.dependency_overrides[get_current_user] = client.restore_accountant
+        app.dependency_overrides[get_current_user] = client.restore_admin
