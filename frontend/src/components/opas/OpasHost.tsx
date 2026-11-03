@@ -244,6 +244,15 @@ export function OpasHost() {
   const barRef = useRef<HTMLDivElement>(null)
   /** ⚠️ THE MIRROR'S OWN NODE, so its scroll can be driven from the textarea's. */
   const mirrorRef = useRef<HTMLDivElement>(null)
+  /** ⚠️ THE PANE PUBLISHES TAB'S NO-GHOST BEHAVIOUR HERE. The key belongs to the host
+   *  (the bar is its input, and `preventDefault` must happen on the keydown) while the
+   *  decision belongs to the pane (it holds the spans, the values and the session). */
+  const tabRef = useRef<(() => void) | null>(null)
+  /** ⚠️ THE HELD-WORD PILL'S ROUTE. The pills render here and the session lives in the
+   *  pane, so the pane publishes the handler — same split and same reason as `tabRef`. */
+  const placeHeldRef = useRef<
+    ((heldId: string, fieldId: string) => void) | null
+  >(null)
   /** ⚠️ WHERE THE CARET IS, SO THE PANE CAN LIGHT THE ROW IT IS INSIDE. Tracked from
    *  the events that can move it — typing, clicking and arrowing — rather than polled,
    *  because a poll would either lag the caret or run forever. */
@@ -2455,6 +2464,18 @@ export function OpasHost() {
                   text={opas.entryText[pane.id] ?? ""}
                   onStatus={(st) => reportStatus(pane.id, st)}
                   pickGlyph={pickGlyph}
+                  /* ⚠️ THE THREE SLICE-2 CLAUSE-1 PROPS. The pane decides WHICH word
+                     leaves — it holds the spans and the session — and the host supplies
+                     the two things only it has: the completion vocabulary (the same
+                     list the ghost uses, so "what can this tenant be asked about" has
+                     one answer) and the mirror, which is the only thing that knows
+                     where a word is on screen. `onWordLeft` comes back the other way
+                     because the host owns the bar's text. */
+                  vocab={vocab}
+                  mirrorRef={mirrorRef}
+                  tabRef={tabRef}
+                  placeHeldRef={placeHeldRef}
+                  onWordLeft={(next) => opas.setEntryText(pane.id, next)}
                   caretFieldIds={fieldsAtCaret(
                     status?.spans,
                     status?.spansForText,
@@ -2758,7 +2779,20 @@ export function OpasHost() {
                   e.preventDefault()
                   if (ghost && entryPane !== undefined) {
                     opas.setEntryText(entryPane.id, acceptGhost(entryValue, ghost))
+                    return
                   }
+                  // ⚠️ NO GHOST: THE PANE PLACES THE WORD OR HOLDS IT — the prototype's
+                  // `leftover()`, added 2026-11-03 for slice 2 item 2. Until now Tab
+                  // with no ghost consumed the keypress and did nothing at all, which
+                  // is the shape of a dead key: the director presses it, focus stays
+                  // put by design, and nothing happens for a reason they cannot see.
+                  //
+                  // ⚠️ AND IT RUNS ONLY WHEN THE GHOST DID NOT, because accepting a
+                  // completion and placing a word are two answers to one keypress.
+                  // Doing both would complete `monti` to `Monticello Burial Vault` and
+                  // then immediately fly the half-word that was there when the handler
+                  // started.
+                  tabRef.current?.()
                   return
                 }
                 if (e.key !== "Enter") return
@@ -2852,6 +2886,11 @@ export function OpasHost() {
           pickModifierGlyph={pickGlyph}
           onAnswer={answerGuided}
           onAct={actGuided}
+          /* ⚠️ STRAIGHT TO THE PANE, NOT THROUGH `answerRequest`. A held pill has to
+             reach `/held/{id}/place` — the one endpoint that stores the value AND
+             removes the chip — and the answer channel can only carry a field and a
+             value, so routing it there would strand the chip in the strip. */
+          onPlaceHeld={(heldId, fieldId) => placeHeldRef.current?.(heldId, fieldId)}
           onHeightAbove={setGuidedH}
         />
       )}

@@ -40,7 +40,7 @@
  *   responses can arrive out of order, and the stale ones are DROPPED HERE. See
  *   `capture-sequence.ts` for why the client decides and not the server.
  */
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
 
 import {
   answerCapture,
@@ -48,15 +48,24 @@ import {
   approveCapture,
   choosePick,
   readCapture,
+  dropHeld,
+  editHeld,
+  holdWords,
+  placeHeld,
+  placedFromBar,
   setCaptureText,
   startCapture,
   takeSwitch,
   type CapturePick,
   type CaptureState,
 } from "@/services/opas-capture-service"
-import type { CaptureSpan } from "@/services/opas-capture-service"
+import type { CaptureSpan, VocabTerm } from "@/services/opas-capture-service"
 import type { GuidedPill } from "./GuidedQuestion"
 import { EXTRACT_DEBOUNCE_MS, createSequencer } from "./capture-sequence"
+import { LANDED_MS, fly, rectOfRange, rowValueFor } from "./fly"
+import { textWithout, wordsReadyToLeave } from "./leave"
+import { whatTabDoes } from "./tab"
+import { HeldStrip } from "./HeldStrip"
 
 /** What the pane tells the command line about itself.
  *
@@ -438,7 +447,51 @@ export function CapturePane({
   completeRequest,
   caretFieldIds,
   pickGlyph,
+  vocab,
+  mirrorRef,
+  onWordLeft,
+  tabRef,
+  placeHeldRef,
 }: {
+  /** The bar's completion vocabulary, for clause 1's LOOKAHEAD.
+   *
+   *  ⚠️ THE SAME LIST THE GHOST USES, passed down rather than fetched again. `"st marys "`
+   *  must not fly while `St. Mary's Cemetery` is a term that starts with it, and the
+   *  design review called that a *"new vocabulary lookahead"* — it is new as a RULE and
+   *  not as data. A second fetch here would be a second answer to "what can this tenant
+   *  be asked about". */
+  readonly vocab?: readonly VocabTerm[]
+  /** The bar's mirror, for measuring a word's rect BEFORE it leaves.
+   *
+   *  ⚠️ A REF INTO THE HOST'S DOM, WHICH IS UNUSUAL HERE AND IS THE ONLY WAY. A
+   *  textarea exposes no per-character geometry; the mirror exists precisely because
+   *  spans have to be tinted, and it is the one thing that knows where a word is on
+   *  screen. The pane cannot measure the bar from inside itself. */
+  readonly mirrorRef?: RefObject<HTMLDivElement | null>
+  /** A word left the bar: this is the text that remains.
+   *
+   *  ⚠️ THE HOST OWNS THE BAR'S TEXT, so the pane cannot shorten it — it reports. The
+   *  pane decides WHICH word leaves (it holds the spans and the session) and the host
+   *  applies it, which keeps one owner for the text. */
+  readonly onWordLeft?: (text: string) => void
+  /** The host hands Tab to the pane through this.
+   *
+   *  ⚠️ A REF RATHER THAN A PROP CALLBACK, AND THE DIRECTION IS WHY. Everything else
+   *  here flows host -> pane; this one flows pane -> host, because the KEY is the
+   *  host's (the bar is its input and `preventDefault` must happen there) while the
+   *  DECISION is the pane's (it holds the spans, the values and the session). A ref
+   *  lets the pane publish its handler without the host holding capture state it has
+   *  no other use for.
+   *
+   *  ⚠️ AND THE HOST STILL OWNS THE GHOST HALF. Tab accepts a ghost before this is
+   *  ever consulted — see `OpasHost`'s keydown. The pane answers only the no-ghost
+   *  case, which is the prototype's `leftover()`. */
+  readonly tabRef?: RefObject<(() => void) | null>
+  /** The host hands a held-word PILL to the pane through this. Same split as `tabRef`:
+   *  the pills render above the bar (host) and the session lives here (pane). */
+  readonly placeHeldRef?: RefObject<
+    ((heldId: string, fieldId: string) => void) | null
+  >
   /** The pick modifier's glyph, from the user's preference — ⌃ for James, ⌥ by
    *  default. ⚠️ THREADED IN RATHER THAN READ HERE so the pane and the pills cannot
    *  print different keys for the same shortcut; `OpasHost` owns the preference. */
@@ -667,6 +720,338 @@ export function CapturePane({
   // `setCaptureText` response, and without this that response would compose the
   // question for the server's next field and the clicked row would lose its outline
   // mid-answer." `focusedFieldId` is exactly that click and nothing else.
+  /**
+   * A WORD LEAVES THE BAR AND FLIES INTO ITS FIELD. Slice 2, clause 1.
+   *
+   * James, 2026-10-28: *"words leave the bar when typed past and fly into their field
+   * (the prototype's animation), 'last mention wins' on leave."*
+   *
+   * ⚠️ THE ORDER OF THE FOUR STEPS IS THE WHOLE DESIGN, and three of the four orders
+   * are wrong:
+   *
+   *   1. MEASURE the word's rect off the mirror — it must be before the removal, which
+   *      the design review established: the rect cannot come from a server span,
+   *      because the removal cuts the word out of the very text those spans describe.
+   *   2. START the flight, so the chip is already travelling when the bar changes.
+   *   3. SHORTEN the bar, through the host, which owns the text.
+   *   4. RECORD it, in ONE request that carries both the field and the shortened text.
+   *      `placedFromBar` writes the resolution and re-reads the text in one
+   *      transaction — split in two, setting the text first re-extracts with the word
+   *      already gone and the value is destroyed.
+   *
+   * ⚠️ ONE WORD PER ROUND TRIP, DELIBERATELY. The offsets of every later word shift the
+   * moment one is cut, so flying two at once would need the whole set re-measured
+   * between them. Taking the first and letting the effect re-run on the server's
+   * response is the same work with no stale arithmetic — and the spans go stale
+   * immediately after a cut, which stops the second run until the server has confirmed
+   * the first.
+   *
+   * ⚠️ AND AN IN-FLIGHT GUARD, because this effect runs on every state change. Without
+   * it the same word would be sent twice before the first response landed — two
+   * resolutions for one word is harmless, but the bar would lose the word twice and the
+   * second cut would take the characters that moved into its place.
+   */
+  /**
+   * The words currently in the air, by key.
+   *
+   * ⚠️ A SET RATHER THAN ONE SLOT, AND THE REASON IS STRUCTURAL RATHER THAN A BUG I
+   * CAUGHT. It was `useRef<string | null>`, written by BOTH senders — clause 1 and Tab
+   * — so Tab's key overwrote clause 1's claim and clause 1 could no longer recognise
+   * its own send as in flight.
+   *
+   * ⚠️ AND I COULD NOT MAKE THAT FAIL, WHICH IS RECORDED HERE BECAUSE THE FIRST
+   * VERSION OF THIS COMMENT CLAIMED IT WAS "a real double-cut bug". It was not
+   * measured. A break test putting the single slot back left all 73 live tests green,
+   * and the reason is in the key itself: the key contains the TEXT, and the first thing
+   * a send does is shorten the text through `onWordLeft`. So by the time the effect
+   * re-runs, its key has changed too and the stale comparison never happens.
+   *
+   * The set stays because one writer clearing another's claim is unsound by
+   * construction and a `Set` costs nothing — but it is a DEFENSIVE structure, not a fix
+   * for an observed defect, and CLAUDE.md §11 is explicit that a guard documented as
+   * load-bearing when it is defensive misleads the next reader worse than silence.
+   */
+  const leavingRef = useRef<Set<string>>(new Set())
+  const onWordLeftRef = useRef(onWordLeft)
+  onWordLeftRef.current = onWordLeft
+
+  /**
+   * Cut a word out of the bar, fly it to its row, and record it. One gesture.
+   *
+   * ⚠️ SHARED BY CLAUSE 1 AND BY TAB ON PURPOSE. They differ only in WHICH word moves —
+   * clause 1 waits for the caret to pass it, Tab says the caret has passed it — and
+   * everything after that decision is identical: measure, cut, fly, write. Two copies
+   * would drift, and the half that drifts silently is the text cut, which has no undo.
+   *
+   * ⚠️ THE RECT IS MEASURED BEFORE THE CUT, which is the ordering the design review
+   * found before anything was built. `spans_for_text` describes the text the server was
+   * handed; the cut changes that text in the same gesture, so a rect taken afterwards
+   * is the rect of whatever moved into the word's place.
+   */
+  const placeAndFly = useCallback(
+    (
+      sid: string,
+      fieldId: string,
+      value: string,
+      word: { readonly text: string; readonly start: number; readonly end: number },
+      /** The in-flight key this send holds, so it can release exactly its own. */
+      key: string,
+    ) => {
+      const from = rectOfRange(mirrorRef?.current, word.start, word.end)
+      // ⚠️ BY FIELD, NOT BY ROW ID. Half the capture rows are composed and their testid
+      // carries the ROW's id — see `rowValueFor`, which documents the six and the
+      // silent non-flight this replaces.
+      const target = rowValueFor(fieldId)
+      const nextText = textWithout(textRef.current, word.start, word.end)
+
+      const cancel = fly({
+        from,
+        target,
+        text: word.text,
+        onLanded: () => setLanded(fieldId),
+      })
+      onWordLeftRef.current?.(nextText)
+      void placedFromBar(sid, fieldId, value, nextText)
+        .then((next) => {
+          setState(next)
+        })
+        .catch(() => {
+          // ⚠️ THE BAR IS NOT PUT BACK, AND THAT IS THE LESSER EVIL. A failed place
+          // leaves the word out of the bar and out of the order, which the director
+          // sees as a missing row they can retype; restoring the text would fight
+          // whatever they have typed since, and the caret would jump mid-sentence.
+        })
+        .finally(() => {
+          leavingRef.current.delete(key)
+        })
+      return cancel
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mirrorRef],
+  )
+
+  /**
+   * Park a word under the order, and fly it down to its chip.
+   *
+   * ⚠️ IT FLIES TO THE STRIP RATHER THAN JUST APPEARING THERE, matching the prototype's
+   * `hold()` — `runFlies([{text,rect,target:'.hchip[data-h="…"]'}])`. The word has to be
+   * seen GOING somewhere, or a director who pressed Tab reads the bar emptying as their
+   * text being thrown away.
+   *
+   * ⚠️ AND THE TARGET CANNOT BE MEASURED YET, because the chip does not exist until the
+   * server answers with a `held_words` entry carrying its id. So the flight is started
+   * AFTER the response, against the strip itself — the chip's own rect is a frame away.
+   */
+  const holdAndFly = useCallback(
+    (
+      sid: string,
+      word: { readonly word: string; readonly start: number; readonly end: number },
+      key: string,
+    ) => {
+      const from = rectOfRange(mirrorRef?.current, word.start, word.end)
+      const nextText = textWithout(textRef.current, word.start, word.end)
+      onWordLeftRef.current?.(nextText)
+      void holdWords(sid, [word.word], nextText)
+        .then((next) => {
+          setState(next)
+          fly({
+            from,
+            target: document.querySelector('[data-testid="capture-held"]'),
+            text: word.word,
+          })
+        })
+        .catch(() => {
+          // Same lesser evil as a failed place: the word is gone from the bar and not
+          // held, which reads as a chip that did not appear rather than as corruption.
+        })
+        .finally(() => {
+          leavingRef.current.delete(key)
+        })
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mirrorRef],
+  )
+
+  /**
+   * ⚠️ REFS, BECAUSE THE LEAVE EFFECT AND THE TAB HANDLER BOTH NEED THE LATEST ONE
+   * WITHOUT RE-RUNNING ON ITS IDENTITY. An effect that re-ran whenever a callback was
+   * re-created would restart the flight mid-air.
+   */
+  const placeAndFlyRef = useRef(placeAndFly)
+  placeAndFlyRef.current = placeAndFly
+  const holdAndFlyRef = useRef(holdAndFly)
+  holdAndFlyRef.current = holdAndFly
+  const textRef = useRef(text)
+  textRef.current = text
+  const stateRef = useRef(state)
+  stateRef.current = state
+
+  /**
+   * Tab, when there was no ghost to accept. The prototype's `leftover()`.
+   *
+   * ⚠️ THE DECISION IS IN `tab.ts` AND THIS ONLY ACTS ON IT, which is what makes the
+   * rule testable without a browser. Every refusal — empty bar, open pick, finished
+   * order — and the place-or-hold choice are asserted there over plain data; this
+   * function measures a rect and starts a request.
+   *
+   * ⚠️ AND IT IS PUBLISHED THROUGH A REF RATHER THAN CALLED FROM THE HOST'S OWN STATE,
+   * because the host does not hold the spans. See the `tabRef` prop.
+   */
+  useEffect(() => {
+    if (tabRef === undefined) return
+    tabRef.current = () => {
+      const st = stateRef.current
+      const sid = st?.session_id
+      if (sid === undefined || st === null) return
+      // ⚠️ TAB WAITS WHILE ANYTHING IS IN THE AIR, AND THIS IS A MEASURED FIX RATHER
+      // THAN CAUTION. With a send still open the server's spans describe the LONGER
+      // text, so `whatTabDoes` correctly refuses to place from them and falls through
+      // to holding the last word — measured on `"order for hopkins monticello"`:
+      // clause 1 placed `funeral_home`, and Tab then HELD `"monticello"`, a word the
+      // extractor had already captured as the vault. Recoverable by dragging the chip
+      // onto the Vault row, and still wrong: the director sees a product Opas knows
+      // sitting in "Not placed yet".
+      //
+      // Refusing is strictly better than either alternative. Placing from stale spans
+      // cuts the wrong characters, which has no undo; holding parks a known product.
+      // Doing nothing costs one more keypress a moment later, by which time the spans
+      // describe the text in front of them.
+      if (leavingRef.current.size > 0) return
+      const action = whatTabDoes({
+        text: textRef.current,
+        spans: st.spans,
+        spansForText: st.spans_for_text,
+        values: st.values,
+        pendingPickCount: st.pending_picks.length,
+        status: st.status,
+        vocab: vocab ?? [],
+      })
+      if (action.kind === "nothing") return
+      // ⚠️ THE SAME IN-FLIGHT KEY CLAUSE 1 USES, so a held Tab cannot send the same
+      // word twice before the first response lands — the second cut would take the
+      // characters that moved into its place.
+      const key = `tab:${action.kind}:${action.start}-${action.end}:${textRef.current}`
+      if (leavingRef.current.has(key)) return
+      leavingRef.current.add(key)
+      if (action.kind === "place") {
+        const value = st.values[action.fieldId]
+        if (typeof value !== "string" || value === "") {
+          leavingRef.current.delete(key)
+          return
+        }
+        placeAndFlyRef.current(sid, action.fieldId, value, action, key)
+        return
+      }
+      holdAndFlyRef.current(sid, action, key)
+    }
+    return () => {
+      if (tabRef !== undefined) tabRef.current = null
+    }
+  }, [tabRef, vocab])
+
+  /**
+   * The three ways out of a held chip.
+   *
+   * ⚠️ EACH IS ONE SERVER CALL AND THE SERVER ANSWERS WITH THE WHOLE STATE, so the
+   * strip never edits its own list. A chip removed locally and then rejected by the
+   * server would leave the director's word gone from the screen and present in the
+   * session — and the next re-extraction would put it back, which reads as the strip
+   * undoing their action.
+   *
+   * ⚠️ AND A FAILED PLACE IS SILENT ON PURPOSE. `place_held` REFUSES a word the field
+   * will not accept — the vault slot takes only vault-form products, by the 2026-11-02
+   * ruling — and returns the state unchanged with a reason. The chip staying put IS
+   * the refusal; it is still draggable, still editable, and nothing was lost. Saying
+   * it out loud is clause 5's flash line, in push 2.
+   */
+  /**
+   * ⚠️ PUBLISHED TO THE HOST, because the PILLS live above the bar and the HELD WORDS
+   * live in this pane. A held-word pill is rendered by `GuidedQuestion` — which the
+   * host owns, since the question was moved out of this pane on 2026-10-20 so it would
+   * survive the pane being tucked — and answered by this pane, which holds the session.
+   * The same split, and the same ref, as Tab.
+   */
+  useEffect(() => {
+    if (placeHeldRef === undefined) return
+    placeHeldRef.current = (heldId: string, fieldId: string) =>
+      placeHeldRefTarget.current(heldId, fieldId)
+    return () => {
+      if (placeHeldRef !== undefined) placeHeldRef.current = null
+    }
+  }, [placeHeldRef])
+
+  const placeAHeldWord = useCallback(
+    (heldId: string, fieldId: string) => {
+      const sid = stateRef.current?.session_id
+      if (sid === undefined) return
+      void placeHeld(sid, heldId, fieldId)
+        .then((next) => setState(next))
+        .catch(() => {})
+    },
+    [],
+  )
+
+  /** ⚠️ A REF TO THE CALLBACK so the effect above does not re-run on its identity. */
+  const placeHeldRefTarget = useRef(placeAHeldWord)
+  placeHeldRefTarget.current = placeAHeldWord
+
+  const dropAHeldWord = useCallback((heldId: string) => {
+    const sid = stateRef.current?.session_id
+    if (sid === undefined) return
+    void dropHeld(sid, heldId)
+      .then((next) => setState(next))
+      .catch(() => {})
+  }, [])
+
+  const editAHeldWord = useCallback((heldId: string, word: string) => {
+    const sid = stateRef.current?.session_id
+    if (sid === undefined) return
+    void editHeld(sid, heldId, word)
+      .then((next) => setState(next))
+      .catch(() => {})
+  }, [])
+  useEffect(() => {
+    const sid = state?.session_id
+    if (sid === undefined || state === null) return
+    // ⚠️ NOT WHILE A PICK IS OPEN. An ambiguous phrase is a question the director has
+    // to answer; flying half the sentence away under it would change the subject.
+    if (state.pending_picks.length > 0) return
+    if (state.status !== "capturing") return
+
+    const ready = wordsReadyToLeave(
+      text, state.spans, state.spans_for_text, vocab ?? [],
+    )
+    if (ready.length === 0) return
+    const word = ready[0]
+    const value = state.values[word.fieldId]
+    // ⚠️ THE VALUE COMES FROM `values`, NOT FROM THE WORD. "hopk" flies as the four
+    // letters the director typed and is RECORDED as "Hopkins Funeral Home" — the chip
+    // shows their words, the order holds the resolved one.
+    if (typeof value !== "string" || value === "") return
+
+    const key = `${word.fieldId}:${word.start}-${word.end}:${text}`
+    if (leavingRef.current.has(key)) return
+    leavingRef.current.add(key)
+
+    return placeAndFlyRef.current(sid, word.fieldId, value, word, key)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text, state, vocab])
+
+  /**
+   * Which row just received a word, for the prototype's 0.9s landing flash.
+   *
+   * ⚠️ CLEARED ON A TIMER RATHER THAN BY AN ANIMATION EVENT, matching the prototype's
+   * `setTimeout(()=>r.classList.remove('landed'),950)`. An `animationend` listener
+   * would never fire under `prefers-reduced-motion`, where the CSS duration is forced
+   * to 1ms — and that is exactly the reader who most needs the row to settle visibly.
+   */
+  const [landed, setLanded] = useState<string | null>(null)
+  useEffect(() => {
+    if (landed === null) return
+    const t = window.setTimeout(() => setLanded(null), LANDED_MS)
+    return () => window.clearTimeout(t)
+  }, [landed])
+
   const askedFieldIdRef = useRef<string | null>(focusedFieldId)
   askedFieldIdRef.current = focusedFieldId
   useEffect(() => {
@@ -884,7 +1269,17 @@ export function CapturePane({
       guidedQuestion: state?.question ?? state?.next_question ?? null,
       guidedHint: state?.question_hint ?? null,
       guidedFieldId: state?.question_field_id ?? null,
-      guidedPills: state?.pills ?? [],
+      // ⚠️ `held_id` -> `heldId` IS MAPPED HERE AND NOWHERE ELSE. The server speaks
+      // snake_case and `GuidedPill` is camelCase; every other field of a pill happens
+      // to be spelled the same in both, so this is the one key that needs translating
+      // — and a pill arriving with `held_id` into a type reading `heldId` would be
+      // silently `undefined`, routing a held pill through `/answer` and stranding the
+      // chip. Typed as the service's own pill shape, so the mapping cannot drift.
+      guidedPills: (state?.pills ?? []).map((p) =>
+        p.held_id !== undefined && p.held_id !== ""
+          ? { ...p, heldId: p.held_id }
+          : p,
+      ),
       cremation: state?.cremation?.label ?? null,
       clearedNote,
       sessionId: state?.session_id ?? null,
@@ -1299,6 +1694,19 @@ export function CapturePane({
                       key={r.row_id}
                       type="button"
                       data-testid={`capture-row-${r.row_id}`}
+                      /* ⚠️ THE FLIGHT'S ADDRESS, AND IT CANNOT BE THE TESTID. A row's
+                         testid carries its `row_id`, which equals its field id for only
+                         6 of the 12 capture rows — `cemetery` shows `cemetery_city` and
+                         `eta`, `cemetery_equipment` shows `chairs_total`. A word bound
+                         for a composed field found no row and silently never flew. See
+                         `rowValueFor`. */
+                      data-fields={(r.field_ids ?? []).join(" ")}
+                      /* ⚠️ WHERE A DRAGGED CHIP LANDS, AND IT IS THE ROW'S OWN
+                         `edit_target` — the SAME field clicking the row asks about.
+                         Deriving it from `field_ids[0]` instead would drop a cemetery
+                         onto the row's first source, which for the Service row is
+                         `service_location_other`: the free-text slot, not the place. */
+                      data-drop-field={r.edit_target ?? (r.field_ids ?? [])[0] ?? ""}
                       data-state={r.state}
                       {...(asking ? { "data-asking": "true" } : {})}
                       {...(hoveredFields.length > 0 &&
@@ -1318,6 +1726,14 @@ export function CapturePane({
                         ? { "data-amber": "true" }
                         : {})}
                       {...(litByPill ? { "data-lit": "true" } : {})}
+                      /* ⚠️ THE PROTOTYPE'S `.row.landed`, 0.9s — a green wash that
+                         fades to the row's normal background. It is what says the word
+                         ARRIVED rather than merely appearing, and under
+                         `prefers-reduced-motion` it is the ONLY signal left once the
+                         flight is skipped. */
+                      {...(landed !== null && (r.field_ids ?? []).includes(landed)
+                        ? { "data-landed": "true" }
+                        : {})}
                       onMouseEnter={() => setHoveredFields(r.field_ids ?? [])}
                       onMouseLeave={() => setHoveredFields([])}
                       // ⚠️ IT ASKS THE ROW'S OWN `edit_target`, which the SERVER named
@@ -1363,6 +1779,11 @@ export function CapturePane({
                       {/* `.v` / `.v.empty` — and "Opas is asking" is the prototype's
                           own words for the current row's empty value. */}
                       <span
+                        /* ⚠️ THE FLIGHT'S DESTINATION, which is why this span is
+                           addressable at all. The prototype flies to
+                           `.row[data-field="X"] .v` — the VALUE, not the row — because
+                           landing on the row's box would put the word on its label. */
+                        data-testid="capture-row-value"
                         className={`col-start-2 min-w-0 break-words text-body-sm ${
                           filled
                             ? "text-content-strong"
@@ -1409,6 +1830,18 @@ export function CapturePane({
               stores `options[index-1][0]` and `answer` stores the value directly, so
               the two are the same write by different handles. `choosePick` and the
               `pickRequest` channel stay because ⌘1..9 from the bar still uses them. */}
+
+          {/* ⚠️ BELOW THE ROWS AND ABOVE EVERYTHING ELSE, which is the prototype's
+              own placement and the reason the words read as "not in the order yet":
+              they sit outside the two columns the order is made of. Putting the strip
+              above the rows would make it look like the first section. */}
+          <HeldStrip
+            held={state?.held_words ?? []}
+            onPlace={placeAHeldWord}
+            onDrop={dropAHeldWord}
+            onEdit={editAHeldWord}
+            busy={busy}
+          />
 
           {/* ⚠️ A SWITCH IS NOT A PICK, AND IT IS RENDERED DIFFERENTLY ON PURPOSE.
               The field is already captured — the row above shows the value with a

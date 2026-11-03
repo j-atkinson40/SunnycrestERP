@@ -335,3 +335,42 @@ def test_the_grave_vocabulary_STILL_DOES_NOT_EAT_GRAVESIDE(world, db):
     bv = dict(both.values)
     assert bv.get("grave_location") == "Section 4", bv
     assert bv.get("service_location") == "graveside", bv
+
+
+# ── the premise the client's leave rule rests on ─────────────────────────────
+
+
+@pytest.mark.parametrize("typed,capturable", [
+    ("10", False),
+    ("2", False),
+    ("1948", False),
+    ("10am", True),
+    ("10:30", True),
+])
+def test_a_bare_number_is_never_capturable(world, db, typed, capturable):
+    r"""⚠️ THE CLIENT'S LEAVE RULE OMITS A GATE BECAUSE OF THIS, so the premise is
+    pinned here rather than assumed there.
+
+    The prototype's `settled()` has three gates and the third waits on a BARE NUMBER:
+    `if(c.bareNum)return false`, because its matcher captures a lone `10` and `am` may
+    still be coming. `leave.ts` does not implement that gate, and the reason is that our
+    extractor never captures a bare number at all — measured 2026-11-03.
+
+    ⚠️ SO A WORD THAT IS NEVER A `captured` SPAN CAN NEVER FLY AWAY EARLY, and the gate
+    has nothing to guard. The day a bare number becomes capturable — a grave depth, a
+    vault size, a chair count typed alone — this test goes red and `leave.ts`'s third
+    gate has to be written. Without it the omission would be a silent assumption about
+    a module in another language.
+    """
+    tenant, _uid = world
+    ex = extract_text(db, tenant_id=tenant, text=f"order for johnson {typed}")
+    spans = [sp for sp in ex.spans if sp.state == "captured"]
+    # the funeral home is always captured; the question is whether the NUMBER is
+    number_spans = [
+        sp for sp in spans
+        if typed in f"order for johnson {typed}"[sp.start:sp.end]
+        and "johnson" not in f"order for johnson {typed}"[sp.start:sp.end]
+    ]
+    assert bool(number_spans) is capturable, (
+        typed, [(s.state, s.field_ids) for s in ex.spans], dict(ex.values),
+    )

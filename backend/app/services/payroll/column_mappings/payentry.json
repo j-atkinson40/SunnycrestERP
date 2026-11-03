@@ -1,0 +1,24 @@
+{
+  "format_key": "payentry",
+  "verified": false,
+  "notes": "PLACEHOLDER — NOT VERIFIED AGAINST A REAL EXPORT. Every column name below is a guess made without a sample Payentry file. The import path REFUSES this mapping while verified is false; see column_mapping.ColumnMapping.require_verified. To finish it: obtain a sample export (it lives outside the repo and must never be committed), confirm the real header strings, replace the values below, set verified to true, and record the sample's md5 in sample_digest so a later format change is detectable. Spec: docs/specs/payroll-reports.md section 7.4.",
+  "sample_digest": null,
+  "columns": {
+    "payentry_file_number": "File Number",
+    "display_name": "Employee Name",
+    "dept": "Department",
+    "reg_hrs": "REG",
+    "ny_covid_hrs": "NY COVID",
+    "ot_hrs": "OT",
+    "ot2_hrs": "OT2",
+    "personal_hrs": "PERSONAL",
+    "sick_hrs": "SICK",
+    "bereavement_hrs": "BEREAVEMENT",
+    "winter_hrs": "WINTER",
+    "vac_hrs": "VAC HRS",
+    "stonebucks_amt": "STONEBUCKS",
+    "misc_amt": "MISC",
+    "vac_amt": "VAC AMT",
+    "weeks_pay": "WEEKS PAY"
+  }
+}

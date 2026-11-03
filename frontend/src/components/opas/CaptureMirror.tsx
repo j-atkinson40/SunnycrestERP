@@ -229,6 +229,16 @@ export function CaptureMirror({
             key={i}
             data-span-state={piece.state ?? undefined}
             data-span-fields={piece.fieldIds.join(",") || undefined}
+            /* ⚠️ THE OFFSETS, SO A WORD'S RECT CAN BE FOUND BEFORE IT LEAVES THE BAR.
+               Slice 2's flight starts from where the word IS on screen, and only the
+               mirror knows that — the design review established the start rect cannot
+               come from a server span, because clause 1 removes the word from the very
+               text those spans describe.
+
+               ⚠️ A RANGE RATHER THAN THE FIELD ID, because two pieces can carry the
+               same field (a director who names the funeral home twice) and the flight
+               is about one of them. */
+            data-span-range={`${piece.start}-${piece.end}`}
             style={{
               ...(piece.state ? SPAN_STYLE[piece.state] : undefined),
               ...(lit ? SPAN_LIT : undefined),

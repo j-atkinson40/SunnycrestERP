@@ -1,0 +1,24 @@
+{
+  "format_key": "bridgeable_csv",
+  "verified": true,
+  "notes": "Bridgeable's OWN canonical weekly payroll CSV. Verified because this module DEFINES the format rather than guessing at someone else's — the headers below are normative, not observed. It exists so the import, calculate, report and approve path is usable and testable while the real Payentry export format is still unknown (spec section 7.4). It is NOT a Payentry parser and must not be presented as one: pointing it at a Payentry file will either fail on a missing file_number column or silently read only the columns whose names happen to coincide.",
+  "sample_digest": null,
+  "columns": {
+    "payentry_file_number": "file_number",
+    "display_name": "display_name",
+    "dept": "dept",
+    "reg_hrs": "reg_hrs",
+    "ny_covid_hrs": "ny_covid_hrs",
+    "ot_hrs": "ot_hrs",
+    "ot2_hrs": "ot2_hrs",
+    "personal_hrs": "personal_hrs",
+    "sick_hrs": "sick_hrs",
+    "bereavement_hrs": "bereavement_hrs",
+    "winter_hrs": "winter_hrs",
+    "vac_hrs": "vac_hrs",
+    "stonebucks_amt": "stonebucks_amt",
+    "misc_amt": "misc_amt",
+    "vac_amt": "vac_amt",
+    "weeks_pay": "weeks_pay"
+  }
+}

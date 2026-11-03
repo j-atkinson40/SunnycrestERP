@@ -47,6 +47,11 @@ from app.services.capture.approval import (
     describe_approve_effect,
     included_chairs_for,
 )
+from app.services.capture.held import (
+    ORIGIN_EDITED,
+    ORIGIN_TYPED,
+    HeldWord,
+)
 from app.services.capture.schema import (
     CHAIRS_EXTRA_PENDING_FLAG,
     CHAIRS_WANTED_FLAG,
@@ -570,6 +575,224 @@ def choose(
     return row
 
 
+#: How many held words one session may carry.
+#:
+#: ⚠️ A CAP, BECAUSE THE STRIP IS A SURFACE AND NOT A LOG. The prototype's `.held`
+#: container wraps, and a director who pastes a paragraph would otherwise push the bar
+#: off the screen. Oldest go first: the words most recently typed are the ones still
+#: being thought about.
+MAX_HELD_WORDS = 12
+
+
+def _held_list(row) -> list[HeldWord]:
+    """The session's held words as records, dropping anything unparseable.
+
+    ⚠️ TOLERANT BY DESIGN, and `HeldWord.from_dict` is where that is decided — a
+    malformed entry is dropped rather than raised on, because the strip is an aid and a
+    bad row must not take the pane down.
+    """
+    out: list[HeldWord] = []
+    for raw in (row.held_words or []):
+        rec = HeldWord.from_dict(raw)
+        if rec is not None:
+            out.append(rec)
+    return out
+
+
+def _store_held(row, words: list[HeldWord]) -> None:
+    """Write held words back, minting an id for any that lack one and applying the cap.
+
+    ⚠️ THE ID IS MINTED HERE AND NOWHERE ELSE, which is what stops a chip being given a
+    SECOND id. The extractor finds words and knows nothing about identity; this is the
+    only layer that stores them, so it is the only layer that can promise an id is
+    assigned once.
+
+    ⚠️ AND THE CAP DROPS THE OLDEST, which is the end the director has stopped thinking
+    about. Dropping the newest would silently discard the word they just typed.
+    """
+    kept = words[-MAX_HELD_WORDS:]
+    row.held_words = [
+        (w if w.held_id else w.with_id(uuid.uuid4().hex[:12])).as_dict()
+        for w in kept
+    ]
+
+
+def placed_from_bar(
+    db: Session, session_id: str, *, company_id: str, user_id: str,
+    field_id: str, value: str, text: str,
+) -> CaptureSession:
+    """A word LEFT THE BAR and flew into its field. Slice 2, clause 1.
+
+    James, 2026-10-28: *"words leave the bar when typed past and fly into their field …
+    'last mention wins' on leave."*
+
+    ⚠️ ONE CALL, ONE TRANSACTION, AND SPLITTING IT WOULD LOSE THE VALUE. The gesture is
+    two writes — the field becomes a durable answer, and the bar's text loses the word —
+    and doing them as two requests has an order in which the value is destroyed: set the
+    shortened text first and re-extraction runs with the word already gone, so nothing
+    captures it and the row empties. Done here, the resolution is in force before the
+    text is re-read.
+
+    ⚠️ A RESOLUTION, NOT A VALUE, AND THAT IS THE WHOLE MECHANISM. `values` is rebuilt
+    from the text on every read — that is the point of the whole-text model — so a word
+    that has left the text cannot be held there. `resolutions` is the one tier that
+    outranks re-extraction, which is exactly the property "the word is gone and the
+    answer stays" needs.
+
+    ⚠️ AND THAT IS WHY "LAST MENTION WINS" IS NOW DEFERRED RATHER THAN LIVE, which James
+    ruled on 2026-10-29 and which this function is the mechanism of. A later mention of
+    the same field lives in the TEXT, and a resolution outranks it — so the replacement
+    happens when the second term LEAVES the bar (writing this resolution again), not on
+    the keystroke that types it. The design review laid out three options; this is the
+    accepted one, and the live half of the older ruling is superseded.
+
+    ⚠️ THE VALUE IS VALIDATED THE SAME WAY A PILL'S IS. `answer` refuses a non-vault in
+    the vault field; a word flying in is no more trustworthy than a click, and routing
+    both through one check is the lesson from the vault slot reaching one door out of
+    six.
+    """
+    row = _load(db, session_id, company_id=company_id, user_id=user_id)
+    if row.status == STATUS_APPROVED:
+        return row
+
+    known = {f.field_id for f in capture.template_for(capture.SALES_ORDER)}
+    if field_id not in known:
+        raise ValueError(f"{field_id} is not a field this capture asks for")
+    if field_id == "vault":
+        from app.services.capture.vault_form import FormResolver, admits_name
+
+        if not admits_name(FormResolver(db, company_id), value):
+            raise ValueError(f"{value!r} is not a vault")
+
+    resolutions = dict(row.resolutions or {})
+    resolutions[field_id] = value
+    row.resolutions = resolutions
+    db.flush()
+
+    # ⚠️ THROUGH `set_text`, NOT A SECOND EXTRACTION, so the shortened bar goes through
+    # exactly the path every other keystroke takes — the done signal, the completion
+    # phrase stripping, `why.remember`, all of it. A private re-extraction here would be
+    # a second place that decides what the text means.
+    return set_text(
+        db, session_id, company_id=company_id, user_id=user_id, text=text,
+    )
+
+
+def hold_words(
+    db: Session, session_id: str, *, company_id: str, user_id: str,
+    words: list[str], text: str,
+) -> CaptureSession:
+    """Words the engine could not place, held under the order. Slice 2, clauses 1 and 3.
+
+    ⚠️ THE TEXT GOES WITH THEM, FOR THE SAME REASON `placed_from_bar` TAKES IT. Holding
+    a word and shortening the bar is one gesture; two requests would leave a state where
+    the word is both held and still in the text, and the next re-extraction would hold it
+    again — the same word twice.
+
+    ⚠️ DUPLICATES ARE ALLOWED, DELIBERATELY. "smith" typed twice is two chips, because
+    the director said it twice and may place them on different fields. That is also why
+    `HeldWord` needed an id at all.
+    """
+    row = _load(db, session_id, company_id=company_id, user_id=user_id)
+    if row.status == STATUS_APPROVED:
+        return row
+
+    held = _held_list(row)
+    for raw in words:
+        word = str(raw or "").strip()
+        if word:
+            held.append(HeldWord(word=word, origin=ORIGIN_TYPED))
+    _store_held(row, held)
+    db.flush()
+    return set_text(
+        db, session_id, company_id=company_id, user_id=user_id, text=text,
+    )
+
+
+def drop_held(
+    db: Session, session_id: str, *, company_id: str, user_id: str, held_id: str,
+) -> CaptureSession:
+    """The × on a chip. The word is gone; the order never mentioned it.
+
+    ⚠️ IT DOES NOT PUT THE WORD BACK IN THE BAR, and that is the ruling's own wording:
+    *"× to drop"*. A word that returned to the text would be re-extracted and held
+    again on the next keystroke, so the × would do nothing — the gesture would appear to
+    work and change nothing, which is worse than refusing it.
+    """
+    row = _load(db, session_id, company_id=company_id, user_id=user_id)
+    if row.status == STATUS_APPROVED:
+        return row
+    _store_held(row, [w for w in _held_list(row) if w.held_id != held_id])
+    db.flush()
+    return row
+
+
+def edit_held(
+    db: Session, session_id: str, *, company_id: str, user_id: str,
+    held_id: str, word: str,
+) -> CaptureSession:
+    """A chip edited in place. Same chip, new words.
+
+    ⚠️ THE ID SURVIVES THE EDIT, which is what makes the chip the same chip — the strip
+    does not re-order, and a pending drag does not lose its target mid-gesture.
+
+    ⚠️ AND `declined` IS CLEARED, BY RULING. Clause 5: *"No keeps it held and never asks
+    about that word again"* — about THAT word. An edit makes it a different word, so the
+    suggestion the office declined no longer applies to it. `HeldWord` stores the
+    declined TERMS rather than a bare flag for exactly this.
+    """
+    row = _load(db, session_id, company_id=company_id, user_id=user_id)
+    if row.status == STATUS_APPROVED:
+        return row
+    text_word = str(word or "").strip()
+    if not text_word:
+        raise ValueError("a held word cannot be edited to nothing — use the × to drop it")
+    _store_held(row, [
+        HeldWord(word=text_word, held_id=w.held_id, origin=ORIGIN_EDITED)
+        if w.held_id == held_id else w
+        for w in _held_list(row)
+    ])
+    db.flush()
+    return row
+
+
+def place_held(
+    db: Session, session_id: str, *, company_id: str, user_id: str,
+    held_id: str, field_id: str,
+) -> tuple[CaptureSession, str | None]:
+    """A held word DRAGGED onto a field. Slice 2, clause 3.
+
+    Returns the session and the chip's word, or `None` when no such chip exists —
+    the caller needs the word to animate the flight, and a stale drag is not an error.
+
+    ⚠️ IT GOES THROUGH `answer`, NOT A PRIVATE WRITE, so a dragged word is validated and
+    clears what it makes wrong exactly as a pill click does. The vault's acceptance rule
+    and the `clear_what_no_longer_fits` note both come for free — and a drag that could
+    put a non-vault in the vault field would be the Vault Placer defect arriving through
+    a seventh door.
+
+    ⚠️ THE CHIP GOES BEFORE THE ANSWER IS WRITTEN, so a refusal leaves the chip in place.
+    Dropping it first and then raising would lose the word with nothing on screen to show
+    where it went.
+    """
+    row = _load(db, session_id, company_id=company_id, user_id=user_id)
+    if row.status == STATUS_APPROVED:
+        return row, None
+    held = _held_list(row)
+    chip = next((w for w in held if w.held_id == held_id), None)
+    if chip is None:
+        return row, None
+
+    _, note = answer(
+        db, session_id, company_id=company_id, user_id=user_id,
+        field_id=field_id, value=chip.word,
+    )
+    row = _load(db, session_id, company_id=company_id, user_id=user_id)
+    _store_held(row, [w for w in _held_list(row) if w.held_id != held_id])
+    db.flush()
+    return row, note
+
+
 def answer(
     db: Session, session_id: str, *, company_id: str, user_id: str,
     field_id: str, value: str,
@@ -964,6 +1187,17 @@ def read_state(
         "indeterminate": list(state.indeterminate),
         "is_complete": state.is_complete,
         "unrecognized": list(row.unrecognized or []),
+        # ⚠️ A SECOND LIST BESIDE `unrecognized`, AND THE TWO ARE NOT THE SAME THING.
+        # `unrecognized` is text STILL IN THE BAR that the engine could not place — it
+        # is recomputed from `full_text` on every read, and it underlines words in the
+        # mirror. `held_words` are words that have LEFT the bar and are waiting under
+        # the order; they survive the next keystroke, carry an identity, and can be
+        # dragged. Slice 2 clause 1 is what makes the second kind exist at all.
+        #
+        # ⚠️ SERVED AS THE RECORD'S OWN DICT, so the client reads `word` / `id` /
+        # `origin` and not a shape invented at this boundary. `held.HeldWord` is the
+        # one definition; a serializer that renamed its keys here would be the second.
+        "held_words": [w.as_dict() for w in _held_list(row)],
         # ⚠️ A SEPARATE LIST FROM `unrecognized`, BY NATURE NOT BY TASTE. The extractor
         # understood these phrases; they contradict each other. Reporting a conflict as
         # "not understood" would send the director back to re-type words that were read
@@ -1348,16 +1582,37 @@ def _guided(
             # over the tenant's sales orders even when the question was `deceased_name`,
             # which can never have a pill. `pills_for` now decides, and returns early
             # for the fields that cannot use history.
+            # ⚠️ HELD WORDS COME FIRST, BY RULING (James, 2026-10-28 item 3): "held
+            # words matching the open question are its first pill." They lead because
+            # they are the DIRECTOR'S OWN unplaced words — if Opas is asking which
+            # cemetery and there is an unplaced "green pastures" under the order, that
+            # is far likelier to be the answer than anything history can offer.
+            #
+            # ⚠️ AND THEY ARE NOT DEDUPED AGAINST `pills_for`'s OUTPUT, because they
+            # cannot collide with it: a held word is by definition one the extractor
+            # could not place, and every pill `pills_for` returns is a known product,
+            # cemetery or home. If that ever stops being true the dedupe belongs in
+            # `_dedupe`, keyed on value, where "usual first" is already decided.
+            from app.services.capture.pills import held_pills_for
+
             out["pills"] = [
                 pill.as_dict()
-                for pill in pills_for(
-                    db,
-                    tenant_id=company_id,
-                    field_id=field_id,
-                    values=values,
-                    resolved_fields=state.resolved_fields,
-                    today=date.today(),
-                )
+                for pill in [
+                    *held_pills_for(
+                        db,
+                        tenant_id=company_id,
+                        field_id=field_id,
+                        held=_held_list(row),
+                    ),
+                    *pills_for(
+                        db,
+                        tenant_id=company_id,
+                        field_id=field_id,
+                        values=values,
+                        resolved_fields=state.resolved_fields,
+                        today=date.today(),
+                    ),
+                ]
             ]
 
         # ── the Review action ───────────────────────────────────────────────────────

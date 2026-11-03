@@ -2,6 +2,14 @@ from app.models.agent import AgentActivityLog, AgentAlert, AgentCollectionSequen
 from app.models.agent_anomaly import AgentAnomaly
 from app.models.agent_run_step import AgentRunStep
 from app.models.agent_schedule import AgentSchedule
+from app.models.payroll_report import (
+    PayrollRate,
+    PayrollReportEmployee,
+    PayrollRuleSet,
+    PayrollWeek,
+    PayrollWeekLine,
+    PayrollWeekResult,
+)
 from app.models.period_lock import PeriodLock
 from app.models.accounting_analysis import (
     TenantAccountingAnalysis,
@@ -645,6 +653,12 @@ __all__ = [
     "NetworkRelationship",
     "NetworkTransaction",
     "PlatformFee",
+    "PayrollRate",
+    "PayrollReportEmployee",
+    "PayrollRuleSet",
+    "PayrollWeek",
+    "PayrollWeekLine",
+    "PayrollWeekResult",
     "PeriodLock",
     "PlatformUser",
     "PresetModule",

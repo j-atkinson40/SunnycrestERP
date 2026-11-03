@@ -97,6 +97,9 @@ export interface GuidedPill {
    *  `/answer` would try to store "review" into whatever field was being asked. The
    *  prototype marks the same distinction — `{act:'review',label:'Review',sub:'Enter'}`. */
   readonly act?: string
+  /** The held chip this pill files. ⚠️ ROUTES TO `onPlaceHeld`, NOT `onAnswer` — see
+   *  `held_id` on the service's pill type for why the endpoint differs. */
+  readonly heldId?: string
 }
 
 /** The one action a pill can carry today. */
@@ -159,6 +162,14 @@ export interface GuidedQuestionProps {
   /** Perform a pill's ACTION — review, today. Absent means action pills are inert,
    *  which is a real state before the session exists. */
   readonly onAct?: (act: string) => void
+  /** File a HELD chip into the asked field. Slice 2, item 3.
+   *
+   *  ⚠️ A SEPARATE ROUTE FROM `onAnswer` FOR THE SAME REASON `onAct` IS ONE: the pill
+   *  looks identical and the write is different. `onAnswer` stores text through
+   *  `/answer`; this goes through `/held/{id}/place`, which stores the same text AND
+   *  removes the chip. Sending a held pill through `onAnswer` would leave the word in
+   *  the row and in the strip at once. */
+  readonly onPlaceHeld?: (heldId: string, fieldId: string) => void
   /**
    * How much room this surface takes ABOVE the bar, so the capture pane can sit clear
    * of it.
@@ -209,6 +220,7 @@ export function GuidedQuestion({
   pickModifierGlyph,
   onAnswer,
   onAct,
+  onPlaceHeld,
   onHeightAbove,
 }: GuidedQuestionProps) {
   const pillsRef = useRef<HTMLDivElement | null>(null)
@@ -305,6 +317,36 @@ export function GuidedQuestion({
   // which is a keydown, and all of which mean the person is composing text.
   useEffect(() => { if (!barIsEmpty) setHighlight(null) }, [barIsEmpty])
 
+  /**
+   * What taking a pill does. ⚠️ THREE ROUTES OUT, AND EVERY WAY IN GOES THROUGH HERE.
+   *
+   * The file already carried this warning one level down — *"separate call sites
+   * deciding separately is how one of them ends up storing 'review' into a field"* —
+   * for the act/answer split, and item 3 adds a third branch to the same fork. The
+   * chord's `pick`, Enter on a highlight, and the click were two copies of a two-way
+   * decision; a third branch added to one of them is the next instance of exactly the
+   * defect that comment describes. So the decision is lifted here and both call sites
+   * became one line.
+   */
+  const takePill = useCallback(
+    (pill: GuidedPill, field: string | null) => {
+      if (pill.act !== undefined) {
+        onAct?.(pill.act)
+        return
+      }
+      if (field === null) return
+      // ⚠️ HELD BEFORE PLAIN, because a held pill has BOTH a value and a chip — its
+      // `value` is the word, so the plain branch would appear to work and quietly
+      // strand the chip.
+      if (pill.heldId !== undefined && pill.heldId !== "") {
+        onPlaceHeld?.(pill.heldId, field)
+        return
+      }
+      onAnswer(field, pill.value)
+    },
+    [onAct, onAnswer, onPlaceHeld],
+  )
+
   useEffect(() => {
     // ⚠️ NO FIELD IS NOT NO PILLS. In the ready state `fieldId` is null and the only
     // pill is Review — so guarding on the field would make the chord dead at exactly
@@ -322,8 +364,7 @@ export function GuidedQuestion({
       // ends up storing "review" into a field.
       const pill = options[index]
       if (pill === undefined) return
-      if (pill.act !== undefined) onAct?.(pill.act)
-      else if (field !== null) onAnswer(field, pill.value)
+      takePill(pill, field)
     }
 
     function onKeyDown(e: KeyboardEvent) {
@@ -416,7 +457,12 @@ export function GuidedQuestion({
     document.addEventListener("keydown", onKeyDown, true)
     return () => document.removeEventListener("keydown", onKeyDown, true)
   }, [
-    fieldId, shown, barIsEmpty, onAnswer, onAct, pickModifier, highlight,
+    // ⚠️ `takePill` IS IN HERE AND `onAnswer`/`onAct` ARE NOT ANY MORE. The effect no
+    // longer calls them directly; leaving them listed while omitting the function it
+    // DOES call would rebind the chord on an irrelevant change and keep a stale
+    // decision for the one that matters — a held pill picked by ⌃1 would route to
+    // `onAnswer` using a closure captured before `onPlaceHeld` arrived.
+    fieldId, shown, barIsEmpty, takePill, pickModifier, highlight,
   ])
 
   if (question === null) return null
@@ -558,10 +604,7 @@ export function GuidedQuestion({
                  untestable without asserting on a style string. */
               data-highlighted={highlight === i ? "true" : undefined}
               aria-current={highlight === i ? "true" : undefined}
-              onClick={() => {
-                if (pill.act !== undefined) onAct?.(pill.act)
-                else if (fieldId !== null) onAnswer(fieldId, pill.value)
-              }}
+              onClick={() => takePill(pill, fieldId)}
               style={{
                 display: "inline-flex",
                 alignItems: "center",

@@ -290,6 +290,182 @@ def set_text(
     return state
 
 
+class PlacedRequest(BaseModel):
+    """A word that LEFT THE BAR and flew into its field. Slice 2, clause 1.
+
+    ⚠️ THE SHORTENED TEXT TRAVELS WITH THE FIELD, AND SENDING IT SEPARATELY WOULD LOSE
+    THE VALUE. The gesture is two writes — the field becomes durable, the bar loses the
+    word — and there is an order in which the value is destroyed: shorten the text first
+    and re-extraction runs with the word already gone. One request, one transaction.
+
+    ⚠️ AND THE CLIENT SENDS THE TEXT IT NOW HAS RATHER THAN A SPAN TO CUT, because the
+    client is the only thing that knows what the bar holds after the removal. Handing
+    the server a span to delete would make it guess at a caret it cannot see — and the
+    design review already found that the flight's start rect must be measured
+    client-side for the same reason.
+    """
+
+    field_id: str = Field(min_length=1, max_length=64)
+    value: str = Field(min_length=1, max_length=400)
+    text: str = Field(max_length=2000)
+
+
+class HoldRequest(BaseModel):
+    """Words the engine could not place, held under the order.
+
+    ⚠️ A LIST, BECAUSE ONE GESTURE CAN HOLD SEVERAL. Tab on "blargle wibble" holds both;
+    two requests would leave a state where one is held and the text still contains both,
+    and the next re-extraction would hold the first again.
+    """
+
+    words: list[str] = Field(default_factory=list, max_length=20)
+    text: str = Field(max_length=2000)
+
+
+class HeldEditRequest(BaseModel):
+    """A chip edited in place. The id is in the path; this is the new text."""
+
+    word: str = Field(min_length=1, max_length=200)
+
+
+class HeldPlaceRequest(BaseModel):
+    """A chip dragged onto a field."""
+
+    field_id: str = Field(min_length=1, max_length=64)
+
+
+@router.post("/sessions/{session_id}/placed")
+def placed(
+    session_id: str,
+    body: PlacedRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Record a word that left the bar, and the text that is left behind."""
+    try:
+        session_service.placed_from_bar(
+            db, session_id,
+            company_id=current_user.company_id, user_id=current_user.id,
+            field_id=body.field_id, value=body.value, text=body.text,
+        )
+    except session_service.SessionNotFound:
+        raise HTTPException(status_code=404, detail="capture session not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    db.commit()
+    return _state(db, session_id, current_user)
+
+
+@router.post("/sessions/{session_id}/hold")
+def hold(
+    session_id: str,
+    body: HoldRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Hold words under the order, and record the text that is left behind."""
+    try:
+        session_service.hold_words(
+            db, session_id,
+            company_id=current_user.company_id, user_id=current_user.id,
+            words=body.words, text=body.text,
+        )
+    except session_service.SessionNotFound:
+        raise HTTPException(status_code=404, detail="capture session not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    db.commit()
+    return _state(db, session_id, current_user)
+
+
+@router.delete("/sessions/{session_id}/held/{held_id}")
+def drop_held(
+    session_id: str,
+    held_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """The × on a chip.
+
+    ⚠️ A MISSING CHIP IS NOT AN ERROR. Two clicks on one × race, and the second would
+    otherwise 404 a gesture the office has already completed. `drop_held` filters, so
+    dropping nothing is the same shape as dropping something.
+    """
+    try:
+        session_service.drop_held(
+            db, session_id,
+            company_id=current_user.company_id, user_id=current_user.id,
+            held_id=held_id,
+        )
+    except session_service.SessionNotFound:
+        raise HTTPException(status_code=404, detail="capture session not found")
+    db.commit()
+    return _state(db, session_id, current_user)
+
+
+@router.patch("/sessions/{session_id}/held/{held_id}")
+def edit_held(
+    session_id: str,
+    held_id: str,
+    body: HeldEditRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """A chip edited in place."""
+    try:
+        session_service.edit_held(
+            db, session_id,
+            company_id=current_user.company_id, user_id=current_user.id,
+            held_id=held_id, word=body.word,
+        )
+    except session_service.SessionNotFound:
+        raise HTTPException(status_code=404, detail="capture session not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    db.commit()
+    return _state(db, session_id, current_user)
+
+
+@router.post("/sessions/{session_id}/held/{held_id}/place")
+def place_held(
+    session_id: str,
+    held_id: str,
+    body: HeldPlaceRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """A chip dragged onto a field.
+
+    ⚠️ CORRECTED 2026-11-03. This docstring described a `placed_word` field that this
+    handler has never returned, written when the plan was for the client to get the
+    chip's word back to animate the flight. It does not need to: the drag starts from
+    the chip, so `HeldStrip` already holds the word in the gesture's own closure. The
+    response carries `cleared_note` instead — the one-line `clear_what_no_longer_fits`
+    note, present only when placing this word made some other answer wrong.
+
+    ⚠️ A REFUSED DROP IS NOT AN ERROR AND RETURNS 200. `place_held` puts the chip back
+    when the field will not accept the word — the vault slot takes only vault-form
+    products, by the 2026-11-02 ruling — so the state comes back with the chip still
+    in `held_words`. The chip staying put IS the refusal; nothing was lost and it is
+    still draggable. A 400 would be wrong: the director did nothing invalid.
+    """
+    try:
+        _row, note = session_service.place_held(
+            db, session_id,
+            company_id=current_user.company_id, user_id=current_user.id,
+            held_id=held_id, field_id=body.field_id,
+        )
+    except session_service.SessionNotFound:
+        raise HTTPException(status_code=404, detail="capture session not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    db.commit()
+    state = _state(db, session_id, current_user)
+    if note is not None:
+        state = {**state, "cleared_note": note}
+    return state
+
+
 @router.post("/sessions/{session_id}/choose")
 def choose(
     session_id: str,

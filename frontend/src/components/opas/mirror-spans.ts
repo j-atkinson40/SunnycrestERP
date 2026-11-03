@@ -13,6 +13,20 @@ export interface MirrorPiece {
   /** null for the stretches between spans — rendered plain. */
   readonly state: CaptureSpan["state"] | null
   readonly fieldIds: readonly string[]
+  /** This piece's offsets in the text it was sliced from.
+   *
+   *  ⚠️ CARRIED SO A WORD'S RECT CAN BE MEASURED BEFORE IT LEAVES THE BAR. Slice 2's
+   *  flight starts from where the word IS on screen, and the design review established
+   *  that the start rect cannot come from the server: `spans_for_text` describes the
+   *  text the server was handed, and clause 1 removes the word from that text in the
+   *  same gesture. The mirror is the only thing that knows where a character is, and a
+   *  piece has to say which characters it is for that lookup to be exact.
+   *
+   *  ⚠️ OFFSETS RATHER THAN A FIELD ID, because two pieces can carry the same field —
+   *  a director who names the funeral home twice — and the flight is about one of
+   *  them. */
+  readonly start: number
+  readonly end: number
 }
 
 /**
@@ -34,7 +48,9 @@ export function mirrorPieces(
   spans: readonly CaptureSpan[] | undefined,
   spansForText: string | null | undefined,
 ): readonly MirrorPiece[] {
-  const plain: MirrorPiece[] = [{ text, state: null, fieldIds: [] }]
+  const plain: MirrorPiece[] = [
+    { text, state: null, fieldIds: [], start: 0, end: text.length },
+  ]
   if (!text) return []
   if (!spans || spans.length === 0) return plain
   if (spansForText !== text) return plain
@@ -49,17 +65,31 @@ export function mirrorPieces(
       continue
     }
     if (sp.start > cursor) {
-      out.push({ text: text.slice(cursor, sp.start), state: null, fieldIds: [] })
+      out.push({
+        text: text.slice(cursor, sp.start),
+        state: null,
+        fieldIds: [],
+        start: cursor,
+        end: sp.start,
+      })
     }
     out.push({
       text: text.slice(sp.start, sp.end),
       state: sp.state,
       fieldIds: sp.field_ids,
+      start: sp.start,
+      end: sp.end,
     })
     cursor = sp.end
   }
   if (cursor < text.length) {
-    out.push({ text: text.slice(cursor), state: null, fieldIds: [] })
+    out.push({
+      text: text.slice(cursor),
+      state: null,
+      fieldIds: [],
+      start: cursor,
+      end: text.length,
+    })
   }
   return out
 }

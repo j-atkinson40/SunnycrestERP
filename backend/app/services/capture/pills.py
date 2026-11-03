@@ -118,11 +118,20 @@ class Pill:
     label: str
     #: The one thing that tells this answer from another. None for most pills.
     sub: str | None = None
+    #: The held chip this pill offers to file. Slice 2, item 3.
+    #:
+    #: ⚠️ IT CARRIES THE CHIP'S ID RATHER THAN JUST THE WORD, because the pill has to
+    #: do two things at once: answer the question AND take the chip out of the strip.
+    #: Answering by text alone would file the word and leave the chip sitting there,
+    #: so the director would see their answer in the row and still-unplaced below it.
+    held_id: str | None = None
 
     def as_dict(self) -> dict:
         out: dict = {"value": self.value, "label": self.label}
         if self.sub:
             out["sub"] = self.sub
+        if self.held_id:
+            out["held_id"] = self.held_id
         return out
 
 
@@ -540,3 +549,108 @@ def _spoken_time(hhmm: str) -> str:
     suffix = "AM" if hour < 12 else "PM"
     shown = hour % 12 or 12
     return f"{shown}:{minute:02d} {suffix}"
+
+
+# ──────────────────────────────────────────────────────────────────────────────────────
+# Held words as answers to the open question. Slice 2, item 3.
+# ──────────────────────────────────────────────────────────────────────────────────────
+
+# ⚠️ THE DEFAULT IS "NO PILL", AND THAT INVERSION IS JAMES'S RULING OF 2026-11-03.
+#
+# My first version read `_GATED_FIELDS = ("vault",)` and offered every held chip for
+# every OTHER field, on the reasoning that acceptance belongs to the server and
+# `place_held` would refuse what did not fit. The reasoning was right about WHERE
+# acceptance lives and wrong about what to do without it. James:
+#
+#     "A date offered as a cemetery is noise, and you'd learn to ignore that pill
+#      row. Offer only what the server says fits."
+#
+# A pill row that is sometimes wrong is worse than a shorter one, because the cost is
+# not the bad pill — it is that the director stops reading the row at all, and the good
+# pills go with it.
+#
+# ⚠️ SO THE TABLE LISTS FIELDS THAT HAVE A CHECK, NOT FIELDS THAT NEED ONE. A field
+# absent from it offers nothing, which means the rule gets SAFER as the table grows
+# rather than needing revisiting: "as fields gain server-side acceptance checks, they
+# gain held-word pills automatically — never a client-side predicate."
+#
+# The chip is not lost either way. It stays in the strip, draggable onto any row, which
+# is the path that does not require Opas to have an opinion first.
+
+
+def _vault_admits(db, tenant_id: str, text: str) -> bool:
+    """The vault slot's acceptance rule — the one check every door calls.
+
+    ⚠️ THE 2026-11-02 RULING'S WHOLE POINT. The Vault Placer fix landed in one path and
+    five others kept accepting non-vaults, so "a rule about what a field accepts has to
+    live in one place that every path goes through". This is a door onto that place, not
+    a second opinion about it.
+    """
+    return admits_name(FormResolver(db, tenant_id), text)
+
+
+#: Field id -> the server's own acceptance check. ABSENT MEANS NO PILLS.
+_ACCEPTANCE_CHECKS = {
+    "vault": _vault_admits,
+}
+
+
+def held_pills_for(
+    db,
+    *,
+    tenant_id: str,
+    field_id: str | None,
+    held: "list",
+) -> list[Pill]:
+    """The held chips the SERVER says could answer `field_id`, as pills.
+
+    James, 2026-10-28: *"held words matching the open question are its first pill."*
+    Narrowed 2026-11-03: *"only where the server's acceptance check admits the word for
+    that field … For every other field, held words stay in the strip and are not offered
+    as pills."*
+
+    ⚠️ A FIELD WITH NO CHECK OFFERS NOTHING. That is the ruling and it is also the safe
+    default: the failure mode of offering too much is a pill row the office learns to
+    ignore, which costs the good pills too.
+
+    ⚠️ DECLINED CHIPS ARE NOT OFFERED. A word the office has already said No to for
+    this field must not come back as a pill — that is clause 5's `declined` list,
+    honoured here so push 2 does not have to retrofit it.
+    """
+    if field_id is None or not held:
+        return []
+    check = _ACCEPTANCE_CHECKS.get(field_id)
+    if check is None:
+        return []
+
+    out: list[Pill] = []
+    for word in held:
+        text = getattr(word, "word", "") or ""
+        held_id = getattr(word, "held_id", "") or ""
+        if not text or not held_id:
+            continue
+        declined = getattr(word, "declined", None) or ()
+        if field_id in declined:
+            continue
+        try:
+            if not check(db, tenant_id, text):
+                continue
+        except Exception:
+            # ⚠️ A CHECK THAT FAILS DROPS THE PILL RATHER THAN OFFERING IT. The question
+            # stays answerable by typing and the chip stays draggable — where
+            # `place_held` applies the same check properly. Offering on failure would
+            # make a resolver outage look like the field accepting anything, which is
+            # the appearance the 2026-11-02 ruling exists to prevent.
+            continue
+        out.append(
+            Pill(
+                value=text,
+                label=text,
+                # ⚠️ IT SAYS WHERE THE ANSWER CAME FROM, because a pill offering the
+                # director's own unplaced word is a different claim from a pill
+                # offering what this home usually orders.
+                sub="not placed yet",
+                held_id=held_id,
+            )
+        )
+    return out

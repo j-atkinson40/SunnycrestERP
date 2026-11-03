@@ -78,6 +78,15 @@ vi.mock("@/services/opas-capture-service", () => ({
   // import time — which surfaces as a click that throws mid-handler and a question
   // that never gets answered.
   answerCapture: vi.fn(),
+  // ⚠️ ADDED 2026-11-03 WITH SLICE 2 CLAUSE 1, and this file's own comment above says
+  // why it has to be: a double that omits what the component imports fails at CALL
+  // time, not import time. Omitting this one surfaces as a word that leaves the bar and
+  // never reaches the order — the pane would look like it worked.
+  placedFromBar: vi.fn(),
+  holdWords: vi.fn(),
+  dropHeld: vi.fn(),
+  editHeld: vi.fn(),
+  placeHeld: vi.fn(),
 }))
 vi.mock("@/services/opas-catalog-service", () => ({
   resolvePhrase: vi.fn(async () => ({ candidates: [], discriminators: [] })),
@@ -93,6 +102,10 @@ vi.mock("@/contexts/focus-context", () => ({ useFocus: () => ({ isOpen: false })
 import {
   answerCapture,
   choosePick,
+  dropHeld,
+  holdWords,
+  placeHeld,
+  placedFromBar,
   readCapture,
   setCaptureText,
   startCapture,
@@ -115,12 +128,21 @@ function state(over: Record<string, unknown> = {}) {
     indeterminate: [],
     is_complete: false,
     unrecognized: [],
+    held_words: [],
     pending_picks: [],
     vault_resolution: { resolved: false, candidates: [], discriminators: [] },
     surface: {
       id: "capture",
       rows: [
+        // ⚠️ `field_ids` IS PART OF THE SERVER'S ROW CONTRACT AND THIS FIXTURE OMITTED
+        // IT. `rows.ResolvedRow` always carries it, so every test built on this was
+        // exercising the pane against a row shape the server never sends — and the
+        // pane's caret linking, hover linking, landing flash and (since 2026-11-03)
+        // the flight target and drop target all read it. A fixture derived from what
+        // the component happened to need rather than from the contract is the shape
+        // CLAUDE.md §11 names; found when a new assertion about `data-fields` read "".
         { row_id: "funeral_home", label: "Funeral Home", state: "not_mentioned",
+          field_ids: ["funeral_home"], edit_target: "funeral_home",
           value: null, secondary_value: null },
       ],
     },
@@ -135,6 +157,7 @@ function withValue(value: string, over: Record<string, unknown> = {}) {
       id: "capture",
       rows: [
         { row_id: "funeral_home", label: "Funeral Home", state: "done",
+          field_ids: ["funeral_home"], edit_target: "funeral_home",
           value, secondary_value: null },
       ],
     },
@@ -1337,5 +1360,453 @@ describe("the bar shows the whole order", () => {
     // the half a browser cannot tell you about.
     expect((bar as HTMLTextAreaElement).value.startsWith("monticello")).toBe(true)
     expect((bar as HTMLTextAreaElement).value.endsWith("10am")).toBe(true)
+  })
+})
+
+
+describe("slice 2 clause 1 — words leave the bar and fly into their field", () => {
+  /**
+   * ⚠️ JAMES'S OWN WALK FOR THIS PUSH: *"type a sentence and watch the words fly into
+   * the pane."* These assert the half a unit test can see — that the word LEAVES and
+   * is RECORDED. The flight itself is `fly.test.ts`; jsdom has no Web Animations API,
+   * so the chip lands immediately here, which is exactly the path `fly` takes under
+   * `prefers-reduced-motion`.
+   *
+   * ⚠️ EVERY TEST HERE TYPES, AND MY FIRST VERSION OF THIS BLOCK DID NOT. It mocked the
+   * state and called `openOrder()` without touching the bar — so the pane's `text` was
+   * `""` while `spans_for_text` was a whole sentence, the two did not match, and
+   * nothing left. The three positive tests failed honestly; the three REFUSALS passed,
+   * for a reason that had nothing to do with what they named. A refusal test that does
+   * not perform the gesture is the §11 shape this suite has caught four times.
+   */
+
+  /** A state whose spans say `hopkins` was captured, for whatever `text` is on screen. */
+  function captured(text: string, over: Record<string, unknown> = {}) {
+    return state({
+      full_text: text,
+      values: { funeral_home: "Hopkins Funeral Home" },
+      answered: ["funeral_home"],
+      spans: [{ start: 10, end: 17, state: "captured", field_ids: ["funeral_home"] }],
+      spans_for_text: text,
+      ...over,
+    })
+  }
+
+  /** Type `typed` with the server agreeing about it, and settle. */
+  async function typeIt(typed: string, over: Record<string, unknown> = {}) {
+    vi.mocked(startCapture).mockResolvedValue(state() as never)
+    vi.mocked(setCaptureText).mockResolvedValue(captured(typed, over) as never)
+    vi.mocked(placedFromBar).mockResolvedValue(state() as never)
+    const bar = await openOrder()
+    await user.type(bar, typed)
+    await settle()
+    return bar
+  }
+
+  it("records the word, with the SHORTENED text, in one call", async () => {
+    await typeIt("order for hopkins monticello")
+
+    await waitFor(() => expect(placedFromBar).toHaveBeenCalled())
+    // ⚠️ THE RESOLVED VALUE, NOT THE TYPED WORD. The chip shows what the director
+    // typed; the ORDER holds what it resolved to — "hopk" flies as four letters and is
+    // recorded as "Hopkins Funeral Home".
+    expect(placedFromBar).toHaveBeenCalledWith(
+      "sess-1",
+      "funeral_home",
+      "Hopkins Funeral Home",
+      "order for monticello",
+    )
+  })
+
+  it("the shortened text has NO DOUBLE SPACE where the word was", async () => {
+    /** ⚠️ A MEASURED DEFECT FROM A REAL SESSION, not a tidiness preference. James's own
+     *  `full_text` read `'riverside full equipment  chairs'` — the gap a removed word
+     *  left — and that gap is what made the digit-swallowing bug visible at all. */
+    await typeIt("order for hopkins monticello")
+    await waitFor(() => expect(placedFromBar).toHaveBeenCalled())
+    const sent = vi.mocked(placedFromBar).mock.calls[0][3]
+    expect(sent).not.toContain("  ")
+    expect(sent).not.toMatch(/^\s/)
+  })
+
+  it("the word LEAVES the bar", async () => {
+    /** ⚠️ THE HALF THE DIRECTOR ACTUALLY SEES, and the one the service call cannot
+     *  prove: the host owns the text, so a pane that recorded the word and never told
+     *  the host would leave it on screen while the row filled — the same word twice. */
+    const bar = await typeIt("order for hopkins monticello")
+    await waitFor(() => expect(bar).toHaveValue("order for monticello"))
+  })
+
+  it("does NOT send a word still under the caret", async () => {
+    /** ⚠️ GATE 1, AT THE COMPONENT LEVEL. `"order for hopkins"` with the caret after
+     *  the name must keep it — the director may still be typing `hopkins funeral
+     *  home`. A word taken from under the caret is text destroyed with no undo.
+     *
+     *  ⚠️ AND THE CONTROL IS THE TEST ABOVE: the same mocks, one word further on, DO
+     *  send. Without that pairing this would pass against a feature that never fires. */
+    const bar = await typeIt("order for hopkins")
+    expect(placedFromBar).not.toHaveBeenCalled()
+    expect(bar).toHaveValue("order for hopkins")
+  })
+
+  it("does NOT send while a pick is open", async () => {
+    /** ⚠️ AN AMBIGUOUS PHRASE IS A QUESTION THE DIRECTOR HAS TO ANSWER, and flying half
+     *  the sentence away under it would change the subject mid-question. */
+    await typeIt("order for hopkins monticello", {
+      pending_picks: [
+        { field_id: "vault", phrase: "monticello", options: [["a", "A"], ["b", "B"]],
+          discriminator: "form" },
+      ],
+    })
+    expect(placedFromBar).not.toHaveBeenCalled()
+  })
+
+  it("does NOT send on STALE spans", async () => {
+    /** ⚠️ THE STRONGEST REFUSAL IN THE SET. A stale span cuts the WRONG CHARACTERS out
+     *  of the bar, and there is no undo — the mirror merely paints the wrong word. */
+    await typeIt("order for hopkins monticello", {
+      spans_for_text: "order for hop",
+    })
+    expect(placedFromBar).not.toHaveBeenCalled()
+  })
+
+  it("does NOT send an UNPLACEABLE word", async () => {
+    /** The prototype's division of labour: *"Words Opas understands fly into the order
+     *  … anything Opas can't place waits under the order."*
+     *
+     *  ⚠️ A CONFLICT SPAN, NOT AN UNRECOGNIZED ONE, AND THE SWAP IS A BREAK-TEST
+     *  FINDING. An unrecognized span carries no field, so it is refused by the
+     *  field-count guard whichever way the state guard is set — the test passed with
+     *  `state !== "captured"` deleted. A conflict span DOES carry a field, so it
+     *  exercises the state guard and nothing else. */
+    await typeIt("order for nameplate only monticello", {
+      values: {},
+      answered: [],
+      spans: [
+        { start: 10, end: 24, state: "conflict", field_ids: ["personalization"] },
+      ],
+    })
+    expect(placedFromBar).not.toHaveBeenCalled()
+  })
+
+  it("sends ONCE, not once per render", async () => {
+    /** ⚠️ THE IN-FLIGHT GUARD. This effect runs on every state change; without the
+     *  guard the same word goes twice before the first response lands, and the second
+     *  cut takes the characters that moved into its place. */
+    vi.mocked(startCapture).mockResolvedValue(state() as never)
+    const typed = "order for hopkins monticello"
+    vi.mocked(setCaptureText).mockResolvedValue(captured(typed) as never)
+    // ⚠️ THE RESPONSE STILL SAYS THE WORD IS CAPTURED, which is the adversarial shape:
+    // a server echo that has not caught up must not make the pane send again.
+    vi.mocked(placedFromBar).mockResolvedValue(captured(typed) as never)
+    const bar = await openOrder()
+    await user.type(bar, typed)
+    await settle()
+
+    await waitFor(() => expect(placedFromBar).toHaveBeenCalled())
+    await settle()
+    expect(vi.mocked(placedFromBar).mock.calls).toHaveLength(1)
+  })
+})
+
+
+describe("slice 2 item 2 — Tab places the word, or holds it", () => {
+  /**
+   * ⚠️ JAMES'S WALK FOR THIS PUSH INCLUDES *"press Tab on a ghost"*, and these assert
+   * the other half — Tab with NO ghost, which is the part that did not exist. Until
+   * 2026-11-03 the host consumed the keypress (so focus stayed in the bar, correctly)
+   * and then did nothing at all: the shape of a dead key.
+   *
+   * ⚠️ AND THEY GO THROUGH THE REAL KEYDOWN, not through `whatTabDoes`. The decision is
+   * unit-tested in `tab.test.ts` over plain data; what these cover is the wiring —
+   * host keydown -> `tabRef` -> pane -> service — which is three seams the pure test
+   * cannot see. `pick-digit`'s removal was found exactly here: a rule can be right and
+   * reach nothing.
+   */
+
+  function captured(text: string, over: Record<string, unknown> = {}) {
+    return state({
+      full_text: text,
+      values: { funeral_home: "Hopkins Funeral Home" },
+      answered: ["funeral_home"],
+      spans: [{ start: 10, end: 17, state: "captured", field_ids: ["funeral_home"] }],
+      spans_for_text: text,
+      held_words: [],
+      ...over,
+    })
+  }
+
+  async function typeThen(typed: string, over: Record<string, unknown> = {}) {
+    vi.mocked(startCapture).mockResolvedValue(state() as never)
+    vi.mocked(setCaptureText).mockResolvedValue(captured(typed, over) as never)
+    vi.mocked(placedFromBar).mockResolvedValue(state() as never)
+    vi.mocked(holdWords).mockResolvedValue(state() as never)
+    const bar = await openOrder()
+    await user.type(bar, typed)
+    await settle()
+    return bar
+  }
+
+  it("places the word the CARET IS STILL ON — the word clause 1 holds", async () => {
+    /** ⚠️ THE WHOLE POINT OF THE KEY. `"order for hopkins"` with the caret after the
+     *  name: clause 1 refuses it, because `hopkins funeral home` may be coming. Tab is
+     *  the director saying it is not. */
+    const bar = await typeThen("order for hopkins")
+    expect(placedFromBar).not.toHaveBeenCalled()
+
+    await user.type(bar, "{Tab}")
+    await waitFor(() => expect(placedFromBar).toHaveBeenCalled())
+    expect(placedFromBar).toHaveBeenCalledWith(
+      "sess-1",
+      "funeral_home",
+      "Hopkins Funeral Home",
+      "order for",
+    )
+  })
+
+  it("the word LEAVES the bar when Tab places it", async () => {
+    const bar = await typeThen("order for hopkins")
+    await user.type(bar, "{Tab}")
+    await waitFor(() => expect(bar).toHaveValue("order for"))
+  })
+
+  it("HOLDS a word it cannot place", async () => {
+    /** The prototype's `hold()`: *"Park what Opas can't place yet."* */
+    const bar = await typeThen("order for blargle", {
+      values: {},
+      answered: [],
+      spans: [{ start: 10, end: 17, state: "unrecognized", field_ids: [] }],
+    })
+    await user.type(bar, "{Tab}")
+    await waitFor(() => expect(holdWords).toHaveBeenCalled())
+    expect(holdWords).toHaveBeenCalledWith("sess-1", ["blargle"], "order for")
+    expect(placedFromBar).not.toHaveBeenCalled()
+  })
+
+  it("Tab NEVER moves focus out of the bar", async () => {
+    /** ⚠️ RULED, AND IT HOLDS IN BOTH BRANCHES — placing a word and holding one. The
+     *  bar is the only input while an order is open, so a Tab that sometimes moved
+     *  focus would leave the director typing into nothing. */
+    const bar = await typeThen("order for hopkins")
+    await user.type(bar, "{Tab}")
+    await settle()
+    expect(document.activeElement).toBe(bar)
+  })
+
+  it("Tab on an EMPTY bar does nothing and keeps focus", async () => {
+    vi.mocked(startCapture).mockResolvedValue(state() as never)
+    const bar = await openOrder()
+    await user.type(bar, "{Tab}")
+    await settle()
+    expect(placedFromBar).not.toHaveBeenCalled()
+    expect(holdWords).not.toHaveBeenCalled()
+    expect(document.activeElement).toBe(bar)
+  })
+
+  it("Tab does nothing while a PICK is open", async () => {
+    /** An open pick outranks Tab, by ruling and by the prototype's own first branch. */
+    const bar = await typeThen("order for hopkins", {
+      pending_picks: [
+        { field_id: "vault", phrase: "monticello", options: [["a", "A"], ["b", "B"]],
+          discriminator: "form" },
+      ],
+    })
+    await user.type(bar, "{Tab}")
+    await settle()
+    expect(placedFromBar).not.toHaveBeenCalled()
+    expect(holdWords).not.toHaveBeenCalled()
+  })
+
+  it("holding Tab sends ONCE, not once per keypress", async () => {
+    /** ⚠️ THE IN-FLIGHT GUARD, SHARED WITH CLAUSE 1. Two sends before the first
+     *  response lands means the second cut takes the characters that moved into the
+     *  first word's place. */
+    const bar = await typeThen("order for hopkins")
+    await user.type(bar, "{Tab}{Tab}{Tab}")
+    await settle()
+    expect(vi.mocked(placedFromBar).mock.calls).toHaveLength(1)
+  })
+})
+
+describe("slice 2 item 3 — the held strip in the pane", () => {
+  function withHeld(words: Array<Record<string, unknown>>) {
+    return state({
+      held_words: words,
+      values: { funeral_home: "Hopkins Funeral Home" },
+      answered: ["funeral_home"],
+    })
+  }
+
+  it("renders the strip from the session's held words", async () => {
+    vi.mocked(startCapture).mockResolvedValue(
+      withHeld([{ id: "h1", word: "green pastures", origin: "typed" }]) as never,
+    )
+    await openOrder()
+    await waitFor(() =>
+      expect(screen.getByTestId("capture-held")).toBeInTheDocument(),
+    )
+    expect(screen.getByText("green pastures")).toBeInTheDocument()
+  })
+
+  it("shows NO strip when nothing is held", async () => {
+    vi.mocked(startCapture).mockResolvedValue(withHeld([]) as never)
+    await openOrder()
+    await settle()
+    expect(screen.queryByTestId("capture-held")).not.toBeInTheDocument()
+  })
+
+  it("× sends dropHeld for that chip", async () => {
+    vi.mocked(startCapture).mockResolvedValue(
+      withHeld([{ id: "h1", word: "green pastures", origin: "typed" }]) as never,
+    )
+    vi.mocked(dropHeld).mockResolvedValue(withHeld([]) as never)
+    await openOrder()
+    await waitFor(() =>
+      expect(screen.getByTestId("capture-held-drop-h1")).toBeInTheDocument(),
+    )
+    await user.click(screen.getByTestId("capture-held-drop-h1"))
+    await waitFor(() => expect(dropHeld).toHaveBeenCalledWith("sess-1", "h1"))
+  })
+
+  it("the ROWS carry their fields and their drop target", async () => {
+    /** ⚠️ THE TWO ATTRIBUTES THE GESTURES RESOLVE THROUGH, asserted on a REAL row
+     *  rather than on a fixture, because both were added for this push and a flight or
+     *  a drop that cannot find its row fails silently. `data-fields` is every field the
+     *  row DISPLAYS — it is how a flight finds a composed row like `cemetery`, whose
+     *  testid is its row_id. `data-drop-field` is the one field a drop WRITES. */
+    vi.mocked(startCapture).mockResolvedValue(withHeld([]) as never)
+    await openOrder()
+    await waitFor(() =>
+      expect(screen.getByTestId("capture-row-funeral_home")).toBeInTheDocument(),
+    )
+    const row = screen.getByTestId("capture-row-funeral_home")
+    expect(row).toHaveAttribute("data-fields", "funeral_home")
+    expect(row).toHaveAttribute("data-drop-field", "funeral_home")
+  })
+})
+
+
+describe("slice 2 item 3 — a held word answers the open question", () => {
+  /**
+   * ⚠️ THIS TEST EXISTS BECAUSE A BREAK TEST FOUND THE WIRING UNREACHED. Deleting
+   * `onPlaceHeld={…}` from the host left all 1,003 opas tests green: `guided-question`
+   * covers the pill's three branches with its own mock, and nothing exercised
+   * host -> `placeHeldRef` -> pane -> `/held/{id}/place`. That is the same shape as the
+   * bare-digit pick removed on 2026-11-02 — a rule that is right and reaches nothing —
+   * so the seam gets its own assertion rather than being inferred from its two ends.
+   */
+  it("clicking the held pill files the chip through placeHeld", async () => {
+    // ⚠️ BOTH ENDS ARE MOCKED, AND ONLY MOCKING `startCapture` IS WHY MY FIRST VERSION
+    // RENDERED NOTHING. `openOrder` types "start an order" and then CLEARS the bar, so
+    // the last state the pane holds comes from `setCaptureText`, not from the session's
+    // own open — a fixture on `startCapture` alone is overwritten before the first
+    // assertion runs.
+    // ⚠️ `vault`, NOT `cemetery`, AND THE FIELD IS PART OF THE FIXTURE'S HONESTY. By
+    // the 2026-11-03 ruling a held word is offered only where the SERVER has an
+    // acceptance check for that field, and `vault` is the only one today. A fixture
+    // sending a held pill for `cemetery` would model a response the server can no
+    // longer produce — green, and testing a world that does not exist.
+    const asking = state({
+      held_words: [{ id: "h1", word: "continental", origin: "typed" }],
+      question: "Which vault?",
+      question_field_id: "vault",
+      pills: [
+        { value: "continental", label: "continental",
+          sub: "not placed yet", held_id: "h1" },
+      ],
+    })
+    vi.mocked(startCapture).mockResolvedValue(asking as never)
+    vi.mocked(setCaptureText).mockResolvedValue(asking as never)
+    vi.mocked(placeHeld).mockResolvedValue(state({ held_words: [] }) as never)
+    await openOrder()
+    // ⚠️ `getAllByText`, BECAUSE THE WORD IS NOW ON SCREEN TWICE — and that duplication
+    // is the feature working, not a bug: the chip is in the strip AND offered as the
+    // question's first pill. `getByText` threw "found multiple elements", which is the
+    // harness confirming both halves rendered.
+    await waitFor(() =>
+      expect(screen.getAllByText("continental").length).toBeGreaterThan(1),
+    )
+    // ⚠️ THE PILL, NOT THE CHIP. Both show the same word, so the click has to name the
+    // one above the bar — the strip's own chip is a drag handle and opens the editor.
+    const pill = screen
+      .getAllByText("continental")
+      .map((n) => n.closest("button"))
+      .find((b) => b?.textContent?.includes("not placed yet"))
+    expect(pill).toBeDefined()
+    await user.click(pill as HTMLElement)
+    await waitFor(() =>
+      expect(placeHeld).toHaveBeenCalledWith("sess-1", "h1", "vault"),
+    )
+    // ⚠️ AND NOT THROUGH `/answer`, which is the whole reason the route is separate.
+    expect(answerCapture).not.toHaveBeenCalled()
+  })
+})
+
+
+describe("slice 2 — two senders, one in-flight guard", () => {
+  /**
+   * ⚠️ THE CASE A SINGLE-SLOT GUARD GETS WRONG, and it could not be written before Tab
+   * existed. Clause 1 and Tab both cut a word out of the bar and both held the SAME
+   * `useRef<string | null>`, so Tab's key overwrote clause 1's and clause 1's next run
+   * no longer recognised its own send as in flight. The second send cuts the original
+   * offsets out of a text that no longer has the word there — it takes whatever moved
+   * into its place, and there is no undo for a cut.
+   *
+   * ⚠️ IT IS AN ASSERTION ABOUT THE OFFSETS, NOT ABOUT A CALL COUNT. Two sends for two
+   * DIFFERENT words are correct and expected; what must never happen is the same
+   * `[start,end)` being cut twice.
+   */
+  it("Tab does not release clause 1's claim on a word still in the air", async () => {
+    // ⚠️ A HOLDER OBJECT, NOT A `let`. TypeScript's control-flow analysis cannot see
+    // that the promise executor assigns this, so a `let … | null` narrows to `never` at
+    // the call site and `tsc -b` rejects it — which `tsc --noEmit` alone never reaches,
+    // because it does not build the test projects.
+    const release: { fn: ((v: unknown) => void) | null } = { fn: null }
+    vi.mocked(startCapture).mockResolvedValue(state() as never)
+    const typed = "order for hopkins monticello"
+    vi.mocked(setCaptureText).mockResolvedValue(
+      state({
+        full_text: typed,
+        values: {
+          funeral_home: "Hopkins Funeral Home",
+          vault: "Monticello Burial Vault",
+        },
+        answered: ["funeral_home"],
+        spans: [
+          { start: 10, end: 17, state: "captured", field_ids: ["funeral_home"] },
+          { start: 18, end: 28, state: "captured", field_ids: ["vault"] },
+        ],
+        spans_for_text: typed,
+        held_words: [],
+      }) as never,
+    )
+    // ⚠️ CLAUSE 1'S SEND IS HELD OPEN, so the guard is still holding its key when Tab
+    // fires. Without that the two never overlap and the test asserts nothing.
+    vi.mocked(placedFromBar).mockImplementation(
+      () => new Promise((res) => { release.fn = res }) as never,
+    )
+
+    const bar = await openOrder()
+    await user.type(bar, typed)
+    await settle()
+    await waitFor(() => expect(placedFromBar).toHaveBeenCalled())
+
+    await user.type(bar, "{Tab}")
+    await settle()
+
+    // ⚠️ TAB DID NOTHING, AND THE MEASUREMENT IS WHY THIS IS THE ASSERTION. Before the
+    // in-flight check, this interleaving HELD "monticello" — a word the extractor had
+    // captured as the vault — because clause 1's response had not landed, so the spans
+    // still described the longer text and `whatTabDoes` fell through to the last word.
+    // The director would have found a known product sitting in "Not placed yet".
+    expect(holdWords).not.toHaveBeenCalled()
+    // ⚠️ AND NOTHING WAS CUT TWICE. One send, for the word clause 1 claimed.
+    const cuts = vi.mocked(placedFromBar).mock.calls.map((c) => c[1])
+    expect(cuts).toEqual(["funeral_home"])
+    // ⚠️ THE BAR KEPT THE WORD TAB DECLINED TO TAKE, which is the whole of "waiting
+    // costs one keypress": `monticello` is still there to be placed properly once the
+    // spans catch up.
+    expect(bar).toHaveValue("order for monticello")
+    release.fn?.(state())
   })
 })

@@ -1,0 +1,101 @@
+/* ============================================================
+ * Opas capture — the motion clause 1 and item 3 depend on.
+ *
+ * ⚠️ THIS FILE EXISTS BECAUSE THE JS HALF SHIPPED WITHOUT IT, and the gap was
+ * invisible by construction. `fly()` creates a div with class `opas-fly` and animates
+ * `transform`; `CapturePane` marks the receiving row `data-landed="true"`. Neither
+ * selector had a single CSS rule anywhere in the app — measured by grep, not guessed.
+ *
+ * The consequences were not "it looks unfinished":
+ *
+ *   - WITHOUT `position: fixed`, `translate(x,y)` is relative to the chip's STATIC
+ *     position at the end of <body>, so a flight computed in viewport coordinates
+ *     started from the bottom of the document. The arc was real, measured, tested —
+ *     and pointed somewhere else entirely.
+ *   - An unstyled div in the body flow also OCCUPIES SPACE, so every flight nudged
+ *     the page.
+ *   - `data-landed` with no rule meant the 0.9s landing flash — the ONLY arrival
+ *     signal left under `prefers-reduced-motion` — did nothing at all.
+ *
+ * ⚠️ AND NO TEST COULD HAVE CAUGHT ANY OF IT. jsdom applies no stylesheets and has no
+ * layout, so `fly.test.ts` asserts keyframes against a stub and the component tests
+ * assert that the attribute is present. Both were right. Presence of an attribute is
+ * not evidence of a rendered style, which is the same shape as asserting a route
+ * string that was never in the route table.
+ *
+ * Every value below is the prototype's, quoted:
+ * `docs/prototypes/2026-10-27-guided-order-capture.html`.
+ * ============================================================ */
+
+/* `.fly{position:fixed;left:0;top:0;z-index:60;…}` */
+.opas-fly {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 60;
+  font-family: var(--font-plex-mono);
+  font-size: 15px;
+  line-height: 1.3;
+  color: var(--content-strong);
+  background: rgba(143, 176, 207, 0.2);
+  border: 1px solid var(--border-base);
+  border-radius: 8px;
+  padding: 1px 7px;
+  /* ⚠️ `pointer-events:none` IS LOAD-BEARING FOR THE DRAG, not decoration. The ghost
+     sits under the pointer for the whole gesture, so without this it would be the hit
+     target of its own `elementFromPoint` and no row could ever be found. */
+  pointer-events: none;
+  white-space: nowrap;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+/* `.held-ghost{background:rgba(227,171,79,.22);border-color:rgba(227,171,79,.6)}` —
+   amber rather than steel, so a word being CARRIED reads differently from a word
+   flying in on its own. */
+.opas-held-ghost {
+  background: rgba(224, 168, 74, 0.22);
+  border-color: rgba(224, 168, 74, 0.6);
+}
+
+/* `.row.landed{animation:landed .9s var(--ease)}` + its keyframes. The green wash
+   fades to the row's normal background, which is what says the word ARRIVED rather
+   than merely appeared. */
+@keyframes opas-row-landed {
+  0% {
+    background: rgba(74, 166, 115, 0.28);
+    border-color: rgba(74, 166, 115, 0.6);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+[data-landed="true"] {
+  animation: opas-row-landed 0.9s var(--ease-settle);
+}
+
+/* `.dragging .row{border-style:dashed}` — ⚠️ EVERY ROW DASHES, NOT JUST THE HOVERED
+   ONE, and that is the whole discoverability of the gesture: it says "these are all
+   targets" to a director who has never dragged a chip before. Highlighting only the
+   row under the pointer tells them where they ARE, never where they COULD go. */
+body[data-opas-dragging="true"] [data-drop-field] {
+  border-style: dashed;
+}
+
+/* `.dragging .row.drop{…}` — the row under the pointer, in the same green the landing
+   flash uses, because it is a promise of the same event. */
+body[data-opas-dragging="true"] [data-drop-over="true"] {
+  border-style: solid;
+  border-color: rgba(74, 166, 115, 0.6);
+  background: rgba(74, 166, 115, 0.1);
+  box-shadow: 0 0 0 3px rgba(74, 166, 115, 0.22);
+}
+
+/* ⚠️ MOTION IS COLLAPSED, NOT REMOVED. `base.css` already zeroes transitions globally;
+   this names the two animations here so the landing still CHANGES COLOUR for one frame
+   rather than vanishing. A reader on reduced motion needs the arrival signal most. */
+@media (prefers-reduced-motion: reduce) {
+  [data-landed="true"] {
+    animation-duration: 1ms;
+  }
+}

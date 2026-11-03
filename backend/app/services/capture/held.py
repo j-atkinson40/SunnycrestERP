@@ -300,6 +300,16 @@ class HeldWord:
 
     #: The word as it stands now — the director's text, or their edit of it.
     word: str
+    #: ⚠️ A CLIENT-ADDRESSABLE IDENTITY, ADDED 2026-11-03 FOR THE STRIP. The drag, the
+    #: inline edit and the × each name ONE chip, and the word itself cannot do that job:
+    #: two chips may carry identical text — "smith" twice is not a strange thing to
+    #: type — and an edit changes the text while the chip stays the same chip. The
+    #: prototype's chips carry `data-h="<id>"` for exactly this.
+    #:
+    #: ⚠️ DEFAULTED SO `from_dict` STILL TOLERATES A BARE STRING, which is the
+    #: compatibility this record already promised: a row written before this field
+    #: existed parses, and gets an id assigned when it is next stored.
+    held_id: str = ""
     #: `ORIGIN_*` — how it came to be held.
     origin: str = ORIGIN_TYPED
     #: ⚠️ TERMS THE DIRECTOR HAS SAID NO TO. Clause 5: "No keeps it held and never asks
@@ -309,9 +319,24 @@ class HeldWord:
 
     def as_dict(self) -> dict:
         out: dict = {"word": self.word, "origin": self.origin}
+        if self.held_id:
+            out["id"] = self.held_id
         if self.declined:
             out["declined"] = list(self.declined)
         return out
+
+    def with_id(self, held_id: str) -> "HeldWord":
+        """A copy carrying `held_id`, for the layer that stores the word.
+
+        ⚠️ A COPY RATHER THAN A MUTATION, AND THIS RECORD IS *NOT* FROZEN — so the
+        discipline is the reason rather than the compiler. The extractor produces held
+        words with no id and `session_service` mints one as it writes; mutating in place
+        would let a caller that re-extracted and re-stored assign a SECOND id to a chip
+        the strip is already pointing at, which is the one thing an identity must not do.
+        """
+        from dataclasses import replace
+
+        return replace(self, held_id=held_id)
 
     @classmethod
     def from_dict(cls, raw: object) -> "HeldWord | None":
@@ -327,9 +352,11 @@ class HeldWord:
         if not word:
             return None
         origin = str(raw.get("origin") or ORIGIN_TYPED)
+        held_id = str(raw.get("id") or "")
         declined = raw.get("declined")
         return cls(
             word=word,
+            held_id=held_id,
             origin=origin if origin in (ORIGIN_TYPED, ORIGIN_EDITED, ORIGIN_DRAGGED)
             else ORIGIN_TYPED,
             declined=[str(d) for d in declined] if isinstance(declined, list) else [],

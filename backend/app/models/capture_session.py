@@ -80,6 +80,22 @@ class CaptureSession(Base):
     #: pane would lose its "not understood" rows on a reload, and the whole point of
     #: E1's never-dropped rule is that the director can see them.
     unrecognized: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    #: ⚠️ WORDS THAT OUTLIVE THE TEXT THEY CAME FROM, WHICH `unrecognized` ABOVE CANNOT
+    #: HOLD. Slice 2 clause 1 removes a placed word from the bar; `unrecognized` is
+    #: RECOMPUTED FROM `full_text` on every read, so once a word leaves the text a list
+    #: derived from the text cannot see it. Measured on production during the 2026-10-28
+    #: design review: one session held `['smith', '1', '1 oclock church', 'friday']`,
+    #: every one of them derived from the text then on screen.
+    #:
+    #: ⚠️ AND EACH ENTRY HAS AN IDENTITY, which a bare string cannot. The strip's drag,
+    #: its inline edit and its × each name ONE chip, and two chips may carry the same
+    #: text — "smith" twice is not a strange thing to type.
+    #:
+    #: Each entry is `held.HeldWord.as_dict()`: `{word, origin, id, declined?}`. See
+    #: `r219_capture_held_words` for why this is a column rather than a derivation, and
+    #: `held.HeldWord` for the record it mirrors — this column stores that record and
+    #: defines no shape of its own.
+    held_words: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     #: Ambiguous resolutions awaiting a numbered pick.
     pending_picks: Mapped[list | None] = mapped_column(JSONB, nullable=True)
 

@@ -46,6 +46,19 @@ export interface CaptureRow {
 }
 
 /** An ambiguous resolution awaiting a numbered pick. */
+/** One word waiting under the order. Mirrors `held.HeldWord.as_dict()`. */
+export interface HeldWord {
+  /** ⚠️ THE IDENTITY, AND THE WORD CANNOT DO ITS JOB. Two chips may carry the same
+   *  text — "smith" typed twice is two chips — and an edit changes the text while the
+   *  chip stays the same chip, so a drag has to name the chip rather than the word. */
+  readonly id: string
+  readonly word: string
+  /** `typed` / `edited` / `dragged` — how it came to be held. */
+  readonly origin: string
+  /** Terms the office has said No to. Clause 5 (push 2) must not re-offer one. */
+  readonly declined?: readonly string[]
+}
+
 export interface CapturePick {
   readonly field_id: string
   readonly phrase: string
@@ -146,6 +159,14 @@ export interface CaptureState {
     /** The one thing that tells this answer from another: a town, a date, or the
      *  word "cremation". ⚠️ NEVER A PRICE — by ruling, and `Pill` has no price field. */
     readonly sub?: string
+    /** Set when this pill offers a HELD chip. Slice 2, item 3.
+     *
+     *  ⚠️ IT CHANGES WHICH ENDPOINT ANSWERS THE QUESTION, which is the only reason the
+     *  client needs it. A held pill must go through `placeHeld` rather than `answer`:
+     *  both store the value, but only one takes the chip out of the strip. Answering
+     *  by text alone would show the director their answer in the row AND still-unplaced
+     *  underneath it. */
+    readonly held_id?: string
   }[]
   /** Present only once the vault has made this order a cremation.
    *
@@ -187,6 +208,14 @@ export interface CaptureState {
   readonly is_complete: boolean
   /** ⚠️ Text the extractor could not place. Shown, never dropped. */
   readonly unrecognized: readonly string[]
+  /** Words that have LEFT the bar and are waiting under the order. Slice 2, clause 1.
+   *
+   *  ⚠️ NOT THE SAME LIST AS `unrecognized`, AND THE DIFFERENCE IS THEIR LIFETIME.
+   *  `unrecognized` is text STILL IN THE BAR that the engine could not place — it is
+   *  recomputed from the text on every read, and it underlines words in the mirror.
+   *  These have left the text: they survive the next keystroke, carry an id so a drag
+   *  can name one, and are dropped only by the ×. */
+  readonly held_words: readonly HeldWord[]
   /** ⚠️ A COMBINATION THE VAULT DOES NOT ALLOW — AND NOT THE SAME THING AS
    *  `unrecognized`. The extractor understood both phrases; they contradict each
    *  other ("Continental 34" offers only `nameplate_only`; "nameplate and vinyl"
@@ -397,6 +426,78 @@ export async function setCaptureText(
 /** ⚠️ `index` IS ONE-BASED, matching the prototype's digit-key handler
  *  (`2026-10-01-opas-overlay.html:622`: `/^[1-9]$/` then `choose(+e.key-1)`). The server
  *  validates the range; zero-basing here would disagree with the only UI that drives it. */
+/**
+ * A word LEFT THE BAR and flew into its field. Slice 2, clause 1.
+ *
+ * ⚠️ THE SHORTENED TEXT GOES WITH IT, IN ONE REQUEST, AND SPLITTING IT WOULD LOSE THE
+ * VALUE. Setting the text first re-extracts with the word already gone, so nothing
+ * captures it; the server writes the resolution and re-reads the text in one
+ * transaction.
+ */
+export async function placedFromBar(
+  sessionId: string,
+  fieldId: string,
+  value: string,
+  text: string,
+): Promise<CaptureState> {
+  const r = await apiClient.post<CaptureState>(`${BASE}/${sessionId}/placed`, {
+    field_id: fieldId,
+    value,
+    text,
+  })
+  return r.data
+}
+
+/** Hold words the engine could not place, with the text left behind. */
+export async function holdWords(
+  sessionId: string,
+  words: readonly string[],
+  text: string,
+): Promise<CaptureState> {
+  const r = await apiClient.post<CaptureState>(`${BASE}/${sessionId}/hold`, {
+    words,
+    text,
+  })
+  return r.data
+}
+
+/** The × on a chip. ⚠️ A missing chip is not an error — two clicks race. */
+export async function dropHeld(
+  sessionId: string,
+  heldId: string,
+): Promise<CaptureState> {
+  const r = await apiClient.delete<CaptureState>(
+    `${BASE}/${sessionId}/held/${encodeURIComponent(heldId)}`,
+  )
+  return r.data
+}
+
+/** A chip edited in place. The id survives, so the chip stays the same chip. */
+export async function editHeld(
+  sessionId: string,
+  heldId: string,
+  word: string,
+): Promise<CaptureState> {
+  const r = await apiClient.patch<CaptureState>(
+    `${BASE}/${sessionId}/held/${encodeURIComponent(heldId)}`,
+    { word },
+  )
+  return r.data
+}
+
+/** A chip dragged onto a field. Goes through the same acceptance rule a pill does. */
+export async function placeHeld(
+  sessionId: string,
+  heldId: string,
+  fieldId: string,
+): Promise<CaptureState> {
+  const r = await apiClient.post<CaptureState>(
+    `${BASE}/${sessionId}/held/${encodeURIComponent(heldId)}/place`,
+    { field_id: fieldId },
+  )
+  return r.data
+}
+
 export async function choosePick(
   sessionId: string,
   fieldId: string,

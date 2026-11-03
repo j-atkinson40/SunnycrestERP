@@ -189,6 +189,7 @@ from app.api.routes import (   # noqa: E402 — continuation of main import
     website_intelligence,
     vault,
     completeness,
+    payroll_reports,
     vault_accounting,
     vault_molds,
     vault_supplier,
@@ -885,6 +886,14 @@ v1_router.include_router(
     completeness.router,
     prefix="/completeness",
     tags=["Completeness"],
+)
+
+# Weekly payroll dues reports (accountant/admin). Reporting only — does not run
+# payroll and does not touch the planned Check integration.
+v1_router.include_router(
+    payroll_reports.router,
+    prefix="/payroll-reports",
+    tags=["Payroll Reports"],
 )
 
 # V-1e: Accounting admin sub-tree under /vault/accounting/*

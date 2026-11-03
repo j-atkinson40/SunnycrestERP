@@ -2,6 +2,173 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 2026-11-03 — slice 2, frontend push 1: words fly, Tab places or holds, held words have a home
+
+James's order of 2026-10-28, items 1–3. **Push 2 (items 4–6) is NOT in this commit.**
+
+**The walk this unlocks, in his words:** *"type a sentence and watch the words fly into
+the pane, press Tab on a ghost, and drag a held word onto a field."*
+
+### What shipped
+
+- **Clause 1 — words leave the bar and fly into their field.** `leave.ts` is the
+  prototype's `settled()` translated from its token matcher to our server spans: three
+  gates, of which two are implemented and the third is measured inert (a bare number is
+  never a `captured` span in our extractor, pinned by
+  `test_a_bare_number_is_never_capturable`). `fly.ts` is the prototype's animation with
+  every constant quoted — 580ms, `cubic-bezier(.35,.55,.2,1)`, the 26px arc lift, the
+  950ms landing flash.
+- **Item 2 — Tab.** The ghost half and the never-move-focus half already shipped
+  2026-10-14; **measured before building rather than rebuilt.** What was missing is the
+  no-ghost case — the prototype's `leftover()` — now `tab.ts`: place the word the caret
+  is still on, or hold it.
+- **Item 3 — the "Not placed yet" strip.** `HeldStrip.tsx` + `held-drag.ts`. Drag onto a
+  line, click to fix a typo, × to drop. Held words lead the open question's pills.
+
+### ⚠️ Three defects found in my OWN already-"finished" clause-1 code, none by a test
+
+Each was green, each would have shipped, and each was invisible by construction:
+
+1. **The flight had no target for half the fields.** The leave effect looked rows up by
+   `[data-testid="capture-row-<fieldId>"]`, and a row's testid carries its `row_id` —
+   which equals its field id for only **6 of the 12** capture rows, measured against
+   `surfaces.CAPTURE_SALES_ORDER`. `cemetery_city`, `eta`, `chairs_total`,
+   `chairs_extra`, both dates, `service_location` and five more found nothing, so `fly`
+   took its land-immediately path. **The word still arrived and the row still flashed** —
+   the feature looked finished and simply never flew. Fixed with `data-fields` +
+   `rowValueFor`, matched on `~=` (whole token).
+2. **`.opas-fly` had no CSS anywhere in the app.** No `position: fixed`, so
+   `translate(x,y)` was relative to the chip's static position at the end of `<body>` —
+   a flight computed in viewport coordinates started from the bottom of the document,
+   and the unstyled div took up layout space. `data-landed` had no rule either, so the
+   0.9s landing flash — the ONLY arrival signal under `prefers-reduced-motion` — did
+   nothing. Now `styles/opas-capture.css`, verified present in the built bundle.
+3. **Three of six new clause-1 component tests never typed anything.** They mocked the
+   state and called `openOrder()` without touching the bar, so the pane's `text` was
+   `""` while `spans_for_text` was a sentence. The three positive tests failed honestly;
+   **the three REFUSALS passed, for a reason that had nothing to do with what they
+   named.** Every test in that block now performs the gesture.
+
+**None of (1) or (2) is detectable by any test in this repo**: jsdom has no
+`Element.animate` and applies no stylesheets, so a flight and a non-flight are the same
+observation. Found by reading the row markup while wiring Tab.
+
+### ⚠️ A claim of mine that did not survive measurement
+
+The in-flight guard was one slot (`useRef<string | null>`) written by both senders, and I
+changed it to a `Set` describing it as *"a real double-cut bug"*. **It was not measured.**
+A break test putting the single slot back left all 73 live tests green — the key contains
+the TEXT, and the first thing a send does is shorten the text, so the stale comparison
+never happens. The `Set` stays as a defensive structure and the comment now says so.
+
+Measuring that interleaving did surface a **real** wrong outcome: with clause 1's send
+still open, Tab held `"monticello"` — a word the extractor had captured as the vault —
+because the spans still described the longer text. Tab now waits while anything is in the
+air; refusing costs one keypress, placing from stale spans cuts the wrong characters.
+
+### Break matrix — every guard, named, with the test it turns red
+
+| Module | Guards | Breaks that fired |
+|---|---|---|
+| `leave.ts` | 7 | 7 (after fixing 2 non-discriminating assertions) |
+| `tab.ts` | 8 | 8 (after fixing 1) |
+| `HeldStrip.tsx` | 7 | 7 (after fixing 1; 1 dead guard deleted) |
+| seams (host↔pane, row attrs, strip mount) | 5 | 5 |
+| held-pill route (3 seams) | 3 | 3 (one found the wiring unreached) |
+| backend held pills | 4 | 4 |
+
+**Five assertions were non-discriminating and are recorded where they sit**, because
+every one passed for a reason other than the rule it named:
+
+- `leave.test.ts` gate-1 test used `monticello`, which **gate 2** answers — the comment
+  on the next test warns about exactly that trap.
+- the unrecognized-word refusals are carried by the FIELD-COUNT guard, not the state
+  guard; the conflict case is what pins the state guard.
+- `HeldStrip`'s right-button test checked the callbacks, which a right-click does not
+  reach — the assertion that catches it is the absent edit box.
+- deleting the host's `onPlaceHeld` wiring left **all 1,003 opas tests green** — the
+  `pick-digit` shape again, a rule that is right and reaches nothing.
+- `test:assert-size` **read a day-old `.vitest-summary.json` and reported green**: my run
+  measured 384/5494 and the ratchet printed "ran 379 / 5385; baseline 379 / 5385", a
+  perfect match against yesterday. Only `test:ci` writes that file and nothing couples
+  the two scripts. Recorded in `fixtures/suite-size.json`; reported, not fixed.
+
+### Two defects fixed in other people's correctness, found on the way
+
+- **`POST /held/{id}/place`'s docstring described a `placed_word` field it has never
+  returned** — written when the plan was for the client to get the chip's word back for
+  the flight. It does not need it. The response carries `cleared_note`.
+- **The `capture-live` fixture omitted `field_ids` from its rows**, which
+  `rows.ResolvedRow` always sends. Every test in that file was exercising the pane
+  against a row shape the server never produces — and the pane's caret linking, hover
+  linking, landing flash and both new gesture attributes all read it.
+
+### Deliberate divergence from the prototype, stated
+
+**A cancelled pointer does not file the word.** The prototype binds one handler to
+`pointerup` and `pointercancel` and checks the type only for its click branch, so a
+system interruption — a notification, a scroll handoff, a palm touch on an iPad — drops
+the word on whichever row the finger was over. The prototype remains the reference for
+look and motion; this is a touch-correctness fix, found by a test rather than by reading
+its code.
+
+### ⚠️ RULING 2 (2026-11-03) — and I had built the wrong reading of "matching"
+
+I shipped `_GATED_FIELDS = ("vault",)`: gate the vault, and offer **every** held chip for
+every other field, on the reasoning that acceptance belongs to the server and
+`place_held` would refuse what did not fit. Right about WHERE acceptance lives, wrong
+about the default. James:
+
+> *"Don't offer every held word to every question. A date offered as a cemetery is noise,
+> and you'd learn to ignore that pill row. Offer only what the server says fits."*
+
+**The cost of a sometimes-wrong pill row is not the bad pill — it is that the office
+stops reading the row**, and the good pills go with it.
+
+Rebuilt as `_ACCEPTANCE_CHECKS = {"vault": _vault_admits}` — **a table of fields that
+HAVE a check, not fields that need one.** A field absent from it offers nothing, so the
+rule gets safer as the table grows rather than needing revisiting: *"as fields gain
+server-side acceptance checks, they gain held-word pills automatically — never a
+client-side predicate."* The chip is not lost either way; it stays in the strip,
+draggable onto any row, which is the path that needs no opinion from Opas first.
+
+Break-tested, and **the break that matters is B1: restoring my old reading now fails.**
+Two frontend fixtures were also repointed from `cemetery` to `vault` — a held pill for
+`cemetery` is a response the server can no longer produce, and a fixture modelling an
+impossible world is green while testing nothing.
+
+### ⚠️ RULING 1 (2026-11-03) — the 13 red files are local, and the reason is sweep item 4
+
+CI was green on `d54b4caa`. The same 13 files fail on a **clean worktree at that exact
+commit** on this machine — 15 failed / 30 errors — and pass in CI. So main is not broken:
+**the local dev database is dirty.** The tests share one database and each run inherits
+what the last one left. James: *"sweep item 4 at full size."*
+
+Red locally, green in CI, not this branch's doing: `test_moc_t1_adopt`,
+`test_moc_t0_authority`, `test_moc_ponder`, `test_moc_workflow_mirrors`,
+`test_moc_schedule_sweep`, `test_moc_schedule_fire_live_t21b`,
+`test_moc_domain_events_t22a`, `test_moc_event_fire_live_t22c`, `test_map_cadence_map3`,
+`test_completeness_declining`, `test_ar_invoice_posting`, `test_tax_exemption_surface`,
+`test_audit_health_tasks_hc1`.
+
+**RULED, not yet built — sweep item 4's real fix:** each local gate run starts from a
+fresh database (template DB, or create/drop per run) so no run inherits another's state.
+**Until that lands, no local red count is a before/after comparison** — which is exactly
+the repeatability problem CLAUDE.md names, and the reason I abandoned the my-tree-vs-
+clean-tree diff as uninformative rather than reporting its numbers.
+
+⚠️ **One gate failure WAS mine and the ratchet caught it:** `test_ci_membership` found my
+new backend test file in neither `ci_gate.txt` nor `ci_excluded.txt`. Classified; gate
+denominator is now **264 of 542** test files.
+
+### Owed / reported, not built
+
+- **Sweep item 4's fresh-database fix** (ruled above, this session).
+- `test:assert-size` reads whatever `.vitest-summary.json` is on disk and never checks it
+  describes the run you just did. Measured: it reported green against a **day-old** file.
+- Carried forward: the reply-option `<kbd>` prints `⌃` rather than the user's preference;
+  a text of exactly one word captures no party; sweep item 9 (timing-dependent tests).
+
 ## 2026-11-03 — check 3: three defects, three layers, and neither of James's two guesses
 
 He typed `"riverside 2 chairs"`. Session `5758ed77`, 18:42 UTC:

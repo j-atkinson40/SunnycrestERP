@@ -923,3 +923,114 @@ describe("the arrow highlight — clause 3", () => {
     expect(highlighted()).toBeNull()
   })
 })
+
+describe("slice 2 item 3 — a held word is the open question's first pill", () => {
+  /**
+   * James, 2026-10-28: *"held words matching the open question are its first pill."*
+   *
+   * ⚠️ THE PILL LOOKS LIKE EVERY OTHER PILL AND WRITES THROUGH A DIFFERENT ENDPOINT,
+   * which is exactly the fork this file already warns about for action pills: *"separate
+   * call sites deciding separately is how one of them ends up storing 'review' into a
+   * field."* There were two copies of that two-way decision — the chord's `pick` and the
+   * click — so item 3 lifted it into one `takePill` rather than adding a third branch to
+   * each. These tests cover every route in, because the whole risk is that one route
+   * forgets.
+   */
+  // ⚠️ A VAULT QUESTION, because by the 2026-11-03 ruling `vault` is the only field
+  // the server has an acceptance check for and therefore the only one that can carry a
+  // held pill today. This component renders whatever it is handed, so the field does
+  // not change its behaviour — but a fixture naming an impossible response is a
+  // fixture that will outlive the reason it was wrong.
+  const HELD = [
+    { value: "continental", label: "continental", sub: "not placed yet", heldId: "h1" },
+    { value: "Bronze Triune", label: "Bronze Triune", sub: "usual" },
+  ]
+
+  function mountHeld(over: Partial<GuidedQuestionProps> = {}) {
+    const onAnswer = vi.fn()
+    const onPlaceHeld = vi.fn()
+    const onAct = vi.fn()
+    render(
+      <GuidedQuestion
+        question="Which vault?"
+        hint={null}
+        fieldId="vault"
+        pills={HELD}
+        barHeight={46}
+        barWidth="600px"
+        stacked={false}
+        barIsEmpty
+        onAnswer={onAnswer}
+        onAct={onAct}
+        onPlaceHeld={onPlaceHeld}
+        {...over}
+      />,
+    )
+    return { onAnswer, onPlaceHeld, onAct }
+  }
+
+  it("CLICKING a held pill places the chip, and does not answer", async () => {
+    /** ⚠️ `onAnswer` NOT CALLED IS THE HALF THAT MATTERS. Both endpoints store the same
+     *  text, so answering would LOOK right — the row fills — and leave the chip sitting
+     *  in the strip underneath its own answer. */
+    const user = userEvent.setup()
+    const { onPlaceHeld, onAnswer } = mountHeld()
+    await user.click(screen.getByText("continental"))
+    expect(onPlaceHeld).toHaveBeenCalledWith("h1", "vault")
+    expect(onAnswer).not.toHaveBeenCalled()
+  })
+
+  it("clicking a PLAIN pill still answers, and places nothing", async () => {
+    /** ⚠️ THE CONTROL. Without it the test above passes against a component that routed
+     *  EVERY pill to `onPlaceHeld`. */
+    const user = userEvent.setup()
+    const { onPlaceHeld, onAnswer } = mountHeld()
+    await user.click(screen.getByText("Bronze Triune"))
+    expect(onAnswer).toHaveBeenCalledWith("vault", "Bronze Triune")
+    expect(onPlaceHeld).not.toHaveBeenCalled()
+  })
+
+  it("the MODIFIER CHORD takes a held pill the same way a click does", async () => {
+    /** ⚠️ THE ROUTE THAT WOULD HAVE BEEN FORGOTTEN. ⌃1 goes through the keydown
+     *  effect, not the click handler — two copies of the decision is how one of them
+     *  keeps a stale closure and routes a held pill to `onAnswer`. */
+    const { onPlaceHeld, onAnswer } = mountHeld({ pickModifier: "control" })
+    // ⚠️ THE MODIFIER IS NAMED RATHER THAN ASSUMED. `DEFAULT_PICK_MODIFIER` is ⌥, not
+    // ⌃ — my first version pressed Ctrl against the default and the chord simply did
+    // not fire, which read as the held route being unwired. James's own stored
+    // preference is `control`, so this test pins HIS key and the component takes the
+    // modifier from the server either way.
+    fireEvent.keyDown(document, { code: "Digit1", key: "1", ctrlKey: true })
+    expect(onPlaceHeld).toHaveBeenCalledWith("h1", "vault")
+    expect(onAnswer).not.toHaveBeenCalled()
+  })
+
+  it("an ACTION pill still acts, even beside a held one", async () => {
+    /** The third branch of the same fork, so lifting the decision cannot have lost it. */
+    const user = userEvent.setup()
+    const { onAct, onAnswer, onPlaceHeld } = mountHeld({
+      pills: [...HELD, { value: "review", label: "Review", act: "review" }],
+    })
+    await user.click(screen.getByText("Review"))
+    expect(onAct).toHaveBeenCalledWith("review")
+    expect(onAnswer).not.toHaveBeenCalled()
+    expect(onPlaceHeld).not.toHaveBeenCalled()
+  })
+
+  it("a held pill is INERT when no one is listening", async () => {
+    /** ⚠️ IT MUST NOT FALL BACK TO `onAnswer`. A host that has not wired `onPlaceHeld`
+     *  would otherwise silently take the worse of the two writes — the one that strands
+     *  the chip — and nothing would look wrong. */
+    const user = userEvent.setup()
+    const { onAnswer } = mountHeld({ onPlaceHeld: undefined })
+    await user.click(screen.getByText("continental"))
+    expect(onAnswer).not.toHaveBeenCalled()
+  })
+
+  it("it shows WHERE the answer came from", () => {
+    /** A pill offering the director's own unplaced word is a different claim from one
+     *  offering what this home usually orders, and the `sub` is what says so. */
+    mountHeld()
+    expect(screen.getByText("not placed yet")).toBeInTheDocument()
+  })
+})
