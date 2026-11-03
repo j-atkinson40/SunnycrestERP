@@ -2,6 +2,88 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 2026-11-03 — follow-ups: the notice names the layer, and the absent resolution gets a ratchet
+
+### 1 — sweep item 2: one message for every failure, naming the wrong one
+
+`failure.ts` classifies before anything is said. `err.response` is the discriminator —
+axios sets it when the server answered at any status and leaves it undefined for DNS,
+refused connections, timeouts and CORS:
+
+    network   "Reconnecting — your order is safe"                    retries
+    server    "Opas hit an error (500) — your order is safe"         retries
+    refused   "Opas could not accept that (400) — your order is safe"  does NOT retry
+
+⚠️ **THE CLASSIFICATION DECIDES THE RETRY TOO**, because they are the same question asked
+twice. A 4xx means the server read the request and said no; three more identical attempts
+are three ways of not listening, and they delay the notice by the whole backoff. 408 and
+429 are the exceptions — both say "ask again" in so many words.
+
+⚠️ **AND THE STATUS IS IN THE TEXT.** James could not tell a 500 from a dropped
+connection, which is the whole sweep item; a number makes the layer unambiguous to him
+and to whoever reads the next report. The two old constants are DELETED rather than kept
+as aliases — a second source of copy for one event is how they drifted apart.
+
+### 2 — the absent resolution, grepped once and then made structural
+
+**The grep, bounded:** `product_name_resolver.resolve` is annotated `-> Resolution` and
+returns one on every path, so every other module holding a resolution got it from there
+and cannot see a `None`. **The only producer is `evaluate_typed`**, which has four
+callers; three discard the value (`_`, `_resolution`) and the fourth was `read_state`.
+There was no second unguarded site.
+
+**Made structural** in `test_the_vault_resolution_may_be_absent.py`: an `ast` scan (not a
+grep — a regex matches the import, the def, the docstrings and this file) for any site
+binding that value under a real name, against a declared allowlist that may only shrink.
+Both positive controls CLAUDE.md requires are present and break-tested: blinding the
+scanner fails `test_the_scanner_can_SEE_the_call_sites`, and a stale allowlist entry
+fails `test_the_allowlist_is_TIGHT`.
+
+⚠️ **ON "SO THIS PATH RUNS IN CI":** it already does.
+`test_a_linked_vault_does_not_500_the_pane.py` monkeypatches `linked_variant` to return a
+real `VaultVariant` with `via` set, needs no data, and is in `ci_gate.txt`. **What I did
+NOT build is a real linked ROW**, which would additionally cover `_link_lookup`'s inner
+join. It needs its own tenant and product (CI has migrations and no seeds, so there is no
+testco to link against) and the join was not the fault. Named here rather than skipped
+silently.
+
+### 3 — the stale figure is NOT in CLAUDE.md, and I am the one who said it was
+
+Follow-up 3 asked me to update CLAUDE.md's "variant_template_id populated on 0 of 39
+rows". **CLAUDE.md does not contain that figure in any form.** Measured by grep across
+every root `.md`: the only hit for the phrase was my own entry from this morning
+asserting that CLAUDE.md records it — so the premise of the follow-up came from my
+report, and my report constructed the citation.
+
+It lives in four places, all now stale, none of them CLAUDE.md:
+
+    STATE.md:1796                      "NULL on all 39, every tenant"            [CORRECTED]
+    STATE.md:2417                      "0 of 4 sunnycrest, 0 of 25 testco"       [CORRECTED]
+    DECISIONS.md:2930                  "NULL on every tenant product"            — OWED
+    docs/investigations/2026-10-27-is-this-vault-a-cremation.md:35  "0 of 39"     — OWED
+
+Both STATE lines are marked in place with the original wording preserved. **The other two
+are outside my write permission** — CLAUDE.md allows me code, tests, migrations and
+STATE.md, nothing else — and are owed to James.
+
+⚠️ **CLAUDE.md DOES CARRY A RELATED CLAIM AT 1356** that is worth his eye separately: it
+says `products.variant_template_id` was "added by `r186` and declared nowhere, so the
+link the whole catalog design resolves through was unreachable". The *declared nowhere*
+half may still hold; **"unreachable" does not** — three sunnycrest products resolve
+through it today, and that is what armed the 500. I have not touched it.
+
+### Gates
+
+Frontend: 385 files / **5530** tests, 0 failures; floor raised in this commit (+1 file,
++18 tests: failure.test.ts 14, capture-live 85 -> 89); build clean. Backend: the 34
+capture-related gate files pass **633 / 4 skipped / 0 failures**.
+
+⚠️ **`tsc -b` IS NOT CLEAN IN THIS CHECKOUT AND NOT BECAUSE OF THIS WORK.** Three errors
+in `src/pages/admin/role-management.tsx`, a file the concurrent payroll/roles session has
+dirty right now. Filtered to my own paths the count is **0**, and the committed tree does
+not contain their edits, so CI typechecks clean. This is the collision James predicted
+from two sessions in one checkout.
+
 ## 2026-11-03 — the three walk bugs, and a 500 that had been waiting for a linked vault
 
 James's walk of `aef73307`. Three separate bugs; the first had two causes.
@@ -32,11 +114,27 @@ stronger of the two paths — and the serializer dereferenced it anyway. **A det
 500 on every read of such a session**, which is why retrying could not have helped.
 
 ⚠️ **A LATENT BUG ARMED BY DATA, NOT BY CODE.** Both lines predate the walk; they are in
-`d54b4caa`. The linked path was unreachable while nothing was linked — CLAUDE.md §11
-still records `products.variant_template_id` as "populated on 0 of 39 rows" on
-sunnycrest. **Measured on production 2026-11-03: 3 of 11**, one of them
-`Monticello Burial Vault`. The catalogue work armed it and James was the first to walk
-into it.
+`d54b4caa`. The linked path was unreachable while nothing was linked. **Measured on
+production 2026-11-03: `products.variant_template_id` is populated on 3 of 11 sunnycrest
+products**, one of them `Monticello Burial Vault`. The catalogue work armed it and James
+was the first to walk into it.
+
+⚠️ **AND I GAVE THE WRONG LOCATION FOR THE STALE FIGURE — TWICE, IN THIS ENTRY AND IN
+`f662421b`'s COMMIT BODY.** Both said CLAUDE.md records it as "0 of 39 rows". **CLAUDE.md
+does not contain that figure in any form**, measured by grep across every root `.md`:
+the only hit for the phrase was this entry asserting it. A constructed citation, in an
+entry about a stale count, written while naming the hazard.
+
+The figure actually lives in three places, none of them CLAUDE.md, and all now stale:
+
+    STATE.md:1796                                    "NULL on all 39, every tenant"
+    STATE.md:2417                                    "0 of 4 sunnycrest, 0 of 25 testco"
+    DECISIONS.md:2930                                "NULL on every tenant product"
+    docs/investigations/2026-10-27-is-this-vault-a-cremation.md:35   "0 of 39 rows"
+
+The two STATE lines are corrected in place below. **`DECISIONS.md` and the investigation
+doc are outside my write permission** (CLAUDE.md: code, tests, migrations and STATE.md,
+nothing else) and are surfaced for James rather than edited.
 
 ⚠️ **AND THE HAZARD WAS WRITTEN DOWN, ONE LAYER IN.** The comment above
 `resolution = None` says it is bound on both paths precisely so the link path cannot
@@ -1793,7 +1891,7 @@ Measured on **production** 2026-10-19, read-only. Each of these is a row that is
 
 | fact | measured | consequence |
 |---|---|---|
-| `products.variant_template_id` | **NULL on all 39, every tenant** | the vault link resolves from the line's NAME, through the resolver the bar uses |
+| `products.variant_template_id` | **NULL on all 39, every tenant** [CORRECTED 2026-11-03: re-measured on production as **3 of 11 sunnycrest products POPULATED**, one of them `Monticello Burial Vault`. The original reading was true when taken; the catalogue work linked products since, and this stale zero is how a crash on the linked path stayed armed — see the 2026-11-03 entry at the top.] | the vault link resolves from the line's NAME, through the resolver the bar uses |
 | `order_personalization_tasks` (sunnycrest) | **0 rows** | the Personalization row renders for no order |
 | `invoice_delivery_preference` | **`statement_only` on all 22 platform-wide** | "Invoiced after delivery" is unreachable with today's data |
 | `customers.payment_terms` | **NULL on all 22** | the prototype's "Hopkins is Net 30" is omitted, not invented |
@@ -2415,7 +2513,11 @@ going to St. Mary's section 4 service Friday 11 am nameplate only last name Smit
     and `sales_orders.scheduled_date`. `case_merchandise` is **not reachable from a
     sales order** and `personalization_records` does not exist as a table.
   - **Prices are reachable by name, not by variant.** `variant_template_id` is NULL
-    on every tenant product (0 of 4 sunnycrest, 0 of 25 testco), but sunnycrest's
+    on every tenant product (0 of 4 sunnycrest, 0 of 25 testco)
+    [CORRECTED 2026-11-03: **3 of 11 sunnycrest products now carry one.** The pricing
+    claim this bullet makes is unaffected — prices are still joined by name — but the
+    NULL-everywhere premise it rests on no longer holds, and anything else inferred
+    from it needs re-measuring.], but sunnycrest's
     `Monticello Burial Vault` ($1,250) and `Continental Burial Vault` ($1,850) are
     string-identical to the capture's display names. Cemetery equipment has no
     tenant product at all.

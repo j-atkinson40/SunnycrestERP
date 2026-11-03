@@ -65,6 +65,7 @@ import { EXTRACT_DEBOUNCE_MS, createSequencer } from "./capture-sequence"
 import { LANDED_MS, fly, rectOfRange, rowValueFor } from "./fly"
 import { textWithout, wordsReadyToLeave } from "./leave"
 import { whatTabDoes } from "./tab"
+import { classifyFailure, stalledNotice } from "./failure"
 import { HeldStrip } from "./HeldStrip"
 
 /** What the pane tells the command line about itself.
@@ -288,14 +289,19 @@ export const RETRY_ATTEMPTS = 3
 /** First backoff step; doubles per attempt — 400ms, 800ms, 1.6s. */
 export const RETRY_BASE_MS = 400
 
-/** ⚠️ IT SAYS THE ORDER IS SAFE, because that is the director's actual question. The
- *  old copy — "The order did not reach the server" — answered a question nobody asked
- *  and implied the opposite of the truth. */
-export const RETRY_NOTICE = "Reconnecting — your order is safe"
-
-/** After the last attempt. Still a notice: the order is on screen and on the server. */
-export const STALLED_NOTICE =
-  "Still reconnecting — your order is safe. The last words you typed have not been read yet."
+/**
+ * ⚠️ THE NOTICE TEXT MOVED TO `failure.ts` ON 2026-11-03 (sweep item 2), AND THESE TWO
+ * CONSTANTS ARE GONE RATHER THAN KEPT AS ALIASES.
+ *
+ * They were one message per phase — "Reconnecting", then "Still reconnecting" — which
+ * is one message for every CAUSE, and that is the defect the sweep item names: the
+ * failure James hit was a deterministic 500, and a connection message sent the reader
+ * to the network while the fault was a serializer dereferencing a `None`.
+ *
+ * `classifyFailure` now produces the line from what actually happened, so a network
+ * drop, a 500 and a 4xx read differently and only the first two retry. Keeping these
+ * as re-exports would have left a second source of copy for the same event.
+ */
 
 const ROW_CLASS: Record<string, string> = {
   done: "border-[rgba(74,160,110,0.35)] bg-[rgba(74,160,110,0.05)]",
@@ -1144,9 +1150,17 @@ export function CapturePane({
           // than an error. A retry that succeeds leaves no trace.
           setNotice(null)
         })
-        .catch(() => {
-          if (attempt < RETRY_ATTEMPTS) {
-            setNotice(RETRY_NOTICE)
+        .catch((err: unknown) => {
+          // ⚠️ THE FAILURE IS CLASSIFIED BEFORE ANYTHING IS SAID ABOUT IT, which is
+          // sweep item 2. One message for every failure is how "did not reach the
+          // server" came to describe a deterministic 500 that had reached the server,
+          // been understood, and crashed on the way back out.
+          const f = classifyFailure(err)
+          // ⚠️ AND THE CLASSIFICATION DECIDES THE RETRY TOO. A 4xx is a refusal: the
+          // server read the request and said no, so asking again unchanged gets the
+          // same no three times.
+          if (f.retry && attempt < RETRY_ATTEMPTS) {
+            setNotice(f.notice)
             timers.push(
               window.setTimeout(
                 () => send(attempt + 1),
@@ -1155,12 +1169,11 @@ export function CapturePane({
             )
             return
           }
-          // ⚠️ NO `setError` HERE ANY MORE. This was
-          // `setError("The order did not reach the server")`, and that single line
-          // blanked the pane: the error branch returned before the order could render.
-          // The order is on screen and on the server; only the last keystroke is
-          // unaccounted for, and that is all this says.
-          setNotice(STALLED_NOTICE)
+          // ⚠️ NO `setError` HERE. That single line blanked the pane: the error branch
+          // returned before the order could render. The order is on screen and on the
+          // server; only the last keystroke is unaccounted for, and that is all this
+          // says — in the words of whatever actually went wrong.
+          setNotice(stalledNotice(f))
         })
         .finally(() => {
           // ⚠️ CLEARED UNCONDITIONALLY, INCLUDING FOR A DROPPED RESPONSE. Gating this

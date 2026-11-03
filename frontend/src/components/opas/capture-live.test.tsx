@@ -1894,7 +1894,7 @@ describe("slice 2 — a failed request never blanks the order", () => {
     await waitFor(
       () =>
         expect(screen.getByTestId("capture-notice")).toHaveTextContent(
-          /Still reconnecting/i,
+          /have not been read yet/i,
         ),
       { timeout: 6000 },
     )
@@ -2068,5 +2068,91 @@ describe("the bar refuses the operating system's suggestions", () => {
       ([a]) => a,
     )
     expect(missing).toEqual([])
+  })
+})
+
+
+describe("sweep item 2 — the notice names what actually happened", () => {
+  /**
+   * James, 2026-11-03: *"The 'did not reach the server' notice must name what actually
+   * happened: network failure vs server error (status code) — never one message for
+   * both. A 500 is 'Opas hit an error — your order is safe', not a connection
+   * message."*
+   *
+   * ⚠️ THE UNIT TESTS FOR THE WORDING ARE IN `failure.test.ts`. These assert the
+   * WIRING — that the pane classifies the error it actually caught rather than printing
+   * one line for everything, which is the half a pure test cannot see.
+   */
+  function captured() {
+    return state({
+      values: { funeral_home: "Hopkins Funeral Home" },
+      answered: ["funeral_home"],
+      surface: {
+        id: "capture",
+        rows: [
+          { row_id: "funeral_home", label: "Funeral Home", state: "done",
+            field_ids: ["funeral_home"], edit_target: "funeral_home",
+            value: "Hopkins Funeral Home", secondary_value: null },
+        ],
+      },
+    })
+  }
+
+  it("a 500 says Opas hit an error, not a connection message", async () => {
+    /** ⚠️ JAMES'S EXACT CASE. The failure he hit was a deterministic 500 and the pane
+     *  told him the order had not reached the server — which sent the diagnosis to the
+     *  network while the fault was a serializer dereferencing a `None`. */
+    vi.mocked(startCapture).mockResolvedValue(captured() as never)
+    const bar = await openOrder()
+    vi.mocked(setCaptureText).mockRejectedValue({ response: { status: 500, data: {} } })
+    await user.type(bar, "monticello")
+
+    const notice = await screen.findByTestId("capture-notice")
+    await waitFor(() => expect(notice).toHaveTextContent(/Opas hit an error \(500\)/))
+    expect(notice).not.toHaveTextContent(/reconnect/i)
+    // the order is still there, which is the other half of the ruling
+    expect(screen.getByText("Hopkins Funeral Home")).toBeInTheDocument()
+  })
+
+  it("a dropped connection says reconnecting", async () => {
+    /** ⚠️ THE CONTROL. Without it the test above passes against a pane that prints
+     *  "Opas hit an error" for every failure — the same single-message defect with
+     *  different words. */
+    vi.mocked(startCapture).mockResolvedValue(captured() as never)
+    const bar = await openOrder()
+    vi.mocked(setCaptureText).mockRejectedValue(new Error("Network Error"))
+    await user.type(bar, "monticello")
+
+    const notice = await screen.findByTestId("capture-notice")
+    await waitFor(() => expect(notice).toHaveTextContent(/reconnecting/i))
+    expect(notice).not.toHaveTextContent(/hit an error/i)
+  })
+
+  it("a 4xx is NOT retried", async () => {
+    /** ⚠️ COUNTED, because "it said something sensible" is satisfied either way. The
+     *  server read the request and refused it; three more identical attempts delay the
+     *  notice by the whole backoff and change nothing. */
+    vi.mocked(startCapture).mockResolvedValue(captured() as never)
+    const bar = await openOrder()
+    vi.mocked(setCaptureText).mockClear()
+    vi.mocked(setCaptureText).mockRejectedValue({ response: { status: 400, data: {} } })
+    await user.type(bar, "x")
+    await screen.findByTestId("capture-notice")
+    await settle()
+    expect(vi.mocked(setCaptureText).mock.calls).toHaveLength(1)
+  })
+
+  it("a 500 IS retried", async () => {
+    /** The other side of the same switch, so the test above is about 4xx and not about
+     *  retrying having been turned off. */
+    vi.mocked(startCapture).mockResolvedValue(captured() as never)
+    const bar = await openOrder()
+    vi.mocked(setCaptureText).mockClear()
+    vi.mocked(setCaptureText).mockRejectedValue({ response: { status: 500, data: {} } })
+    await user.type(bar, "x")
+    await waitFor(
+      () => expect(vi.mocked(setCaptureText).mock.calls.length).toBeGreaterThan(1),
+      { timeout: 4000 },
+    )
   })
 })
