@@ -21,6 +21,11 @@ interface RoleOption {
   is_system: boolean
   is_active: boolean
   permission_keys: string[]
+  /* ⚠️ The server has sent this since r221 and this local type did not
+     declare it, so the area limit was unreachable here — which is part of why
+     an area-limited role could be offered with nothing to say so. NULL means
+     "not established", i.e. unlimited; `[]` means limited to nothing. */
+  limited_to_areas: string[] | null
 }
 
 interface PermissionOverride {
@@ -40,6 +45,83 @@ const ROLE_TILES: Record<string, { icon: string; label: string; desc: string; tr
   legacy_designer: { icon: "🎨", label: "Legacy Designer", desc: "Full Legacy Studio access, order and customer view", track: "office" },
   driver: { icon: "🚛", label: "Driver", desc: "Driver portal and route management only", track: "production" },
   production: { icon: "🏭", label: "Production", desc: "Operations board, production logging, safety, QC", track: "production" },
+}
+
+/**
+ * Which roles this wizard offers for a track.
+ *
+ * ⚠️ **EXPORTED SO IT CAN BE TESTED WITHOUT DRIVING FOUR WIZARD STEPS**, and
+ * because the bug it replaces was invisible from the outside: the old inline
+ * filter read `if (!tile) return false`, so a role with no entry in
+ * `ROLE_TILES` was silently dropped. The Payroll role shipped by r223 — seeded
+ * in every tenant, returned by `/roles`, carrying `limited_to_areas:
+ * ["payroll"]` — could not be selected here at all, so the one person the
+ * whole arc was built for could not be given her role.
+ *
+ * `ROLE_TILES` is presentation. Admission is decided by track alone.
+ */
+export function filterWizardRoles(
+  roles: RoleOption[],
+  track: Track,
+): RoleOption[] {
+  return roles
+    .filter((r) => r.is_system && r.slug !== "admin" && r.slug !== "employee")
+    .filter((r) => {
+      const tile = ROLE_TILES[r.slug]
+      // No tile: offered on the office track, which is where a new
+      // office-side role lands. A production-track role must declare itself
+      // with a tile, since it needs the username/PIN path rather than email.
+      if (!tile) return track === "office_management"
+      return track === "office_management"
+        ? tile.track === "office"
+        : tile.track === "production"
+    })
+}
+
+export interface WizardSubmission {
+  endpoint: string
+  payload: Record<string, unknown>
+}
+
+/**
+ * Where this wizard submits, and with what.
+ *
+ * ⚠️ **EXPORTED SO THE ENDPOINT CAN BE PINNED, AND THE ENDPOINT IS THE PART
+ * THAT MATTERS.** The absent password field is not the guarantee: `POST /users`
+ * still legitimately accepts a password — ruling 4 of 2026-11-03 keeps it for
+ * the six callers that need it, including three seeds — so a revert of the
+ * office track from `/users/invite` back to `/users` would be ACCEPTED by the
+ * server and set a password an admin chose. `POST /users/invite` forbids extra
+ * fields, so a password sent there is a 422 rather than a silent acceptance.
+ * The test therefore asserts which door the office track knocks on.
+ */
+export function buildWizardSubmission(args: {
+  track: Track
+  firstName: string
+  lastName: string
+  roleId: string
+  email: string
+  username: string
+  pin: string
+  consoles: string[]
+}): WizardSubmission {
+  const base = {
+    first_name: args.firstName,
+    last_name: args.lastName,
+    role_id: args.roleId,
+  }
+  if (args.track === "production_delivery") {
+    // Username + PIN: no email exists to invite, so this track still creates
+    // the account directly.
+    return {
+      endpoint: "/users",
+      payload: { ...base, track: args.track, username: args.username,
+                 pin: args.pin, console_access: args.consoles },
+    }
+  }
+  // Office track: an invite. No password is constructed here, and none can
+  // be added without the server refusing the request.
+  return { endpoint: "/users/invite", payload: { ...base, email: args.email } }
 }
 
 const ROLE_SUMMARIES: Record<string, { can: string[]; cannot: string[] }> = {
@@ -209,34 +291,20 @@ export default function EmployeeCreationWizard({ onClose, onCreated }: EmployeeC
     setCreating(true)
     try {
       const isProduction = track === "production_delivery"
-      const payload: Record<string, unknown> = {
-        first_name: firstName,
-        last_name: lastName,
-        role_id: selectedRoleId,
-        track,
-      }
-      let userId: string
-      if (isProduction) {
-        // The production/delivery track authenticates by username + PIN and
-        // has no email to send an invite to, so it still creates directly.
-        payload.username = username
-        payload.pin = pin
-        payload.console_access = consoles
-        const res = await apiClient.post("/users", payload)
-        userId = res.data.id
-      } else {
-        // Office track: invite. No password crosses this request.
-        payload.email = email
-        delete payload.track
-        const res = await apiClient.post("/users/invite", payload)
-        userId = res.data.user_id
-        if (res.data.email_sent === false) {
-          // Surfaced, not swallowed: the account exists and she has no link.
-          toast.error(
-            `${firstName} was added but the invitation email could not be sent. ` +
-            `Check email settings, then invite again.`
-          )
-        }
+      // One place decides the endpoint and the payload, and it is exported
+      // and tested — see buildWizardSubmission.
+      const { endpoint, payload } = buildWizardSubmission({
+        track, firstName, lastName, roleId: selectedRoleId,
+        email, username, pin, consoles,
+      })
+      const res = await apiClient.post(endpoint, payload)
+      const userId: string = isProduction ? res.data.id : res.data.user_id
+      if (!isProduction && res.data.email_sent === false) {
+        // Surfaced, not swallowed: the account exists and she has no link.
+        toast.error(
+          `${firstName} was added but the invitation email could not be sent. ` +
+          `Check email settings, then invite again.`
+        )
       }
 
       // Save phone to profile
@@ -250,7 +318,13 @@ export default function EmployeeCreationWizard({ onClose, onCreated }: EmployeeC
         await apiClient.put(`/users/${userId}/permissions`, { overrides }).catch(() => {})
       }
 
-      toast.success(`${firstName} ${lastName} added`)
+      // "added" is true of both tracks and informative about neither. An
+      // admin needs to know whether a link is now sitting in an inbox.
+      toast.success(
+        isProduction
+          ? `${firstName} ${lastName} added`
+          : `Invite sent to ${email.trim()} — they set their own password from the link`
+      )
       onCreated()
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Failed to create employee"
@@ -377,15 +451,10 @@ export default function EmployeeCreationWizard({ onClose, onCreated }: EmployeeC
           </Label>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {roles
-              .filter((r) => r.is_system && r.slug !== "admin" && r.slug !== "employee")
-              .filter((r) => {
-                const tile = ROLE_TILES[r.slug]
-                if (!tile) return false
-                return track === "office_management" ? tile.track === "office" : tile.track === "production"
-              })
+            {filterWizardRoles(roles, track)
               .map((r) => {
                 const tile = ROLE_TILES[r.slug]
+                const areas = r.limited_to_areas
                 return (
                   <button
                     key={r.id}
@@ -395,31 +464,34 @@ export default function EmployeeCreationWizard({ onClose, onCreated }: EmployeeC
                       selectedRoleId === r.id ? "border-blue-400 bg-blue-50 ring-2 ring-blue-200" : "border-gray-200 hover:border-blue-300"
                     }`}
                   >
-                    <div className="text-lg mb-1">{tile?.icon}</div>
+                    <div className="text-lg mb-1">{tile?.icon ?? "🔑"}</div>
                     <div className="font-semibold text-sm">{r.name}</div>
                     <div className="text-xs text-gray-500 mt-0.5">{r.description}</div>
+                    {/* The area limit is the most consequential thing about a
+                        role and the thing an area-limited role must not hide:
+                        whoever picks it should see that it is narrow. */}
+                    {areas && areas.length > 0 && (
+                      <div className="mt-2 inline-flex items-center rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[11px] font-medium text-amber-900">
+                        limited to {areas.join(", ")}
+                      </div>
+                    )}
                   </button>
                 )
               })}
 
-            {/* Custom role option */}
-            <button
-              type="button"
-              onClick={() => {
-                const customRoles = roles.filter((r) => !r.is_system && r.is_active)
-                if (customRoles.length > 0) {
-                  setSelectedRoleId(customRoles[0].id)
-                  setSelectedRoleSlug(customRoles[0].slug)
-                }
-              }}
-              className={`p-4 rounded-xl border text-left transition-all border-dashed ${
-                selectedRole && !selectedRole.is_system ? "border-blue-400 bg-blue-50" : "border-gray-300 hover:border-blue-300"
-              }`}
-            >
-              <div className="text-lg mb-1">⚙</div>
-              <div className="font-semibold text-sm">Custom role</div>
-              <div className="text-xs text-gray-500 mt-0.5">Build from available roles or permissions</div>
-            </button>
+            {/* ⚠️ `Custom role` WAS REMOVED HERE, and it did not do what its
+                label said. It built no role: it ran
+                `roles.filter(r => !r.is_system && r.is_active)` and selected
+                `customRoles[0]` — whichever non-system role happened to come
+                first, with no indication which. On Sunnycrest every one of the
+                13 roles is `is_system`, so the list was empty and the button
+                was INERT: it looked live and did nothing at all.
+
+                James's ruling of 2026-11-04: the area decision belongs in
+                Roles admin, which already has the area picker, not in step 2
+                of a hiring wizard. Duplicating that surface here would hand
+                the most consequential choice about a role to whoever happens
+                to be onboarding a new hire. */}
           </div>
 
           {/* Role summary */}
@@ -590,8 +662,21 @@ export default function EmployeeCreationWizard({ onClose, onCreated }: EmployeeC
             <Button variant="outline" onClick={() => setStep(3)}>
               <ChevronLeft className="h-4 w-4 mr-1" /> Back
             </Button>
+            {/* ⚠️ THE BUTTON NAMES WHAT IT DOES, per James's ruling of
+                2026-11-04. The office track sends an invite and sets no
+                password; "Create employee" hid that, so an admin could not
+                tell from this screen whether they were about to set a
+                credential or send a link. Naming the recipient also makes a
+                mistyped address visible at the last moment it is cheap to
+                fix — after this, the only copy of the link is in whatever
+                inbox was typed. The production track genuinely does create
+                the account here, with a username and PIN, so it keeps the
+                original wording. */}
             <Button className="flex-1" onClick={handleCreate} loading={creating}>
-              <Check className="h-4 w-4 mr-1" /> Create employee
+              <Check className="h-4 w-4 mr-1" />
+              {track === "office_management"
+                ? `Send invite to ${email.trim() || "…"}`
+                : "Create employee"}
             </Button>
           </div>
         </div>
