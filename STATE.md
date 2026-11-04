@@ -7405,6 +7405,22 @@ the other.
 
   **Fifth instance of one shape in a day across two sessions, and the count is the argument:** a pipe eating `$?`, `find` over a symlink, `grep -c` counting lines, `alembic heads` reading the filesystem instead of the index, and `pgrep` reading wrappers instead of processes. Each an instrument answering a question ADJACENT to the one asked; in four of five the reading was plausible enough to act on. What worked every time was a second instrument that could not share the first's blindness — here `SELECT count(*) FROM pg_stat_activity`, which cannot lie about who holds the database.
 
+  ⚠️ **2026-11-04 — IF TWO-STEP LOCKS SOMEONE OUT, HERE ARE THE THREE WAYS BACK IN, IN ORDER.** Recorded here rather than only in commit bodies because this is the document read first, and the moment it is needed is the moment nobody wants to go looking.
+
+      1. phone lost                -> one of her ten recovery codes
+      2. phone AND codes lost      -> railway run python -m scripts.clear_two_step \
+                                        --email <her@email> --company-slug sunnycrest
+                                      then she re-enrols at next sign-in
+      3. enrolment itself broken   -> set TWO_STEP_ENFORCED=false on the backend
+                                      service in Railway; restart; enforcement is
+                                      skipped and nothing else changes
+
+  **On (3):** `TWO_STEP_ENFORCED` is read with `os.getenv` at CALL time, not from `settings`, so it works during the partial or failed restart that is exactly when it is needed. It is checked in `requires_two_step` — the single predicate — so the guard stops confining AND `/two-step/status` stops reporting `required` AND the invite response stops promising a step that will not be asked for. **Fail-secure:** only `false`/`0`/`no`/`off` disable; absent, empty, `"true"`, `"disabled"` and `"flase"` all ENFORCE, because a typo must not turn sign-in protection off. Every request served while it is off logs at WARNING, one line per request, deliberately.
+
+  ⚠️ **AND (2) EXISTS BECAUSE WITHOUT IT (3) IS A ONE-WAY DOOR.** Traced on James's question: with phone and codes gone, `TWO_STEP_ENFORCED=false` signs you in but `begin_enrolment` raises `already enrolled` against the dead row, and `/users/{id}/two-step/reset` refuses a self-clear with no second admin to ask. So enforcement could never be turned back ON, and a switch built to be temporary would have become the permanent state. The platform-realm endpoint covers the ordinary case and is reachable only THROUGH the app, which is what you cannot reach.
+
+  **`scripts/clear_two_step.py` does not refuse in production**, unlike the seed scripts, because production is the only place it is useful. Its guards are that it requires BOTH an email and a company slug, and that there is **no `--all`, no glob and no email-only mode** — `users` is unique on `(email, company_id)`, not on email, so an email-only lookup could clear a stranger's second factor alongside your own. ⚠️ Its `len(matches) != 1` check has **no discriminating test**: replacing it with `== 0` left all nine tests green, because `uq_users_email_company` makes a second match impossible and the DATABASE supplies that protection. Recorded so the next reader does not credit it with a guard it does not have.
+
   **2026-11-04 — QUEUED, NOT STARTED: Payroll 3, the weekly hours pull from Payentry Time Management.** Dispatch issued 2026-11-04, to run after the Payroll 2 push. Phase 1 is read-only findings, then stop. Goal: a scheduled Bridgeable job pulls the week's hours the way the Grok bot does today and loads them for `calculate_week`. **Read-only toward Payentry**, running alongside Grok for 3–4 weeks with results compared weekly.
 
   **What the scope decision rests on, from the Grok bot's own use:** `mytime.payentry.com` (company `Sunnyc2`) signs in with username and password only — no texted code observed — and offers *Reports → Sun–Sat range → download .xls*, where **Employee Hours** (person/day/pay type) is the source and **Hours Summary** (department totals) the cross-check. The MAIN site `new.payentry.com` can require a texted code and is therefore **out of scope entirely**: no Check Register pull, no deduction entry. Sue continues to enter deductions and to upload the monthly Check Register by hand, which Bridgeable then reconciles against what was actually deducted.
