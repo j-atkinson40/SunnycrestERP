@@ -761,3 +761,7 @@ tests/test_the_purge_finishes_or_says_why.py
 tests/test_two_step_sign_in.py
 tests/test_tenant_invites.py
 tests/test_platform_two_step_reset.py
+# And the way back in when the phone AND the recovery codes are gone
+# (James, 2026-11-04). Without it, `TWO_STEP_ENFORCED=false` is a one-way
+# door: signed in, unable to re-enrol, so unable to turn enforcement back on.
+tests/test_two_step_recovery_script.py
