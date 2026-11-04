@@ -661,6 +661,17 @@ async def oauth_callback(
         raise HTTPException(status_code=404, detail="Company not found")
 
     # Exchange code for tokens
+    # ⚠️ **RAW `FRONTEND_URL`, DELIBERATELY — THIS IS NOT AN EMAIL LINK.** An
+    # OAuth redirect_uri is not a link we send to a person; it is a string the
+    # PROVIDER matches character-for-character against its own registered-app
+    # configuration. Routing it through `tenant_link_base` would make it
+    # per-tenant, and RingCentral would reject every tenant whose host was not
+    # separately registered with them. The tenant's own host is the wrong answer
+    # here, which is why the one rule for email links stops at this boundary.
+    #
+    # The no-raw-reads guard (`tests/test_frontend_url_guard.py`) allowlists this
+    # site BY FUNCTION NAME, not by matching this comment — a comment-keyed
+    # allowlist would let any future site exempt itself by describing itself.
     redirect_uri = f"{settings.FRONTEND_URL}/settings/call-intelligence"
     if settings.ENVIRONMENT == "production":
         redirect_uri = f"https://api.{settings.PLATFORM_DOMAIN}/api/v1/integrations/ringcentral/oauth/callback"
@@ -703,6 +714,17 @@ async def oauth_callback(
     logger.info("RingCentral OAuth connected for company %s", company_id)
 
     # Redirect to settings page
+    # ⚠️ **RAW `FRONTEND_URL`, DELIBERATELY — THIS IS NOT AN EMAIL LINK.** An
+    # OAuth redirect_uri is not a link we send to a person; it is a string the
+    # PROVIDER matches character-for-character against its own registered-app
+    # configuration. Routing it through `tenant_link_base` would make it
+    # per-tenant, and RingCentral would reject every tenant whose host was not
+    # separately registered with them. The tenant's own host is the wrong answer
+    # here, which is why the one rule for email links stops at this boundary.
+    #
+    # The no-raw-reads guard (`tests/test_frontend_url_guard.py`) allowlists this
+    # site BY FUNCTION NAME, not by matching this comment — a comment-keyed
+    # allowlist would let any future site exempt itself by describing itself.
     frontend = settings.FRONTEND_URL
     if settings.ENVIRONMENT == "production":
         slug = company.slug or ""

@@ -159,6 +159,17 @@ def dropbox_callback(
     db: Session = Depends(get_db),
 ):
     from app.config import settings as app_settings
+    # ⚠️ **RAW `FRONTEND_URL`, DELIBERATELY — THIS IS NOT AN EMAIL LINK.** An
+    # OAuth redirect_uri is not a link we send to a person; it is a string the
+    # PROVIDER matches character-for-character against its own registered-app
+    # configuration. Routing it through `tenant_link_base` would make it
+    # per-tenant, and Dropbox would reject every tenant whose host was not
+    # separately registered with them. The tenant's own host is the wrong answer
+    # here, which is why the one rule for email links stops at this boundary.
+    #
+    # The no-raw-reads guard (`tests/test_frontend_url_guard.py`) allowlists this
+    # site BY FUNCTION NAME, not by matching this comment — a comment-keyed
+    # allowlist would let any future site exempt itself by describing itself.
     frontend = app_settings.FRONTEND_URL.rstrip("/")
     try:
         dropbox_handle_callback(db, code, state)
@@ -198,6 +209,17 @@ def gdrive_callback(
     db: Session = Depends(get_db),
 ):
     from app.config import settings as app_settings
+    # ⚠️ **RAW `FRONTEND_URL`, DELIBERATELY — THIS IS NOT AN EMAIL LINK.** An
+    # OAuth redirect_uri is not a link we send to a person; it is a string the
+    # PROVIDER matches character-for-character against its own registered-app
+    # configuration. Routing it through `tenant_link_base` would make it
+    # per-tenant, and Google would reject every tenant whose host was not
+    # separately registered with them. The tenant's own host is the wrong answer
+    # here, which is why the one rule for email links stops at this boundary.
+    #
+    # The no-raw-reads guard (`tests/test_frontend_url_guard.py`) allowlists this
+    # site BY FUNCTION NAME, not by matching this comment — a comment-keyed
+    # allowlist would let any future site exempt itself by describing itself.
     frontend = app_settings.FRONTEND_URL.rstrip("/")
     try:
         gdrive_handle_callback(db, code, state)

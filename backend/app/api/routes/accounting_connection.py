@@ -308,7 +308,14 @@ def send_to_accountant(
 
     # Send accountant invitation email
     from app.services.email_service import email_service
-    migration_url = f"{settings.FRONTEND_URL}/accounting/setup?token={conn.accountant_token}"
+    # One rule for outward links — see app/core/links.py. This one carries
+    # `accountant_token`, so a dead link is also a wasted credential.
+    from app.core.links import tenant_link_base
+
+    migration_url = (
+        f"{tenant_link_base(company)}/accounting/setup"
+        f"?token={conn.accountant_token}"
+    )
     tenant_name = company.name if company else "Your client"
     email_service.send_accountant_invitation(
         email=body.email,

@@ -270,8 +270,14 @@ class UrnEngravingService:
         db.commit()
 
         # Send email
-        from app.config import settings as app_settings
-        frontend_url = getattr(app_settings, "FRONTEND_URL", "http://localhost:5173")
+        # FH proof-approval links go to a funeral home, not to us, so the
+        # host has to be the tenant's. `tenant_id` is in scope here.
+        from app.core.links import tenant_link_base
+        from app.models.company import Company
+
+        frontend_url = tenant_link_base(
+            db.query(Company).filter(Company.id == tenant_id).first()
+        )
         approve_url = f"{frontend_url}/proof-approval/{token}"
         changes_url = f"{frontend_url}/proof-approval/{token}?action=changes"
 

@@ -43,6 +43,26 @@ def _user_to_response(user: User) -> dict:
     if user.role_obj:
         data["role_name"] = user.role_obj.name
         data["role_slug"] = user.role_obj.slug
+    # ⚠️ **THE PENDING-INVITE FLAG, BECAUSE WITHOUT IT RESEND AND CANCEL HAVE NO
+    # ENTRANCE.** A pending invitee renders in the user list identically to a
+    # colleague who signed in last year: same row, same actions, nothing saying
+    # she has never arrived. So the two endpoints would be complete, correct,
+    # audited machinery that no admin could reach — which is the shape CLAUDE.md
+    # §11 names *complete machinery behind an unprovisioned entrance*.
+    #
+    # Derived, never stored: `has_outstanding_invite` reads the hash's presence.
+    # ⚠️ **THE DIGEST ITSELF IS NOT IN THE RESPONSE AND MUST NOT BE.** It is not
+    # the token, but it is enough to confirm a guessed token against, and a user
+    # list is the widest-read surface in the app.
+    from app.services.tenant_invite import has_outstanding_invite
+
+    data["has_outstanding_invite"] = has_outstanding_invite(user)
+    data["invite_expires_at"] = (
+        user.invite_token_expires_at.isoformat()
+        if user.invite_token_hash is not None and user.invite_token_expires_at
+        else None
+    )
+
     # Include profile summary if loaded
     if hasattr(user, "profile") and user.profile:
         data["phone"] = user.profile.phone
@@ -366,6 +386,118 @@ def invite_user_endpoint(
     )
 
 
+class ResendInviteResponse(BaseModel):
+    user_id: str
+    email: str
+    expires_at: datetime
+    email_sent: bool
+    #: Always True on success. Stated in the response because it is the thing
+    #: the admin needs to be able to tell the person on the phone: the link you
+    #: were sent before no longer works, use the new one.
+    previous_link_invalidated: bool
+
+
+class CancelInviteResponse(BaseModel):
+    email: str
+    #: False when there was nothing to cancel. The endpoint still returns 200 —
+    #: see the docstring on why this is not a 404.
+    cancelled: bool
+
+
+def _pending_invitee_or_404(db: Session, user_id: str, actor: User) -> User:
+    """The named user, confined to this tenant. 404 otherwise.
+
+    ⚠️ **`company_id` IS IN THE FILTER, NOT CHECKED AFTERWARDS.** A lookup by
+    id alone followed by a comparison is the shape that leaks existence: the
+    two branches are distinguishable by timing and by any later divergence in
+    the handler. Filtering means another tenant's user id is simply not found.
+    """
+    user = (
+        db.query(User)
+        .filter(User.id == user_id, User.company_id == actor.company_id)
+        .first()
+    )
+    if user is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    return user
+
+
+@router.post("/{user_id}/invite/resend", response_model=ResendInviteResponse)
+def resend_invite_endpoint(
+    user_id: str,
+    current_user: User = Depends(require_permission("users.create")),
+    db: Session = Depends(get_db),
+):
+    """Issue a fresh invite link and kill the previous one.
+
+    ⚠️ **THE RESPONSE CARRIES NO LINK**, for the same reason `POST /invite`
+    does not: an admin holding the link can set her password. `email_sent=False`
+    means a new token was minted, the old one is dead, and nothing was
+    delivered — which is worse than not having resent at all, so it is reported
+    rather than smoothed over.
+
+    Requires `users.create` rather than a narrower permission. Resending is
+    inviting: it mints a credential that sets a password on an account.
+    """
+    from app.models.company import Company
+    from app.services import tenant_invite
+
+    user = _pending_invitee_or_404(db, user_id, current_user)
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    if company is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Company not found")
+
+    try:
+        token = tenant_invite.resend_invite(db, actor=current_user, user=user)
+    except tenant_invite.InviteError as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={"code": "invite_refused", "message": str(exc)},
+        )
+
+    email_sent = _send_invite_email(db, company=company, user=user,
+                                    inviter=current_user, token=token)
+    del token
+
+    return ResendInviteResponse(
+        user_id=user.id,
+        email=user.email,
+        expires_at=user.invite_token_expires_at,
+        email_sent=email_sent,
+        previous_link_invalidated=True,
+    )
+
+
+@router.delete("/{user_id}/invite", response_model=CancelInviteResponse)
+def cancel_invite_endpoint(
+    user_id: str,
+    current_user: User = Depends(require_permission("users.delete")),
+    db: Session = Depends(get_db),
+):
+    """Remove a pending invitee. The row goes; the audit row stays.
+
+    ⚠️ **`cancelled=False` RETURNS 200, NOT 404, AND THE DISTINCTION IS WHAT THE
+    CALLER IS ASKING.** Two admins clicking Cancel on the same stale list is
+    the ordinary case, and the second one's question — *is this invite gone?* —
+    is answered yes. A 404 would say "no such user", which is false: she exists,
+    or existed, and is not pending. The 404 above is reserved for a user id
+    this tenant has no claim to.
+
+    ⚠️ **AND THIS CANNOT TOUCH SOMEONE WHO HAS SIGNED IN.** `revoke_invite`
+    returns False without deleting when `invite_token_hash` is None, so an
+    accepted user falls into the `cancelled=False` branch rather than being
+    removed. Deleting a real colleague through the Cancel-invite button is the
+    failure this shape forecloses — not by remembering to check here, but
+    because the service refuses.
+    """
+    from app.services import tenant_invite
+
+    user = _pending_invitee_or_404(db, user_id, current_user)
+    email = user.email
+    cancelled = tenant_invite.revoke_invite(db, actor=current_user, user=user)
+    return CancelInviteResponse(email=email, cancelled=cancelled)
+
+
 def _send_invite_email(db: Session, *, company, user: User, inviter: User,
                        token: str) -> bool:
     """Hand the invite link to the D-7 delivery layer. True if accepted.
@@ -397,9 +529,13 @@ def _send_invite_email(db: Session, *, company, user: User, inviter: User,
             send_email_with_template,
         )
 
-        invite_url = (
-            f"{settings.FRONTEND_URL.rstrip('/')}/accept-invite?token={token}"
-        )
+        # ⚠️ `tenant_link_base`, NOT `settings.FRONTEND_URL`. This exact line
+        # emailed `http://localhost:5173/accept-invite?token=…` to James on
+        # 2026-11-04, because FRONTEND_URL's default is the developer address
+        # and production does not set it. See app/core/links.py.
+        from app.core.links import tenant_link_base
+
+        invite_url = f"{tenant_link_base(company)}/accept-invite?token={token}"
         # ⚠️ Keyword names taken from the real signature, not from the portal's
         # call: `to_email` / `to_name` / `subject_override`, never
         # `recipient=` / `subject=`.

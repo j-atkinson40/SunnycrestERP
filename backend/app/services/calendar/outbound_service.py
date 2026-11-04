@@ -548,10 +548,26 @@ def _issue_magic_links_for_external_attendees(
         )
         return []
 
-    # Resolve magic-link base URL — caller override or platform default.
-    base_url = magic_link_base_url or getattr(
-        _settings, "FRONTEND_URL", None
-    ) or "https://app.getbridgeable.com"
+    # Resolve the magic-link base: an explicit caller override, else the one
+    # rule for outward links.
+    #
+    # ⚠️ **THE `"https://app.getbridgeable.com"` TAIL IS GONE DELIBERATELY**,
+    # per James's ruling of 2026-11-04 — "one rule". It was the only place in
+    # the codebase that hardcoded a host, and it was a THIRD answer to the
+    # question `tenant_link_base` now owns: a magic link sent to an external
+    # attendee of a Sunnycrest event should land on Sunnycrest's address, not
+    # on the platform's. A chain of three fallbacks also meant the FRONTEND_URL
+    # middle term silently won on production, where it is unset and defaults to
+    # a developer address — the same defect as the 2026-11-04 invite, one layer
+    # down and never yet fired.
+    from app.core.links import tenant_link_base
+    from app.models.company import Company
+
+    base_url = magic_link_base_url or tenant_link_base(
+        # `tenant_id`, NOT `company_id`. This model uses the older of the two
+        # conventions; I assumed `company_id` and five tests said otherwise.
+        db.query(Company).filter(Company.id == event.tenant_id).first()
+    )
 
     issued: list[dict[str, str]] = []
     for attendee in attendees:

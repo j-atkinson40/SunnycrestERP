@@ -833,7 +833,12 @@ def post_request_family_approval(
         # Build canonical magic-link URL per §3.26.11.9 + Path B
         # build_magic_link_url. Path-scoped routing under /portal/<slug>
         # canonical per Phase 8e.2 portal foundation.
-        base_url = (settings.FRONTEND_URL or "").rstrip("/")
+        # ⚠️ This site already had `company.slug` in hand on the very next
+        # line and still took its BASE from FRONTEND_URL — the slug was used
+        # for the path and the host was left to a developer default.
+        from app.core.links import tenant_link_base
+
+        base_url = tenant_link_base(company)
         magic_link_url = (
             f"{base_url}/portal/{company.slug}/personalization-studio/"
             f"family-approval/{token}"

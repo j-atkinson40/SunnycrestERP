@@ -22,10 +22,18 @@ from app.services.documents import document_renderer
 logger = logging.getLogger(__name__)
 
 
-def _signer_url(token: str) -> str:
-    """Public signer URL — token is the sole auth mechanism."""
-    base = getattr(settings, "FRONTEND_URL", "http://localhost:5173")
-    return f"{base.rstrip('/')}/sign/{token}"
+def _signer_url(token: str, company=None) -> str:
+    """Public signer URL — token is the sole auth mechanism.
+
+    ⚠️ **`company` IS NOW REQUIRED IN PRACTICE, THOUGH THE DEFAULT KEEPS THE
+    SIGNATURE COMPATIBLE.** The token is the only authentication on this URL,
+    so a link to the wrong host is a signature request nobody can complete.
+    Passing None raises in production rather than falling back to a developer
+    address — see app/core/links.py.
+    """
+    from app.core.links import tenant_link_base
+
+    return f"{tenant_link_base(company)}/sign/{token}"
 
 
 def _get_company_name(db: Session, envelope: SignatureEnvelope) -> str:
@@ -192,7 +200,12 @@ def send_invite(
         "sender_name": sender_name,
         "signer_name": party.display_name,
         "signer_role": party.role.replace("_", " ").title(),
-        "signer_url": _signer_url(party.signer_token),
+        # The company is already resolved a few lines up for `company_name`;
+        # the URL needed the same object and was taking a global instead.
+        "signer_url": _signer_url(
+            party.signer_token,
+            db.query(Company).filter_by(id=envelope.company_id).first(),
+        ),
         "envelope_subject": envelope.subject,
         "envelope_description": envelope.description,
         "expires_at": (

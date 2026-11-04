@@ -93,9 +93,12 @@ class ApprovalGateService:
         if job.period_start and job.period_end:
             period_label = f"{job.period_start:%B %Y}"
 
-        base_url = settings.FRONTEND_URL
-        if settings.ENVIRONMENT == "production" and company and company.slug:
-            base_url = f"https://{company.slug}.{settings.PLATFORM_DOMAIN}"
+        # This block was the ONLY one of twelve outward-link sites that
+        # got this right, and it is now the helper's BODY rather than a
+        # good example nobody copied. Same behaviour, one place.
+        from app.core.links import tenant_link_base
+
+        base_url = tenant_link_base(company)
 
         approve_url = f"{base_url}/agents/{job.id}/review?action=approve&token={token}"
         reject_url = f"{base_url}/agents/{job.id}/review?action=reject&token={token}"

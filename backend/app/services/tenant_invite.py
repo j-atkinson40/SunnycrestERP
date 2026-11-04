@@ -216,6 +216,69 @@ def accept_invite(db: Session, token: str, password: str) -> User:
     return user
 
 
+def resend_invite(
+    db: Session,
+    *,
+    actor: User,
+    user: User,
+    ttl_hours: int = INVITE_TTL_HOURS,
+) -> str:
+    """Replace an outstanding invite's token with a fresh one. Returns the token.
+
+    James's ruling of 2026-11-04: *"Resend revokes the old token and issues a
+    new one."* Both halves happen here, in that order, as one statement — the
+    old digest is OVERWRITTEN rather than cleared and then re-set, so there is
+    no instant at which the row has no invite.
+
+    ⚠️ **THE OLD LINK STOPS WORKING, AND THAT IS THE FEATURE RATHER THAN A SIDE
+    EFFECT.** The reason an admin resends is usually that the first link went
+    somewhere it should not have — a wrong address, a forwarded mail, a
+    screenshot. A resend that left the previous token live would answer the
+    request without addressing the reason for it. `resolve_invite` looks the
+    token up BY DIGEST, so overwriting the digest is what makes the old link
+    unresolvable; there is no second place to clean up.
+
+    ⚠️ **AND THE EXPIRY IS RESET, NOT EXTENDED.** A fresh 72 hours from now, not
+    72 hours from the original invite — otherwise a resend near the end of the
+    window would issue a token that dies the same afternoon, and the admin would
+    have no way to tell from the UI.
+
+    Refuses a user with no outstanding invite. An accepted user is not reachable
+    here: acceptance clears the hash, so this raises for her rather than quietly
+    minting a token that would let someone past her password.
+    """
+    if user.invite_token_hash is None:
+        raise InviteError(
+            f"{user.email} has no outstanding invite to resend. If she has "
+            "already signed in, send her a password reset instead."
+        )
+
+    token = secrets.token_urlsafe(_TOKEN_BYTES)
+    now = datetime.now(timezone.utc)
+    user.invite_token_hash = _hash_token(token)
+    user.invite_token_expires_at = now + timedelta(hours=ttl_hours)
+    db.flush()
+
+    audit_service.log_action(
+        db,
+        user_id=actor.id,
+        company_id=user.company_id,
+        action="user.invite_resent",
+        entity_type="user",
+        entity_id=user.id,
+        # ⚠️ No token, same as `invite_user`. `previous_token_invalidated` is
+        # the fact worth auditing: it says the old link is dead, which is the
+        # question anyone reading this row later will actually have.
+        changes={
+            "email": user.email,
+            "expires_at": user.invite_token_expires_at.isoformat(),
+            "previous_token_invalidated": True,
+        },
+    )
+    db.commit()
+    return token
+
+
 def revoke_invite(db: Session, *, actor: User, user: User) -> bool:
     """Cancel an outstanding invite by DELETING the pending user row.
 

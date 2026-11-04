@@ -670,3 +670,289 @@ def test_an_unconfigured_mailer_reports_not_sent(actors, client, db, monkeypatch
         "SELECT count(*) FROM users WHERE email=:e AND company_id=:c"),
         {"e": INVITEE_EMAIL, "c": TESTCO_ID}).scalar()
     assert n == 1, "the invited user should still exist for a re-invite"
+
+
+# ── resend and cancel (James's ruling, 2026-11-04) ───────────────────────
+#
+# "Resend revokes the old token and issues a new one. Cancel removes the
+#  pending invitee. Both audited; break test that an old token is refused
+#  after resend."
+
+
+def test_the_old_token_is_refused_after_a_resend(actors, client, db):
+    """THE BREAK TEST JAMES ASKED FOR. The first link must stop working.
+
+    ⚠️ This is the assertion the whole feature exists for. The reason an admin
+    resends is usually that the first link went somewhere it should not have —
+    a wrong address, a forwarded mail, a screenshot in a chat. A resend that
+    left the old token live would answer the request while leaving the exposure
+    in place, and nothing in the UI would say so.
+
+    The control below it proves the refusal is specific to the OLD token and
+    not a resend that simply broke both.
+    """
+    user, first_token = _invite(db)
+
+    # Control: the first link works before the resend. Without this the test
+    # could pass against a token that was never valid.
+    assert client.get(f"/api/v1/invites/{first_token}", headers=H).status_code == 200
+
+    r = client.post(f"/api/v1/users/{user.id}/invite/resend",
+                    headers=_auth(tenant_token(ADMIN_UID, TESTCO_ID)))
+    assert r.status_code == 200, r.text
+    assert r.json()["previous_link_invalidated"] is True
+
+    # The claim. 400 + `invite_invalid`, not 404 — `resolve_invite` answers
+    # every failure with one message so a probe cannot tell "no such token"
+    # from "expired" from "already accepted".
+    dead = client.get(f"/api/v1/invites/{first_token}", headers=H)
+    assert dead.status_code == 400, (
+        f"the old invite link still resolves after a resend: {dead.text}"
+    )
+    assert dead.json()["detail"]["code"] == "invite_invalid"
+
+    # And accepting on the old token is refused too — the preview and the
+    # accept resolve the digest separately, so one being dead does not imply
+    # the other is.
+    used = client.post(f"/api/v1/invites/{first_token}/accept",
+                       headers=H, json={"password": "a-fresh-password"})
+    assert used.status_code == 400, used.text
+
+    # The row is still pending: a dead old token must not mean a dead invite.
+    db.expire_all()
+    still = db.query(User).filter(User.id == user.id).first()
+    assert still is not None
+    assert still.invite_token_hash is not None
+    assert still.hashed_password is None
+
+
+def test_the_new_token_works_and_is_different(actors, client, db):
+    """The other half: the resend has to produce a usable link."""
+    user, first_token = _invite(db)
+    first_hash = user.invite_token_hash
+
+    from app.models.company import Company
+    actor = db.query(User).filter(User.id == ADMIN_UID).first()
+    fresh = tenant_invite.resend_invite(db, actor=actor, user=user)
+
+    assert fresh != first_token
+    db.expire_all()
+    user = db.query(User).filter(User.id == user.id).first()
+    assert user.invite_token_hash != first_hash
+    assert user.invite_token_hash == hashlib.sha256(fresh.encode()).hexdigest()
+    assert client.get(f"/api/v1/invites/{fresh}", headers=H).status_code == 200
+
+
+def test_the_resend_resets_the_expiry_rather_than_extending_it(actors, db):
+    """A resend near the end of the window issues a full 72 hours, not the rest.
+
+    Otherwise the admin resends at hour 71 and the new link dies the same
+    afternoon, with nothing in the response to say so.
+    """
+    user, _ = _invite(db)
+    user.invite_token_expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+    db.commit()
+
+    actor = db.query(User).filter(User.id == ADMIN_UID).first()
+    tenant_invite.resend_invite(db, actor=actor, user=user)
+    db.expire_all()
+    user = db.query(User).filter(User.id == user.id).first()
+
+    remaining = user.invite_token_expires_at - datetime.now(timezone.utc)
+    assert remaining > timedelta(hours=71), remaining
+
+
+def test_an_expired_invite_can_still_be_resent(actors, client, db):
+    """Expiry is the common reason to resend, so it must not be a refusal."""
+    user, old_token = _invite(db)
+    user.invite_token_expires_at = datetime.now(timezone.utc) - timedelta(hours=1)
+    db.commit()
+    assert client.get(f"/api/v1/invites/{old_token}", headers=H).status_code == 400
+
+    r = client.post(f"/api/v1/users/{user.id}/invite/resend",
+                    headers=_auth(tenant_token(ADMIN_UID, TESTCO_ID)))
+    assert r.status_code == 200, r.text
+
+
+def test_resending_to_someone_who_already_signed_in_is_refused(actors, client, db):
+    """She has a password. A fresh invite token would set a new one."""
+    user, token = _invite(db)
+    tenant_invite.accept_invite(db, token, "she-chose-this-herself")
+    db.expire_all()
+
+    r = client.post(f"/api/v1/users/{user.id}/invite/resend",
+                    headers=_auth(tenant_token(ADMIN_UID, TESTCO_ID)))
+    assert r.status_code == 409, r.text
+    assert r.json()["detail"]["code"] == "invite_refused"
+
+    # And her password is untouched.
+    db.expire_all()
+    user = db.query(User).filter(User.id == user.id).first()
+    assert user.hashed_password is not None
+    assert user.invite_token_hash is None
+
+
+def test_the_resend_is_audited_without_the_token(actors, client, db):
+    user, _ = _invite(db)
+    client.post(f"/api/v1/users/{user.id}/invite/resend",
+                headers=_auth(tenant_token(ADMIN_UID, TESTCO_ID)))
+
+    rows = db.execute(text(
+        "SELECT user_id, changes::text FROM audit_logs "
+        "WHERE action='user.invite_resent' AND entity_id=:u"), {"u": user.id}).fetchall()
+    assert len(rows) == 1, rows
+    actor_id, changes = rows[0]
+    assert actor_id == ADMIN_UID, "the audit row names the admin, not the invitee"
+    assert '"previous_token_invalidated": true' in changes.lower()
+    db.expire_all()
+    fresh = db.query(User).filter(User.id == user.id).first()
+    # The digest is not in the audit row either — a log that records digests is
+    # a log you can confirm a guessed token against.
+    assert fresh.invite_token_hash not in changes
+
+
+def test_cancel_removes_the_pending_invitee(actors, client, db):
+    user, token = _invite(db)
+    uid = user.id
+
+    r = client.delete(f"/api/v1/users/{uid}/invite",
+                      headers=_auth(tenant_token(ADMIN_UID, TESTCO_ID)))
+    assert r.status_code == 200, r.text
+    assert r.json() == {"email": INVITEE_EMAIL, "cancelled": True}
+
+    db.expire_all()
+    assert db.query(User).filter(User.id == uid).first() is None
+    # Her link dies with her.
+    assert client.get(f"/api/v1/invites/{token}", headers=H).status_code == 400
+
+
+def test_cancelling_twice_is_not_an_error(actors, client, db):
+    """Two admins on the same stale list is the ordinary case, not a fault."""
+    user, _ = _invite(db)
+    uid = user.id
+    first = client.delete(f"/api/v1/users/{uid}/invite",
+                          headers=_auth(tenant_token(ADMIN_UID, TESTCO_ID)))
+    assert first.json()["cancelled"] is True
+    # The row is gone, so the second attempt cannot find her at all — that IS
+    # a 404, because the id no longer belongs to this tenant or to anyone.
+    second = client.delete(f"/api/v1/users/{uid}/invite",
+                           headers=_auth(tenant_token(ADMIN_UID, TESTCO_ID)))
+    assert second.status_code == 404, second.text
+
+
+def test_cancel_will_not_delete_someone_who_has_signed_in(actors, client, db):
+    """⚠️ The failure this forecloses: deleting a colleague via Cancel invite."""
+    user, token = _invite(db)
+    uid = user.id
+    tenant_invite.accept_invite(db, token, "she-chose-this-herself")
+    db.expire_all()
+
+    r = client.delete(f"/api/v1/users/{uid}/invite",
+                      headers=_auth(tenant_token(ADMIN_UID, TESTCO_ID)))
+    assert r.status_code == 200, r.text
+    assert r.json()["cancelled"] is False, "an accepted user was treated as pending"
+
+    db.expire_all()
+    survivor = db.query(User).filter(User.id == uid).first()
+    assert survivor is not None, "Cancel invite deleted a user who had signed in"
+    assert survivor.hashed_password is not None
+
+
+def test_the_cancel_is_audited_after_the_row_is_gone(actors, client, db):
+    user, _ = _invite(db)
+    uid = user.id
+    client.delete(f"/api/v1/users/{uid}/invite",
+                  headers=_auth(tenant_token(ADMIN_UID, TESTCO_ID)))
+
+    rows = db.execute(text(
+        "SELECT user_id, changes::text FROM audit_logs "
+        "WHERE action='user.invite_revoked' AND entity_id=:u"), {"u": uid}).fetchall()
+    assert len(rows) == 1, rows
+    assert rows[0][0] == ADMIN_UID
+    assert INVITEE_EMAIL in rows[0][1]
+
+
+def test_another_tenants_invitee_is_not_found(actors, client, db):
+    """Not 403. A tenant must not learn that an id exists somewhere else."""
+    other = db.execute(text(
+        "SELECT id FROM users WHERE company_id <> :c LIMIT 1"), {"c": TESTCO_ID}).scalar()
+    if other is None:
+        pytest.skip("no user outside testco to probe with")
+    for call in (
+        lambda: client.post(f"/api/v1/users/{other}/invite/resend",
+                            headers=_auth(tenant_token(ADMIN_UID, TESTCO_ID))),
+        lambda: client.delete(f"/api/v1/users/{other}/invite",
+                              headers=_auth(tenant_token(ADMIN_UID, TESTCO_ID))),
+    ):
+        assert call().status_code == 404
+
+
+def test_an_office_user_can_neither_resend_nor_cancel(actors, client, db):
+    user, _ = _invite(db)
+    r = client.post(f"/api/v1/users/{user.id}/invite/resend",
+                    headers=_auth(tenant_token(OFFICE_UID, TESTCO_ID)))
+    assert r.status_code == 403, r.text
+    r = client.delete(f"/api/v1/users/{user.id}/invite",
+                      headers=_auth(tenant_token(OFFICE_UID, TESTCO_ID)))
+    assert r.status_code == 403, r.text
+
+
+# ── the pending-invite flag on the user list ─────────────────────────────
+
+
+def test_the_user_list_marks_her_as_pending(actors, client, db):
+    """Resend and Cancel need an entrance, and this is what draws it.
+
+    Without this flag a pending invitee renders identically to a colleague who
+    signed in last year — same row, same actions — so the two endpoints would
+    be correct, audited machinery no admin could reach.
+    """
+    user, _ = _invite(db)
+    r = client.get("/api/v1/users?per_page=100",
+                   headers=_auth(tenant_token(ADMIN_UID, TESTCO_ID)))
+    assert r.status_code == 200, r.text
+    rows = {u["email"]: u for u in r.json()["items"]}
+
+    assert rows[INVITEE_EMAIL]["has_outstanding_invite"] is True
+    assert rows[INVITEE_EMAIL]["invite_expires_at"] is not None
+    # The control: a user who HAS signed in is not marked. Without this the
+    # flag could be hardcoded True and the test above would still pass.
+    assert rows[f"{ADMIN_UID}@testco.example.com"]["has_outstanding_invite"] is False
+    assert rows[f"{ADMIN_UID}@testco.example.com"]["invite_expires_at"] is None
+
+
+def test_the_user_list_leaks_neither_token_nor_digest(actors, client, db):
+    """⚠️ The digest is not the token, and it is still not for publishing.
+
+    It is enough to confirm a guessed token against, and the user list is the
+    widest-read surface in the app. Asserted over the WHOLE serialized body
+    rather than over named keys, so a field added later is covered by this test
+    without anyone remembering to extend it.
+    """
+    user, token = _invite(db)
+    db.expire_all()
+    digest = db.query(User).filter(User.id == user.id).first().invite_token_hash
+
+    r = client.get("/api/v1/users?per_page=100",
+                   headers=_auth(tenant_token(ADMIN_UID, TESTCO_ID)))
+    body = r.text
+    assert digest not in body, "the invite digest is in the user list response"
+    assert token not in body, "the invite TOKEN is in the user list response"
+    # And the same for the single-user read.
+    one = client.get(f"/api/v1/users/{user.id}",
+                     headers=_auth(tenant_token(ADMIN_UID, TESTCO_ID))).text
+    assert digest not in one and token not in one
+
+    # ⚠️ CONTROL: the digest is a real non-empty value, so `not in` is a claim
+    # about the body rather than about an empty needle. A blank digest would
+    # satisfy every assertion above trivially.
+    assert digest and len(digest) == 64, digest
+
+
+def test_she_has_no_password_hash_in_the_list_either(actors, client, db):
+    """`hashed_password` is NULL for her, which is the whole point of r226."""
+    _invite(db)
+    r = client.get("/api/v1/users?per_page=100",
+                   headers=_auth(tenant_token(ADMIN_UID, TESTCO_ID)))
+    for u in r.json()["items"]:
+        assert "hashed_password" not in u, u.keys()
