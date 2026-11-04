@@ -24,6 +24,7 @@ import pytest
 from sqlalchemy import text as sql_text
 
 from app.database import SessionLocal
+from tests._cleanup import purge_companies_by_slug
 from app.models.company import Company
 from app.models.moc_task_catalog import MoCTaskCatalog
 from app.models.moc_task_trigger import MoCTaskTrigger
@@ -65,9 +66,28 @@ def db():
     s.execute(sql_text("DELETE FROM workflow_runs WHERE workflow_id LIKE 'wf_t1adopt_%'"))
     s.execute(sql_text("DELETE FROM workflow_steps WHERE workflow_id LIKE 'wf_t1adopt_%'"))
     s.execute(sql_text("DELETE FROM workflows WHERE id LIKE 'wf_t1adopt_%'"))
-    s.execute(sql_text("DELETE FROM companies WHERE slug LIKE 't1adopt-%'"))
-    s.commit()
-    s.close()
+    # ⚠️ THE COMPANY DELETE GOES THROUGH purge_companies_by_slug, AND close()
+    # GOES IN A finally. Measured 2026-11-04: this teardown was the source of
+    # the `idle in transaction (aborted)` sessions on the dev database — seven
+    # of them at once, the oldest 25 minutes old, each holding locks that
+    # blocked unrelated work.
+    #
+    # The chain: a bare `DELETE FROM companies` cannot satisfy the FK graph (327
+    # tables reference companies without ON DELETE CASCADE), so it raised; the
+    # transaction aborted; `s.commit()` on an aborted transaction raised in
+    # turn; and because `s.close()` sat AFTER the commit rather than in a
+    # `finally`, it never ran — leaking the connection with its aborted
+    # transaction still open. Nothing reported a failure, because a fixture's
+    # post-yield exception is reported against teardown, not the test.
+    #
+    # purge_companies_by_slug walks the FK graph and raises a named error if it
+    # genuinely cannot finish; the finally guarantees the connection is returned
+    # either way.
+    try:
+        s.commit()
+        purge_companies_by_slug(s, "t1adopt-%")
+    finally:
+        s.close()
 
 
 def _mk(db, *, trigger_type="time_of_day", trigger_config=None):

@@ -336,13 +336,200 @@ _PURGE_STATEMENTS = [
 ]
 
 
+#: ⚠️ WHY EVERY STATEMENT BELOW RUNS IN A SAVEPOINT (ruling 2026-11-04).
+#:
+#: This used to be a bare loop over `_PURGE_STATEMENTS` followed by one
+#: `session.commit()`. One FK violation anywhere in the 93 statements aborted the
+#: WHOLE transaction, so:
+#:
+#:   * every delete that had already succeeded was rolled back — the purge
+#:     removed NOTHING, not "most of it";
+#:   * the session was left `idle in transaction (aborted)`, where every
+#:     subsequent statement fails with "current transaction is aborted". Four of
+#:     those were observed simultaneously on the dev database;
+#:   * the teardown's caller usually swallowed the error, so a test suite
+#:     reported green while leaving its whole company tree behind. That is how
+#:     4,549 companies accumulated.
+#:
+#: A savepoint per statement makes a blocker local: the one delete rolls back,
+#: the other 92 stand, and the transaction stays usable. Blocked statements are
+#: then RETRIED to a fixed point, because the usual reason one blocks is that a
+#: later statement clears its blocker — order alone cannot fix that, and this
+#: list's order is hand-maintained.
+_MAX_PASSES = 12
+
+
+def _fk_target(session, constraint: str):
+    """(child_table, child_col, parent_table, parent_col) for a constraint name."""
+    return session.execute(
+        text(
+            """
+            SELECT c.conrelid::regclass::text, ca.attname,
+                   c.confrelid::regclass::text, pa.attname
+            FROM pg_constraint c
+            JOIN pg_attribute ca ON ca.attrelid = c.conrelid  AND ca.attnum = c.conkey[1]
+            JOIN pg_attribute pa ON pa.attrelid = c.confrelid AND pa.attnum = c.confkey[1]
+            WHERE c.contype = 'f' AND c.conname = :n
+            """
+        ),
+        {"n": constraint},
+    ).first()
+
+
+#: PostgreSQL SQLSTATE for foreign_key_violation — the ONLY failure this module
+#: is entitled to treat as "expected, retry later".
+_FK_VIOLATION = "23503"
+
+
+def _try(session, stmt: str, params: dict) -> str | None:
+    """Run one statement in its OWN transaction. Returns None, or the blocker.
+
+    ⚠️ ONE TRANSACTION PER STATEMENT, NOT ONE SAVEPOINT PER STATEMENT, AND THE
+    DIFFERENCE IS LOCKS. The first version wrapped each delete in a SAVEPOINT
+    inside one long transaction. That fixed the abort-cascade but kept every
+    lock: `DELETE FROM companies` alone takes a FOR KEY SHARE lock on each of
+    the 327 tables referencing it, locks are held until the TRANSACTION ends
+    (releasing a savepoint does not release them), and the run died with
+    `out of shared memory / max_locks_per_transaction` seventeen statements in.
+    Committing each statement releases its locks immediately and allocates no
+    subtransactions.
+
+    A teardown does not need atomicity — it needs to make progress and to leave
+    the session usable. Per-statement commits give both, and go further than the
+    savepoint version did: a later failure cannot discard earlier progress,
+    because earlier progress is already committed.
+
+    ⚠️ CATCH BY SQLSTATE, NOT BY EXCEPTION CLASS. This caught `IntegrityError`
+    only, which looked right and was not: the lock exhaustion above arrives as
+    `OperationalError`, sailed past the handler, aborted the transaction, and
+    made every later statement fail with "current transaction is aborted" —
+    reproducing the exact bug this function exists to remove, by another route.
+    Anything that is not an FK violation is re-raised with the statement
+    attached, because swallowing the error class we did not anticipate is
+    precisely how the silent version behaved.
+    """
+    from sqlalchemy.exc import DBAPIError
+
+    try:
+        session.execute(text(stmt), params)
+        session.commit()
+        return None
+    except DBAPIError as exc:
+        session.rollback()
+        orig = getattr(exc, "orig", None)
+        if getattr(orig, "pgcode", None) != _FK_VIOLATION:
+            raise RuntimeError(
+                f"purge_test_companies: {type(exc).__name__} "
+                f"(pgcode {getattr(orig, 'pgcode', None)}) on: {stmt[:160]}"
+            ) from exc
+        diag = getattr(orig, "diag", None)
+        return getattr(diag, "constraint_name", None) or "unknown"
+
+
 def purge_test_companies(session, company_ids) -> None:
+    """Delete the given companies and everything that references them.
+
+    Raises RuntimeError if the companies cannot be removed, naming what blocked
+    it. ⚠️ It must RAISE rather than return quietly: the silent version is what
+    let suites leave their trees behind while reporting green.
+    """
     ids = list(company_ids)
     if not ids:
         return
-    for stmt in _PURGE_STATEMENTS:
-        session.execute(text(stmt), {"ids": ids})
-    session.commit()
+
+    # Each statement commits on its own (see _try). A blocked statement is
+    # retried on the next pass, because the usual reason one blocks is that a
+    # LATER statement clears its blocker — order alone cannot fix that, and this
+    # list's order is hand-maintained.
+    pending = list(_PURGE_STATEMENTS)
+    blocked: dict[str, str] = {}
+    for _ in range(_MAX_PASSES):
+        still, blocked = [], {}
+        for stmt in pending:
+            c = _try(session, stmt, {"ids": ids})
+            if c is not None:
+                still.append(stmt)
+                blocked[stmt] = c
+        if not still:
+            pending = []
+            break
+        if len(still) == len(pending):
+            pending = still
+            break  # a full pass with no progress — the curated list is exhausted
+        pending = still
+
+    # ⚠️ THE CURATED LIST IS KNOWN INCOMPLETE — 72 tables listed, 327 referencing
+    # without ON DELETE CASCADE. Rather than hand-add a 94th line per discovery,
+    # ask the database what is actually blocking and clear exactly that. The FK
+    # error names its constraint; pg_constraint turns that into a table and
+    # column; the blocking rows are the ones reachable from the doomed parents.
+    # This is error-driven, so it costs nothing when the curated list suffices.
+    # ⚠️ THE TERMINATION GUARD COUNTS PROGRESS, NOT STATES VISITED.
+    # The first version capped `len(seen)`. That never fired, because the loop
+    # that actually occurs does not grow `seen`: delete a child, the child
+    # delete SUCCEEDS, the parent still fails on the SAME constraint (the scoped
+    # predicate did not reach the rows that block it — a multi-column FK, or a
+    # second path to companies), the already-seen child is pushed, popped, and
+    # the parent retried, forever. A set-size cap cannot see a cycle whose set
+    # is constant. So count repeat attempts per (table, constraint) instead, and
+    # fail with the chain when one stops making progress.
+    attempts: dict[tuple[str, str], int] = {}
+    stack: list[tuple[str, str]] = [("companies", "id = ANY(:ids)")]
+    trace: list[str] = []
+    steps = 0
+    while stack:
+        steps += 1
+        if steps > 2000:
+            raise RuntimeError(
+                "purge_test_companies: FK discovery ran 2000 steps without "
+                f"finishing. Trace: {trace[-12:]}"
+            )
+        table, where = stack[-1]
+        c = _try(session, f'DELETE FROM "{table}" WHERE {where}', {"ids": ids})
+        if c is None:
+            stack.pop()
+            continue
+        key = (table, c)
+        attempts[key] = attempts.get(key, 0) + 1
+        if attempts[key] > 3:
+            raise RuntimeError(
+                f"purge_test_companies: DELETE FROM {table} is still blocked by "
+                f"{c!r} after clearing it {attempts[key] - 1} times — the scoped "
+                "delete is not reaching the rows that block it (multi-column FK, "
+                f"or a second path to companies). Trace: {trace[-12:]}"
+            )
+        fk = _fk_target(session, c)
+        if fk is None:
+            raise RuntimeError(
+                f"purge_test_companies: DELETE FROM {table} blocked by constraint "
+                f"{c!r}, which is not a foreign key in pg_constraint. Trace: {trace[-12:]}"
+            )
+        child, child_col, parent, parent_col = fk
+        if child == table:
+            # ⚠️ A SELF-REFERENCE CANNOT BE ORDERED AWAY — `customers.
+            # billing_group_customer_id -> customers.id` is one, so no
+            # table-level topological sort exists here at all. Break the
+            # reference instead of recursing, which would loop forever.
+            if _try(session, f'UPDATE "{table}" SET "{child_col}" = NULL WHERE {where}',
+                    {"ids": ids}) is not None:
+                raise RuntimeError(
+                    f"purge_test_companies: {table}.{child_col} is a self-reference that "
+                    f"could not be nulled (constraint {c!r}). Trace: {trace[-12:]}"
+                )
+            trace.append(f"null {table}.{child_col}")
+            continue
+        scoped = f'"{child_col}" IN (SELECT "{parent_col}" FROM "{parent}" WHERE {where})'
+        trace.append(f"{table} blocked by {child}.{child_col} ({c})")
+        stack.append((child, scoped))
+
+    left = session.execute(
+        text("SELECT count(*) FROM companies WHERE id = ANY(:ids)"), {"ids": ids}
+    ).scalar()
+    if left:
+        raise RuntimeError(
+            f"purge_test_companies: {left} of {len(ids)} companies survived the purge. "
+            f"Last blocked statements: {list(blocked.values())[:6]}"
+        )
 
 
 def purge_companies_by_slug(session, slug_prefix: str) -> None:

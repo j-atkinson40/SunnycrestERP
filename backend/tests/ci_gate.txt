@@ -748,3 +748,4 @@ tests/test_the_wrong_town_asks.py
 # areas being administrable rather than seed-only.
 tests/test_payroll_data_switch.py
 tests/test_role_areas_administrable.py
+tests/test_the_purge_finishes_or_says_why.py
