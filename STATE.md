@@ -7451,6 +7451,28 @@ the other.
 
   **2026-11-04 — OPEN, NOT BUILT: enrolment wording and a QR code before Sue sees it.** The enrolment screen currently shows a secret string and assumes the reader knows what an authenticator app is. Also open from the same ruling: offer an easier second step (SMS or a push app) and turn the payroll two-step requirement back ON before more tenants arrive — it is OFF by default now, which is the right default for one admin and the wrong one for twenty.
 
+  **2026-11-04 — LANDED AND VERIFIED ON PRODUCTION: one rule for emailed links. `origin/main` c1ff17d8 → `7beeee01`, fast-forward, 9 commits, no force. Code-only — no migration, `alembic_version` stays `r227`.** CI run `41904005838` on exactly `7beeee01`: both jobs `success`. Deploy confirmed by `/api/health` reporting `7beeee01`, healthy, ~8 minutes after the push.
+
+  **The host was verified WITHOUT reading the email, and that was the point.** Pulling the invite out of an inbox would put a live one-time token back into a transcript — the exposure this change exists to close, and the thing James said not to do even by editing the address. `tenant_link_base` is the single function every emailed link is built from, so running it against production env and the real sunnycrest row answers the question exactly and mints nothing. Measured on production at `7beeee01`:
+
+      settings.ENVIRONMENT        'production'
+      os.getenv PLATFORM_DOMAIN   None            ← NOT SET on Railway
+      settings.PLATFORM_DOMAIN    'getbridgeable.com'   ← the code's default
+      settings.FRONTEND_URL       'http://localhost:5173'   ← STILL THE DEFAULT
+      tenant_link_base(sunnycrest)  'https://sunnycrest.getbridgeable.com'
+      tenant_link_base(None)        RAISED
+      PLATFORM_DOMAIN=''            RAISED, refusing 'https://sunnycrest.'
+
+  ⚠️ **`FRONTEND_URL` ON PRODUCTION IS LITERALLY `http://localhost:5173`, AND IT STILL IS.** The variable is unset, so `settings` supplies its default, and that default is a developer address. That is the whole mechanism of the 2026-11-04 invite, confirmed in place after the fix rather than inferred — it was never a misconfiguration to correct, which is why the remedy had to be a function that cannot read it rather than a variable to set. **Do not set `FRONTEND_URL` on production**; the guard, not the variable, is what makes links correct, and setting it would make a wrong link possible again while looking like a fix.
+
+  ⚠️ **AND THE CORRECT HOST COMES FROM A DEFAULT, NOT FROM A SET VARIABLE** — `PLATFORM_DOMAIN` is unset and `settings.PLATFORM_DOMAIN` defaults to `getbridgeable.com`. Recorded because a reader checking Railway's variable list will find nothing and may conclude the host is unconfigured. The empty-string case is guarded: setting it to `''` in-process made `tenant_link_base` raise rather than emailing `https://sunnycrest.`, because the check is on the RESULT and not on the inputs. Verified live and restored in the same block.
+
+  ⚠️ **TWO CI RUNS FAILED FIRST, ON MY OWN OMISSION, AND THE RATCHET IS WHAT CAUGHT IT.** `172e684c` and `ebc63d65` both came back `failure` on Backend CI with Frontend green — one identical failure each: `test_every_backend_test_file_is_classified`, because `tests/test_frontend_url_guard.py` was in neither `ci_gate.txt` nor `ci_excluded.txt`. **I wrote a guard, break-tested it three ways including against a blind scanner, and left it where CI would never run it.** It would have passed on a laptop forever while the channel that blocks a merge never saw it. Gate result otherwise: **1 failed, 4708 passed, 5 skipped**. The membership ratchet is the removal-style answer to §11's *manifest maintained by adding what passes* — a new test file FAILS until someone classifies it, forcing the choice into a diff — and it caught a real omission on its first contact with my work.
+
+  ⚠️ **MY OWN VERIFICATION SCRIPT'S CONTROL WAS WRONG BEFORE THE CODE EVER WAS.** It asserted `tenant_link_base(None)` must raise unconditionally and printed `CONTROL FAILED` against entirely correct dev behaviour — the raise is production-only by contract. Caught by rehearsing on dev before pointing it at production; had it gone straight to production it would have read `CONTROL OK` and the mislabelling on the other side would never have surfaced. A control is a claim and gets checked like one.
+
+  **Still James's, not mine:** the invite and the sign-in. ⚠️ **I deliberately did NOT send the invite by script, and the reason is not caution but interference** — `invite_user` refuses a duplicate email, so a script-sent invite would REFUSE his click on *Send invite* in the UI and block the stronger test. The UI path exercises the deployed endpoint and the fixed wizard; a `railway run` script executes a laptop's copy against the production database. And the sign-in cannot be mine at all: accepting an invite means choosing a password, and a password does not transit a session.
+
   **2026-11-04 — NEXT CI-HEALTH ITEM: `BindingPicker.test.tsx` is flaky, and the failure MOVES. James's ruling, verbatim:**
 
       BindingPicker.test.tsx is flaky (failure moves between tests,
