@@ -25,7 +25,7 @@ from app.main import app
 from app.models.user import User
 from app.services import tenant_invite
 from tests._tenant import TESTCO_ID, make_canonical_tenant_fixture
-from tests._two_step import tenant_token
+from tests._two_step import set_tenant_two_step, tenant_token
 
 _canonical_tenant = make_canonical_tenant_fixture()
 
@@ -462,12 +462,39 @@ def test_revoke_returns_false_for_an_accepted_user(actors, client, db):
 
 # ── two-step hand-off ────────────────────────────────────────────────────
 
-def test_accepting_tells_a_payroll_user_she_must_enrol(actors, client, db):
+def test_accepting_tells_a_payroll_user_she_must_enrol_when_the_tenant_requires_it(
+    actors, client, db
+):
+    """⚠️ THE REGIME IS SET IN THE TEST, because it is tenant state.
+
+    This assertion used to pass unconditionally and reddened on 2026-11-04 when
+    James made two-step optional per tenant — correctly, because the field is
+    informational for the accept page and the honest answer became False. Both
+    regimes are now asserted: there is no point telling her to enrol when
+    nothing will ask her to.
+    """
+    try:
+        set_tenant_two_step(TESTCO_ID, True)
+        _, token = _invite(db, slug="payroll", email=PAYROLL_INVITEE_EMAIL)
+        r = client.post(f"/api/v1/invites/{token}/accept", headers=H,
+                        json={"password": "SheChoseThisOne123"})
+        assert r.status_code == 200, r.text
+        assert r.json()["two_step_required"] is True
+    finally:
+        set_tenant_two_step(TESTCO_ID, False)
+
+
+def test_accepting_does_not_mention_two_step_when_the_tenant_does_not_require_it(
+    actors, client, db
+):
+    """The product default after 2026-11-04: she is told nothing she will not
+    be asked for."""
+    set_tenant_two_step(TESTCO_ID, False)
     _, token = _invite(db, slug="payroll", email=PAYROLL_INVITEE_EMAIL)
     r = client.post(f"/api/v1/invites/{token}/accept", headers=H,
                     json={"password": "SheChoseThisOne123"})
     assert r.status_code == 200, r.text
-    assert r.json()["two_step_required"] is True
+    assert r.json()["two_step_required"] is False
 
 
 def test_accepting_does_not_tell_an_office_user_to_enrol(actors, client, db):

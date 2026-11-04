@@ -44,3 +44,30 @@ def tenant_token(user_id: str, company_id: str | None = None, *,
         data["mfa"] = True
     data.update(extra)
     return create_access_token(data)
+
+
+def set_tenant_two_step(company_id: str, on: bool) -> None:
+    """Turn the per-tenant payroll two-step requirement on or off.
+
+    ⚠️ **SHARED, BECAUSE THREE SUITES NEED IT AND A COPY EACH WOULD DRIFT.**
+    James's ruling of 2026-11-04 made the requirement OFF by default per
+    tenant, which correctly reddened every test that had encoded "a payroll
+    user is always required". Those tests are about the enforcement machinery,
+    so they turn it on; the tests pinning the new default turn it off. Either
+    way the regime is stated in the test rather than inherited from whatever
+    the last test left behind — the setting is tenant state, so a suite that
+    does not set it is reading another suite's leftovers.
+    """
+    from app.database import SessionLocal
+    from app.core.two_step import TWO_STEP_TENANT_SETTING
+    from app.models.company import Company
+
+    db = SessionLocal()
+    try:
+        co = db.query(Company).filter(Company.id == company_id).first()
+        if co is None:
+            raise AssertionError(f"no company {company_id!r} to set the switch on")
+        co.set_setting(TWO_STEP_TENANT_SETTING, on)
+        db.commit()
+    finally:
+        db.close()

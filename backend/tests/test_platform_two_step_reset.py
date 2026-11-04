@@ -20,7 +20,7 @@ from app.core.security import create_access_token
 from app.main import app
 from app.models.user import User
 from tests._tenant import TESTCO_ID, make_canonical_tenant_fixture
-from tests._two_step import tenant_token
+from tests._two_step import set_tenant_two_step, tenant_token
 
 _canonical_tenant = make_canonical_tenant_fixture()
 
@@ -189,10 +189,18 @@ def test_the_platform_actor_is_recorded_even_though_the_column_cannot_hold_it(
 
 
 def test_clearing_does_not_let_her_past_the_guard(world, client):
-    """A reset is permission to enrol again, not an exemption."""
+    """A reset is permission to enrol again, not an exemption.
+
+    ⚠️ Needs the tenant requirement ON, and that is not pedantry: with it off
+    there is nothing for a reset to be an exemption FROM, so the assertion
+    would pass or fail for reasons unrelated to what it names. It reddened on
+    2026-11-04 when the default flipped, which is the test telling the truth.
+    """
+    set_tenant_two_step(TESTCO_ID, True)
     client.post(_ep(), headers={"Authorization": f"Bearer {_platform_token()}"})
     r = client.get("/api/v1/payroll-reports/formats", headers={
         "Authorization": f"Bearer {tenant_token(SUBJECT_UID, TESTCO_ID, mfa=False)}",
         "X-Company-Slug": "testco"})
     assert r.status_code == 403, r.text
     assert r.json()["detail"]["code"] == "two_step_required", r.text
+    set_tenant_two_step(TESTCO_ID, False)   # leave the product default
