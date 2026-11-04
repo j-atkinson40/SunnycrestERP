@@ -82,9 +82,34 @@ def users():
         db.close()
 
 
+def _set_tenant_two_step(on: bool):
+    """Turn the per-tenant payroll two-step requirement on or off for testco."""
+    from app.database import SessionLocal
+    from app.models.company import Company
+    db = SessionLocal()
+    try:
+        co = db.query(Company).filter(Company.id == TESTCO_ID).first()
+        co.set_setting(two_step.TWO_STEP_TENANT_SETTING, on)
+        db.commit()
+    finally:
+        db.close()
+
+
 @pytest.fixture(autouse=True)
 def _unenrol(users):
-    """Each test starts un-enrolled."""
+    """Each test starts un-enrolled AND with the requirement ON.
+
+    ⚠️ **THE MODULE'S BASELINE IS "REQUIREMENT ON", WHICH IS NOT THE PRODUCT
+    DEFAULT.** James's ruling of 2026-11-04 made it OFF by default per tenant —
+    optional for everyone. But this file exists to test the enforcement
+    machinery, and machinery switched off cannot be tested; a baseline of "off"
+    would have turned 16 real assertions into vacuous passes. So enforcement is
+    on here, and the tests that pin the NEW default call
+    `_set_tenant_two_step(False)` IN THE BODY rather than through a fixture —
+    explicitly, because fixture ordering between an autouse and a named one at
+    the same scope is not something to rely on for a value that decides whether
+    an assertion means anything.
+    """
     from app.database import SessionLocal
     db = SessionLocal()
     try:
@@ -94,7 +119,9 @@ def _unenrol(users):
         db.commit()
     finally:
         db.close()
+    _set_tenant_two_step(True)
     yield
+    _set_tenant_two_step(False)   # leave the tenant in the product default
 
 
 @pytest.fixture(scope="module")
@@ -835,3 +862,126 @@ def test_the_off_switch_changes_nothing_else(client, users, monkeypatch):
             assert d.get("code") == "area_restricted", (
                 f"{p} refused for the wrong reason with the switch off: {d}"
             )
+
+
+# ── optional for everyone, sticky for the enrolled (James, 2026-11-04) ───
+
+def test_a_payroll_user_signs_in_with_a_password_only(client, users):
+    """⚠️ JAMES'S BREAK TEST FOR THE 2026-11-04 RULING.
+
+    *"Two-step is optional for everyone, including payroll users. Nobody is
+    forced to enrol."* So a payroll-limited user with no enrolment and a
+    claimless token must REACH payroll, not be sent to enrolment.
+
+    The reasoning he gave: the same names, hours, rates and dues already sit
+    behind one password in Payentry, so a second factor here was protecting a
+    copy more carefully than the original.
+    """
+    _set_tenant_two_step(False)   # the product default, set in-body deliberately
+    r = client.get(PAYROLL_EP, headers=_auth(_tok(REQUIRED_UID, mfa=False)))
+    assert r.status_code != 403, (
+        f"a payroll user was still refused without a second step: {r.text}"
+    )
+
+
+def test_status_reports_not_required_so_the_frontend_does_not_nag(client, users):
+    _set_tenant_two_step(False)
+    s = client.get(ENROL_EP, headers=_auth(_tok(REQUIRED_UID, mfa=False)))
+    assert s.status_code == 200, s.text
+    assert s.json()["required"] is False
+
+
+def test_an_enrolled_user_is_still_asked_even_though_nobody_is_required(
+    client, users, monkeypatch
+):
+    """⚠️ THE CLAUSE THAT KEEPS JAMES'S OWN ACCOUNT PROTECTED.
+
+    His ruling has two halves — "nobody is forced to enrol" AND "users already
+    enrolled keep using it" — and a predicate reading only the tenant switch
+    honours the first while silently breaking the second: his token would carry
+    no `mfa` claim, status would answer `required: false`, nothing would ask
+    for a code, and his enrolment would be decorative while his account went
+    back to password-only. That is the opposite of one of the three
+    compensating controls he named for making two-step optional.
+
+    So enrolment is STICKY: not required of anyone, used by anyone who has it.
+    """
+    _set_tenant_two_step(False)
+    from app.database import SessionLocal
+
+    monkeypatch.setenv("ENVIRONMENT", "dev")
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == REQUIRED_UID).first()
+        two_step.enrol_for_non_production(db, user)
+        db.commit()
+    finally:
+        db.close()
+
+    # claimless token: he must be confined to enrolment despite the switch
+    r = client.get(PAYROLL_EP, headers=_auth(_tok(REQUIRED_UID, mfa=False)))
+    assert r.status_code == 403, (
+        "an ENROLLED user was served without his second step — his enrolment "
+        f"has become decorative: {r.status_code}"
+    )
+    assert r.json()["detail"]["code"] == "two_step_required"
+    # and with the claim, through
+    assert client.get(PAYROLL_EP, headers=_auth(_tok(REQUIRED_UID, mfa=True))).status_code != 403
+
+
+def test_turning_the_tenant_switch_on_requires_it_again(client, users):
+    """The requirement is not deleted, only switched off — it can come back."""
+    try:
+        _set_tenant_two_step(True)
+        r = client.get(PAYROLL_EP, headers=_auth(_tok(REQUIRED_UID, mfa=False)))
+        assert r.status_code == 403, r.text
+        assert r.json()["detail"]["code"] == "two_step_required"
+    finally:
+        _set_tenant_two_step(False)
+
+
+def test_the_tenant_switch_does_not_reach_a_non_payroll_user(client, users):
+    """⚠️ The tenant decides WHETHER; the PERMISSION still decides WHO.
+
+    This is why the setting is per-tenant rather than per-role: a role flag
+    would compete with the permission prefix, and the two would disagree the
+    first time somebody held a payroll key through a per-user override.
+    """
+    try:
+        _set_tenant_two_step(True)
+        t = _tok(OPTIONAL_UID, mfa=False)
+        codes = {p: client.get(p, headers=_auth(t)).status_code for p in PROBE}
+        assert any(c == 200 for c in codes.values()), f"vacuous: {codes}"
+        for p, c in codes.items():
+            if c != 403:
+                continue
+            d = client.get(p, headers=_auth(t)).json().get("detail")
+            if isinstance(d, dict):
+                assert d.get("code") != "two_step_required", f"{p} caught a non-payroll user"
+    finally:
+        _set_tenant_two_step(False)
+
+
+def test_the_emergency_switch_beats_sticky_enrolment(client, users, monkeypatch):
+    """⚠️ ORDERING, AND IT IS LOAD-BEARING.
+
+    An admin locked out by a broken second step cannot be told "but you
+    enrolled". So `TWO_STEP_ENFORCED=false` is checked BEFORE the enrolment
+    check, not after.
+    """
+    from app.database import SessionLocal
+
+    monkeypatch.setenv("ENVIRONMENT", "dev")
+    db = SessionLocal()
+    try:
+        two_step.enrol_for_non_production(
+            db, db.query(User).filter(User.id == REQUIRED_UID).first())
+        db.commit()
+    finally:
+        db.close()
+    monkeypatch.setenv(two_step.TWO_STEP_ENFORCED_ENV, "false")
+    r = client.get(PAYROLL_EP, headers=_auth(_tok(REQUIRED_UID, mfa=False)))
+    assert r.status_code != 403, (
+        "the emergency switch did not override an existing enrolment — an "
+        f"admin with a broken second step would stay locked out: {r.text}"
+    )

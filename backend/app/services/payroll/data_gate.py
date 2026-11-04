@@ -1,5 +1,32 @@
 """The payroll data switch — off by default, and enforced rather than agreed.
 
+⚠️ **[SUPERSEDED 2026-11-04 — THE PREMISE BELOW IS NO LONGER JAMES'S POSITION,
+AND THE SWITCH SURVIVES ON A DIFFERENT ONE.]** This docstring argues that "pay
+rates and hours should not sit behind a password alone", and on 2026-11-04
+James ruled the opposite after weighing it: the same names, hours, rates and
+dues already sit behind a single password in Payentry itself, so a second
+factor here was protecting a COPY more carefully than the original. Two-step is
+now optional for everyone, with three compensating controls named instead — a
+long unique password for the accountant, James's own enrolment kept on, and
+this switch retained.
+
+**So this switch is no longer "the thing that holds data back until two-step
+exists".** It is now the deliberate "may Payentry data be loaded" moment,
+admin-only and audited, and that is the whole of its job. The original wording
+is kept rather than rewritten, because the argument it makes is sound and was
+overruled on a judgement about this data rather than shown to be wrong — and
+because a reader who finds only the conclusion cannot tell which.
+
+⚠️ **AND IT DOES NOT GATE READS, WHICH MATTERED MORE UNDER THE OLD RULING THAN
+THE NEW ONE.** `assert_payroll_data_enabled` is called in exactly one place,
+`payroll_reports.py:195`, the upload endpoint. The four read endpoints do not
+call it and neither does the service layer. Under the superseded plan — where
+the switch was also to control whether two-step was required — that would have
+meant "switch off" implying both "no second step" and "real rows readable with
+a password". Measured and reported on 2026-11-04; the strict-read-gating fix
+was then dropped with the rest of that plan, so the asymmetry stands
+deliberately rather than unnoticed.
+
 James's ruling, 2026-11-03: *"Make 'no payroll data until two-step sign-in'
 enforced by the code, not just agreed."*
 

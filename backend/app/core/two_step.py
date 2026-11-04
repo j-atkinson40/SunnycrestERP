@@ -87,6 +87,30 @@ def two_step_enforcement_disabled() -> bool:
     return os.getenv(TWO_STEP_ENFORCED_ENV, "").strip().lower() in _DISABLING_VALUES
 
 
+#: Per-tenant key in `Company.settings_json`. ABSENT/NULL/false -> the
+#: requirement is off, which is the state James ruled on 2026-11-04. Same
+#: shape as `payroll_data_enabled` in `app/services/payroll/data_gate.py`,
+#: deliberately: both are "a tenant-level decision whose unset state is the
+#: cautious one", and two spellings of that would drift.
+TWO_STEP_TENANT_SETTING = "two_step_required_for_payroll"
+
+
+def tenant_requires_payroll_two_step(company) -> bool:
+    """Has this tenant turned the payroll two-step requirement on?
+
+    ⚠️ **PER-TENANT, NOT PER-ROLE, AND THE REASON IS THE WHOLE POINT OF
+    `requires_two_step`.** A per-role flag would reintroduce the role list this
+    module exists to avoid: the requirement follows the PERMISSION, so a
+    `payroll.timesheets.view` key added next year extends it with no code
+    change, and a single per-user override is enough to bring someone in. A
+    tenant switch composes with that — the tenant decides WHETHER, the
+    permission decides WHO — where a role flag would compete with it and the
+    two would disagree the first time somebody held a payroll key through an
+    override rather than a role.
+    """
+    return getattr(company, "settings", {}).get(TWO_STEP_TENANT_SETTING) is True
+
+
 def requires_two_step(user, db: Session) -> bool:
     """Does this user hold any payroll permission?
 
@@ -106,12 +130,38 @@ def requires_two_step(user, db: Session) -> bool:
         # ruling. One line per request is deliberate: this is an emergency
         # state, the volume IS the signal, and a quiet bypass is how a
         # temporary switch becomes a permanent one nobody remembers flipping.
+        #
+        # FIRST, ahead of the enrolment check below: it is the break-glass, so
+        # it must win over everything including stickiness. An admin locked out
+        # by a broken second step cannot be told "but you enrolled".
         logger.warning(
             "TWO-STEP ENFORCEMENT DISABLED by %s — serving user=%s without a "
             "second step. This is an emergency switch; unset the variable to "
             "restore enforcement.",
             TWO_STEP_ENFORCED_ENV, getattr(user, "id", None),
         )
+        return False
+
+    # ⚠️ **ENROLMENT IS STICKY, AND THIS CLAUSE IS WHY JAMES'S OWN ACCOUNT
+    # STAYS PROTECTED.** His ruling of 2026-11-04 made the requirement optional
+    # — "nobody is forced to enrol" — alongside "users already enrolled keep
+    # using it". Those are two statements, and a predicate that only read the
+    # tenant switch would honour the first and silently break the second: his
+    # token would be minted with no `mfa` claim, `/two-step/status` would
+    # answer `required: false`, nothing would ask him for a code, and his
+    # enrolment would become decorative while his account went back to being
+    # password-only. That is the opposite of one of the three compensating
+    # controls he named. So: not required of anyone, but USED by anyone who
+    # has set it up.
+    if is_enrolled(db, user.id):
+        return True
+
+    # Per-tenant, off until a tenant turns it on. The permission still decides
+    # WHO within that tenant — see tenant_requires_payroll_two_step.
+    from app.models.company import Company
+
+    company = db.query(Company).filter(Company.id == user.company_id).first()
+    if company is None or not tenant_requires_payroll_two_step(company):
         return False
 
     from app.services.permission_service import get_user_permissions
