@@ -78,6 +78,48 @@ export function filterWizardRoles(
     })
 }
 
+/**
+ * The single outcome message for a wizard submission.
+ *
+ * ⚠️ **ONE OUTCOME, NEVER TWO.** Before this existed, a failed invite fired
+ * BOTH `toast.error("the invitation email could not be sent")` AND
+ * `toast.success("Invite sent to <email> — they set their own password from the
+ * link")`. Both appeared, and the success one is the one that reads as the
+ * result — so the screen asserted an invite had been sent while the server had
+ * correctly reported `email_sent: false`.
+ *
+ * That is the UI half of the synthesised-success problem the backend was
+ * already careful about: `EmailChannel._is_test_mode()` returns success with
+ * `provider_message_id="test-mode"` when `RESEND_API_KEY` is unset, so
+ * `users.py:453` deliberately reads the provider id rather than the status.
+ * An honest server answer is worth nothing if the last thing on screen
+ * contradicts it. Found by James asking, before any invite was sent.
+ */
+export function wizardOutcome(args: {
+  track: Track
+  firstName: string
+  lastName: string
+  email: string
+  emailSent: boolean | undefined
+}): { kind: "success" | "error"; text: string } {
+  if (args.track === "production_delivery") {
+    return { kind: "success", text: `${args.firstName} ${args.lastName} added` }
+  }
+  // Only `false` is a failure. `undefined` means an older server that does not
+  // report the field; treating that as failure would cry wolf on every invite.
+  if (args.emailSent === false) {
+    return {
+      kind: "error",
+      text: `${args.firstName} was added but the invitation email could NOT be sent. `
+        + `They have no link. Check email settings, then invite again.`,
+    }
+  }
+  return {
+    kind: "success",
+    text: `Invite sent to ${args.email.trim()} — they set their own password from the link`,
+  }
+}
+
 export interface WizardSubmission {
   endpoint: string
   payload: Record<string, unknown>
@@ -299,13 +341,10 @@ export default function EmployeeCreationWizard({ onClose, onCreated }: EmployeeC
       })
       const res = await apiClient.post(endpoint, payload)
       const userId: string = isProduction ? res.data.id : res.data.user_id
-      if (!isProduction && res.data.email_sent === false) {
-        // Surfaced, not swallowed: the account exists and she has no link.
-        toast.error(
-          `${firstName} was added but the invitation email could not be sent. ` +
-          `Check email settings, then invite again.`
-        )
-      }
+      // Decided once, reported once — see wizardOutcome.
+      const outcome = wizardOutcome({
+        track, firstName, lastName, email, emailSent: res.data.email_sent,
+      })
 
       // Save phone to profile
       if (phone) {
@@ -318,13 +357,8 @@ export default function EmployeeCreationWizard({ onClose, onCreated }: EmployeeC
         await apiClient.put(`/users/${userId}/permissions`, { overrides }).catch(() => {})
       }
 
-      // "added" is true of both tracks and informative about neither. An
-      // admin needs to know whether a link is now sitting in an inbox.
-      toast.success(
-        isProduction
-          ? `${firstName} ${lastName} added`
-          : `Invite sent to ${email.trim()} — they set their own password from the link`
-      )
+      if (outcome.kind === "error") toast.error(outcome.text)
+      else toast.success(outcome.text)
       onCreated()
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Failed to create employee"

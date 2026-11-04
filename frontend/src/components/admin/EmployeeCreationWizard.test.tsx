@@ -16,7 +16,11 @@
  */
 import { describe, expect, it } from "vitest"
 
-import { buildWizardSubmission, filterWizardRoles } from "./EmployeeCreationWizard"
+import {
+  buildWizardSubmission,
+  filterWizardRoles,
+  wizardOutcome,
+} from "./EmployeeCreationWizard"
 
 type R = Parameters<typeof filterWizardRoles>[0][number]
 
@@ -135,5 +139,52 @@ describe("buildWizardSubmission", () => {
     expect(payload).not.toHaveProperty("username")
     expect(payload).not.toHaveProperty("pin")
     expect(payload).not.toHaveProperty("track")
+  })
+})
+
+
+describe("wizardOutcome", () => {
+  const base = { firstName: "Sue", lastName: "Accountant", email: " sue@example.com " }
+
+  it("a FAILED send never reports success — the defect James's question found", () => {
+    const o = wizardOutcome({ ...base, track: OFFICE, emailSent: false })
+    expect(o.kind).toBe("error")
+    expect(o.text).toContain("NOT be sent")
+    expect(o.text).toContain("no link")
+    // ⚠️ The old code fired BOTH toasts, and this is the assertion that
+    // matters: the outcome must not also claim the invite went out.
+    expect(o.text).not.toContain("Invite sent")
+  })
+
+  it("a successful send names the recipient", () => {
+    const o = wizardOutcome({ ...base, track: OFFICE, emailSent: true })
+    expect(o.kind).toBe("success")
+    expect(o.text).toContain("sue@example.com")
+    expect(o.text).not.toContain("NOT be sent")
+  })
+
+  it("an absent field is not treated as failure", () => {
+    // An older server that does not report `email_sent` must not make every
+    // invite cry wolf. Only an explicit `false` is a failure.
+    const o = wizardOutcome({ ...base, track: OFFICE, emailSent: undefined })
+    expect(o.kind).toBe("success")
+  })
+
+  it("the production track is unaffected by the email field", () => {
+    for (const emailSent of [true, false, undefined]) {
+      const o = wizardOutcome({ ...base, track: PRODUCTION, emailSent })
+      expect(o.kind).toBe("success")
+      expect(o.text).toBe("Sue Accountant added")
+    }
+  })
+
+  it("exactly one outcome exists for every input — there is no both", () => {
+    for (const track of [OFFICE, PRODUCTION]) {
+      for (const emailSent of [true, false, undefined]) {
+        const o = wizardOutcome({ ...base, track, emailSent })
+        expect(["success", "error"]).toContain(o.kind)
+        expect(o.text.length).toBeGreaterThan(0)
+      }
+    }
   })
 })
