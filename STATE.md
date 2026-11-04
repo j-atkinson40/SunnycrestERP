@@ -7405,6 +7405,14 @@ the other.
 
   **Fifth instance of one shape in a day across two sessions, and the count is the argument:** a pipe eating `$?`, `find` over a symlink, `grep -c` counting lines, `alembic heads` reading the filesystem instead of the index, and `pgrep` reading wrappers instead of processes. Each an instrument answering a question ADJACENT to the one asked; in four of five the reading was plausible enough to act on. What worked every time was a second instrument that could not share the first's blindness — here `SELECT count(*) FROM pg_stat_activity`, which cannot lie about who holds the database.
 
+  **2026-11-04 — STANDING RULE, James: reading a production environment variable reads ONLY the named variable.** `railway variables --kv` filtered in the pipe; **never written to disk, even shredded afterwards.** No full environment dumps to files.
+
+  ⚠️ **I DID THE WRONG VERSION AND IT PASSED MY OWN CREDENTIAL TEST, WHICH IS WHY THE RULE IS NARROWER THAN THE ONE I WAS FOLLOWING.** Checking whether `TWO_STEP_ENFORCED` was set, I wrote all 40 production variables to a file, grepped one line out, and shredded it. That satisfied "no credential transits the session" — nothing was printed — while putting `SECRET_KEY`, the Anthropic key, the QBO and Twilio secrets and the database URL on local disk for the duration. **A shredded file is not an unwritten file**: it exists until the unlink, it is readable by anything on the machine in that window, and `rm -P` is a best effort on a modern filesystem rather than a guarantee. The right form keeps the whole set in the pipe:
+
+      railway variables --service <svc> --kv | grep '^TWO_STEP_ENFORCED='
+
+  The rule generalises past credentials: **a reduction applied after collection does not undo the collection.** Same shape as reducing output with `tail` and then reading a status from it — the thing you wanted to avoid has already happened by the time the filter runs.
+
   ⚠️ **2026-11-04 — IF TWO-STEP LOCKS SOMEONE OUT, HERE ARE THE THREE WAYS BACK IN, IN ORDER.** Recorded here rather than only in commit bodies because this is the document read first, and the moment it is needed is the moment nobody wants to go looking.
 
       1. phone lost                -> one of her ten recovery codes
