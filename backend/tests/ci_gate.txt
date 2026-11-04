@@ -765,3 +765,12 @@ tests/test_platform_two_step_reset.py
 # (James, 2026-11-04). Without it, `TWO_STEP_ENFORCED=false` is a one-way
 # door: signed in, unable to re-enrol, so unable to turn enforcement back on.
 tests/test_two_step_recovery_script.py
+
+# One rule for every emailed link (James, 2026-11-04). This is the guard that
+# keeps a twelfth answer to "what host goes in the link" from being written,
+# after an invite email reached a real inbox pointing at localhost:5173 with a
+# live token in it. ⚠️ It parses the AST of app/ rather than grepping text, and
+# ⚠️ IT BELONGS IN CI RATHER THAN IN A PRE-COMMIT HOOK: a guard you can silence
+# from the same place you write the code protects you from mistakes and not
+# from yourself. No database, no network, ~4s.
+tests/test_frontend_url_guard.py
