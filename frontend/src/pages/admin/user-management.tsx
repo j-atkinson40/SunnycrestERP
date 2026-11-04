@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { X } from "lucide-react";
+import apiClient from "@/lib/api-client";
+import { toast } from "sonner";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { userService } from "@/services/user-service";
 import { roleService } from "@/services/role-service";
 import EmployeeCreationWizard from "@/components/admin/EmployeeCreationWizard";
@@ -111,6 +114,27 @@ export default function UserManagement() {
   function getRoleSlug(roleId: string): string {
     const role = roles.find((r) => r.id === roleId);
     return role?.slug || "";
+  }
+
+  async function handleResetTwoStep(user: User) {
+    // Deliberately a confirm, not a silent action: it removes someone's second
+    // factor, and the person clicking is not the person affected.
+    const ok = window.confirm(
+      `Clear two-step sign-in for ${user.first_name} ${user.last_name}?\n\n` +
+        `They'll be asked to set it up again at their next sign-in. ` +
+        `Do this only if they've lost both their phone and their recovery codes.`
+    );
+    if (!ok) return;
+    try {
+      const res = await apiClient.post(`/users/${user.id}/two-step/reset`);
+      toast.success(
+        res.data?.had_enrolment
+          ? `${user.first_name} will set up two-step again at next sign-in.`
+          : `${user.first_name} had no two-step setup to clear.`
+      );
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Couldn't reset two-step sign-in."));
+    }
   }
 
   async function handleToggleActive(user: User) {
@@ -254,6 +278,19 @@ export default function UserManagement() {
                       onClick={() => handleToggleActive(user)}
                     >
                       {user.is_active ? "Deactivate" : "Activate"}
+                    </Button>
+                    {/* Payroll 2 — the recovery path when someone loses their
+                        phone AND their recovery codes. Offered for every user
+                        rather than only required ones: the server refuses a
+                        self-clear and reports whether there was anything to
+                        clear, so the button cannot be used to discover who is
+                        enrolled. */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleResetTwoStep(user)}
+                    >
+                      Reset two-step
                     </Button>
                   </TableCell>
                 </TableRow>

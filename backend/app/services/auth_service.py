@@ -209,7 +209,19 @@ def login_user(db: Session, data: LoginRequest, company: Company) -> TokenRespon
             .filter(User.email == data.email, User.company_id == company.id)
             .first()
         )
-        if not user or not verify_password(data.password, user.hashed_password):
+        # ⚠️ `user.hashed_password is None` IS CHECKED FIRST, AND NOT FOR
+        # TIDINESS. Since r226 an invited-but-not-accepted user is a real row
+        # with no password, and `verify_password(plain, None)` RAISES — so
+        # without this clause her first sign-in attempt would be a 500 instead
+        # of a refusal, and a 500 on a known email is itself an existence
+        # oracle. The refusal is folded into the same branch and the same
+        # message as a wrong password, so "invited, not accepted" and "wrong
+        # password" are indistinguishable from outside.
+        if (
+            not user
+            or user.hashed_password is None
+            or not verify_password(data.password, user.hashed_password)
+        ):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid email or password",
@@ -294,6 +306,13 @@ def login_user(db: Session, data: LoginRequest, company: Company) -> TokenRespon
 
         seed_spaces_best_effort(db, user, call_site="login_user")
 
+    # ⚠️ NO `mfa` CLAIM HERE, DELIBERATELY. A password (or a PIN) is the FIRST
+    # step; this token has passed only that. For a user who requires two-step,
+    # the area guard confines it to `mfa_enroll` plus the shell allowlist until
+    # `/two-step/verify` or `/two-step/confirm` exchanges it for one that
+    # carries the claim. For everyone else the claim is never consulted.
+    #
+    # Login still SUCCEEDS — it has to, or she could never reach enrolment.
     token_data = {"sub": user.id, "company_id": company.id}
 
     # Production users get additional claims and shorter token TTL
@@ -350,6 +369,30 @@ def refresh_tokens(
         )
 
     token_data = {"sub": user.id, "company_id": company.id}
+
+    # ⚠️ **THE CLAIM IS CARRIED FORWARD, NEVER CONJURED.** Refresh is the path
+    # that mints a full access token from no credential at all, so if it added
+    # `mfa` on its own, a refresh token issued BEFORE two-step was required
+    # would mint payroll-reaching access tokens forever and the second step
+    # would be decorative. It propagates only what the presented refresh token
+    # already carries, and `is True` so a truthy non-boolean cannot smuggle it.
+    if payload.get("mfa") is True:
+        token_data["mfa"] = True
+
+    return TokenResponse(
+        access_token=create_access_token(token_data),
+        refresh_token=create_refresh_token(token_data),
+    )
+
+
+def issue_two_step_tokens(user, company) -> TokenResponse:
+    """Mint a token pair that HAS passed the second step.
+
+    Called only after a TOTP code or a recovery code has been verified. The
+    refresh token carries the claim too, so an ordinary refresh keeps her signed
+    in without re-entering a code — and `refresh_tokens` above propagates it.
+    """
+    token_data = {"sub": user.id, "company_id": company.id, "mfa": True}
     return TokenResponse(
         access_token=create_access_token(token_data),
         refresh_token=create_refresh_token(token_data),
@@ -360,7 +403,12 @@ def change_password(
     db: Session, user: User, current_password: str, new_password: str
 ) -> None:
     """Change own password. Verifies current password first."""
-    if not verify_password(current_password, user.hashed_password):
+    # The second of the two r226 None-reads. An invited user has no current
+    # password to verify, and must set hers through the invite link rather than
+    # here — this path is for a user who already has one.
+    if user.hashed_password is None or not verify_password(
+        current_password, user.hashed_password
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Current password is incorrect",

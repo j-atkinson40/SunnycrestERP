@@ -101,7 +101,7 @@ def _seed_tenant_with_mec_jobs() -> dict:
     """Seed a tenant + admin + N pending month_end_close AgentJob rows
     across distinct periods so each approve_action consumes a
     different period (avoids period_lock uniqueness conflicts)."""
-    from app.core.security import create_access_token
+    from tests._two_step import tenant_token
     from app.database import SessionLocal
     from app.models.agent import AgentJob
     from app.models.company import Company
@@ -174,7 +174,7 @@ def _seed_tenant_with_mec_jobs() -> dict:
             job_ids.append(j.id)
         db.commit()
 
-        token = create_access_token({"sub": user.id, "company_id": co.id})
+        token = tenant_token(user.id, co.id)
         return {
             "company_id": co.id,
             "user_id": user.id,
@@ -189,7 +189,7 @@ def _seed_tenant_with_mec_jobs() -> dict:
 def _seed_tenant_with_arc_anomalies() -> dict:
     """Seed tenant + N customers each with an AR collections anomaly
     + draft email ready to send."""
-    from app.core.security import create_access_token
+    from tests._two_step import tenant_token
     from app.database import SessionLocal
     from app.models.agent import AgentJob
     from app.models.agent_anomaly import AgentAnomaly
@@ -306,7 +306,7 @@ def _seed_tenant_with_arc_anomalies() -> dict:
         flag_modified(job, "report_payload")
         db.commit()
 
-        token = create_access_token({"sub": user.id, "company_id": co.id})
+        token = tenant_token(user.id, co.id)
         return {
             "company_id": co.id,
             "user_id": user.id,
@@ -321,7 +321,7 @@ def _seed_tenant_with_arc_anomalies() -> dict:
 def _seed_tenant_with_expense_lines() -> dict:
     """Seed tenant + N VendorBillLines + anomalies ready for
     approve_line dispatch."""
-    from app.core.security import create_access_token
+    from tests._two_step import tenant_token
     from app.database import SessionLocal
     from app.models.agent import AgentJob
     from app.models.agent_anomaly import AgentAnomaly
@@ -463,7 +463,7 @@ def _seed_tenant_with_expense_lines() -> dict:
         flag_modified(job, "report_payload")
         db.commit()
 
-        token = create_access_token({"sub": user.id, "company_id": co.id})
+        token = tenant_token(user.id, co.id)
         return {
             "company_id": co.id,
             "user_id": user.id,

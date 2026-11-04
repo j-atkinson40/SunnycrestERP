@@ -113,7 +113,7 @@ def test_financials_summary_route_returns(db):
     aliased CustomerPayment 'payments today' query executes) and returns 200."""
     from fastapi.testclient import TestClient
 
-    from app.core.security import create_access_token
+    from tests._two_step import tenant_token
     from app.main import app
     from app.models.role import Role
     from app.models.user import User
@@ -132,7 +132,7 @@ def test_financials_summary_route_returns(db):
     )
     db.add(user)
     db.commit()
-    token = create_access_token({"sub": user.id, "company_id": co.id})
+    token = tenant_token(user.id, co.id)
 
     resp = TestClient(app).get(
         "/api/v1/financials/summary",

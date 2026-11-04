@@ -22,3 +22,12 @@ class AdminImpersonationSession(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # ⚠️ RECORDS A DELIBERATE BYPASS (r225). Impersonation mints a tenant token
+    # directly, and per James's 2026-11-03 ruling that token is marked
+    # MFA-satisfied so support can still reach a payroll user. Writing it down
+    # here is what makes the bypass auditable instead of implied: a reader can
+    # ask "did a payroll-reaching token ever exist without a second step" and
+    # get an answer. NULL on rows predating r225 — nobody measured it for them.
+    mfa_satisfied_by_admin: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True
+    )

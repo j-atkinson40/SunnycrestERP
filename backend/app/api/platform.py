@@ -22,6 +22,7 @@ from app.api.routes import (
 )
 from app.api.routes.admin import (
     impersonation as admin_impersonation,
+    tenant_two_step as admin_tenant_two_step,
     feature_flags as admin_feature_flags,
     staging as admin_staging,
     deployments as admin_deployments,
@@ -99,6 +100,11 @@ platform_router.include_router(
 # ---------------------------------------------------------------------------
 platform_router.include_router(
     admin_impersonation.router, prefix="/admin/impersonation", tags=["Admin Impersonation"]
+)
+# Payroll 2, ruling 3 — the sole-admin lockout. See the module docstring for
+# the three recovery steps that come before this one.
+platform_router.include_router(
+    admin_tenant_two_step.router, prefix="/admin/tenants", tags=["Admin Tenant Two-Step"]
 )
 platform_router.include_router(
     admin_feature_flags.router, prefix="/admin/feature-flags", tags=["Admin Feature Flags"]

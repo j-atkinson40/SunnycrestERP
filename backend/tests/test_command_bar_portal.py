@@ -182,14 +182,17 @@ def portal_tenant():
         out = {
             "slug": co.slug,
             "admin_token": create_access_token(
-                {"sub": admin.id, "company_id": co.id}
+                # `mfa: True` — this suite exercises behaviour AFTER sign-in, so its
+                # tokens model a user who has passed the second step. See
+                # tests/_two_step.py for why the default is deliberate.
+                {"mfa": True, "sub": admin.id, "company_id": co.id}
             ),
             "limited_token": create_access_token(
-                {"sub": limited.id, "company_id": co.id}
+                {"mfa": True, "sub": limited.id, "company_id": co.id}
             ),
             "other_slug": other.slug,
             "other_token": create_access_token(
-                {"sub": other_admin.id, "company_id": other.id}
+                {"mfa": True, "sub": other_admin.id, "company_id": other.id}
             ),
             "ce_id": ce.id,
             "so_open_id": so_open.id,

@@ -70,7 +70,10 @@ def client(borrowed_user, db):
     from app.main import app
 
     token = create_access_token(
-        {"sub": borrowed_user, "company_id": TESTCO_ID}, realm="tenant"
+        # `mfa: True` — this suite exercises behaviour AFTER sign-in, so its
+        # tokens model a user who has passed the second step. See
+        # tests/_two_step.py for why the default is deliberate.
+        {"mfa": True, "sub": borrowed_user, "company_id": TESTCO_ID}, realm="tenant"
     )
     slug = db.execute(sa.text(
         "SELECT slug FROM companies WHERE id = :i"

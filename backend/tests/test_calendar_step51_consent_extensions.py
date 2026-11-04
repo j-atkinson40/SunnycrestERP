@@ -156,9 +156,9 @@ def _make_ptr_pair(
 
 
 def _auth_headers(user, tenant):
-    from app.core.security import create_access_token
+    from tests._two_step import tenant_token
 
-    token = create_access_token({"sub": user.id, "company_id": tenant.id})
+    token = tenant_token(user.id, tenant.id)
     return {
         "Authorization": f"Bearer {token}",
         "X-Company-Slug": tenant.slug,

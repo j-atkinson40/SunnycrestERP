@@ -61,7 +61,19 @@ def start_impersonation(
         "impersonation": True,
         "impersonation_session_id": session.id,
         "admin_user_id": admin.id,
+        # ⚠️ **A DELIBERATE BYPASS OF THE SECOND STEP, APPROVED AND RECORDED.**
+        # Without this, impersonating a payroll-holding user would be refused by
+        # the area guard — support could not reach the one tenant that matters.
+        # James's ruling of 2026-11-03: mark the token MFA-satisfied and record
+        # that on the session row, so the bypass is auditable instead of implied.
+        #
+        # ⚠️ AND THE HONEST CAVEAT: platform-admin sign-in has NO second step of
+        # its own today, so this bypass currently rests on a password alone.
+        # Recorded in STATE as its own item; not this dispatch's to fix.
+        "mfa": True,
     }
+    session.mfa_satisfied_by_admin = True
+    db.commit()
     token = jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
     return {

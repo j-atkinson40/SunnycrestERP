@@ -75,7 +75,7 @@ def client():
 
 @pytest.fixture(scope="module")
 def seeded_tenant():
-    from app.core.security import create_access_token
+    from tests._two_step import tenant_token
     from app.database import SessionLocal
     from app.models.company import Company
     from app.models.role import Role
@@ -115,7 +115,7 @@ def seeded_tenant():
         )
         db.add(user)
         db.commit()
-        token = create_access_token({"sub": user.id, "company_id": co.id})
+        token = tenant_token(user.id, co.id)
         return {
             "company_id": co.id,
             "user_id": user.id,

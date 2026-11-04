@@ -112,7 +112,7 @@ def _seed_tenant_and_user():
       - 10 user_space_affinity rows (~5 per target_type) so the
         affinity boost pass gets exercised in the latency sample.
     """
-    from app.core.security import create_access_token
+    from tests._two_step import tenant_token
     from app.database import SessionLocal
     from app.models.canonical_document import Document
     from app.models.company import Company
@@ -318,7 +318,7 @@ def _seed_tenant_and_user():
             )
 
         db.commit()
-        token = create_access_token({"sub": user.id, "company_id": co.id})
+        token = tenant_token(user.id, co.id)
         return {
             "company_id": co.id,
             "user_id": user.id,

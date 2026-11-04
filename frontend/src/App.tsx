@@ -69,6 +69,8 @@ import { getCompanySlug } from "@/lib/tenant";
 import { isPlatformAdmin } from "@/lib/platform";
 import PlatformApp from "@/PlatformApp";
 import LoginPage from "@/pages/login";
+import AcceptInvitePage from "@/pages/accept-invite";
+import TwoStepSetupPage from "@/pages/two-step-setup";
 import RegisterPage from "@/pages/register";
 import Dashboard from "@/pages/dashboard/employee-dashboard";
 import NotePage from "@/pages/note/NotePage";
@@ -587,6 +589,15 @@ export function renderTenantSlugRoutes(
               <Route path="login" element={<LoginPage />} />
               <Route path="register" element={<RegisterPage />} />
               <Route path="unauthorized" element={<Unauthorized />} />
+              {/* Payroll 2 ruling 4 — PUBLIC. She has no credential yet; the
+                  single-use token in the query string is what stands in for
+                  one. Sits beside /login for the same reason /login does. */}
+              <Route path="accept-invite" element={<AcceptInvitePage />} />
+              {/* Payroll 2 ruling 2 — authenticated, but reachable with a
+                  token that has NOT passed the second step. It must be outside
+                  ProtectedRoute's app shell: that shell fetches spaces, themes
+                  and nav, and a confined token cannot load most of it. */}
+              <Route path="two-step" element={<TwoStepSetupPage />} />
 
               {/* Protected routes */}
               <Route element={<ProtectedRoute />}>

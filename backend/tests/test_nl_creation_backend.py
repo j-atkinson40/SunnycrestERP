@@ -39,7 +39,7 @@ def client():
 def _make_tenant_user(*, role_slug: str = "admin", vertical: str = "funeral_home"):
     """Create a tenant + role + admin user with full permissions.
     Returns (user_id, company_id, token, slug)."""
-    from app.core.security import create_access_token
+    from tests._two_step import tenant_token
     from app.database import SessionLocal
     from app.models.company import Company
     from app.models.role import Role
@@ -79,7 +79,7 @@ def _make_tenant_user(*, role_slug: str = "admin", vertical: str = "funeral_home
         )
         db.add(user)
         db.commit()
-        token = create_access_token({"sub": user.id, "company_id": co.id})
+        token = tenant_token(user.id, co.id)
         return (user.id, co.id, token, co.slug)
     finally:
         db.close()

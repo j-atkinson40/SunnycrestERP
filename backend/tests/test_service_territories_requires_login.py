@@ -27,7 +27,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
-from app.core.security import create_access_token
+from tests._two_step import tenant_token
 from app.main import app
 from app.models.role import Role
 from app.models.user import User
@@ -92,7 +92,7 @@ def testco_token():
                     hashed_password="not-a-credential", first_name="Svc",
                     last_name="Probe", role_id=role_id, company_id=TESTCO_ID))
         db.commit()
-        yield create_access_token({"sub": USER_ID, "company_id": TESTCO_ID})
+        yield tenant_token(USER_ID, TESTCO_ID)
     finally:
         db.execute(text("DELETE FROM users WHERE id = :u"), {"u": USER_ID})
         db.commit()
@@ -141,7 +141,7 @@ def test_the_other_tenant_exists_so_the_refusal_is_not_a_404(client, other_tenan
 
 def test_a_token_for_another_company_is_refused(client, other_tenant):
     """A valid testco token must not read the other tenant by swapping the slug."""
-    token = create_access_token({"sub": USER_ID, "company_id": TESTCO_ID})
+    token = tenant_token(USER_ID, TESTCO_ID)
     r = client.get(PATH, headers={"Authorization": f"Bearer {token}",
                                   "X-Company-Slug": other_tenant["slug"]})
     assert r.status_code == 401, f"got {r.status_code}: {r.text[:200]}"

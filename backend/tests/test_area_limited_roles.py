@@ -473,3 +473,40 @@ def test_a_null_area_list_is_stored_as_SQL_NULL_not_JSON_null():
         db.execute(text("DELETE FROM companies WHERE id=:c"), {"c": cid})
         db.commit()
         db.close()
+
+
+def test_an_empty_area_list_is_refused_as_area_restricted_not_as_two_step(client, actors):
+    """⚠️ THE REFUSAL CODE MUST NAME THE RIGHT REMEDY.
+
+    Payroll 2 unions `mfa_enroll` into every limited role's reach, so the
+    guard's `allowed` set for a role with `limited_to_areas = []` became
+    `{'mfa_enroll'}` — identical to the set a user who owes a second step gets.
+    Both refusal-code discriminators compared against that set, so this user
+    would have been told to finish setting up two-step when her real problem is
+    that an admin granted her no areas at all. Two different remedies: one
+    sends her to an enrolment page, the other to her administrator.
+
+    ⚠️ NOTHING WAS RED WHEN THAT HAPPENED. The sibling test above asserts the
+    REPORTED areas and not the code, so the collision was invisible. Found by
+    reading the branch after changing the set it compares against, which is the
+    one moment the question gets asked.
+    """
+    from app.database import SessionLocal
+    db = SessionLocal()
+    try:
+        db.execute(text("UPDATE roles SET limited_to_areas='[]'::jsonb WHERE id=:r"),
+                   {"r": LIMITED_ROLE_ID})
+        db.commit()
+        r = client.get("/api/v1/journal-entries/entries",
+                       headers={"Authorization": f"Bearer {actors['limited']}", **HEADERS_SLUG})
+        assert r.status_code == 403, r.text
+        detail = r.json()["detail"]
+        assert detail["code"] == "area_restricted", (
+            f"an area-restricted user was told to enrol in two-step: {detail}"
+        )
+        assert detail["allowed_areas"] == [], detail
+    finally:
+        db.execute(text("UPDATE roles SET limited_to_areas='[\"payroll\"]'::jsonb WHERE id=:r"),
+                   {"r": LIMITED_ROLE_ID})
+        db.commit()
+        db.close()

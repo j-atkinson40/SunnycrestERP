@@ -10,6 +10,7 @@ from app.models.payroll_report import (
     PayrollWeekLine,
     PayrollWeekResult,
 )
+from app.models.user_two_step import UserRecoveryCode, UserTwoStep
 from app.models.period_lock import PeriodLock
 from app.models.accounting_analysis import (
     TenantAccountingAnalysis,
@@ -659,6 +660,8 @@ __all__ = [
     "PayrollWeek",
     "PayrollWeekLine",
     "PayrollWeekResult",
+    "UserRecoveryCode",
+    "UserTwoStep",
     "PeriodLock",
     "PlatformUser",
     "PresetModule",

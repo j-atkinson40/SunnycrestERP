@@ -33,7 +33,7 @@ def client():
 
 
 def _make_ctx(*, role_slug: str = "admin", vertical: str = "manufacturing"):
-    from app.core.security import create_access_token
+    from tests._two_step import tenant_token
     from app.database import SessionLocal
     from app.models.company import Company
     from app.models.role import Role
@@ -73,7 +73,7 @@ def _make_ctx(*, role_slug: str = "admin", vertical: str = "manufacturing"):
         )
         db.add(user)
         db.commit()
-        token = create_access_token({"sub": user.id, "company_id": co.id})
+        token = tenant_token(user.id, co.id)
         return {
             "user_id": user.id,
             "company_id": co.id,
@@ -1044,7 +1044,7 @@ class TestEmailAccountsAPI:
 
     def test_create_requires_admin(self, client, ctx):
         # Create a non-admin user in the same tenant
-        from app.core.security import create_access_token
+        from tests._two_step import tenant_token
         from app.database import SessionLocal
         from app.models.role import Role
         from app.models.user import User
@@ -1074,9 +1074,7 @@ class TestEmailAccountsAPI:
             )
             db.add(office_user)
             db.commit()
-            office_token = create_access_token(
-                {"sub": office_user.id, "company_id": ctx["company_id"]}
-            )
+            office_token = tenant_token(office_user.id, ctx["company_id"])
         finally:
             db.close()
 

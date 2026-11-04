@@ -44,7 +44,7 @@ def client():
 
 
 def _make_ctx(*, role_slug: str = "admin", vertical: str = VERT):
-    from app.core.security import create_access_token
+    from tests._two_step import tenant_token
     from app.models.company import Company
     from app.models.role import Role
     from app.models.user import User
@@ -72,7 +72,7 @@ def _make_ctx(*, role_slug: str = "admin", vertical: str = VERT):
         )
         db.add(user)
         db.commit()
-        token = create_access_token({"sub": user.id, "company_id": co.id})
+        token = tenant_token(user.id, co.id)
         return {"user_id": user.id, "company_id": co.id, "token": token,
                 "slug": co.slug}
     finally:
@@ -96,13 +96,11 @@ def world():
     office_user = db.query(User).filter(User.id == a_office["user_id"]).one()
     office_user.company_id = a_admin["company_id"]
     db.commit()
-    from app.core.security import create_access_token
+    from tests._two_step import tenant_token
 
     a_office["company_id"] = a_admin["company_id"]
     a_office["slug"] = a_admin["slug"]
-    a_office["token"] = create_access_token(
-        {"sub": a_office["user_id"], "company_id": a_admin["company_id"]}
-    )
+    a_office["token"] = tenant_token(a_office["user_id"], a_admin["company_id"])
     b_admin = _make_ctx(role_slug="admin")
 
     # The shared task: runtime workflow + mirror template + trigger + caption.

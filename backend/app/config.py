@@ -25,6 +25,15 @@ class Settings(BaseSettings):
     # Environment: dev | staging | production
     ENVIRONMENT: str = "dev"
 
+    # ⚠️ EMERGENCY OFF SWITCH FOR TWO-STEP SIGN-IN. Declared here so it shows
+    # up in the settings surface, but **the live read is `os.getenv` in
+    # `app.core.two_step.two_step_enforcement_disabled`** — deliberately, so it
+    # works during a partial or failed restart, which is when it is needed.
+    # Enforcement is skipped ONLY for "false"/"0"/"no"/"off"; anything else,
+    # including a typo or an empty value, leaves it ENFORCED. Every request
+    # served while it is off is logged at WARNING.
+    TWO_STEP_ENFORCED: bool = True
+
     # Domain configuration
     FRONTEND_URL: str = "http://localhost:5173"
     PLATFORM_DOMAIN: str = "getbridgeable.com"

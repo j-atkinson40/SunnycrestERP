@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/auth-context";
 import { getCompanySlug } from "@/lib/tenant";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { twoStepService } from "@/services/two-step-service";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -46,7 +47,24 @@ export default function LoginPage() {
       } else {
         await loginPin(identifier, pin);
       }
-      navigate("/");
+
+      // Payroll 2 ruling 2 — a user who owes a second step holds a token that
+      // reaches only the enrolment area and the shell allowlist, so sending
+      // her to "/" would land her on a dashboard whose every request 403s.
+      //
+      // ⚠️ The failure here is deliberately NON-FATAL. If this probe errors,
+      // she goes to "/" exactly as before — the guard still refuses her, so a
+      // broken probe degrades to a confusing screen rather than to a user who
+      // is wrongly let through. Routing is a convenience; the backend is the
+      // enforcement.
+      let next = "/";
+      try {
+        const status = await twoStepService.getStatus();
+        if (status.required) next = "/two-step";
+      } catch {
+        // fall through to "/"
+      }
+      navigate(next);
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, "Login failed"));
     } finally {

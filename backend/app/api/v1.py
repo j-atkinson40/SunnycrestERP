@@ -11,6 +11,7 @@ from app.api.area_guard import enforce_area_limit
 
 from app.api.routes import (
     accounting,
+    invites,
     customer_composition_sources,
     accounting_connection,
     ai,
@@ -191,6 +192,7 @@ from app.api.routes import (   # noqa: E402 — continuation of main import
     website_intelligence,
     vault,
     completeness,
+    two_step,
     payroll_reports,
     vault_accounting,
     vault_molds,
@@ -869,6 +871,11 @@ v1_router.include_router(
     tags=["Unified Import"],
 )
 v1_router.include_router(users.router, prefix="/users", tags=["User Management"])
+# ⚠️ PUBLIC BY DESIGN — she has no credential yet. Not area-tagged, because
+# `enforce_area_limit` returns early for an unauthenticated caller and these two
+# routes are reached by exactly that caller. What gates them is the 256-bit
+# single-use token, not a permission. See app/api/routes/invites.py.
+v1_router.include_router(invites.router, prefix="/invites", tags=["Invites"])
 v1_router.include_router(
     vendor_bills.router, prefix="/vendor-bills", tags=["Vendor Bills"]
 )
@@ -908,6 +915,15 @@ v1_router.include_router(
     completeness.router,
     prefix="/completeness",
     tags=["Completeness"],
+)
+
+# Two-step sign-in. Tagged `area:mfa_enroll` so a user who owes a second step
+# can reach exactly these endpoints and nothing else — the confinement is the
+# area guard's, not a second mechanism. See app/api/routes/two_step.py.
+v1_router.include_router(
+    two_step.router,
+    prefix="/two-step",
+    tags=["Two-Step Sign-In", "area:mfa_enroll"],
 )
 
 # Weekly payroll dues reports (accountant/admin). Reporting only — does not run

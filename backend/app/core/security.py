@@ -58,6 +58,41 @@ def verify_pin(plain_pin: str, encrypted: str) -> bool:
         return False
 
 
+# ── Fernet for TOTP secrets — a SEPARATE derivation ───────────────
+#
+# ⚠️ **NOT `_get_fernet()`, AND THE REASON IS A LOCKOUT.** The PIN Fernet is
+# keyed off `PIN_ENCRYPTION_SALT`, whose own comment says rotating it invalidates
+# every encrypted PIN. If TOTP secrets shared that derivation, rotating the PIN
+# salt would also invalidate every second factor — locking every enrolled user
+# out of payroll on a change that had nothing to do with them, and the person
+# rotating it would have no reason to expect that.
+#
+# Two salts, two blast radii. Same mechanism otherwise.
+_totp_fernet_instance: Fernet | None = None
+_DEFAULT_TOTP_SALT = b"bridgeable-totp-secret-salt"
+
+
+def _get_totp_fernet() -> Fernet:
+    global _totp_fernet_instance
+    if _totp_fernet_instance is None:
+        salt_env = os.environ.get("TOTP_ENCRYPTION_SALT")
+        salt = salt_env.encode() if salt_env else _DEFAULT_TOTP_SALT
+        dk = hashlib.pbkdf2_hmac(
+            "sha256", settings.SECRET_KEY.encode(), salt, 100_000
+        )
+        _totp_fernet_instance = Fernet(base64.urlsafe_b64encode(dk[:32]))
+    return _totp_fernet_instance
+
+
+def encrypt_totp_secret(secret: str) -> str:
+    """Encrypt a base32 TOTP secret. Reversible — TOTP cannot verify a hash."""
+    return _get_totp_fernet().encrypt(secret.encode()).decode()
+
+
+def decrypt_totp_secret(encrypted: str) -> str:
+    return _get_totp_fernet().decrypt(encrypted.encode()).decode()
+
+
 # ── Password hashing (bcrypt) ────────────────────────────────────
 
 

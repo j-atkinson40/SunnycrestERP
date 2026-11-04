@@ -25,13 +25,33 @@ class User(Base):
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
     email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    # ⚠️ NULLABLE SINCE r226, AND NULL IS A STATE WITH A NAME: invited, not yet
+    # accepted. An invited user exists before any password does. The DB CHECK
+    # `ck_users_password_or_invite` is what stops this from being a licence to
+    # create a passwordless account by forgetting one — see r226's docstring.
+    # Every read must handle None; there are two, both in auth_service.
+    hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
     first_name: Mapped[str] = mapped_column(String(100), nullable=False)
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
     role_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("roles.id"), nullable=False, index=True
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # ── Tenant user invites (r226, Payroll 2 ruling 4) ──────────────────
+    # A HASH, never the token: a read of this table must not yield working
+    # invite links. sha256 rather than bcrypt because the token is 256 bits of
+    # CSPRNG — guess-resistance is free and indexability is not.
+    invite_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    invite_token_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    invite_accepted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    invited_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     # Phase 3b — gates editing of platform-global prompts. Set manually
     # (no UI yet). See backend/app/api/deps.py::require_super_admin.
     is_super_admin: Mapped[bool] = mapped_column(

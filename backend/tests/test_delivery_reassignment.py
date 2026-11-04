@@ -150,7 +150,10 @@ def _make_ctx():
             "company_id": co.id,
             "slug": co.slug,
             "admin_token": create_access_token(
-                {"sub": admin_user.id, "company_id": co.id, "realm": "tenant"}
+                # `mfa: True` — this suite exercises behaviour AFTER sign-in, so its
+                # tokens model a user who has passed the second step. See
+                # tests/_two_step.py for why the default is deliberate.
+                {"mfa": True, "sub": admin_user.id, "company_id": co.id, "realm": "tenant"}
             ),
             # Users (what primary_assignee_id stores).
             "user_dave_id": user_dave.id,

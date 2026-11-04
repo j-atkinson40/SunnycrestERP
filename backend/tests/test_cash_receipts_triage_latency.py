@@ -82,7 +82,7 @@ def client():
 def _seed_tenant_with_anomalies():
     from datetime import date
 
-    from app.core.security import create_access_token
+    from tests._two_step import tenant_token
     from app.database import SessionLocal
     from app.models.agent import AgentJob
     from app.models.agent_anomaly import AgentAnomaly
@@ -204,7 +204,7 @@ def _seed_tenant_with_anomalies():
             invoice_ids.append(inv.id)
         db.commit()
 
-        token = create_access_token({"sub": user.id, "company_id": co.id})
+        token = tenant_token(user.id, co.id)
         return {
             "company_id": co.id,
             "user_id": user.id,

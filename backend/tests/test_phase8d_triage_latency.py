@@ -94,7 +94,7 @@ def _seed_aftercare_tenant() -> dict:
     """Seed a FH tenant + admin + N funeral cases each with a
     service_date = today-7 + a staged AgentAnomaly ready for
     aftercare.send dispatch."""
-    from app.core.security import create_access_token
+    from tests._two_step import tenant_token
     from app.database import SessionLocal
     from app.models.agent import AgentJob
     from app.models.agent_anomaly import AgentAnomaly
@@ -216,7 +216,7 @@ def _seed_aftercare_tenant() -> dict:
             anomaly_ids.append(a.id)
         db.commit()
 
-        token = create_access_token({"sub": user.id, "company_id": co.id})
+        token = tenant_token(user.id, co.id)
         return {
             "company_id": co.id,
             "user_id": user.id,
@@ -235,7 +235,7 @@ def _seed_catalog_fetch_tenant() -> dict:
     """Seed tenant + admin + N pending-review UrnCatalogSyncLog rows
     ready for catalog_fetch.approve dispatch. Each has a unique
     pdf_filename so approve can be run per-row."""
-    from app.core.security import create_access_token
+    from tests._two_step import tenant_token
     from app.database import SessionLocal
     from app.models.company import Company
     from app.models.role import Role
@@ -312,7 +312,7 @@ def _seed_catalog_fetch_tenant() -> dict:
             log_ids.append(log.id)
         db.commit()
 
-        token = create_access_token({"sub": user.id, "company_id": co.id})
+        token = tenant_token(user.id, co.id)
         return {
             "company_id": co.id,
             "user_id": user.id,

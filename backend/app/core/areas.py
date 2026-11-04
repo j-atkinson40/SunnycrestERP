@@ -43,6 +43,13 @@ AREA_TAG_PREFIX = "area:"
 #: silently make a router unreachable — so both directions are test-enforced.
 KNOWN_AREAS: frozenset[str] = frozenset({
     "payroll",
+    #: Two-step enrolment (Payroll 2). ⚠️ NOT AN AREA A ROLE IS EVER LIMITED TO
+    #: BY AN ADMIN — it is the area a user is TEMPORARILY confined to by the
+    #: guard when they require two-step and their token has not passed it. The
+    #: distinction matters: `limited_to_areas` is a standing property of a role,
+    #: this is a property of a token, and both are enforced by the one guard
+    #: rather than by two.
+    "mfa_enroll",
 })
 
 

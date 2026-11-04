@@ -52,3 +52,8 @@ sse-starlette>=1.6.0,<2.0.0
 playwright>=1.40.0
 bleach>=6.1.0
 tinycss2>=1.5.0
+# Two-step sign-in (Payroll 2). Pure Python, no native build step. Only the
+# TOTP primitive is used — code generation/verification and the otpauth:// URI.
+# No QR library: the frontend renders the URI, so there is nothing to install
+# for that.
+pyotp>=2.9.0

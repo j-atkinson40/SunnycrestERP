@@ -41,7 +41,7 @@ def _auth(ctx):
 
 
 def _make_ctx(*, role_slug: str = "admin", vertical: str = VERT):
-    from app.core.security import create_access_token
+    from tests._two_step import tenant_token
     from app.models.role import Role
 
     db = SessionLocal()
@@ -67,7 +67,7 @@ def _make_ctx(*, role_slug: str = "admin", vertical: str = VERT):
         )
         db.add(user)
         db.commit()
-        token = create_access_token({"sub": user.id, "company_id": co.id})
+        token = tenant_token(user.id, co.id)
         return {"user_id": user.id, "company_id": co.id, "token": token,
                 "slug": co.slug}
     finally:

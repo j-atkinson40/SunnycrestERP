@@ -21,7 +21,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
-from app.core.security import create_access_token
+from tests._two_step import tenant_token
 from app.main import app
 from app.models.user import User
 from tests._tenant import TESTCO_ID, make_canonical_tenant_fixture
@@ -80,7 +80,7 @@ def tokens(roles_seeded):
                         hashed_password="not-a-credential", first_name="Slice",
                         last_name=slug.title(), role_id=roles_seeded[slug]["id"],
                         company_id=TESTCO_ID))
-            out[slug] = create_access_token({"sub": uid, "company_id": TESTCO_ID})
+            out[slug] = tenant_token(uid, TESTCO_ID)
         db.commit()
         yield out
     finally:
@@ -403,7 +403,7 @@ def view_only():
                     hashed_password="not-a-credential", first_name="View",
                     last_name="Only", role_id=role.id, company_id=TESTCO_ID))
         db.commit()
-        yield create_access_token({"sub": uid, "company_id": TESTCO_ID})
+        yield tenant_token(uid, TESTCO_ID)
     finally:
         db.execute(text("DELETE FROM users WHERE id=:u"), {"u": uid})
         ids = [r[0] for r in db.execute(text(

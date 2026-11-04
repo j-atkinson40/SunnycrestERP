@@ -51,7 +51,7 @@ def db_session():
 def _make_ctx(*, role_slug: str = "admin", vertical: str = "manufacturing"):
     """Tenant + role + user + active space seeded. Returns dict with
     user, company, token, slug, space_id for API tests."""
-    from app.core.security import create_access_token
+    from tests._two_step import tenant_token
     from app.database import SessionLocal
     from app.models.company import Company
     from app.models.role import Role
@@ -118,7 +118,7 @@ def _make_ctx(*, role_slug: str = "admin", vertical: str = "manufacturing"):
         flag_modified(user, "preferences")
         db.commit()
 
-        token = create_access_token({"sub": user.id, "company_id": co.id})
+        token = tenant_token(user.id, co.id)
         return {
             "user_id": user.id,
             "company_id": co.id,

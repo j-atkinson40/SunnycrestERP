@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from app.core.areas import KNOWN_AREAS
-from app.core.security import create_access_token
+from tests._two_step import tenant_token
 from app.main import app
 from app.models.user import User
 from tests._tenant import TESTCO_ID, make_canonical_tenant_fixture
@@ -61,7 +61,7 @@ def admin_token():
                     hashed_password="not-a-credential", first_name="Area",
                     last_name="Admin", role_id=rid, company_id=TESTCO_ID))
         db.commit()
-        yield create_access_token({"sub": ADMIN_UID, "company_id": TESTCO_ID})
+        yield tenant_token(ADMIN_UID, TESTCO_ID)
     finally:
         db.execute(text("DELETE FROM audit_logs WHERE user_id=:u"), {"u": ADMIN_UID})
         db.execute(text("DELETE FROM users WHERE id=:u"), {"u": ADMIN_UID})
@@ -101,7 +101,7 @@ def subject(admin_token):
                     last_name="Subject", role_id=role_id, company_id=TESTCO_ID))
         db.commit()
         yield {"role_id": role_id,
-               "token": create_access_token({"sub": SUBJECT_UID, "company_id": TESTCO_ID})}
+               "token": tenant_token(SUBJECT_UID, TESTCO_ID)}
     finally:
         purge()
         db.close()

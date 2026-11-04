@@ -158,7 +158,6 @@ export default function EmployeeCreationWizard({ onClose, onCreated }: EmployeeC
   const [firstName, setFirstName] = useState("")
   const [lastName, setLastName] = useState("")
   const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
   const [username, setUsername] = useState("")
   const [pin, setPin] = useState("")
   const [phone, setPhone] = useState("")
@@ -216,17 +215,29 @@ export default function EmployeeCreationWizard({ onClose, onCreated }: EmployeeC
         role_id: selectedRoleId,
         track,
       }
+      let userId: string
       if (isProduction) {
+        // The production/delivery track authenticates by username + PIN and
+        // has no email to send an invite to, so it still creates directly.
         payload.username = username
         payload.pin = pin
         payload.console_access = consoles
+        const res = await apiClient.post("/users", payload)
+        userId = res.data.id
       } else {
+        // Office track: invite. No password crosses this request.
         payload.email = email
-        payload.password = password
+        delete payload.track
+        const res = await apiClient.post("/users/invite", payload)
+        userId = res.data.user_id
+        if (res.data.email_sent === false) {
+          // Surfaced, not swallowed: the account exists and she has no link.
+          toast.error(
+            `${firstName} was added but the invitation email could not be sent. ` +
+            `Check email settings, then invite again.`
+          )
+        }
       }
-
-      const res = await apiClient.post("/users", payload)
-      const userId = res.data.id
 
       // Save phone to profile
       if (phone) {
@@ -250,7 +261,7 @@ export default function EmployeeCreationWizard({ onClose, onCreated }: EmployeeC
   }
 
   const canProceedStep1 = firstName.trim() && lastName.trim() &&
-    (track === "office_management" ? email.trim() && password.length >= 8 : username.trim() && pin.length === 4)
+    (track === "office_management" ? email.trim() : username.trim() && pin.length === 4)
   const canProceedStep2 = !!selectedRoleId
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -322,9 +333,13 @@ export default function EmployeeCreationWizard({ onClose, onCreated }: EmployeeC
                 <Label>Email</Label>
                 <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1" />
               </div>
-              <div>
-                <Label>Password <span className="text-gray-400 font-normal">(min 8 characters)</span></Label>
-                <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1" />
+              {/* Payroll 2, ruling 4: the admin never sees or sets her password.
+                  There is no password field here by design — she gets a
+                  single-use link and chooses her own. */}
+              <div className="rounded-md border border-border-subtle bg-surface-sunken px-3 py-2.5 text-sm text-content-muted">
+                They&rsquo;ll get an email with a link to set their own password.
+                The link works once and expires in 3 days. Nobody here can see
+                or set it &mdash; including you.
               </div>
             </>
           ) : (

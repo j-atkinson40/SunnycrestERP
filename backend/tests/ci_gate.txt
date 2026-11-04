@@ -749,3 +749,15 @@ tests/test_the_wrong_town_asks.py
 tests/test_payroll_data_switch.py
 tests/test_role_areas_administrable.py
 tests/test_the_purge_finishes_or_says_why.py
+
+# Payroll 2 (2026-11-04). Two-step sign-in and tenant invites.
+#
+# The enforcement is one dependency on `v1_router`, so these three carry the
+# whole of it: that a token which has not passed a second step cannot be USED
+# for payroll however it was minted; that an invite never puts a password in a
+# request body nor a link in a response; and that the sole-admin lockout has a
+# platform-realm way out. A regression in any of them is a sign-in regression
+# for every admin, which is why they are gate files rather than local ones.
+tests/test_two_step_sign_in.py
+tests/test_tenant_invites.py
+tests/test_platform_two_step_reset.py

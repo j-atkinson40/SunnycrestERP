@@ -18,7 +18,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
-from app.core.security import create_access_token
+from tests._two_step import tenant_token
 from app.main import app
 from app.models.company import Company
 from app.models.user import User
@@ -62,7 +62,7 @@ def tokens():
             db.add(User(id=uid, email=f"{uid}@testco.example.com",
                         hashed_password="not-a-credential", first_name="Switch",
                         last_name=slug.title(), role_id=rid, company_id=TESTCO_ID))
-            ids[slug] = create_access_token({"sub": uid, "company_id": TESTCO_ID})
+            ids[slug] = tenant_token(uid, TESTCO_ID)
         db.commit()
         yield ids
     finally:
