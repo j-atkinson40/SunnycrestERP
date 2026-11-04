@@ -7451,6 +7451,24 @@ the other.
 
   **2026-11-04 — OPEN, NOT BUILT: enrolment wording and a QR code before Sue sees it.** The enrolment screen currently shows a secret string and assumes the reader knows what an authenticator app is. Also open from the same ruling: offer an easier second step (SMS or a push app) and turn the payroll two-step requirement back ON before more tenants arrive — it is OFF by default now, which is the right default for one admin and the wrong one for twenty.
 
+  **2026-11-04 — NEXT CI-HEALTH ITEM: `BindingPicker.test.tsx` is flaky, and the failure MOVES. James's ruling, verbatim:**
+
+      BindingPicker.test.tsx is flaky (failure moves between tests,
+      fires on a clean tree). Next CI-health item: find the shared cause, no
+      waitFor patches, no quarantine of single sites. Until then, a red CI run
+      whose only failure is in that file may be re-run once; a second red is
+      treated as real.
+
+  **Measured 2026-11-04, three full runs of `CI=true npm run test:ci` plus one stashed baseline.** Run 1 of my tree: 387 / 5565 / **1 failed** — `BindingPicker.test.tsx`, *"preserves field_path when switching between views of the same entity type"*, the THIRD and last bare query site in that file, which its own quarantine comment says is "still bare and untested". Runs 2 and 3: 387 / 5565 / **0 failed**. A baseline with my changes **stashed** also failed 1 — but a **different** test, `DocumentsTab.test.tsx`, *"Save fires documentBlocksService.update immediately"*. Roughly 1 in 3 full runs on this machine.
+
+  ⚠️ **TWO FACTS DO THE WORK HERE AND NEITHER IS "IT IS FLAKY".** First, **it fires on a clean tree**, so it is not attributable to whatever change is in front of it — and a session that assumes otherwise will go looking in its own diff. Second, **the failure moves between tests and between files**, which is what rules out the single-site remedies: patching or skipping the site that lost *this* run leaves the cause in place and the next run loses a different one. The two already-quarantined tests in that file are evidence of exactly that having been tried twice.
+
+  ⚠️ **NO `waitFor` PATCHES, BY STANDING RULING, AND THE REASON IS NOT PREFERENCE.** The magnitude hypothesis was falsified next door: it failed WITH `{ timeout: 5_000 }` in place, at 5006 ms. **A waitFor timeout reports just past its own limit by construction** — 1062-against-1000 and 5006-against-5000 both mean the thing NEVER HAPPENED, not that it happened late. So no timeout figure can ever evidence slowness, and no larger timeout belongs there. The live suspect is that the click on `binding-picker-saved-view` is never PROCESSED under full-suite worker load; `aria-expanded="false"` is consistent with both readings and only the slowness one is helped by more time.
+
+  **The owed work:** find the shared cause — one investigation closes all three sites in `BindingPicker.test.tsx` and probably `DocumentsTab.test.tsx` with them. The unskip condition already recorded at both existing quarantines is the same: show the trigger click reaching `aria-expanded="true"` under full-suite load.
+
+  ⚠️ **AND THE RE-RUN ALLOWANCE IS BOUNDED ON PURPOSE.** One re-run, and only when that file is the ONLY failure. A second red is real. CLAUDE.md §11 is explicit that a channel read past a known baseline is already dark, and "re-run until green" is how a one-in-three race becomes a permanent exemption nobody writes down. ⚠️ **The allowance is also not a reason to defer the investigation** — it is the compensating control, and *a compensating control that works is how the defect survives*.
+
   **2026-11-04 — QUEUED, NOT STARTED: Payroll 3, the weekly hours pull from Payentry Time Management.** Dispatch issued 2026-11-04, to run after the Payroll 2 push. Phase 1 is read-only findings, then stop. Goal: a scheduled Bridgeable job pulls the week's hours the way the Grok bot does today and loads them for `calculate_week`. **Read-only toward Payentry**, running alongside Grok for 3–4 weeks with results compared weekly.
 
   **What the scope decision rests on, from the Grok bot's own use:** `mytime.payentry.com` (company `Sunnyc2`) signs in with username and password only — no texted code observed — and offers *Reports → Sun–Sat range → download .xls*, where **Employee Hours** (person/day/pay type) is the source and **Hours Summary** (department totals) the cross-check. The MAIN site `new.payentry.com` can require a texted code and is therefore **out of scope entirely**: no Check Register pull, no deduction entry. Sue continues to enter deductions and to upload the monthly Check Register by hand, which Bridgeable then reconciles against what was actually deducted.
