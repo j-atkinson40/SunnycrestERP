@@ -14,6 +14,25 @@ Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end 
 
   **Not scoped, not started.** The first honest step is a census that distinguishes the three cases — gated in the signature, gated inside the handler, gated nowhere — because the 1,027 conflates them and a plan built on the conflated number would be wrong about its own size.
 
+  **2026-11-06 — FOLLOW-UP, NOT CHANGED: `POST /companies/register` needs a rate limit.** James's ruling: add it to STATE, no change now. It is **not** the `/auth/register` defect — `register_company` refuses an existing slug with 409, so it cannot be used to join an existing tenant, and that is the condition that mattered. What remains is that it is **unauthenticated tenant creation with no rate limit and no CAPTCHA**: `companies.py:16`, `get_db` as its only dependency, and each call creates a company, seeds its roles and modules, creates an admin user, and writes a `TenantHealthScore` so the new tenant appears on the operator dashboard. So the exposure is **spam and dashboard pollution, not disclosure**. Measured 2026-11-06: 4 companies exist on production, so there is no sign of abuse. ⚠️ **No further claim is made about this endpoint** — it was read read-only and nothing else about it was checked, because *"the other one is the safe one"* is the exact assumption that produced the `/auth/register` finding.
+
+  **2026-11-06 — the production admin roster was checked by eye and is clean. James confirms `jim.atkinson@sunnycrest.com` is his.** All 19 accounts accounted for: `testco`, `hopkins-fh` and `st-marys` are the seeded dev/demo tenants (`@testco.com` / `.example.com`); `sunnycrest` holds exactly two — that admin, created the same day as the company (2026-03-27), and `ssbball40@gmail.com` (payroll, 2026-11-06, non-null `created_by`, which is the invite path). **0 employee-role users on production**, and `employee` was the only role `/auth/register` assigned to a non-first user, so **nobody ever came in through the register door.** ⚠️ The four `admin` rows carry NULL `created_by` and remain **indistinguishable** between register's first-user branch and ordinary seed creation; the roster is clean because each one's `created_at` matches its company's and James recognises the sunnycrest one, not because the data can tell the two apart.
+
+  **2026-11-06 — Payroll 3 Phase 1 is BLOCKED on three inputs, not started.** The dispatch's own instruction is to STOP if the specs are absent and not to reconstruct them, so it stopped. Measured, not assumed:
+
+      docs/specs/payroll-build-plan.md     ABSENT   nothing similar anywhere in the repo
+      docs/specs/payroll-reports-spec.md   ABSENT   see the note below
+      docs/specs/payroll-reports.md        PRESENT  387 lines, md5 7017ecaf63ebcdae11837baa6227b7f4,
+                                                    committed in 779af43a
+      Punch Location sample (Oct 25-31)    PRESENT  ~/Downloads, 30,208 bytes, Nov 6 10:05
+      Employee Hours sample (Oct 25-31)    ABSENT   Grok has not saved it yet
+
+  ⚠️ **`payroll-reports.md` AND `payroll-reports-spec.md` ARE NOT ASSUMED TO BE THE SAME FILE.** The names differ by one word and the ruling is to compare them and report differences rather than merge or pick. The existing one is titled *"Weekly Payroll Reports — specification"* and its **§7.4 is "Payentry export format — sample needed"** — which is precisely the question Payroll 3 Phase 1 answers, so the two are plainly related and that is still not evidence they are the same document.
+
+  **Without Employee Hours, two of the dispatch's seven steps cannot run at all** — step 2 (does Payentry carry dollar amounts by earnings code, which decides whether dues can come from what was actually paid) and step 5 (the week-44 golden comparison for the 13 union members). Those are the two James flagged as decisive, so Phase 1 would report a hole where its conclusion should be.
+
+  ⚠️ **AND THE DISPATCH'S PROTOTYPE URLs DO NOT RESOLVE; the artifacts exist under different ones.** Cited as `claude.ai/artifact/MfATZVhAPhDpLJ8XCenQoz` and `claude.ai/artifact/RKJgeGs7z1rjAaLGd3xqQf`; the real addresses are `claude.ai/code/artifact/a74add78-79d2-4bb0-852c-03c64e15e319` (Weekly Payroll Focus) and `claude.ai/code/artifact/c4e99d10-f641-427d-8395-9b8e84cabf94` (Timecard Pane) — different path AND different id format. James confirms these are the same prototypes and are the ones to use. **They were matched BY TITLE from his own artifact listing and the mismatch was reported rather than silently substituted**, because picking two artifacts myself and calling them the ones he meant is the failure mode, not the fix.
+
   ## 2026-11-06 — CLOSED: `POST /auth/register` let a stranger create an account in any existing tenant
 
   **Deleted, not gated, by James's ruling.** Endpoint, service function, schema, frontend page, route and client method all removed. Findings: `docs/investigations/2026-11-06-auth-register-open-registration.md`.
