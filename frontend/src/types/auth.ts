@@ -49,12 +49,7 @@ export interface LoginRequest {
   pin?: string;
 }
 
-export interface RegisterRequest {
-  email: string;
-  password: string;
-  first_name: string;
-  last_name: string;
-}
+// `RegisterRequest` was deleted on 2026-11-06 with POST /auth/register.
 
 export interface TokenResponse {
   access_token: string;

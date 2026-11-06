@@ -24,11 +24,8 @@ class LoginRequest(BaseModel):
         return self
 
 
-class RegisterRequest(BaseModel):
-    email: EmailStr
-    password: str
-    first_name: str
-    last_name: str
+# `RegisterRequest` was deleted on 2026-11-06 with POST /auth/register.
+# `CompanyRegisterRequest` is a different thing and stays.
 
 
 class TokenResponse(BaseModel):

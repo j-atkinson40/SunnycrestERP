@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { authService } from "@/services/auth-service";
-import type { RegisterRequest, User } from "@/types/auth";
+import type { User } from "@/types/auth";
 import type { Company } from "@/types/company";
 import { clearOpasClientState } from "@/contexts/opas-context";
 
@@ -32,7 +32,6 @@ interface AuthContextType {
   refreshCompany: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   loginPin: (username: string, pin: string) => Promise<void>;
-  register: (data: RegisterRequest) => Promise<void>;
   logout: () => void;
 }
 
@@ -173,20 +172,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const register = useCallback(async (data: RegisterRequest) => {
-    await authService.register(data);
-    const tokens = await authService.login({
-      email: data.email,
-      password: data.password,
-    });
-    localStorage.setItem("access_token", tokens.access_token);
-    localStorage.setItem("refresh_token", tokens.refresh_token);
-    const me = await authService.getMe();
-    setUser(me);
-    if (me.company) {
-      setCompany(me.company);
-    }
-  }, []);
+  // `register` was deleted on 2026-11-06 with POST /auth/register.
 
   const logout = useCallback(() => {
     // Store last username for shared tablet convenience
@@ -232,7 +218,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         refreshCompany,
         login,
         loginPin,
-        register,
         logout,
       }}
     >

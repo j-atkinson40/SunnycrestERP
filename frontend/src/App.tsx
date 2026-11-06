@@ -71,7 +71,6 @@ import PlatformApp from "@/PlatformApp";
 import LoginPage from "@/pages/login";
 import AcceptInvitePage from "@/pages/accept-invite";
 import TwoStepSetupPage from "@/pages/two-step-setup";
-import RegisterPage from "@/pages/register";
 import Dashboard from "@/pages/dashboard/employee-dashboard";
 import NotePage from "@/pages/note/NotePage";
 import BridgeableMapPage from "@/pages/bridgeable-map";
@@ -587,7 +586,13 @@ export function renderTenantSlugRoutes(
     <>
               {/* Tenant routes — accessed via subdomain or company slug */}
               <Route path="login" element={<LoginPage />} />
-              <Route path="register" element={<RegisterPage />} />
+              {/* ⚠️ `register` WAS DELETED ON 2026-11-06. DO NOT REINSTATE.
+                  It sat here, beside `login` and outside ProtectedRoute, as a
+                  PUBLIC page that created a working account in this tenant for
+                  anyone who loaded it. The endpoint behind it
+                  (POST /auth/register) is gone too; the full reasoning is at
+                  the deleted route in backend/app/api/routes/auth.py.
+                  People are added by invitation: Users -> Add Employee. */}
               <Route path="unauthorized" element={<Unauthorized />} />
               {/* Payroll 2 ruling 4 — PUBLIC. She has no credential yet; the
                   single-use token in the query string is what stands in for

@@ -174,16 +174,37 @@ def test_no_tenant_route_resolves_a_company_without_requiring_a_user():
     at `include_router()` level or inherited through a nested router is invisible
     to a text search, which is exactly the population this asserts over.
 
-    `login` / `refresh` / `register` are excluded BY NAME: they must resolve the
-    company to authenticate against it, and they cannot require a user because
-    producing one is their job.
+    `login` / `refresh` are excluded BY NAME: they must resolve the company to
+    authenticate against it, and they cannot require a user because producing a
+    SESSION is their job.
+
+    ⚠️ **THIS DOCSTRING USED TO READ "`login` / `refresh` / `register` ... because
+    producing one is their job", AND THAT SENTENCE HID AN OPEN DOOR FOR MONTHS.**
+    Preserved verbatim above the correction because the wording is the lesson.
+    It is true of login and refresh, which produce a TOKEN. Applied to
+    `register`, "producing one is their job" meant producing a USER — which is
+    not a justification for exempting it, it is the vulnerability stated as a
+    feature. `POST /auth/register` created an account inside an EXISTING tenant
+    named by a request header, for anyone who asked, and this test excluded it
+    by name on the strength of that sentence.
+
+    The endpoint was deleted on 2026-11-06. See
+    docs/investigations/2026-11-06-auth-register-open-registration.md.
+
+    ⚠️ **AND AN EXCLUSION OUTLIVING ITS ROUTE IS WORSE THAN USELESS: IT
+    PRE-EXEMPTS A REINSTATEMENT.** If a future commit re-adds
+    `POST /auth/register`, a stale entry here would wave it through on day one,
+    silently, with this test still green. `test_no_exclusion_names_a_route_that_
+    does_not_exist` is the guard for that, and it is the reason the entry was
+    removed rather than left as a harmless no-op.
     """
     from fastapi.routing import APIRoute
 
+    # ⚠️ TWO ENTRIES, NOT THREE. `/api/v1/auth/register` was removed on
+    # 2026-11-06 along with the endpoint itself.
     ALLOWED_WITHOUT_USER = {
         "/api/v1/auth/login",
         "/api/v1/auth/refresh",
-        "/api/v1/auth/register",
     }
 
     def dep_names(dep, out, seen):
@@ -242,4 +263,92 @@ def test_no_tenant_route_resolves_a_company_without_requiring_a_user():
     assert offenders == [], (
         "tenant route(s) resolve a company but require no user:\n  "
         + "\n  ".join(offenders)
+    )
+
+
+def test_no_exclusion_names_a_route_that_does_not_exist():
+    """⚠️ A STALE EXCLUSION PRE-EXEMPTS A REINSTATEMENT.
+
+    The sweep above exempts routes by literal path. If one of those routes is
+    deleted and the entry is left behind, the entry is not a harmless no-op: it
+    is a standing exemption waiting for somebody to re-add that path, at which
+    point the new route is waved through on its first day with this test still
+    green and nothing to read.
+
+    That is not hypothetical. `POST /auth/register` was exempted here by name,
+    on reasoning that was true of `login` and false of it, and the exemption is
+    why no later sweep caught it. Deleting the endpoint without deleting the
+    entry would have left the door closed and the latch still open.
+
+    So: every exclusion must name a route the app actually serves.
+    """
+    from fastapi.routing import APIRoute
+
+    from app.main import app
+
+    served = {
+        (m, r.path)
+        for r in app.routes
+        if isinstance(r, APIRoute)
+        for m in (r.methods or set()) - {"HEAD", "OPTIONS"}
+    }
+    paths_served = {p for _m, p in served}
+
+    # Re-read the literal set from the test above rather than duplicating it,
+    # so the two cannot drift apart.
+    import inspect
+    src = inspect.getsource(test_no_tenant_route_resolves_a_company_without_requiring_a_user)
+    import re
+    block = re.search(r"ALLOWED_WITHOUT_USER = \{(.*?)\}", src, re.S).group(1)
+    excluded = set(re.findall(r'"([^"]+)"', block))
+
+    assert excluded, "the exclusion set parsed as empty — this guard would pass trivially"
+
+    stale = sorted(e for e in excluded if e not in paths_served)
+    assert stale == [], (
+        f"these exclusions name routes the app does not serve: {stale}. An "
+        f"exclusion that outlives its route is a standing exemption for "
+        f"whoever re-adds that path. Delete the entry."
+    )
+
+
+def test_auth_register_is_gone_and_stays_gone():
+    """⚠️ THE DELETION, PINNED.
+
+    `POST /auth/register` created an active account inside an existing tenant
+    chosen by the `X-Company-Slug` header, with no credential required.
+    Measured on production 2026-11-06: 422 for an invalid body with no
+    `Authorization` header, so the request reached body validation; all four
+    live tenants reachable; a public page at `{slug}/register`.
+
+    Deleted rather than gated: the invite flow already serves the capability
+    correctly, and an absent endpoint is not a hole with a guard on it.
+    """
+    from fastapi.routing import APIRoute
+
+    from app.main import app
+
+    offenders = sorted(
+        f"{m} {r.path}"
+        for r in app.routes
+        if isinstance(r, APIRoute) and r.path.endswith("/auth/register")
+        for m in (r.methods or set()) - {"HEAD", "OPTIONS"}
+    )
+    assert offenders == [], (
+        f"POST /auth/register is back: {offenders}. It lets anyone who knows a "
+        f"tenant's slug create a working login there. Use POST /users/invite."
+    )
+
+    # ⚠️ CONTROL: new-company signup is a DIFFERENT endpoint and must survive.
+    # Without this the test could pass by deleting both, and the confusion
+    # between the two is what caused the original defect.
+    company_signup = [
+        r.path for r in app.routes
+        if isinstance(r, APIRoute) and r.path == "/api/v1/companies/register"
+    ]
+    assert company_signup, (
+        "/api/v1/companies/register is missing — that is new-COMPANY signup, "
+        "which refuses an existing slug (409) and is not the endpoint that was "
+        "deleted. This control exists because the two were confused for each "
+        "other in the first place."
     )

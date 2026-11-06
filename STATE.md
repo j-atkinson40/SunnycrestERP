@@ -2,6 +2,38 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+  ## ⚠️ 2026-11-06 — NEXT SECURITY ITEM, PROMOTED BY RULING: the 1,027 endpoints gated only by "is signed in"
+
+  **James's ruling of 2026-11-06 moves this up.** It was the thing the `/auth/register` finding made urgent, and it outlives that finding: closing registration removes the easy way to GET such an account, and changes nothing about what one can reach.
+
+  **Measured on the live app 2026-11-06: 1,027 of 1,934 method+path pairs under `/api/v1` declare neither `require_admin` nor `require_permission`.** That is an upper bound — some check inside the handler — and CLAUDE.md §4 records the related measurement of 1,063 with no per-user authorization, 886 of them with no check in the handler either.
+
+  ⚠️ **AND THE AREA GUARD DOES NOT COVER THEM, WHICH IS THE PART THAT GETS MISREAD.** `enforce_area_limit` early-returns when `role.limited_to_areas` is NULL, and NULL is every role except `payroll`. The guard closed 551 of 568 routes for an area-limited user, and that number is about area-limited users ONLY. For an ordinary `employee`/`office` role it closes nothing, by design — it is an additional restriction on a narrow role, never a replacement for per-endpoint authorization.
+
+  Directly measured with a zero-permission `employee` account (6 endpoints, a sample and reported as one): `/auth/me` 200, `/locations/users` 200, `/locations` 200, `/notifications` 200, `/customers` 403, `/products` 403.
+
+  **Not scoped, not started.** The first honest step is a census that distinguishes the three cases — gated in the signature, gated inside the handler, gated nowhere — because the 1,027 conflates them and a plan built on the conflated number would be wrong about its own size.
+
+  ## 2026-11-06 — CLOSED: `POST /auth/register` let a stranger create an account in any existing tenant
+
+  **Deleted, not gated, by James's ruling.** Endpoint, service function, schema, frontend page, route and client method all removed. Findings: `docs/investigations/2026-11-06-auth-register-open-registration.md`.
+
+  It created a user **inside an existing company chosen by the `X-Company-Slug` header**, with no credential of any kind. `get_current_company` is a lookup, not a check — it answers "does this tenant exist", never "may you act on it". The account was `is_active=True` immediately with the password the caller chose; role `employee`, or **`admin` if the company had zero users**.
+
+  ⚠️ **`employee` HAS NO PERMISSIONS BUT NULL `limited_to_areas`, AND THE SECOND HALF IS WHAT MATTERED.** The area guard early-returns on NULL, so such an account was never confined, leaving every "signed in is enough" endpoint reachable — see the item above.
+
+  **Measured on production, creating nothing:** 422 for a deliberately invalid body with **no `Authorization` header** (so the request passed every dependency and reached body validation; a 401 anywhere would have falsified the finding), 404 with no slug and with a bogus slug. All **4** active tenants reachable. The zero-user admin branch was **not** reachable — 0 companies had no users — but was one deleted-last-user away. Full mechanism demonstrated end to end on dev: `201` → active employee → `200` on login with a token; dev user deleted afterwards.
+
+  **No evidence anyone used it.** Register could only ever assign `admin` or `employee`, and production holds **0 employee-role users**. All 19 accounts were accounted for by eye: 3 of 4 tenants are the seeded dev/demo tenants, sunnycrest has exactly 2 (its admin, created the same day as the company, and the payroll invitee with a non-null `created_by`). ⚠️ The 4 `admin` rows carry NULL `created_by` and are **indistinguishable** between the first-user branch and ordinary seed creation; that was reported as indistinguishable rather than resolved.
+
+  ⚠️ **WHY IT SURVIVED, WHICH IS THE DURABLE PART.** `test_service_territories_requires_login.py` — the sweep for endpoints needing no sign-in — **excluded it by name**, with this justification in its own docstring: *"`login` / `refresh` / `register` are excluded BY NAME: they must resolve the company to authenticate against it, and they cannot require a user because producing one is their job."* True of login and refresh, which produce a TOKEN. Applied to register, "producing one is their job" meant producing a **USER** — the vulnerability stated as a feature. One endpoint was credited with another's purpose: new-company signup is `POST /api/v1/companies/register`, a different route, reached by a different page. The exclusion then hid it from every later sweep, including the area-guard review that first noticed the name.
+
+  ⚠️ **AND A STALE EXCLUSION PRE-EXEMPTS A REINSTATEMENT, WHICH IS WORSE THAN USELESS.** Deleting the endpoint and leaving the exclusion entry would have closed the door and left the latch open: a future commit re-adding the path would be waved through on day one with the sweep still green. `test_no_exclusion_names_a_route_that_does_not_exist` is the guard; break-tested by putting the entry back, which reddens it and the sweep together.
+
+  **`POST /companies/register` was looked at read-only and is a different thing.** `companies.py:16`, deliberately public — *"Creates a new company and its first admin user"* — and `register_company` **refuses an existing slug with 409**, so it cannot be used to join an existing tenant. It already satisfies the "can't target an existing slug" condition. ⚠️ **It is still unauthenticated tenant creation with no rate limit or CAPTCHA**, which is a spam surface rather than a disclosure; 4 companies exist on production, so no sign of abuse. **Reported, not changed, and no further claim made about it** — "the other one is the safe one" is the exact assumption that produced the register finding.
+
+  **Break tests:** reinstating `POST /auth/register` reddens both `test_auth_register_is_gone_and_stays_gone` and the login-required sweep (the latter only because the exclusion was removed — with it in place the sweep stayed green, which is the latch). Restoring the stale exclusion reddens the sweep and the stale-exclusion guard. The gone-test carries a control asserting `/companies/register` still exists, so it cannot pass by deleting both — the confusion between the two being what caused the defect.
+
 ## 2026-11-03 — push 2 REVERTED: I chained a migration off an uncommitted revision
 
 `a58708c1` shipped `r228_capture_prefix_offers` with

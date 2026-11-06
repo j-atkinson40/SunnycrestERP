@@ -10,14 +10,13 @@ from app.models.user import User
 from app.schemas.auth import (
     LoginRequest,
     RefreshRequest,
-    RegisterRequest,
     TokenResponse,
 )
 from app.schemas.company import CompanyResponse
 from app.schemas.password import ChangePasswordRequest
 from app.schemas.user import UserResponse
 from app.services import audit_service
-from app.services.auth_service import change_password, login_user, refresh_tokens, register_user
+from app.services.auth_service import change_password, login_user, refresh_tokens
 from app.services.extension_service import get_active_extension_keys
 from app.services.module_service import get_enabled_module_keys
 from app.services import employee_profile_service, functional_area_service
@@ -35,16 +34,38 @@ def _user_to_response(user: User) -> dict:
     return data
 
 
-@router.post("/register", status_code=201)
-def register(
-    data: RegisterRequest,
-    db: Session = Depends(get_db),
-    company: Company = Depends(get_current_company),
-):
-    user = register_user(db, data, company)
-    # Eagerly load the role_obj for the response
-    db.refresh(user)
-    return _user_to_response(user)
+# ⚠️ **`POST /auth/register` WAS DELETED ON 2026-11-06. DO NOT REINSTATE IT.**
+#
+# It created a user inside an EXISTING company chosen by the `X-Company-Slug`
+# header, with no credential of any kind required — so anyone who knew a
+# tenant's address could create themselves a working login there. Measured on
+# production: a 422 for an invalid body with no `Authorization` header, meaning
+# the request reached body validation; all four live tenants were reachable;
+# and there was a public page at `{slug}/register` routed beside `/login`.
+#
+# The registered user was `is_active=True` immediately with the password they
+# chose. Role was `employee` — permissions `[]`, but `limited_to_areas` NULL,
+# so `enforce_area_limit` early-returns and never confines them, leaving every
+# endpoint gated only by `get_current_user` reachable. Or `admin`, if the
+# company happened to have zero users.
+#
+# ⚠️ **IT WAS DELETED RATHER THAN GATED, AND THAT WAS THE RULING FOR A REASON:
+# AN ABSENT ENDPOINT IS NOT A HOLE WITH A GUARD ON IT.** The capability is
+# fully served by the invite flow — `tenant_invite.invite_user` plus
+# `POST /invites/{token}/accept` — which requires `users.create`, hashes a
+# single-use token, expires in 72 hours, and audits. Adding an invite-token
+# check here would have produced a second, parallel implementation of that,
+# and the weaker one would have been the one reachable without signing in.
+#
+# ⚠️ WHAT MADE IT SURVIVE SO LONG: a sweep for endpoints needing no sign-in
+# EXCLUDED IT BY NAME, on the reasonable-sounding assumption that it was
+# new-company signup. It was not. New-company signup is
+# `POST /api/v1/companies/register`, a different route reached by a different
+# page, and it refuses an existing slug with 409. One endpoint was credited
+# with another's purpose, and the exclusion then hid it from every later sweep.
+# See docs/investigations/2026-11-06-auth-register-open-registration.md.
+#
+# To invite someone: POST /users/invite.
 
 
 @router.post("/login", response_model=TokenResponse)

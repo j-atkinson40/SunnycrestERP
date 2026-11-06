@@ -447,13 +447,25 @@ def test_an_exact_match_is_not_a_prefix_match():
 def test_register_is_not_in_the_common_set():
     """It was admitted by the old `/auth` prefix and named by nothing.
 
-    ⚠️ Its own gate (`get_current_company` alone) is a separate question, raised
-    in the 2026-11-06 probe writeup and deliberately NOT fixed here — a guard
-    entry is the wrong place to fix an endpoint's own authorization.
+    ⚠️ **THIS ASSERTION IS NOW VACUOUS ON ITS OWN AND SAYS SO RATHER THAN
+    READING AS PROTECTION.** The endpoint was deleted hours after this test was
+    written — `is_common` returns False for a route that does not exist, so the
+    line below would pass whether or not the allowlist had been fixed. A check
+    that cannot distinguish "correctly excluded" from "absent" is documentation.
+    The live guard is `test_auth_register_is_gone_and_stays_gone` in
+    `test_service_territories_requires_login.py`, which asserts the route is
+    absent from the app and fires when it comes back.
+
+    Kept because if the endpoint is ever reinstated, this must ALSO be false —
+    and the pair of the two is what makes a reinstatement loud.
     """
     from app.core.areas import is_common
 
     assert not is_common("POST", "/api/v1/auth/register")
+
+    # ⚠️ The non-vacuity control: the allowlist still admits something, so a
+    # scanner returning False for everything cannot satisfy the line above.
+    assert is_common("GET", "/api/v1/auth/me")
 
 
 def test_the_guard_covers_both_router_mounts():

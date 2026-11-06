@@ -1,5 +1,5 @@
 import apiClient from "@/lib/api-client";
-import type { LoginRequest, RegisterRequest, TokenResponse, User } from "@/types/auth";
+import type { LoginRequest, TokenResponse, User } from "@/types/auth";
 import type { Company } from "@/types/company";
 
 export interface MeResponse extends User {
@@ -17,10 +17,7 @@ export const authService = {
     return response.data;
   },
 
-  async register(data: RegisterRequest): Promise<User> {
-    const response = await apiClient.post<User>("/auth/register", data);
-    return response.data;
-  },
+  // `register` was deleted on 2026-11-06 with POST /auth/register.
 
   async getMe(): Promise<MeResponse> {
     const response = await apiClient.get<MeResponse>("/auth/me");
