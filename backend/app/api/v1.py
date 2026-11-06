@@ -12,7 +12,6 @@ from app.api.area_guard import enforce_area_limit
 from app.api.routes import (
     accounting,
     invites,
-    customer_composition_sources,
     accounting_connection,
     ai,
     ai_command,
@@ -227,12 +226,12 @@ v1_router = APIRouter(dependencies=[Depends(enforce_area_limit)])
 
 # --- Route registration (alphabetical) ---
 v1_router.include_router(
-    accounting.router, prefix="/accounting", tags=["Accounting Integration"]
+    accounting.router, prefix="/accounting", tags=["Accounting Integration", "area:accounting"]
 )
 v1_router.include_router(
     accounting_connection.router,
     prefix="/accounting-connection",
-    tags=["Accounting Connection"],
+    tags=["Accounting Connection", "area:accounting"],
 )
 v1_router.include_router(ai.router, prefix="/ai", tags=["AI"])
 v1_router.include_router(ai_command.router, prefix="/ai", tags=["AI Command"])
@@ -270,13 +269,13 @@ v1_router.include_router(
 # parameterized routes don't swallow `/admin/*` by matching
 # `tenant_slug="admin"` (FastAPI uses first-match routing).
 v1_router.include_router(
-    portal_admin.router, prefix="/portal/admin", tags=["Portal Admin"]
+    portal_admin.router, prefix="/portal/admin", tags=["Portal Admin", "area:settings"]
 )
 # Phase 8e.2 — portal endpoints (both public + portal-authed).
 # Path segment carries the tenant slug so portal URLs are identity-
 # tight (no X-Company-Slug header dependency). See
 # SPACES_ARCHITECTURE.md §10.
-v1_router.include_router(portal.router, prefix="/portal", tags=["Portal"])
+v1_router.include_router(portal.router, prefix="/portal", tags=["Portal", "area:settings"])
 # NOTE: Admin Visual Editor routes (themes, component configurations,
 # workflow templates — Phase 2/3/4) relocated to platform_router under
 # /api/platform/admin/visual-editor/* in the corrective relocation
@@ -288,7 +287,7 @@ v1_router.include_router(portal.router, prefix="/portal", tags=["Portal"])
 # + email_sends model) — different architectural concern (conversation/inbox
 # vs fire-and-forget transactional send). See app.services.email package.
 v1_router.include_router(
-    email_accounts.router, prefix="/email-accounts", tags=["Email Accounts"]
+    email_accounts.router, prefix="/email-accounts", tags=["Email Accounts", "area:documents"]
 )
 # Email Primitive — Phase W-4b Layer 1 Step 2 webhook endpoints.
 # PUBLIC routes (no Bearer auth) authenticated via per-provider
@@ -296,7 +295,7 @@ v1_router.include_router(
 v1_router.include_router(
     email_webhooks.router,
     prefix="/email/webhooks",
-    tags=["Email Webhooks"],
+    tags=["Email Webhooks", "area:documents"],
 )
 # Email Primitive — Phase W-4b Layer 1 Step 4a inbox surface.
 # Read path (GET /threads + GET /threads/{id}) + status mutations
@@ -306,7 +305,7 @@ v1_router.include_router(
 # present (passthrough in Step 4a; full masking lands alongside
 # operator-action affordances in Step 4b+).
 v1_router.include_router(
-    email_inbox.router, prefix="/email", tags=["Email Inbox"]
+    email_inbox.router, prefix="/email", tags=["Email Inbox", "area:documents"]
 )
 # Email Primitive — Phase W-4b Layer 1 Step 4c operational-action affordance API.
 # Two surfaces sharing one commit logic: inline action for Bridgeable users
@@ -315,7 +314,7 @@ v1_router.include_router(
 # magic-link routes auth via token; inline routes auth via session.
 # kill-the-portal canonical case (quote_approval) per §3.26.15.17.
 v1_router.include_router(
-    email_actions.router, prefix="/email", tags=["Email Actions"]
+    email_actions.router, prefix="/email", tags=["Email Actions", "area:documents"]
 )
 # Calendar Primitive — Phase W-4b Layer 1 Calendar Step 1 (BRIDGEABLE_MASTER
 # §3.26.16). Tenant-admin endpoints for managing CalendarAccount +
@@ -326,12 +325,12 @@ v1_router.include_router(
 v1_router.include_router(
     calendar_accounts.router,
     prefix="/calendar-accounts",
-    tags=["Calendar Accounts"],
+    tags=["Calendar Accounts", "area:scheduling"],
 )
 v1_router.include_router(
     calendar_events.router,
     prefix="/calendar-events",
-    tags=["Calendar Events"],
+    tags=["Calendar Events", "area:scheduling"],
 )
 # Calendar Step 3 — Free/busy substrate (per-account + cross-tenant)
 # per §3.26.16.14 endpoint shape. Mounted at /calendar (NOT
@@ -340,7 +339,7 @@ v1_router.include_router(
 v1_router.include_router(
     calendar_freebusy.router,
     prefix="/calendar",
-    tags=["Calendar Free/Busy"],
+    tags=["Calendar Free/Busy", "area:scheduling"],
 )
 # Calendar Step 4 — operational-action affordance routes per §3.26.16.17.
 # Two surfaces:
@@ -354,12 +353,12 @@ v1_router.include_router(
 v1_router.include_router(
     calendar_actions.inline_router,
     prefix="/calendar-events",
-    tags=["Calendar Actions"],
+    tags=["Calendar Actions", "area:scheduling"],
 )
 v1_router.include_router(
     calendar_actions.public_router,
     prefix="/calendar",
-    tags=["Calendar Actions"],
+    tags=["Calendar Actions", "area:scheduling"],
 )
 # Calendar Step 4.1 — PTR consent upgrade UI write-side per §3.26.16.6
 # + §3.26.16.14 + §3.26.11.10 cross-tenant Focus consent precedent.
@@ -368,7 +367,7 @@ v1_router.include_router(
 v1_router.include_router(
     calendar_consent.router,
     prefix="/calendar",
-    tags=["Calendar Consent"],
+    tags=["Calendar Consent", "area:scheduling"],
 )
 # Personalization Studio — Phase 1B canvas implementation.
 # Canonical Generation Focus instance lifecycle + canvas commit endpoints
@@ -378,7 +377,7 @@ v1_router.include_router(
 v1_router.include_router(
     personalization_studio.router,
     prefix="/personalization-studio",
-    tags=["Personalization Studio"],
+    tags=["Personalization Studio", "area:personalization"],
 )
 # Personalization Studio family portal — Phase 1E.
 # Magic-link contextual surface per §3.26.11.9 + Path B substrate +
@@ -389,7 +388,7 @@ v1_router.include_router(
 v1_router.include_router(
     personalization_studio_family_portal.router,
     prefix="/portal",
-    tags=["Personalization Studio Family Portal"],
+    tags=["Personalization Studio Family Portal", "area:settings"],
 )
 # Workshop primitive — Phase 1D template-type registration + per-tenant
 # Tune mode customization. Per BRIDGEABLE_MASTER §3.26.14 Workshop
@@ -398,7 +397,7 @@ v1_router.include_router(
 v1_router.include_router(
     workshop.router,
     prefix="/workshop",
-    tags=["Workshop"],
+    tags=["Workshop", "area:personalization"],
 )
 # NL Creation — Phase 4 of UI/UX Arc. Natural language creation w/ live overlay.
 v1_router.include_router(
@@ -416,7 +415,7 @@ v1_router.include_router(
 v1_router.include_router(
     coordination_focus.router,
     prefix="/coordination-focus",
-    tags=["Coordination Focus"],
+    tags=["Coordination Focus", "area:scheduling"],
 )
 # Tasks — Phase 5 (deferred from Phase 4). Generic task entity.
 v1_router.include_router(tasks.router, prefix="/tasks", tags=["Tasks"])
@@ -425,9 +424,9 @@ v1_router.include_router(triage.router, prefix="/triage", tags=["Triage"])
 # Peek — Follow-up 4 of UI/UX Arc (arc finale). Slim per-entity
 # summaries for hover + click peek panels across 4 surfaces.
 v1_router.include_router(peek.router, prefix="/peek", tags=["Peek"])
-v1_router.include_router(ai_settings.router, prefix="/settings/ai", tags=["AI Settings"])
+v1_router.include_router(ai_settings.router, prefix="/settings/ai", tags=["AI Settings", "area:settings"])
 v1_router.include_router(
-    ancillary_orders.router, prefix="/extensions/funeral-kanban", tags=["Ancillary Orders"]
+    ancillary_orders.router, prefix="/extensions/funeral-kanban", tags=["Ancillary Orders", "area:settings"]
 )
 v1_router.include_router(
     announcements.router, prefix="/announcements", tags=["Announcements"]
@@ -435,29 +434,29 @@ v1_router.include_router(
 v1_router.include_router(
     driver_announcements.router, prefix="", tags=["Driver Announcements"]
 )
-v1_router.include_router(api_keys.router, prefix="/api-keys", tags=["API Keys"])
-v1_router.include_router(ap.router, prefix="/ap", tags=["Accounts Payable"])
-v1_router.include_router(audit.router, prefix="/audit-logs", tags=["Audit Logs"])
+v1_router.include_router(api_keys.router, prefix="/api-keys", tags=["API Keys", "area:settings"])
+v1_router.include_router(ap.router, prefix="/ap", tags=["Accounts Payable", "area:accounting"])
+v1_router.include_router(audit.router, prefix="/audit-logs", tags=["Audit Logs", "area:settings"])
 v1_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 v1_router.include_router(
-    billing.router, prefix="/billing", tags=["Billing"]
+    billing.router, prefix="/billing", tags=["Billing", "area:accounting"]
 )
 v1_router.include_router(
-    billing_groups.router, prefix="/billing-groups", tags=["Billing Groups"]
+    billing_groups.router, prefix="/billing-groups", tags=["Billing Groups", "area:accounting"]
 )
 v1_router.include_router(
     call_intelligence.router,
     prefix="/integrations/ringcentral",
-    tags=["Call Intelligence"],
+    tags=["Call Intelligence", "area:settings"],
 )
 v1_router.include_router(note.router, prefix="/note", tags=["Note"])
 v1_router.include_router(
     ringcentral.router,
     prefix="/integrations/ringcentral",
-    tags=["Call Intelligence"],
+    tags=["Call Intelligence", "area:settings"],
 )
 v1_router.include_router(
-    bom.router, prefix="/bom", tags=["Bill of Materials"]
+    bom.router, prefix="/bom", tags=["Bill of Materials", "area:catalog"]
 )
 v1_router.include_router(
     briefings.router, prefix="/briefings", tags=["Morning Briefings"]
@@ -468,216 +467,222 @@ v1_router.include_router(
 v1_router.include_router(
     onboarding_touches.router,
     prefix="/onboarding-touches",
-    tags=["Phase 7 Onboarding Touches"],
+    tags=["Phase 7 Onboarding Touches", "area:settings"],
 )
 v1_router.include_router(
     operator_profile_routes.router,
     prefix="/operator-profile",
     tags=["Phase W-4a Operator Profile"],
 )
+# ⚠️ **THE `/pulse` PREFIX AND ITS TWO ROUTES WERE DELETED ON 2026-11-06.**
+# Pulse itself was retired in bf2412df; these two endpoints kept answering
+# under its dead prefix and the mount comment here already said "the prefix is
+# now a misnomer and a rename is owed".
+#
+# They were NOT pulse: they lived in `customer_composition_sources.py` and
+# returned a CUSTOMER's email threads and calendar events. Nothing called them
+# — no frontend, no scheduled job — so James ruled deletion over re-homing.
+#
+# ⚠️ Unlike the SSRF diagnostic deleted the same day, this was authenticated,
+# tested and working machinery; its only fault was having no consumer. The
+# SERVICES survive (`customer_email_threads_service`,
+# `customer_calendar_events_service` use each other), so if a composition
+# surface ever wants this data, a route under `/customers` tagged
+# `area:customers` is a small addition rather than a rebuild.
 v1_router.include_router(
-    customer_composition_sources.router,
-    # ⚠️ PREFIX PRESERVED, NOT CHOSEN. These two endpoints answered on
-    # /api/v1/pulse/* before Pulse was removed and still do, so the removal
-    # changed no URL. The prefix is now a misnomer and a rename is owed —
-    # see the module docstring. Nothing in the frontend calls either route.
-    prefix="/pulse",
-    tags=["Customer Composition Sources"],
+    bundles.router, prefix="/products", tags=["Product Bundles", "area:catalog"]
 )
 v1_router.include_router(
-    bundles.router, prefix="/products", tags=["Product Bundles"]
+    carrier_portal.router, prefix="/carrier", tags=["Carrier Portal", "area:scheduling"]
 )
 v1_router.include_router(
-    carrier_portal.router, prefix="/carrier", tags=["Carrier Portal"]
+    cases.router, prefix="/cases", tags=["Funeral Home Cases", "area:cases"]
 )
 v1_router.include_router(
-    cases.router, prefix="/cases", tags=["Funeral Home Cases"]
+    cemeteries.router, prefix="/cemeteries", tags=["Cemeteries", "area:customers"]
 )
 v1_router.include_router(
-    cemeteries.router, prefix="/cemeteries", tags=["Cemeteries"]
-)
-v1_router.include_router(
-    disinterments.router, prefix="/disinterments", tags=["Disinterments"]
+    disinterments.router, prefix="/disinterments", tags=["Disinterments", "area:cases"]
 )
 v1_router.include_router(
     disinterment_charge_types.router,
     prefix="/disinterment-charge-types",
-    tags=["Disinterment Charge Types"],
+    tags=["Disinterment Charge Types", "area:pricing"],
 )
 v1_router.include_router(
-    docusign_webhook.router, prefix="/docusign", tags=["DocuSign"]
+    docusign_webhook.router, prefix="/docusign", tags=["DocuSign", "area:documents"]
 )
 v1_router.include_router(
-    intake.router, prefix="/intake", tags=["Public Intake"]
+    intake.router, prefix="/intake", tags=["Public Intake", "area:documents"]
 )
 v1_router.include_router(
     intake_adapters.router,
     prefix="/intake-adapters",
-    tags=["Intake Adapters"],
+    tags=["Intake Adapters", "area:documents"],
 )
 v1_router.include_router(
-    union_rotations.router, prefix="/union-rotations", tags=["Union Rotations"]
+    union_rotations.router, prefix="/union-rotations", tags=["Union Rotations", "area:scheduling"]
 )
 v1_router.include_router(
-    charge_library.router, prefix="/charge-library", tags=["Charge Library"]
+    charge_library.router, prefix="/charge-library", tags=["Charge Library", "area:pricing"]
 )
 v1_router.include_router(
-    charge_terms.router, prefix="/onboarding/charge-terms", tags=["Charge Terms"]
+    charge_terms.router, prefix="/onboarding/charge-terms", tags=["Charge Terms", "area:settings"]
 )
 # companies.router MUST come before company_entities.router — both share
 # the /companies prefix and company_entities has /{entity_id} catch-all
 # that would swallow /settings, /tenant-settings, etc.
 v1_router.include_router(
-    companies.router, prefix="/companies", tags=["Company Management"]
+    companies.router, prefix="/companies", tags=["Company Management", "area:settings"]
 )
 v1_router.include_router(
-    company_entities.router, prefix="/companies", tags=["Company Entities"]
+    company_entities.router, prefix="/companies", tags=["Company Entities", "area:settings"]
 )
 v1_router.include_router(
-    configurable_items.router, prefix="/configurable", tags=["Configurable Items"]
+    configurable_items.router, prefix="/configurable", tags=["Configurable Items", "area:catalog"]
 )
 v1_router.include_router(
-    product_lines.router, prefix="/product-lines", tags=["Product Lines"]
+    product_lines.router, prefix="/product-lines", tags=["Product Lines", "area:catalog"]
 )
 v1_router.include_router(
     core.router, prefix="/core", tags=["Core UI"]
 )
 v1_router.include_router(
-    customers.router, prefix="/customers", tags=["Customers"]
+    customers.router, prefix="/customers", tags=["Customers", "area:customers"]
 )
 v1_router.include_router(
-    deliveries.router, prefix="/delivery", tags=["Delivery & Dispatch"]
+    deliveries.router, prefix="/delivery", tags=["Delivery & Dispatch", "area:scheduling"]
 )
 # Phase B Session 1 — dispatch schedule state machine + hole-dug.
 v1_router.include_router(
-    dispatch.router, prefix="/dispatch", tags=["Dispatch"]
+    dispatch.router, prefix="/dispatch", tags=["Dispatch", "area:scheduling"]
 )
 v1_router.include_router(
-    discount.router, prefix="/discount", tags=["Early Payment Discount"]
+    discount.router, prefix="/discount", tags=["Early Payment Discount", "area:pricing"]
 )
 v1_router.include_router(
-    finance_charges.router, prefix="/finance-charges", tags=["Finance Charges"]
+    finance_charges.router, prefix="/finance-charges", tags=["Finance Charges", "area:accounting"]
 )
 v1_router.include_router(
     behavioral_analytics.router, prefix="/behavioral", tags=["Behavioral Analytics"]
 )
 v1_router.include_router(
-    data_import.router, prefix="/data-import", tags=["Data Import"]
+    data_import.router, prefix="/data-import", tags=["Data Import", "area:settings"]
 )
 v1_router.include_router(
-    delivery_portal.router, prefix="/portal", tags=["Delivery Portal"]
+    delivery_portal.router, prefix="/portal", tags=["Delivery Portal", "area:settings"]
 )
 v1_router.include_router(
-    direct_ship.router, prefix="/extensions/funeral-kanban", tags=["Direct Ship"]
+    direct_ship.router, prefix="/extensions/funeral-kanban", tags=["Direct Ship", "area:settings"]
 )
 v1_router.include_router(
-    delivery_settings.router, prefix="/settings", tags=["Delivery Settings"]
+    delivery_settings.router, prefix="/settings", tags=["Delivery Settings", "area:settings"]
 )
 v1_router.include_router(
-    delivery_types.router, prefix="/delivery-types", tags=["Delivery Types"]
+    delivery_types.router, prefix="/delivery-types", tags=["Delivery Types", "area:scheduling"]
 )
 v1_router.include_router(
-    departments.router, prefix="/departments", tags=["Departments"]
+    departments.router, prefix="/departments", tags=["Departments", "area:settings"]
 )
 v1_router.include_router(
-    documents.router, prefix="/documents", tags=["Documents"]
+    documents.router, prefix="/documents", tags=["Documents", "area:documents"]
 )
 # Phase D-1 — canonical Documents layer (admin-gated, tenant-scoped).
 # Legacy /documents/* remains above for the old Document model callers.
 v1_router.include_router(
-    documents_v2.router, prefix="/documents-v2", tags=["Documents (canonical)"]
+    documents_v2.router, prefix="/documents-v2", tags=["Documents (canonical)", "area:documents"]
 )
 # Phase D-4 native signing
 v1_router.include_router(
-    signing_public.router, prefix="/sign", tags=["Signing (public)"]
+    signing_public.router, prefix="/sign", tags=["Signing (public)", "area:documents"]
 )
 v1_router.include_router(
-    signing_admin.router, prefix="/admin/signing", tags=["Signing (admin)"]
+    signing_admin.router, prefix="/admin/signing", tags=["Signing (admin)", "area:settings"]
 )
 v1_router.include_router(
-    driver_mobile.router, prefix="/driver", tags=["Driver Mobile"]
+    driver_mobile.router, prefix="/driver", tags=["Driver Mobile", "area:scheduling"]
 )
 v1_router.include_router(
     employee_profiles.router,
     prefix="/employee-profiles",
-    tags=["Employee Profiles"],
+    tags=["Employee Profiles", "area:people"],
 )
 v1_router.include_router(
-    equipment.router, prefix="/equipment", tags=["Equipment"]
+    equipment.router, prefix="/equipment", tags=["Equipment", "area:production"]
 )
 v1_router.include_router(
-    extensions.router, prefix="/extensions", tags=["Extension Catalog"]
+    extensions.router, prefix="/extensions", tags=["Extension Catalog", "area:settings"]
 )
 v1_router.include_router(
-    feature_flags.router, prefix="/feature-flags", tags=["Feature Flags"]
+    feature_flags.router, prefix="/feature-flags", tags=["Feature Flags", "area:settings"]
 )
 v1_router.include_router(
-    functional_areas.router, prefix="/team", tags=["Functional Areas"]
+    functional_areas.router, prefix="/team", tags=["Functional Areas", "area:settings"]
 )
 v1_router.include_router(
-    fh_portal.router, prefix="/portal/family", tags=["Family Portal"]
+    fh_portal.router, prefix="/portal/family", tags=["Family Portal", "area:settings"]
 )
 v1_router.include_router(
-    fh_price_list.router, prefix="/price-list", tags=["Funeral Home Price List"]
+    fh_price_list.router, prefix="/price-list", tags=["Funeral Home Price List", "area:pricing"]
 )
 v1_router.include_router(
-    ftc_compliance.router, prefix="/ftc", tags=["FTC Compliance"]
+    ftc_compliance.router, prefix="/ftc", tags=["FTC Compliance", "area:accounting"]
 )
 v1_router.include_router(
     cemetery_directory.router,
     prefix="/onboarding/cemeteries",
-    tags=["Cemetery Directory"],
+    tags=["Cemetery Directory", "area:settings"],
 )
 v1_router.include_router(
     funeral_home_directory.router,
     prefix="/onboarding/customers",
-    tags=["Funeral Home Directory"],
+    tags=["Funeral Home Directory", "area:settings"],
 )
 v1_router.include_router(
-    funeral_kanban.router, prefix="/extensions/funeral-kanban", tags=["Funeral Kanban"]
+    funeral_kanban.router, prefix="/extensions/funeral-kanban", tags=["Funeral Kanban", "area:settings"]
 )
 v1_router.include_router(
-    hierarchy.router, prefix="/hierarchy", tags=["Org Hierarchy"]
+    hierarchy.router, prefix="/hierarchy", tags=["Org Hierarchy", "area:customers"]
 )
 v1_router.include_router(
     historical_order_import.router,
     prefix="/historical-orders",
-    tags=["Historical Order Import"],
+    tags=["Historical Order Import", "area:orders"],
 )
 v1_router.include_router(
-    internal.router, prefix="/internal", tags=["Internal"]
+    internal.router, prefix="/internal", tags=["Internal", "area:settings"]
 )
 v1_router.include_router(
-    inventory.router, prefix="/inventory", tags=["Inventory"]
+    inventory.router, prefix="/inventory", tags=["Inventory", "area:inventory"]
 )
 v1_router.include_router(
-    job_queue.router, prefix="/jobs", tags=["Job Queue"]
+    job_queue.router, prefix="/jobs", tags=["Job Queue", "area:production"]
 )
-v1_router.include_router(modules.router, prefix="/modules", tags=["Modules"])
+v1_router.include_router(modules.router, prefix="/modules", tags=["Modules", "area:settings"])
 v1_router.include_router(
-    migration.router, prefix="/migration", tags=["Data Migration"]
+    migration.router, prefix="/migration", tags=["Data Migration", "area:settings"]
 )
 v1_router.include_router(
-    network.router, prefix="/network", tags=["Network"]
+    network.router, prefix="/network", tags=["Network", "area:settings"]
 )
 v1_router.include_router(
     notifications.router, prefix="/notifications", tags=["Notifications"]
 )
 v1_router.include_router(
-    onboarding.router, prefix="/onboarding", tags=["Onboarding"]
+    onboarding.router, prefix="/onboarding", tags=["Onboarding", "area:settings"]
 )
 v1_router.include_router(
-    onboarding_flow.router, prefix="/onboarding-flow", tags=["Onboarding Flow"]
+    onboarding_flow.router, prefix="/onboarding-flow", tags=["Onboarding Flow", "area:settings"]
 )
 v1_router.include_router(
     agents.router,
     prefix="/agents",
-    tags=["Agents"],
+    tags=["Agents", "area:accounting"],
 )
 v1_router.include_router(
     proactive_agents.router,
     prefix="/proactive-agents",
-    tags=["Proactive Agents"],
+    tags=["Proactive Agents", "area:accounting"],
 )
 v1_router.include_router(
     report_intelligence.router,
@@ -687,17 +692,17 @@ v1_router.include_router(
 v1_router.include_router(
     network_intelligence.router,
     prefix="/network",
-    tags=["Network Intelligence"],
+    tags=["Network Intelligence", "area:settings"],
 )
 v1_router.include_router(
     delivery_intelligence.router,
     prefix="/delivery",
-    tags=["Delivery Intelligence"],
+    tags=["Delivery Intelligence", "area:scheduling"],
 )
 v1_router.include_router(
     training_routes.router,
     prefix="/training",
-    tags=["Employee Training"],
+    tags=["Employee Training", "area:safety"],
 )
 v1_router.include_router(
     financial_health.router,
@@ -707,12 +712,12 @@ v1_router.include_router(
 v1_router.include_router(
     financials_board.router,
     prefix="/financials",
-    tags=["Financials Board"],
+    tags=["Financials Board", "area:accounting"],
 )
 v1_router.include_router(
     journal_entries.router,
     prefix="/journal-entries",
-    tags=["Journal Entries"],
+    tags=["Journal Entries", "area:accounting"],
 )
 v1_router.include_router(
     knowledge_base.router,
@@ -722,12 +727,12 @@ v1_router.include_router(
 v1_router.include_router(
     locations.router,
     prefix="/locations",
-    tags=["Locations"],
+    tags=["Locations", "area:settings"],
 )
 v1_router.include_router(
     price_management.router,
     prefix="/price-management",
-    tags=["Price Management"],
+    tags=["Price Management", "area:pricing"],
 )
 v1_router.include_router(
     operations_board.router,
@@ -735,32 +740,32 @@ v1_router.include_router(
     tags=["Operations Board"],
 )
 v1_router.include_router(
-    programs.router, prefix="/programs", tags=["Programs"]
+    programs.router, prefix="/programs", tags=["Programs", "area:personalization"]
 )
 v1_router.include_router(
     purchasing.router,
     prefix="/purchasing",
-    tags=["Purchasing"],
+    tags=["Purchasing", "area:accounting"],
 )
 v1_router.include_router(
     reconciliation.router,
     prefix="/reconciliation",
-    tags=["Reconciliation"],
+    tags=["Reconciliation", "area:accounting"],
 )
 v1_router.include_router(
     tax.router,
     prefix="/tax",
-    tags=["Tax"],
+    tags=["Tax", "area:accounting"],
 )
 v1_router.include_router(
     inter_licensee_pricing.router,
     prefix="/inter-licensee-pricing",
-    tags=["Inter-Licensee Pricing"],
+    tags=["Inter-Licensee Pricing", "area:pricing"],
 )
 v1_router.include_router(
     transfers.router,
     prefix="/transfers",
-    tags=["Licensee Transfers"],
+    tags=["Licensee Transfers", "area:inventory"],
 )
 v1_router.include_router(
     reports.router,
@@ -770,142 +775,142 @@ v1_router.include_router(
 v1_router.include_router(
     order_station.router,
     prefix="/order-station",
-    tags=["Order Entry Station"],
+    tags=["Order Entry Station", "area:orders"],
 )
 v1_router.include_router(
     template_seasons.router,
     prefix="/template-seasons",
-    tags=["Template Seasons"],
+    tags=["Template Seasons", "area:catalog"],
 )
 v1_router.include_router(
     performance_notes.router,
     prefix="/performance-notes",
-    tags=["Performance Notes"],
+    tags=["Performance Notes", "area:people"],
 )
 v1_router.include_router(
-    platform_fees.router, prefix="/platform-fees", tags=["Platform Fees"]
+    platform_fees.router, prefix="/platform-fees", tags=["Platform Fees", "area:accounting"]
 )
 v1_router.include_router(
-    price_list_import.router, prefix="/catalog", tags=["Price List Import"]
+    price_list_import.router, prefix="/catalog", tags=["Price List Import", "area:catalog"]
 )
 v1_router.include_router(
-    production_log.router, prefix="/production", tags=["Production Log"]
+    production_log.router, prefix="/production", tags=["Production Log", "area:production"]
 )
 v1_router.include_router(
-    spring_burials.router, tags=["Spring Burials"]
+    spring_burials.router, tags=["Spring Burials", "area:orders"]
 )
 v1_router.include_router(
-    catalog_builder.router, tags=["Catalog Builder"]
+    catalog_builder.router, tags=["Catalog Builder", "area:catalog"]
 )
 v1_router.include_router(
-    products.router, prefix="/products", tags=["Products"]
+    products.router, prefix="/products", tags=["Products", "area:catalog"]
 )
 v1_router.include_router(
-    urn_catalog.router, prefix="/products", tags=["Urn Catalog"]
+    urn_catalog.router, prefix="/products", tags=["Urn Catalog", "area:catalog"]
 )
 v1_router.include_router(
-    urn_sales.router, prefix="/urns", tags=["Urn Sales"]
+    urn_sales.router, prefix="/urns", tags=["Urn Sales", "area:resale"]
 )
 v1_router.include_router(
-    projects.router, prefix="/projects", tags=["Project Management"]
+    projects.router, prefix="/projects", tags=["Project Management", "area:orders"]
 )
 v1_router.include_router(
-    purchase_orders.router, prefix="/purchase-orders", tags=["Purchase Orders"]
+    purchase_orders.router, prefix="/purchase-orders", tags=["Purchase Orders", "area:accounting"]
 )
 v1_router.include_router(
-    qc.router, prefix="/qc", tags=["Quality Control"]
+    qc.router, prefix="/qc", tags=["Quality Control", "area:production"]
 )
 v1_router.include_router(
     safety_program_generation.router,
     prefix="/safety/programs",
-    tags=["Safety Program Generation"],
+    tags=["Safety Program Generation", "area:safety"],
 )
 v1_router.include_router(
-    safety.router, prefix="/safety", tags=["Safety Management"]
+    safety.router, prefix="/safety", tags=["Safety Management", "area:safety"]
 )
 v1_router.include_router(
     safety_training_system.router,
     prefix="/safety",
-    tags=["Safety Training System"],
+    tags=["Safety Training System", "area:safety"],
 )
 v1_router.include_router(
-    statements.router, prefix="/statements", tags=["Statements"]
+    statements.router, prefix="/statements", tags=["Statements", "area:accounting"]
 )
-v1_router.include_router(roles.router, prefix="/roles", tags=["Role Management"])
+v1_router.include_router(roles.router, prefix="/roles", tags=["Role Management", "area:settings"])
 v1_router.include_router(
-    permissions.router, prefix="/permissions", tags=["Permission Management"]
-)
-v1_router.include_router(
-    sage_exports.router, prefix="/sage-exports", tags=["Sage Exports"]
+    permissions.router, prefix="/permissions", tags=["Permission Management", "area:settings"]
 )
 v1_router.include_router(
-    service_territory.router, prefix="/settings", tags=["Service Territory"]
+    sage_exports.router, prefix="/sage-exports", tags=["Sage Exports", "area:accounting"]
 )
 v1_router.include_router(
-    sales.router, prefix="/sales", tags=["Sales & AR"]
+    service_territory.router, prefix="/settings", tags=["Service Territory", "area:settings"]
+)
+v1_router.include_router(
+    sales.router, prefix="/sales", tags=["Sales & AR", "area:orders"]
 )
 v1_router.include_router(
     social_service_certificates.router,
     prefix="/social-service-certificates",
-    tags=["Social Service Certificates"],
+    tags=["Social Service Certificates", "area:cases"],
 )
 v1_router.include_router(
-    super_admin.router, prefix="/super-admin", tags=["Super Admin"]
+    super_admin.router, prefix="/super-admin", tags=["Super Admin", "area:settings"]
 )
 v1_router.include_router(
-    sync_logs.router, prefix="/sync-logs", tags=["Sync Logs"]
+    sync_logs.router, prefix="/sync-logs", tags=["Sync Logs", "area:settings"]
 )
 v1_router.include_router(
     tenant_onboarding.router,
     prefix="/tenant-onboarding",
-    tags=["Tenant Onboarding"],
+    tags=["Tenant Onboarding", "area:settings"],
 )
 v1_router.include_router(
     tenant_onboarding_admin.router,
     prefix="/admin/tenant-onboarding",
-    tags=["Tenant Onboarding Admin"],
+    tags=["Tenant Onboarding Admin", "area:settings"],
 )
 v1_router.include_router(
     unified_import.router,
     prefix="/onboarding/import",
-    tags=["Unified Import"],
+    tags=["Unified Import", "area:settings"],
 )
-v1_router.include_router(users.router, prefix="/users", tags=["User Management"])
+v1_router.include_router(users.router, prefix="/users", tags=["User Management", "area:settings"])
 # ⚠️ PUBLIC BY DESIGN — she has no credential yet. Not area-tagged, because
 # `enforce_area_limit` returns early for an unauthenticated caller and these two
 # routes are reached by exactly that caller. What gates them is the 256-bit
 # single-use token, not a permission. See app/api/routes/invites.py.
-v1_router.include_router(invites.router, prefix="/invites", tags=["Invites"])
+v1_router.include_router(invites.router, prefix="/invites", tags=["Invites", "area:settings"])
 v1_router.include_router(
-    vendor_bills.router, prefix="/vendor-bills", tags=["Vendor Bills"]
+    vendor_bills.router, prefix="/vendor-bills", tags=["Vendor Bills", "area:accounting"]
 )
 v1_router.include_router(
-    vendor_payments.router, prefix="/vendor-payments", tags=["Vendor Payments"]
+    vendor_payments.router, prefix="/vendor-payments", tags=["Vendor Payments", "area:accounting"]
 )
-v1_router.include_router(vendors.router, prefix="/vendors", tags=["Vendors"])
+v1_router.include_router(vendors.router, prefix="/vendors", tags=["Vendors", "area:accounting"])
 v1_router.include_router(
-    website_intelligence.router, tags=["Website Intelligence"]
-)
-v1_router.include_router(
-    legacy.router, prefix="/legacy", tags=["Legacy"]
+    website_intelligence.router, tags=["Website Intelligence", "area:settings"]
 )
 v1_router.include_router(
-    legacy_delivery.router, prefix="/legacy", tags=["Legacy Delivery"]
+    legacy.router, prefix="/legacy", tags=["Legacy", "area:personalization"]
 )
 v1_router.include_router(
-    legacy_email.router, prefix="/legacy", tags=["Legacy Email"]
+    legacy_delivery.router, prefix="/legacy", tags=["Legacy Delivery", "area:settings"]
 )
 v1_router.include_router(
-    legacy_studio.router, prefix="/legacy-studio", tags=["Legacy Studio"]
+    legacy_email.router, prefix="/legacy", tags=["Legacy Email", "area:settings"]
 )
 v1_router.include_router(
-    personalization.router, prefix="/personalization", tags=["Personalization"]
+    legacy_studio.router, prefix="/legacy-studio", tags=["Legacy Studio", "area:personalization"]
 )
 v1_router.include_router(
-    training_lifecycle.router, prefix="/training", tags=["Training"]
+    personalization.router, prefix="/personalization", tags=["Personalization", "area:personalization"]
 )
 v1_router.include_router(
-    webhooks.router, prefix="/webhooks", tags=["Webhooks"]
+    training_lifecycle.router, prefix="/training", tags=["Training", "area:safety"]
+)
+v1_router.include_router(
+    webhooks.router, prefix="/webhooks", tags=["Webhooks", "area:settings"]
 )
 v1_router.include_router(
     vault.router, prefix="/vault", tags=["Vault"]
@@ -944,10 +949,10 @@ v1_router.include_router(
     tags=["Vault / Accounting Admin"],
 )
 v1_router.include_router(
-    vault_molds.router, prefix="/vault-molds", tags=["Vault Molds"]
+    vault_molds.router, prefix="/vault-molds", tags=["Vault Molds", "area:production"]
 )
 v1_router.include_router(
-    vault_supplier.router, prefix="/vault-supplier", tags=["Vault Supplier"]
+    vault_supplier.router, prefix="/vault-supplier", tags=["Vault Supplier", "area:customers"]
 )
 v1_router.include_router(
     widget_definitions.router,
@@ -961,21 +966,21 @@ v1_router.include_router(
     widget_data.router, prefix="/widget-data", tags=["Widget Data"]
 )
 v1_router.include_router(
-    work_orders.router, prefix="/work-orders", tags=["Work Orders"]
+    work_orders.router, prefix="/work-orders", tags=["Work Orders", "area:orders"]
 )
 
 # Funeral Home vertical (FH-1a + FH-1b)
 v1_router.include_router(
-    fh_cases.router, prefix="/fh/cases", tags=["FH Cases"]
+    fh_cases.router, prefix="/fh/cases", tags=["FH Cases", "area:customers"]
 )
 v1_router.include_router(
-    fh_cemetery.router, prefix="/fh/cemetery", tags=["FH Cemetery"]
+    fh_cemetery.router, prefix="/fh/cemetery", tags=["FH Cemetery", "area:customers"]
 )
 v1_router.include_router(
-    fh_network.router, prefix="/fh/network", tags=["FH Network"]
+    fh_network.router, prefix="/fh/network", tags=["FH Network", "area:customers"]
 )
 v1_router.include_router(
-    fh_monument.router, prefix="/fh/monument", tags=["FH Monument"]
+    fh_monument.router, prefix="/fh/monument", tags=["FH Monument", "area:customers"]
 )
 
 # Workflow Engine (Phase W-1)
@@ -987,22 +992,22 @@ v1_router.include_router(
 v1_router.include_router(
     email_classification_routes.router,
     prefix="/email-classification",
-    tags=["Email Classification"],
+    tags=["Email Classification", "area:documents"],
 )
 
 # Saved Orders (Compose Templates)
 v1_router.include_router(
-    saved_orders_routes.router, prefix="/saved-orders", tags=["Saved Orders"]
+    saved_orders_routes.router, prefix="/saved-orders", tags=["Saved Orders", "area:orders"]
 )
 
 # External Accounts (Playwright workflow credentials)
 v1_router.include_router(
-    external_accounts_routes.router, prefix="/external-accounts", tags=["External Accounts"]
+    external_accounts_routes.router, prefix="/external-accounts", tags=["External Accounts", "area:accounting"]
 )
 
 # Vault Documents (Phase W-2 — native document layer on R2)
 v1_router.include_router(
-    vault_documents_routes.router, prefix="/vault-documents", tags=["Vault Documents"]
+    vault_documents_routes.router, prefix="/vault-documents", tags=["Vault Documents", "area:documents"]
 )
 
 # Bridgeable Intelligence — unified AI layer (Phase 1 backbone)
@@ -1014,20 +1019,20 @@ v1_router.include_router(
 from app.api.routes import moc_tenant as moc_tenant_routes  # noqa: E402
 
 v1_router.include_router(
-    moc_tenant_routes.router, prefix="/moc", tags=["Bridgeable Map"]
+    moc_tenant_routes.router, prefix="/moc", tags=["Bridgeable Map", "area:cases"]
 )
 
 from app.api.routes import plaid as plaid_routes  # noqa: E402
 
 v1_router.include_router(
-    plaid_routes.router, prefix="/plaid", tags=["Plaid"]
+    plaid_routes.router, prefix="/plaid", tags=["Plaid", "area:accounting"]
 )
 
 # Opas Product List + Product panes — platform-catalog reads (2026-10-06)
 from app.api.routes import catalog_pane as catalog_pane_routes  # noqa: E402
 
 v1_router.include_router(
-    catalog_pane_routes.router, prefix="/catalog-pane", tags=["Opas Catalog Pane"]
+    catalog_pane_routes.router, prefix="/catalog-pane", tags=["Opas Catalog Pane", "area:personalization"]
 )
 
 # ⚠️ THE FIRST ENDPOINTS THAT RETURN `CaptureState`. Registered the same way the catalog
@@ -1036,7 +1041,7 @@ v1_router.include_router(
 from app.api.routes import capture as capture_routes  # noqa: E402
 
 v1_router.include_router(
-    capture_routes.router, prefix="/capture", tags=["Opas Typed Capture"]
+    capture_routes.router, prefix="/capture", tags=["Opas Typed Capture", "area:documents"]
 )
 
 # Opas Order List + shortened sales order. Same mount style as the catalog pane:
@@ -1044,5 +1049,5 @@ v1_router.include_router(
 from app.api.routes import order_list_pane as order_list_pane_routes  # noqa: E402
 
 v1_router.include_router(
-    order_list_pane_routes.router, prefix="/order-list", tags=["Opas Order List"]
+    order_list_pane_routes.router, prefix="/order-list", tags=["Opas Order List", "area:orders"]
 )

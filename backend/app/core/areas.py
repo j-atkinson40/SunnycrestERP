@@ -41,7 +41,35 @@ AREA_TAG_PREFIX = "area:"
 #: Every area key that exists. A role may only be limited to keys in here, and
 #: an `area:` tag naming something absent from this set is a typo that would
 #: silently make a router unreachable — so both directions are test-enforced.
+#: ⚠️ **PHASE A, 2026-11-06. TAGGING ONLY — NOTHING IS ENFORCED BY THIS.**
+#: Every area below is inert until a role's `limited_to_areas` names it, and
+#: only `payroll` does today. Phase B turns the rest on role by role.
+#:
+#: Derived from the ROUTER LIST (158 routers, 1,932 method+path pairs), not
+#: from the menu — the menu was the thing that disagreed with the server.
+AREA_DESCRIPTIONS: dict[str, str] = {
+    "payroll":        "Weekly hours, union dues, remittance, vacation pay.",
+    "accounting":     "The books: GL, AR, AP, statements, reconciliation, tax, the accounting agents.",
+    "pricing":        "What things cost: price lists, markups, discounts, charge library, inter-licensee rates.",
+    "orders":         "Taking and tracking an order through to invoicing.",
+    "catalog":        "What is for sale: products, lines, BOM, the product catalogue.",
+    "inventory":      "Stock on hand, transfers between licensees.",
+    "production":     "Making it: production log, QC, moulds, equipment, work orders.",
+    "scheduling":     "Getting it there: delivery, dispatch, drivers, the calendar, union rotations.",
+    "customers":      "Who we sell to: CRM, funeral homes, cemeteries, suppliers, carriers.",
+    "cases":          "Funeral-home case work: cases, disinterments, SS certificates.",
+    "personalization":"Designing the product: personalization studio, Legacies, programs.",
+    "resale":         "The urn resale line, end to end.",
+    "safety":         "OSHA compliance, training, incidents, toolbox talks.",
+    "documents":      "Document templates, rendering, e-signature, email and intake.",
+    "settings":       "Administering the tenant: users, roles, locations, modules, imports.",
+    "people":         "HR: employee profiles and performance notes. Split out of `settings` "
+                      "by James's ruling of 2026-11-06 — performance notes should not sit "
+                      "beside locations and modules.",
+}
+
 KNOWN_AREAS: frozenset[str] = frozenset({
+    *AREA_DESCRIPTIONS,
     "payroll",
     #: Two-step enrolment (Payroll 2). ⚠️ NOT AN AREA A ROLE IS EVER LIMITED TO
     #: BY AN ADMIN — it is the area a user is TEMPORARILY confined to by the
@@ -51,6 +79,197 @@ KNOWN_AREAS: frozenset[str] = frozenset({
     #: rather than by two.
     "mfa_enroll",
 })
+
+
+#: ─────────────────────────────────────────────────────────────── view / change
+#:
+#: ⚠️ **A GRANT HAS A LEVEL, BECAUSE ALL-OR-NOTHING FORCED OVER-GRANTING.**
+#: James's ruling of 2026-11-06: "Production needs to *see* orders without
+#: editing them, and drivers need to *see* the schedule." Without levels the
+#: only way to let production read an order is to let it rewrite one.
+#:
+#:     view     admits GET
+#:     change   admits everything
+#:
+#: ⚠️ **A BARE AREA NAME MEANS `change`, WHICH IS WHAT MAKES THIS BACKWARD
+#: COMPATIBLE.** `limited_to_areas = ["payroll"]` is live on production today
+#: and must keep behaving identically, so a string with no level parses as a
+#: full grant. `"orders:view"` is the narrowed form. Nothing about the payroll
+#: role changes.
+VIEW, CHANGE = "view", "change"
+_READ_METHODS = frozenset({"GET"})
+
+
+def parse_area_grant(grant: str) -> tuple[str, str]:
+    """`"orders:view"` -> `("orders", "view")`; `"payroll"` -> `("payroll", "change")`."""
+    if ":" in grant:
+        area, _, level = grant.partition(":")
+        return area.strip(), (level.strip() or CHANGE)
+    return grant.strip(), CHANGE
+
+
+def grant_admits(level: str, method: str, path: str) -> bool:
+    """Does a grant at `level` admit this method on this route?
+
+    ⚠️ **THE METHOD IS THE PROXY FOR MEANING, AND IT IS WRONG SOMETIMES — SO THE
+    EXCEPTIONS ARE NAMED RATHER THAN INFERRED.** A POST that only searches is a
+    read; `READ_ONLY_WRITE_VERBS` lists those by hand. I tried deriving the
+    list and the heuristic was worthless: 559 non-GET handlers show no write in
+    their own body because most delegate to a service that writes, and
+    read-sounding names lie in both directions — `/alerts/{id}/resolve`,
+    `/suggestions/{id}/accept` and `/health/recalculate` all change things.
+    So the default is unmoved: **a non-GET is a change unless it is on the
+    list**, and the list is reviewed per route.
+    """
+    if level == CHANGE:
+        return True
+    m = (method or "").upper()
+    if m in _READ_METHODS:
+        return True
+    return (m, strip_mount_prefix(path)) in READ_ONLY_WRITE_VERBS
+
+
+#: Write verbs that only read. ⚠️ EACH ONE CONFIRMED INDIVIDUALLY, not generated.
+#: A route missing from here is treated as a change, which is the safe default.
+READ_ONLY_WRITE_VERBS: frozenset[tuple[str, str]] = frozenset({
+    ("POST", "/command-bar/query"),            # search
+    ("POST", "/command-bar/quote-preview"),    # priced preview, persists nothing
+    ("POST", "/command-bar/price-list-reference"),
+    ("POST", "/saved-views/preview"),          # runs a view's query unsaved
+    ("POST", "/nl-creation/extract"),          # extraction only; /create persists
+    ("POST", "/core/command"),                 # legacy intent classification
+    ("POST", "/core/command-bar/extract"),
+    ("POST", "/core/command-bar/ai"),
+    ("POST", "/ai/parse-filters"),
+    ("POST", "/ai/parse-ap"),
+    ("POST", "/ai/parse-inventory"),
+    ("POST", "/discount/calculate"),           # computes, does not apply
+    ("POST", "/delivery/check-conflict"),
+    ("POST", "/order-station/parse-order"),
+    ("POST", "/journal-entries/entries/parse"),
+    ("POST", "/migration/parse"),
+    ("POST", "/data-import/match-customers"),
+    ("POST", "/data-import/match-products"),
+    ("POST", "/legacy/generate-preview"),
+    ("POST", "/catalog-pane/resolve"),
+    ("POST", "/onboarding-flow/territory/resolve"),
+    ("POST", "/cases/extract-first-call"),
+})
+
+
+#: ─────────────────────────────────────────────── the planned role lists
+#:
+#: ⚠️ **RECORDED, NOT ENFORCED.** Nothing reads this to make a decision. Phase B
+#: copies a role's list into `roles.limited_to_areas`, one role at a time, with
+#: a before/after reach comparison each time. Until then every role keeps
+#: `limited_to_areas = NULL` and reaches what it reaches today.
+#:
+#: ⚠️ **NOT WRITTEN TO THE DATABASE, AND THAT IS A DEVIATION FROM THE RULING,
+#: FLAGGED RATHER THAN TAKEN QUIETLY.** James asked for the lists "stored on the
+#: roles, but NOT enforced yet". `roles.limited_to_areas` is the enforced
+#: column — writing them there IS Phase B. A separate `planned_limited_to_areas`
+#: column would satisfy both halves and needs a migration, and **the dev
+#: database is currently stamped at `r228_capture_prefix_offers`, a revision
+#: that no longer exists in the repo**, so `alembic upgrade head` fails locally
+#: and a new migration cannot be tested. Keeping the lists here is inert,
+#: reviewable in the diff, and per-slug — which is what Phase B wants anyway,
+#: since every tenant has its own copy of each role and they all take the same
+#: list. Raised for James's call.
+#:
+#: Each grant is marked where the reasoning was a judgement rather than the job.
+PLANNED_ROLE_AREAS: dict[str, tuple[str, ...]] = {
+    # driver: sees the run and the safety material. Nothing else.
+    "driver":        ("scheduling:view", "safety:view"),
+    # office: start narrow per James — widen per person when someone real is
+    # invited, because widening later costs nothing and narrowing does not.
+    "office":        ("orders:change", "customers:change", "documents:change",
+                      "scheduling:view"),
+    "office_staff":  ("orders:change", "customers:change", "documents:change",
+                      "scheduling:view"),
+    # production: `orders:view` is the case that forced levels to exist.
+    "production":    ("production:change", "inventory:change", "orders:view",
+                      "safety:view", "scheduling:view"),
+    "dispatcher":    ("scheduling:change", "orders:view", "customers:view"),
+    "director":      ("cases:change", "customers:change", "documents:change",
+                      "personalization:change", "scheduling:view"),
+    "accountant":    ("accounting:change", "pricing:view", "orders:view",
+                      "customers:view"),
+    # live today, unchanged by Phase A
+    "payroll":       ("payroll:change",),
+    # ⚠️ `admin` is DELIBERATELY ABSENT. An unlimited admin is a decision, and
+    # its absence here is that decision rather than an oversight: `admin` keeps
+    # `limited_to_areas = NULL` and the guard early-returns for it.
+}
+
+
+#: Routers that span several areas and are NOT tagged with one.
+#:
+#: ⚠️ **THESE BECOME "COMPOSED" SURFACES: each must filter what it returns to
+#: the caller's allowed areas.** James's ruling of 2026-11-06. Until a surface
+#: does that, a limited role stays refused there — which is today's behaviour,
+#: so nothing regresses by waiting. One tag would either over-grant (the note
+#: shows everything) or break the surface (the note shows nothing).
+#:
+#: In the order they matter, which is the order they should be built:
+COMPOSED_SURFACES: tuple[tuple[str, str], ...] = (
+    ("note",        "The daily note. First thing after sign-in — the payroll "
+                    "user's error page IS this surface refusing."),
+    ("command-bar", "Opas. The stated primary entrance; Sue's Opas should know "
+                    "payroll and nothing else. Must resolve per RESULT."),
+    ("core",        "The legacy command/search endpoints Opas still calls."),
+    ("briefings",   "Composed from orders, invoices, safety and cases."),
+    ("widget-data", "28 pairs, one per widget, each reading a different area. "
+                    "Needs per-route tags, not a router tag."),
+    ("widgets",     "As widget-data."),
+    ("widget-definitions", "As widget-data."),
+    ("tasks",       "Task substrate — every area creates tasks."),
+    ("vault",       "The cross-cutting hub by definition: documents, CRM, "
+                    "intelligence, notifications and accounting under one roof."),
+    ("operations-board", "A board composed from production, delivery and orders."),
+    ("reports",     "Spans accounting, production and safety."),
+    ("report-intelligence", "As reports."),
+    ("saved-views", "A saved view's area is its query's area."),
+    ("focus",       "The Focus kind decides the area, not the router."),
+    ("peek",        "Previews six entity types across areas."),
+    ("nl-creation", "Creates entities in several areas from one sentence."),
+    ("triage",      "Queues are per-domain; the ROUTER is cross-area."),
+    ("intelligence","Cross-system synthesis by definition."),
+    ("behavioral",  "Analytics over everyone's activity."),
+    ("completeness","Data-quality checks across areas."),
+    ("knowledge-base", "Reference content spanning areas."),
+    ("announcements", "Tenant-wide messages; not obviously any one area."),
+    ("ai",          "Generic AI helpers used by several areas."),
+    ("workflows",   "Workflow definitions span areas; the steps decide."),
+    ("workflow-authoring", "As workflows."),
+    # ⚠️ **THESE FIVE ARE THE COMMON SET'S OWN ROUTERS.** `is_common` matches
+    # EXACT routes, so `/auth/me` is common while the `auth` SEGMENT is not —
+    # which means the segment needs declaring here or the tagging rule demands
+    # an area for a shell router that must not have one. My first version of
+    # that rule failed on exactly these five.
+    ("auth",        "Identity and session; the common set's own router."),
+    ("themes",      "Design tokens; common set."),
+    ("edge-panel",  "Shell panel; common set."),
+    ("health",      "Liveness; no tenant data."),
+    ("operator-profile", "Her own profile."),
+    ("two-step",    "Already `area:mfa_enroll` — a token property, not an "
+                    "administrable area."),
+    ("spaces",      "Her own workspace config; common set."),
+    ("notifications", "Her own notifications; common set."),
+    ("feature-flags", "`/feature-flags/me` is common; the matrix is admin."),
+    ("locations",   "`GET /locations` is common (boot chain); the rest is settings."),
+    # ⚠️ `driver` AND `admin` ARE DECLARED, NOT `driver-announcements` — the
+    # module name is not a path segment, and my own stale-entry test caught
+    # that on its first run. `driver_announcements` mounts with prefix="" and
+    # serves BOTH /driver/announcements and /admin/announcements.
+    ("admin",       "The other half of the driver_announcements split "
+                    "(/admin/announcements), plus assorted admin sub-trees. "
+                    "Needs per-route tagging, not a segment tag."),
+    ("driver",      "⚠️ ONE ROUTER, TWO AREAS, found by deriving "
+                    "segments from where routes LAND rather than from the "
+                    "prefix string: it mounts with prefix=\"\" and serves "
+                    "/driver/announcements AND /admin/announcements. Split it "
+                    "or tag per route; do not pick one."),
+)
 
 
 #: ─────────────────────────────────────────────────────────────────────────────

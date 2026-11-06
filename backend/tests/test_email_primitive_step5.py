@@ -762,48 +762,12 @@ class TestCustomerEmailThreadsService:
         assert subjects[0] == "Thread 0"
 
 
-class TestCustomerEmailThreadsAPI:
-    def test_endpoint_returns_payload(self, client, ctx, auth):
-        account_id = _seed_account_with_access(ctx)
-        thread_id, _ = _seed_inbound_thread(
-            tenant_id=ctx["company_id"], account_id=account_id
-        )
-        customer_id = _seed_customer_entity(ctx["company_id"])
-        _seed_thread_linkage(
-            thread_id=thread_id,
-            tenant_id=ctx["company_id"],
-            linked_entity_type="customer",
-            linked_entity_id=customer_id,
-        )
-        resp = client.get(
-            f"/api/v1/pulse/email-threads-for-customer/{customer_id}",
-            headers=auth,
-        )
-        assert resp.status_code == 200, resp.text
-        body = resp.json()
-        assert body["customer_entity_id"] == customer_id
-        assert len(body["threads"]) == 1
-
-    def test_endpoint_limit_param_ge_1_le_50(self, client, ctx, auth):
-        customer_id = _seed_customer_entity(ctx["company_id"])
-        # Out of range → 422
-        resp = client.get(
-            f"/api/v1/pulse/email-threads-for-customer/{customer_id}?limit=0",
-            headers=auth,
-        )
-        assert resp.status_code == 422
-        resp2 = client.get(
-            f"/api/v1/pulse/email-threads-for-customer/{customer_id}?limit=51",
-            headers=auth,
-        )
-        assert resp2.status_code == 422
-
-    def test_endpoint_requires_auth(self, client):
-        customer_id = str(uuid.uuid4())
-        resp = client.get(
-            f"/api/v1/pulse/email-threads-for-customer/{customer_id}"
-        )
-        assert resp.status_code in (401, 403)
+# ⚠️ `TestCustomerEmailThreadsAPI` (3 tests) WAS DELETED ON 2026-11-06 with the
+# endpoint it tested: GET /api/v1/pulse/email-threads-for-customer/{id}. The
+# route answered under the dead `/pulse` prefix and had no caller. The tests
+# were sound — payload shape, limit bounds, auth required — and went because
+# their subject did, not because they were wrong. The service layer beneath is
+# untouched and still covered by the service-level tests in this file.
 
 
 # ─────────────────────────────────────────────────────────────────────

@@ -45,7 +45,13 @@ from fastapi import Depends, HTTPException, Request, status
 from jose import JWTError
 from sqlalchemy.orm import Session
 
-from app.core.areas import area_for_tags, is_common
+from app.core.areas import (
+    CHANGE,
+    area_for_tags,
+    grant_admits,
+    is_common,
+    parse_area_grant,
+)
 from app.core.security import decode_token
 from app.core.two_step import requires_two_step
 from app.database import get_db
@@ -124,6 +130,7 @@ def enforce_area_limit(
     # escape an issuance-side guard silently. A token that cannot be USED for
     # payroll does not care how it was made.
     owes_second_step = requires_two_step(user, db) and not mfa_claim
+    grants: dict[str, str] = {}
     if owes_second_step:
         allowed = declared = {MFA_ENROLL_AREA}
     elif role is None or role.limited_to_areas is None:
@@ -156,7 +163,13 @@ def enforce_area_limit(
         # reporting it would tell an admin her role grants something they
         # cannot see or change, and would make `limited_to_areas = []` report
         # as non-empty.
-        declared = set(role.limited_to_areas or ())
+        # ⚠️ **GRANTS CARRY A LEVEL AS OF 2026-11-06, AND A BARE NAME STILL MEANS
+        # `change`.** James's ruling: all-or-nothing forced over-granting —
+        # production needs to SEE an order without being able to rewrite one.
+        # `"orders:view"` admits GET; `"orders"` admits everything, which is
+        # why the live `["payroll"]` role is completely unaffected.
+        grants = dict(parse_area_grant(g) for g in (role.limited_to_areas or ()))
+        declared = set(grants)
         allowed = declared | {MFA_ENROLL_AREA}
 
     route = request.scope.get("route")
@@ -187,7 +200,16 @@ def enforce_area_limit(
     area = area_for_tags(getattr(route, "tags", None))
 
     if area is not None and area in allowed:
-        return
+        # ⚠️ The LEVEL decides, not just membership. `mfa_enroll` is unioned in
+        # rather than granted, so it has no level and is always full — her own
+        # second factor is hers to manage, including the writes that enrol her.
+        level = CHANGE if area == MFA_ENROLL_AREA else grants.get(area, CHANGE)
+        if grant_admits(level, request.method, path):
+            return
+        # Fall through to the refusal below, which reports the declared areas.
+        # ⚠️ A view-level user hitting a write gets `area_restricted`, not a
+        # 405: the route exists and she may read it, she just may not change
+        # it, and telling her the route is absent would be a lie.
 
     # ⚠️ A NAMED CODE, NOT A BARE 403. An untagged endpoint and an
     # out-of-area endpoint are the same refusal to the caller but different

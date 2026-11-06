@@ -174,7 +174,24 @@ def test_the_refusal_names_itself(client, actors):
     detail = r.json()["detail"]
     assert detail["code"] == "area_restricted"
     assert detail["allowed_areas"] == ["payroll"]
-    assert detail["requested_area"] is None, "journal-entries carries no area tag"
+    # ⚠️ **WAS `is None` UNTIL PHASE A TAGGED THE ROUTERS, AND THE CHANGE IS AN
+    # IMPROVEMENT RATHER THAN A REGRESSION — BUT IT IS A CHANGE.** Before
+    # tagging, `journal-entries` declared no area, so the guard refused it with
+    # `reason="untagged"` and reported `requested_area: None`. It now declares
+    # `accounting`, so the refusal reads `out_of_area` and names it.
+    #
+    # The DISTINCTION those two reasons exist for is exactly this: untagged
+    # means somebody shipped a route without an area and it is a bug report;
+    # out_of_area means she asked for someone else's area and it is a
+    # permission question. Phase A moves 1,600 method+path pairs from the first
+    # category to the second.
+    #
+    # ⚠️ Her REACH does not change — 403 either way — which is what "Phase A is
+    # inert" claims. The refusal BODY changes, and claiming otherwise would be
+    # overstating the inertness.
+    assert detail["requested_area"] == "accounting", (
+        "journal-entries should declare area:accounting after Phase A tagging"
+    )
 
 
 def test_every_probe_endpoint_is_refused_not_merely_the_eleven(client, actors):
@@ -708,3 +725,154 @@ def test_auth_me_reports_null_for_an_unlimited_user(client, actors):
                    headers={"Authorization": f"Bearer {actors['unlimited']}", **HEADERS_SLUG})
     assert r.status_code == 200, r.text
     assert r.json()["limited_to_areas"] is None, r.json()["limited_to_areas"]
+
+
+# ─────────────────────────── Phase A: the tagging inventory (2026-11-06)
+
+
+def _tenant_routes():
+    """Every (method, path, area-tags) under /api/v1."""
+    from fastapi.routing import APIRoute
+
+    out = []
+    for r in app.routes:
+        if not isinstance(r, APIRoute) or not r.path.startswith("/api/v1/"):
+            continue
+        areas = sorted({t[5:] for t in (r.tags or ())
+                        if isinstance(t, str) and t.startswith("area:")})
+        for m in sorted((r.methods or set()) - {"HEAD", "OPTIONS"}):
+            out.append((m, r.path, areas))
+    return out
+
+
+def test_every_tenant_route_carries_exactly_one_area_or_is_declared_composed():
+    """⚠️ PHASE A's RULE, AND IT IS PER ROUTE RATHER THAN PER ROUTER ON PURPOSE.
+
+    My first version aggregated by top-level segment, and that version PASSED
+    while `driver_announcements` sat untagged: it mounts with `prefix=""` and
+    serves `/driver/announcements`, so the `driver` segment already carried
+    `area:scheduling` from the real driver router and the untagged routes
+    hid inside it. A segment-level check cannot see an untagged route in a
+    tagged segment, which is precisely the case worth catching.
+    """
+    from app.core.areas import COMPOSED_SURFACES, KNOWN_AREAS, is_common
+
+    composed = {name for name, _reason in COMPOSED_SURFACES}
+    undeclared, multi, unknown = [], [], []
+    for method, path, areas in _tenant_routes():
+        if is_common(method, path):
+            continue
+        seg = path.split("/")[3]
+        if seg in composed:
+            continue
+        if len(areas) > 1:
+            multi.append(f"{method} {path} -> {areas}")
+        elif not areas:
+            undeclared.append(f"{method} {path}")
+        elif areas[0] not in KNOWN_AREAS:
+            unknown.append(f"{method} {path} -> {areas[0]}")
+
+    assert undeclared == [], (
+        f"{len(undeclared)} routes carry no area tag and are not in the common "
+        f"set or a declared composed router:\n  " + "\n  ".join(undeclared[:40]) +
+        "\n\nTag the router with one area, or declare it in COMPOSED_SURFACES."
+    )
+    assert multi == [], (
+        f"routes carrying MORE THAN ONE area tag: {multi}. The guard takes the "
+        f"first, so the rest are silently dead."
+    )
+    assert unknown == [], f"tags naming areas absent from KNOWN_AREAS: {unknown}"
+
+    # ⚠️ NON-ZERO CONTROL: an empty route list would satisfy all three above.
+    tagged = sum(1 for _m, _p, a in _tenant_routes() if a)
+    assert tagged > 1000, f"only {tagged} routes carry an area tag — walker broken"
+
+
+def test_no_router_is_mapped_to_two_areas():
+    """⚠️ THE CHECK MY OWN FIRST VERIFICATION DID NOT HAVE.
+
+    The Phase A mapping was verified three ways — every router accounted for,
+    none in two lists, no ghosts — and none of those tested the map against
+    ITSELF. `legacy` was listed under both `personalization` and `settings`;
+    the lookup silently kept the last one, so the Legacy print generator was
+    tagged as tenant administration. No route ended up with two tags, so
+    nothing was conflicting — it was just quietly the wrong answer.
+    """
+    from app.core.areas import COMPOSED_SURFACES
+
+    names = [name for name, _reason in COMPOSED_SURFACES]
+    dupes = sorted({n for n in names if names.count(n) > 1})
+    assert dupes == [], f"COMPOSED_SURFACES lists these twice: {dupes}"
+
+    assert any(a for _m, _p, a in _tenant_routes()), "no route carries an area tag"
+
+
+def test_composed_surfaces_names_no_router_that_does_not_exist():
+    """⚠️ A stale declaration pre-exempts a reinstatement — the third time this
+    rule has earned its place today (the login sweep, the unauthenticated
+    inventory, and now here).
+
+    If a composed router is deleted or re-homed and its entry is left behind,
+    the entry is a standing exemption from the tagging rule, waiting for
+    somebody to add that path back.
+    """
+    from app.core.areas import COMPOSED_SURFACES
+
+    live = {p.split("/")[3] for _m, p, _a in _tenant_routes()}
+    stale = sorted(name for name, _ in COMPOSED_SURFACES if name not in live)
+    assert stale == [], (
+        f"COMPOSED_SURFACES names routers that do not exist: {stale}. Delete "
+        f"the entry — a leftover exemption waves through whoever re-adds it."
+    )
+
+
+def test_the_planned_role_lists_are_well_formed_and_not_yet_enforced():
+    """The lists are recorded for Phase B. Nothing may be enforcing them yet."""
+    from sqlalchemy import text
+
+    from app.core.areas import CHANGE, KNOWN_AREAS, PLANNED_ROLE_AREAS, VIEW, parse_area_grant
+    from app.database import SessionLocal
+
+    for role, grants in PLANNED_ROLE_AREAS.items():
+        assert grants, f"{role} has an empty list — that would mean 'nothing'"
+        for g in grants:
+            area, level = parse_area_grant(g)
+            assert area in KNOWN_AREAS, f"{role}: {g!r} names an unknown area"
+            assert level in (VIEW, CHANGE), f"{role}: {g!r} has a bad level"
+
+    # ⚠️ `admin` must be ABSENT, and its absence is the recorded decision that
+    # an unlimited admin is deliberate rather than forgotten.
+    assert "admin" not in PLANNED_ROLE_AREAS
+
+    # ⚠️ THE INERTNESS ASSERTION, AND IT READS THE SEED DEFINITION RATHER THAN
+    # THE LIVE DATABASE — BECAUSE THE DATABASE VERSION WAS ORDER-COUPLED AND I
+    # ONLY FOUND OUT BY RUNNING THE WHOLE FILE.
+    #
+    # The first version asserted that no role row anywhere has a non-NULL
+    # `limited_to_areas` except payroll. It PASSED alone and FAILED in the
+    # suite, because sibling tests in this very file set `limited_to_areas` on
+    # their fixture role on purpose — `test_an_empty_area_list_is_not_the_same_
+    # as_null` writes `'[]'` to it. So the assertion was reading global state
+    # that its neighbours legitimately mutate.
+    #
+    # Phase A's inertness is a claim about the CODE: the seed grants an area
+    # limit to `payroll` and to nothing else. That is order-independent and it
+    # is the thing actually being claimed.
+    from app.services.role_service import _SYSTEM_ROLES
+
+    limited_by_seed = sorted(
+        r["slug"] for r in _SYSTEM_ROLES if r.get("limited_to_areas")
+    )
+    assert limited_by_seed == ["payroll"], (
+        f"the role seed limits {limited_by_seed}; Phase A must limit only "
+        f"payroll, which was already limited before it. Phase A RECORDS the "
+        f"lists in PLANNED_ROLE_AREAS; Phase B turns them on."
+    )
+
+    # And the recorded lists must not have been copied into the seed by
+    # accident — the two structures stay separate until Phase B.
+    for r in _SYSTEM_ROLES:
+        if r["slug"] in PLANNED_ROLE_AREAS and r["slug"] != "payroll":
+            assert not r.get("limited_to_areas"), (
+                f"{r['slug']} has a seeded area limit — that is Phase B's job"
+            )
