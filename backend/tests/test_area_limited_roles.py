@@ -91,23 +91,40 @@ def _mk_user(db, user_id: str, role_id: str, email: str) -> None:
 def actors():
     """A limited role + user, and a user on an EXISTING unlimited role.
 
-    The unlimited one is deliberately an already-seeded role (`office`), not a
-    fresh one: the claim being tested is about roles that exist today.
+    ⚠️ **THE UNLIMITED CONTROL IS `admin`, AND IT USED TO BE `office`.** The
+    original reasoning is preserved because it was sound and then stopped
+    being true: *"deliberately an already-seeded role (`office`), not a fresh
+    one: the claim being tested is about roles that exist today."* Phase B
+    (2026-11-06) gave `office` an area list, so the role this fixture called
+    unlimited stopped being unlimited and its own precondition assert fired —
+    16 errors across every test using this fixture, all from one line.
+
+    `admin` is the right control now and not merely an available one: its
+    absence from `PLANNED_ROLE_AREAS` is the RECORDED DECISION that an admin
+    stays unrestricted, so this control rests on a decision rather than on a
+    role that happens not to have been limited yet. James's ruling: a fixture
+    needing an unlimited user creates one explicitly, it does not rely on a
+    default.
     """
     from app.database import SessionLocal
 
     db = SessionLocal()
     try:
-        office_role_id = db.execute(text(
-            "SELECT id FROM roles WHERE company_id=:c AND slug='office' LIMIT 1"
+        unlimited_role_id = db.execute(text(
+            "SELECT id FROM roles WHERE company_id=:c AND slug='admin' LIMIT 1"
         ), {"c": TESTCO_ID}).scalar()
-        if office_role_id is None:
-            pytest.skip("testco has no 'office' role — run the role seed")
+        if unlimited_role_id is None:
+            pytest.skip("testco has no 'admin' role — run the role seed")
 
-        # Control: the role we are calling unlimited must actually be unlimited.
+        # ⚠️ The control still runs, and it is still the right control: whatever
+        # role this fixture calls unlimited must actually be unlimited. It now
+        # points at `admin`, whose NULL is a decision rather than an accident.
         assert db.execute(text(
             "SELECT limited_to_areas IS NULL FROM roles WHERE id=:r"
-        ), {"r": office_role_id}).scalar() is True, "office role is not NULL-areas"
+        ), {"r": unlimited_role_id}).scalar() is True, (
+            "the admin role is not NULL-areas — admin must stay unrestricted; "
+            "see PLANNED_ROLE_AREAS, which omits it deliberately"
+        )
 
         db.execute(text("DELETE FROM users WHERE id IN (:a,:b)"),
                    {"a": LIMITED_USER_ID, "b": UNLIMITED_USER_ID})
@@ -120,13 +137,16 @@ def actors():
                     limited_to_areas=["payroll"]))
         db.flush()
         _mk_user(db, LIMITED_USER_ID, LIMITED_ROLE_ID, "area-limited@testco.example.com")
-        _mk_user(db, UNLIMITED_USER_ID, office_role_id, "area-office@testco.example.com")
+        _mk_user(db, UNLIMITED_USER_ID, unlimited_role_id, "area-admin@testco.example.com")
         db.commit()
 
         yield {
             "limited": create_access_token({"sub": LIMITED_USER_ID, "company_id": TESTCO_ID}),
             "unlimited": create_access_token({"sub": UNLIMITED_USER_ID, "company_id": TESTCO_ID}),
-            "office_role_id": office_role_id,
+            "unlimited_role_id": unlimited_role_id,
+            # Kept under the old key so callers need no edit; the VALUE is
+            # now the admin role id, which is what "unlimited" means here.
+            "office_role_id": unlimited_role_id,
         }
     finally:
         db.execute(text("DELETE FROM users WHERE id IN (:a,:b)"),
@@ -260,8 +280,25 @@ def test_the_only_limited_roles_are_the_ones_declared_limited():
     from app.database import SessionLocal
     from app.services.role_service import _SYSTEM_ROLES
 
+    # ⚠️ **PHASE B MOVED WHERE "DECLARED" LIVES, AND THIS READ THE OLD PLACE.**
+    # Until 2026-11-06 a role declared its limit as an explicit
+    # `limited_to_areas` key on its `_SYSTEM_ROLES` entry, and only `payroll`
+    # had one. Phase B's limits come from `PLANNED_ROLE_AREAS` via
+    # `_planned_area_limit()` at seed time, so reading the entry dicts alone
+    # found one declared slug against nine limited in the database — and the
+    # ratchet fired on its own correct behaviour.
+    #
+    # The invariant is unchanged and still worth having: limited-in-the-database
+    # must be a subset of declared-somewhere. It now reads BOTH declaration
+    # sites, which is what the seed does.
+    from app.core.areas import PLANNED_ROLE_AREAS
+
     declared = {r["slug"] for r in _SYSTEM_ROLES if r.get("limited_to_areas") is not None}
+    declared |= set(PLANNED_ROLE_AREAS)
     assert declared, "no system role declares areas — this test would assert nothing"
+    # ⚠️ And admin must be in NEITHER source, or an unrestricted admin has
+    # quietly stopped being the decision it is recorded as.
+    assert "admin" not in declared, "admin must not declare an area limit"
 
     db = SessionLocal()
     try:
@@ -826,15 +863,29 @@ def test_composed_surfaces_names_no_router_that_does_not_exist():
     )
 
 
-def test_the_planned_role_lists_are_well_formed_and_not_yet_enforced():
-    """The lists are recorded for Phase B. Nothing may be enforcing them yet."""
+def test_the_planned_role_lists_are_well_formed_and_enforced():
+    """⚠️ RENAMED FROM `..._and_not_yet_enforced` WHEN PHASE B LANDED.
+
+    In Phase A the claim was "recorded, nothing enforcing them". Phase B is the
+    ruling that turns them on, so the same test now asserts the opposite half:
+    the seed limits every role in `PLANNED_ROLE_AREAS`, and admin is in neither
+    declaration site. Replaced rather than deleted, so the coverage of
+    well-formedness survives the regime change.
+    """
     from sqlalchemy import text
 
     from app.core.areas import CHANGE, KNOWN_AREAS, PLANNED_ROLE_AREAS, VIEW, parse_area_grant
     from app.database import SessionLocal
 
     for role, grants in PLANNED_ROLE_AREAS.items():
-        assert grants, f"{role} has an empty list — that would mean 'nothing'"
+        # ⚠️ AN EMPTY LIST IS NOW A LEGITIMATE VALUE AND THIS LINE USED TO
+        # FORBID IT. When Phase A recorded the lists, `()` could only have been
+        # a mistake, so this read `assert grants`. Phase B gives `employee` an
+        # empty list ON PURPOSE — "limited to nothing, the common set only" —
+        # and the old assertion fired on the intended value. Emptiness is
+        # allowed; what is not allowed is emptiness arriving by accident, which
+        # the explicit `employee == []` assertion below pins.
+        assert isinstance(grants, tuple), f"{role}: grants must be a tuple, got {type(grants)}"
         for g in grants:
             area, level = parse_area_grant(g)
             assert area in KNOWN_AREAS, f"{role}: {g!r} names an unknown area"
@@ -860,19 +911,22 @@ def test_the_planned_role_lists_are_well_formed_and_not_yet_enforced():
     # is the thing actually being claimed.
     from app.services.role_service import _SYSTEM_ROLES
 
-    limited_by_seed = sorted(
-        r["slug"] for r in _SYSTEM_ROLES if r.get("limited_to_areas")
-    )
-    assert limited_by_seed == ["payroll"], (
-        f"the role seed limits {limited_by_seed}; Phase A must limit only "
-        f"payroll, which was already limited before it. Phase A RECORDS the "
-        f"lists in PLANNED_ROLE_AREAS; Phase B turns them on."
-    )
+    # ⚠️ PHASE B: the seed now applies every planned list. Asserted through
+    # `_planned_area_limit`, which is the function the seed actually calls —
+    # asserting the dict alone would pass while the seed ignored it.
+    from app.services.role_service import _planned_area_limit
 
-    # And the recorded lists must not have been copied into the seed by
-    # accident — the two structures stay separate until Phase B.
-    for r in _SYSTEM_ROLES:
-        if r["slug"] in PLANNED_ROLE_AREAS and r["slug"] != "payroll":
-            assert not r.get("limited_to_areas"), (
-                f"{r['slug']} has a seeded area limit — that is Phase B's job"
-            )
+    for slug, grants in PLANNED_ROLE_AREAS.items():
+        got = _planned_area_limit(slug)
+        assert got == list(grants), f"{slug}: seed would write {got}, list says {list(grants)}"
+
+    # ⚠️ `employee` IS `[]`, NOT `None`, AND THE DISTINCTION IS THE WHOLE ROLE.
+    # `()` is falsy, so an `if grants` check turns "limited to nothing" into
+    # "not limited at all" — the inversion that would make an employee
+    # unrestricted while the list says they reach nothing. Decided by
+    # membership, and pinned here.
+    assert _planned_area_limit("employee") == [], "employee must be [] (limited to nothing)"
+    assert _planned_area_limit("admin") is None, "admin must be None (unrestricted)"
+
+    # And admin must still be absent from the dict — its absence IS the decision.
+    assert "admin" not in PLANNED_ROLE_AREAS

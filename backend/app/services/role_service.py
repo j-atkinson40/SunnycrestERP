@@ -157,6 +157,33 @@ _SYSTEM_ROLES = [
 ]
 
 
+def _planned_area_limit(slug: str) -> list[str] | None:
+    """The Phase B area limit for a system role, or None for unrestricted.
+
+    ⚠️ **READ FROM `PLANNED_ROLE_AREAS`, NOT RESTATED HERE.** The lists are
+    reviewed in one place (`app/core/areas.py`) and this is the second
+    consumer; a copy would be a second thing to keep in step, which is exactly
+    how `ACCOUNTANT_FULL_PERMISSIONS` came to be read rather than composed —
+    composing it inline left a third producer building an accountant with no
+    payroll keys and took CI red with 28 failures.
+
+    `admin` is absent from `PLANNED_ROLE_AREAS` deliberately, so this returns
+    None for it and an admin stays unrestricted.
+    """
+    from app.core.areas import PLANNED_ROLE_AREAS
+
+    # ⚠️ **MEMBERSHIP DECIDES, NOT TRUTHINESS, AND THE DIFFERENCE IS A ROLE'S
+    # WHOLE REACH.** `PLANNED_ROLE_AREAS["employee"] = ()` means "limited to
+    # nothing — the common set only". An empty tuple is FALSY, so
+    # `list(grants) if grants else None` returned None for it, which means
+    # UNRESTRICTED — the precise inversion of what the list says, and the same
+    # null-vs-empty conflation that let `filterByPermission` read an empty
+    # `functional_areas` as "no restriction".
+    if slug not in PLANNED_ROLE_AREAS:
+        return None            # not in the list at all -> no area limit (admin)
+    return list(PLANNED_ROLE_AREAS[slug])   # may legitimately be []
+
+
 def seed_default_roles(db: Session, company_id: str) -> tuple[Role, Role]:
     """Create all system roles for a new company.
 
@@ -190,7 +217,11 @@ def seed_default_roles(db: Session, company_id: str) -> tuple[Role, Role]:
             # "limited to nothing" and would lock every role out of everything.
             # The two are different values and the difference is the whole design
             # (r221, app/core/areas.py).
-            limited_to_areas=role_def.get("limited_to_areas"),
+            # ⚠️ Phase B: the explicit `limited_to_areas` on an entry wins, so the
+            # payroll role keeps the value written beside it; everything else
+            # takes its planned list. A role in neither gets None.
+            limited_to_areas=(role_def.get("limited_to_areas")
+                              or _planned_area_limit(role_def["slug"])),
         )
         db.add(role)
         db.flush()
