@@ -1041,7 +1041,13 @@ v1_router.include_router(
 from app.api.routes import capture as capture_routes  # noqa: E402
 
 v1_router.include_router(
-    capture_routes.router, prefix="/capture", tags=["Opas Typed Capture", "area:documents"]
+    # ⚠️ `area:orders`, NOT `area:documents` — corrected 2026-11-06. Its own
+    # OpenAPI tag says "Opas Typed Capture": the sessions build an ORDER, with
+    # lines, held and placed items. I mapped it to `documents` from the router
+    # name alone and `test_pick_modifier` found it, a test that knows nothing
+    # about areas. The per-user `/capture/preferences` pair moved to the common
+    # set in the same change.
+    capture_routes.router, prefix="/capture", tags=["Opas Typed Capture", "area:orders"]
 )
 
 # Opas Order List + shortened sales order. Same mount style as the catalog pane:
