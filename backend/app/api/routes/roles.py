@@ -62,13 +62,18 @@ def get_known_areas(
     response is a flat module → actions map which the UI spreads directly, so
     adding a key would change its shape for its existing consumer.
     """
-    from app.core.areas import COMMON_PREFIXES, KNOWN_AREAS
+    from app.core.areas import COMMON_ROUTES, KNOWN_AREAS
 
     return {
         "areas": sorted(KNOWN_AREAS),
         # Surfaced so the editor can explain what a limited role still reaches,
         # instead of the admin having to infer it.
-        "always_available": [prefix for prefix, _reason in COMMON_PREFIXES],
+        # ⚠️ Now method + path, because the common set stopped being prefixes
+        # on 2026-11-06. Reported as strings an admin can read rather than as
+        # tuples, and the METHOD is included because "GET /locations is always
+        # available" and "/locations is always available" are different claims
+        # — the second one was never true and was what this endpoint reported.
+        "always_available": [f"{m} {p}" for m, p, _reason in COMMON_ROUTES],
     }
 
 

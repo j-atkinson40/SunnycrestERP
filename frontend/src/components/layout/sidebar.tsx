@@ -179,12 +179,25 @@ function saveCollapsed(collapsed: Set<string>) {
 
 // ---- Sidebar ----
 export function Sidebar() {
-  const { company } = useAuth();
+  const { company, limitedToAreas } = useAuth();
   const { navigation, presetAccent, presetLabel } = usePresetTheme();
   const { isMultiLocation } = useLocations();
   const location = useLocation();
 
   // Filter out multi-location-only nav items for single-location companies
+  // ⚠️ **ONE RULE, READ FROM `/auth/me`, NOT A LIST KEPT HERE.** James's ruling
+  // of 2026-11-06: nav, pinned items, Pin widget, Get started, Bridgeable Map
+  // and the search bar are all filtered by the same area rule the server
+  // enforces. `limitedToAreas` is `roles.limited_to_areas` passed through
+  // unchanged — the exact column `enforce_area_limit` refuses by.
+  //
+  // ⚠️ `!= null` CATCHES BOTH `null` AND `undefined` AND NOTHING ELSE, so `[]`
+  // — limited to nothing — correctly reads as LIMITED. A truthiness check
+  // would read `[]` as unlimited, which is the precise bug being fixed one
+  // layer up: `filterByPermission` skipped its area branch when the list was
+  // empty and showed a payroll-limited user six hubs she could not open.
+  const isAreaLimited = limitedToAreas != null;
+
   const filteredNavigation = {
     ...navigation,
     sections: navigation.sections.map((section) => ({
@@ -265,7 +278,11 @@ export function Sidebar() {
         <LocationSelector />
       </div>
 
-      {/* Universal command bar trigger */}
+      {/* Universal command bar trigger.
+          Hidden for an area-limited user: every command-bar endpoint is
+          untagged and therefore refused by the server, so the box could only
+          ever return an error or results she cannot open. */}
+      {!isAreaLimited && (
       <div className="shrink-0 border-b border-border-subtle px-4 py-3">
         <button
           type="button"
@@ -283,13 +300,16 @@ export function Sidebar() {
           </kbd>
         </button>
       </div>
+      )}
 
       {/* Navigation sections */}
       <nav className="flex-1 overflow-y-auto px-3 py-3">
         {/* Phase 3 — Pinned section renders ABOVE the base nav when
             an active space has pins. Base nav stays visible below —
             spaces add emphasis, don't remove access. */}
-        <PinnedSection />
+        {/* Pins resolve saved views and triage queues outside her areas, and
+            the pin controls write to space endpoints she no longer reaches. */}
+        {!isAreaLimited && <PinnedSection />}
         <div className="space-y-4">
           {filteredNavigation.sections.map((section, idx) => (
             <SidebarSection
@@ -304,14 +324,17 @@ export function Sidebar() {
         </div>
       </nav>
 
-      {/* Onboarding widget */}
-      <OnboardingSidebarWidget />
+      {/* Onboarding widget — "Get started · Set up your account".
+          Every checklist item navigates to a settings or setup page the server
+          refuses for her, so for an area-limited user it is a list of dead
+          ends. */}
+      {!isAreaLimited && <OnboardingSidebarWidget />}
 
       {/* Workflow Arc Phase 8a — DotNav replaces the top-of-screen
           SpaceSwitcher. Horizontal dots at the bottom of the sidebar
           rail with a plus button at the end. Settings system space
           (when admin) appears leftmost. */}
-      <DotNav />
+      {!isAreaLimited && <DotNav />}
 
       {/* Preset label */}
       <div className="shrink-0 border-t border-border-subtle px-5 py-2.5">

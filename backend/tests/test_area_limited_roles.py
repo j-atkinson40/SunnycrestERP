@@ -341,24 +341,119 @@ def test_every_area_tag_in_the_app_names_a_known_area():
     assert seen, "no route carries an area: tag — the guard would deny everything"
 
 
-def test_common_prefixes_are_real_routes():
-    """A stale common entry grants nothing and reads as protection."""
+def _route_pairs():
+    """Every (method, template) the app serves under /api/v1, mount stripped."""
     from fastapi.routing import APIRoute
-    from app.core.areas import COMMON_PREFIXES, strip_mount_prefix
+    from app.core.areas import strip_mount_prefix
 
-    paths = {strip_mount_prefix(r.path) for r in app.routes if isinstance(r, APIRoute)}
-    for prefix, reason in COMMON_PREFIXES:
-        assert any(p == prefix or p.startswith(prefix + "/") or p.startswith(prefix)
-                   for p in paths), f"common prefix {prefix!r} matches no route ({reason})"
+    out = set()
+    for r in app.routes:
+        if not isinstance(r, APIRoute) or not r.path.startswith("/api/v1/"):
+            continue
+        rel = strip_mount_prefix(r.path)
+        for m in (r.methods or set()) - {"HEAD", "OPTIONS"}:
+            out.add((m, rel))
+    return out
 
 
-def test_common_match_respects_segment_boundaries():
-    """`/authorization-anything` must not pass on the `/auth` entry."""
+def test_common_routes_are_real_routes():
+    """A stale entry grants nothing and reads as protection.
+
+    ⚠️ Stricter than the prefix version it replaces: that one passed if ANY
+    route merely started with the string, so a renamed endpoint left the entry
+    looking alive. An exact pair either exists or it does not.
+    """
+    from app.core.areas import COMMON_ROUTES
+
+    pairs = _route_pairs()
+    missing = [(m, p) for m, p, _r in COMMON_ROUTES if (m, p) not in pairs]
+    assert missing == [], f"common entries matching no route: {missing}"
+
+
+def test_common_set_admits_only_what_it_lists():
+    """⚠️ THE REGRESSION GUARD FOR THE WHOLE CLASS.
+
+    The old form was a prefix, so every sibling route anyone added under it
+    later was admitted silently — including writes. This asserts the common set
+    admits EXACTLY its own listing and nothing adjacent, so a new
+    `/locations/something` is denied on the day it ships rather than on the day
+    somebody probes production.
+    """
+    from app.core.areas import COMMON_ROUTES, is_common
+
+    listed = {(m, p) for m, p, _r in COMMON_ROUTES}
+    admitted = {(m, p) for (m, p) in _route_pairs() if is_common(m, "/api/v1" + p)}
+    assert admitted == listed, (
+        f"admitted but not listed: {sorted(admitted - listed)}\n"
+        f"listed but not admitted: {sorted(listed - admitted)}"
+    )
+
+
+def test_locations_users_is_not_reachable():
+    """⚠️ THE DISCLOSURE, PINNED BY NAME.
+
+    Measured on production 2026-11-06: a payroll-limited user could
+    `GET /locations/users` and read another user's row with
+    `access_level='admin'`. The endpoint's own docstring is "List all
+    user-location access assignments for the company" and its only gate is
+    `get_current_user` + company_id, so the area guard was the only thing that
+    could have refused it, and the `/locations` prefix admitted it instead.
+
+    Named rather than folded into the exactness test above because a future
+    edit could satisfy that test while putting this route back on the list.
+    """
     from app.core.areas import is_common
-    assert is_common("/api/v1/auth/me")
-    assert not is_common("/api/v1/authorization-sneaky")
-    assert not is_common("/api/v1/feature-flags/matrix")
-    assert not is_common("/api/v1/journal-entries/entries")
+
+    assert not is_common("GET", "/api/v1/locations/users")
+    # The control: the facility list its reason actually describes stays open,
+    # so this test cannot pass by denying the whole prefix.
+    assert is_common("GET", "/api/v1/locations")
+
+
+def test_the_locations_writes_no_longer_reach_their_own_gate():
+    """They stay `require_admin` at the endpoint; they also stop getting here.
+
+    Defence in depth rather than a replacement for it — `require_admin` was and
+    remains what refuses them, and this asserts the guard no longer waves them
+    through to it.
+    """
+    from app.core.areas import is_common
+
+    for method, path in (
+        ("POST", "/api/v1/locations"),
+        ("POST", "/api/v1/locations/users"),
+        ("PATCH", "/api/v1/locations/{location_id}"),
+        ("DELETE", "/api/v1/locations/{location_id}"),
+        ("DELETE", "/api/v1/locations/users/{access_id}"),
+    ):
+        assert not is_common(method, path), f"{method} {path} is still admitted"
+
+
+def test_an_exact_match_is_not_a_prefix_match():
+    """The property the change buys, stated as a test rather than a comment."""
+    from app.core.areas import is_common
+
+    assert is_common("GET", "/api/v1/auth/me")
+    assert not is_common("GET", "/api/v1/authorization-sneaky")
+    assert not is_common("GET", "/api/v1/feature-flags/matrix")
+    assert not is_common("GET", "/api/v1/journal-entries/entries")
+    # ⚠️ The method matters now. Same path, different verb, different answer.
+    assert is_common("PATCH", "/api/v1/edge-panel/preferences")
+    assert not is_common("DELETE", "/api/v1/edge-panel/preferences")
+    # And the deprecated /api alias resolves the same, or it is a way around.
+    assert is_common("GET", "/api/auth/me")
+
+
+def test_register_is_not_in_the_common_set():
+    """It was admitted by the old `/auth` prefix and named by nothing.
+
+    ⚠️ Its own gate (`get_current_company` alone) is a separate question, raised
+    in the 2026-11-06 probe writeup and deliberately NOT fixed here — a guard
+    entry is the wrong place to fix an endpoint's own authorization.
+    """
+    from app.core.areas import is_common
+
+    assert not is_common("POST", "/api/v1/auth/register")
 
 
 def test_the_guard_covers_both_router_mounts():
@@ -510,3 +605,94 @@ def test_an_empty_area_list_is_refused_as_area_restricted_not_as_two_step(client
                    {"r": LIMITED_ROLE_ID})
         db.commit()
         db.close()
+
+
+# ─────────────────── the disclosure, at the HTTP layer (2026-11-06)
+
+
+def test_locations_users_is_refused_over_http(client, actors):
+    """⚠️ **THE BREAK TEST JAMES NAMED, AT THE LAYER THE LEAK HAPPENED ON.**
+
+    Measured on production 2026-11-06: a payroll-limited user could
+    `GET /locations/users` and read another user's row with
+    `access_level='admin'`. The endpoint's own docstring is "List all
+    user-location access assignments for the company"; its only gate is
+    `get_current_user` + company_id, so the area guard was the only thing that
+    could refuse it, and the `/locations` PREFIX admitted it instead.
+
+    The `is_common` unit test next to this pins the rule. This pins the
+    OUTCOME — a prefix reinstated anywhere between here and the router would
+    satisfy the unit test's inputs and still serve the row.
+    """
+    h = {"Authorization": f"Bearer {actors['limited']}", **HEADERS_SLUG}
+
+    refused = client.get("/api/v1/locations/users", headers=h)
+    assert refused.status_code == 403, (
+        f"/locations/users served {refused.status_code} to an area-limited user: "
+        f"{refused.text[:300]}"
+    )
+    assert refused.json()["detail"]["code"] == "area_restricted"
+
+    # ⚠️ THE CONTROL, AND IT IS WHAT MAKES THE ASSERTION ABOVE MEAN SOMETHING.
+    # Denying the whole prefix would satisfy the refusal and break the boot
+    # chain — `LocationProvider` sits above the route tree, so a 403 here
+    # throws over every page. The facility list its stated reason actually
+    # describes must still be reachable.
+    allowed = client.get("/api/v1/locations", headers=h)
+    assert allowed.status_code == 200, (
+        f"/locations refused ({allowed.status_code}) — this test cannot pass by "
+        f"denying the prefix, which would stop her signing in: {allowed.text[:200]}"
+    )
+
+
+@pytest.mark.parametrize("path", [
+    "/api/v1/locations/users",
+    "/api/v1/locations/overview",
+])
+def test_the_other_locations_siblings_are_refused_too(client, actors, path):
+    """The prefix admitted nine siblings. Two are parameterless and probed here.
+
+    `/locations/{id}` and `/locations/{id}/summary` need an id and are covered
+    by the `is_common` unit assertions instead — a guessed id returns 404 and
+    would tell us nothing about authorization.
+    """
+    r = client.get(path, headers={"Authorization": f"Bearer {actors['limited']}", **HEADERS_SLUG})
+    assert r.status_code == 403, f"{path} -> {r.status_code}"
+
+
+def test_auth_me_reports_the_area_limit(client, actors):
+    """The one source of truth the frontend nav reads.
+
+    ⚠️ Without this field the frontend has to keep its own list, which is what
+    it was doing — `employee_profiles.functional_areas`, a different concept on
+    a different table. Hers was `[]` and the nav read empty as "unrestricted",
+    so she saw six hubs the server refused.
+    """
+    r = client.get("/api/v1/auth/me",
+                   headers={"Authorization": f"Bearer {actors['limited']}", **HEADERS_SLUG})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert "limited_to_areas" in body, "nav has nothing to filter by"
+    assert body["limited_to_areas"] == ["payroll"], body["limited_to_areas"]
+
+    # ⚠️ CONTROL: `functional_areas` is still reported and is still a DIFFERENT
+    # value. If these two ever coincide the test stops discriminating, so the
+    # distinction is asserted rather than assumed.
+    assert "functional_areas" in body
+    assert body["functional_areas"] != body["limited_to_areas"], (
+        "functional_areas and limited_to_areas are indistinguishable here, so "
+        "this test can no longer tell which one the nav is reading"
+    )
+
+
+def test_auth_me_reports_null_for_an_unlimited_user(client, actors):
+    """⚠️ `null`, NOT `[]`. The frontend treats them differently and must.
+
+    `null` means no limit and leaves the nav byte-for-byte unchanged; `[]`
+    means limited to nothing. Returning `[]` here would hide every nav item
+    from every ordinary user.
+    """
+    r = client.get("/api/v1/auth/me",
+                   headers={"Authorization": f"Bearer {actors['unlimited']}", **HEADERS_SLUG})
+    assert r.status_code == 200, r.text
+    assert r.json()["limited_to_areas"] is None, r.json()["limited_to_areas"]

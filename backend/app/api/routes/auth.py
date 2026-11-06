@@ -5,6 +5,7 @@ from app.api.company_resolver import get_current_company
 from app.api.deps import get_current_user
 from app.database import get_db
 from app.models.company import Company
+from app.models.role import Role
 from app.models.user import User
 from app.schemas.auth import (
     LoginRequest,
@@ -116,12 +117,39 @@ def me(
         profile.functional_areas if profile else None, tenant_areas
     )
 
+    # ⚠️ **THE AREA RULE THE SERVER ACTUALLY ENFORCES, SO THE SHELL CAN STOP
+    # KEEPING ITS OWN.** James's ruling of 2026-11-06, after a payroll-limited
+    # user on production saw Financials, Agents, Production, Resale, Knowledge
+    # Base and Settings in her sidebar while the server refused all 551 of the
+    # endpoints behind them.
+    #
+    # The cause was two different lists. `enforce_area_limit` refuses by
+    # `roles.limited_to_areas`; `navigation-service.ts::filterByPermission`
+    # decided by `employee_profiles.functional_areas` — a different concept, on
+    # a different table, written by a different code path. Hers was `[]`, and
+    # the frontend read empty as "unrestricted" rather than "restricted to
+    # nothing", so every item gating on `functionalArea` passed.
+    #
+    # ⚠️ `None` AND `[]` MEAN DIFFERENT THINGS HERE AND THE DISTINCTION IS THE
+    # WHOLE POINT. `None` is "this role has no area limit" — the normal case,
+    # every existing role. `[]` is "limited to nothing", which no admin can
+    # currently configure but which must NOT read as unlimited if one ever
+    # does. The frontend checks `=== null`, not falsiness.
+    #
+    # `mfa_enroll` is deliberately NOT unioned in. The server unions it when it
+    # confines her, but it is not an administrable area and reporting it would
+    # tell the shell to render a menu item for a role property no admin set.
+    role = db.query(Role).filter(Role.id == current_user.role_id).first()
+    limited_to_areas = getattr(role, "limited_to_areas", None) if role else None
+
     return {
         **user_data,
         "permissions": permissions,
         "enabled_modules": enabled_modules,
         "enabled_extensions": enabled_extensions,
         "functional_areas": active_areas,
+        #: None = no area limit. A list = reachable areas, and nothing else.
+        "limited_to_areas": limited_to_areas,
         "track": current_user.track or "office_management",
         "username": current_user.username,
         "console_access": current_user.console_access or [],

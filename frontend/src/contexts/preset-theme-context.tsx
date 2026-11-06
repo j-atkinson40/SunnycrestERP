@@ -4,6 +4,7 @@ import { useExtensions } from "@/contexts/extension-context";
 import { parseTenantSettings } from "@/types/company";
 import {
   getNavigation,
+  restrictNavToAreas,
   type NavigationConfig,
 } from "@/services/navigation-service";
 // R-2.5 — production tenant boot reads + applies committed theme
@@ -34,7 +35,7 @@ export function PresetThemeProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const { company, enabledModules, permissions, functionalAreas, isAdmin } = useAuth();
+  const { company, enabledModules, permissions, functionalAreas, isAdmin, limitedToAreas } = useAuth();
   const { extensions: enabledExtensions } = useExtensions();
 
   const tenantSettings = useMemo(
@@ -43,7 +44,7 @@ export function PresetThemeProvider({
   );
 
   const navigation = useMemo(() => {
-    return getNavigation(
+    const built = getNavigation(
       company?.vertical ?? null,
       enabledModules ?? new Set(),
       permissions ?? new Set(),
@@ -52,7 +53,14 @@ export function PresetThemeProvider({
       isAdmin,
       enabledExtensions,
     );
-  }, [company?.vertical, enabledModules, permissions, tenantSettings, functionalAreas, isAdmin, enabledExtensions]);
+    // ⚠️ **THE AREA RULE IS APPLIED HERE, ONCE, AND NOT IN THE SIDEBAR.** This
+    // is the only place the nav is built, so every consumer — the sidebar, the
+    // command bar's nav results, `getAllNavItemsFlat` — inherits the
+    // restriction. Filtering in the sidebar instead would leave the command
+    // bar offering a limited user routes the server refuses, which is the same
+    // class of defect one layer along.
+    return restrictNavToAreas(built, limitedToAreas);
+  }, [company?.vertical, enabledModules, permissions, tenantSettings, functionalAreas, isAdmin, enabledExtensions, limitedToAreas]);
 
   // Set CSS custom property on root
   useEffect(() => {
@@ -137,4 +145,26 @@ export function usePresetTheme() {
   if (!ctx)
     throw new Error("usePresetTheme must be used within PresetThemeProvider");
   return ctx;
+}
+
+/**
+ * The preset theme context, or null when no provider is mounted above.
+ *
+ * ⚠️ **ADDED BECAUSE THE THROWING VERSION WAS THE WRONG DEPENDENCY FOR
+ * `RootRedirect`, AND EIGHT EXISTING TESTS SAID SO BEFORE I DID.** Teaching
+ * the area-limited landing redirect to read the nav coupled a component that
+ * previously needed only `useAuth` to this whole provider — so it could no
+ * longer render anywhere the provider is absent, and `root-redirect.test.tsx`
+ * went red in eight places. The tests were right: that is a real coupling, not
+ * a mocking inconvenience, and the fix belongs in the code rather than in the
+ * tests.
+ *
+ * Mirrors `useFocusOptional` / `useParkOptional` / `useEdgePanelOptional`.
+ *
+ * Reading null means "the nav is not knowable here", which for the landing
+ * decision correctly means "do not redirect" — the honest answer rather than a
+ * guessed route.
+ */
+export function usePresetThemeOptional(): PresetThemeContextValue | null {
+  return useContext(PresetThemeContext);
 }

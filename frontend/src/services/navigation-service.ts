@@ -7,6 +7,26 @@ export interface NavItem {
   requiresModule?: string;
   requiresExtension?: string;
   functionalArea?: string; // employee must have this area assigned
+  /**
+   * The server-enforced AREA this item belongs to — the same vocabulary as
+   * `roles.limited_to_areas` and the `area:` router tags, NOT the
+   * `functionalArea` above.
+   *
+   * ⚠️ **THESE ARE TWO DIFFERENT CONCEPTS AND CONFLATING THEM IS THE BUG THIS
+   * FIELD EXISTS TO FIX.** `functionalArea` comes from
+   * `employee_profiles.functional_areas` and is a soft presentation hint;
+   * `area` is the hard rule `enforce_area_limit` refuses by. On 2026-11-06 a
+   * payroll-limited user saw Financials, Agents, Production, Resale, Knowledge
+   * Base and Settings in her sidebar while the server returned 403 on all 551
+   * endpoints behind them, because the sidebar was consulting the soft hint —
+   * which was `[]` for her, and which the filter read as "unrestricted".
+   *
+   * ⚠️ UNTAGGED IS DENIED FOR A LIMITED USER, which mirrors the server: an
+   * untagged route gets `reason="untagged"` and a 403. So a new nav item is
+   * invisible to a limited user on the day it ships rather than visible until
+   * someone notices, and the asymmetry points the safe way.
+   */
+  area?: string;
   adminOnly?: boolean; // only show for admin role
   requiresMultiLocation?: boolean; // only show when company has >1 location
   children?: NavItem[]; // nested sub-items shown when parent is expanded
@@ -52,6 +72,88 @@ const PRESET_LABELS: Record<string, string> = {
   cemetery: "Cemetery",
   crematory: "Crematory",
 };
+
+/**
+ * Keep only the nav a user limited to `limitedToAreas` may actually reach.
+ *
+ * ⚠️ **ONE SOURCE OF TRUTH: `limitedToAreas` COMES FROM `/auth/me`, WHICH
+ * REPORTS `roles.limited_to_areas` — the exact column `enforce_area_limit`
+ * refuses by.** The frontend keeps no list of its own. James's ruling of
+ * 2026-11-06: the menu is built from the same rule the server uses.
+ *
+ * ⚠️ `null` IS NOT `[]`. `null` means the role has no area limit — every
+ * existing role, and the case that must stay byte-for-byte unchanged. `[]`
+ * means limited to nothing, which no admin can configure today but which must
+ * not read as unlimited if one ever can. A falsy check would conflate them,
+ * and conflating them in the OTHER direction is precisely the bug being fixed:
+ * `filterByPermission` read an empty `functional_areas` as "no restriction".
+ *
+ * ⚠️ UNTAGGED ITEMS ARE DROPPED, deliberately and fail-closed, mirroring the
+ * server's treatment of an untagged route. This is applied as a post-pass over
+ * the whole built config rather than threaded through the five per-vertical
+ * builders, so it holds for funeral_home, cemetery and crematory too — a
+ * parameter added to one builder is a rule that applies to one vertical.
+ */
+export function restrictNavToAreas(
+  nav: NavigationConfig,
+  limitedToAreas: string[] | null | undefined,
+): NavigationConfig {
+  // Not limited — including the `undefined` an older /auth/me payload sends.
+  // ⚠️ Returns the SAME OBJECT, so an unlimited user's nav is not merely equal
+  // but identical, and no filtering bug can reach them.
+  if (limitedToAreas === null || limitedToAreas === undefined) return nav;
+
+  const allowed = new Set(limitedToAreas);
+  const keep = (item: NavItem): NavItem | null => {
+    if (!item.area || !allowed.has(item.area)) {
+      // A parent may be untagged while a child is reachable; keep the parent
+      // only if pruning its children leaves something behind.
+      const kids = (item.children || []).map(keep).filter((x): x is NavItem => x !== null);
+      return kids.length > 0 ? { ...item, children: kids } : null;
+    }
+    const kids = item.children ? item.children.map(keep).filter((x): x is NavItem => x !== null) : undefined;
+    return kids ? { ...item, children: kids } : { ...item };
+  };
+
+  return {
+    ...nav,
+    sections: nav.sections
+      .map((sec) => ({
+        ...sec,
+        items: sec.items.map(keep).filter((x): x is NavItem => x !== null),
+      }))
+      .filter((sec) => sec.items.length > 0),
+  };
+}
+
+/**
+ * Where an area-limited user should land. `null` for everyone else.
+ *
+ * James's ruling: "Area-limited users land on their area (Payroll), never on
+ * Home, until a payroll-limited home exists." Home's note endpoint is
+ * `/briefings/*`, which the server refuses for her — so landing there shows an
+ * error page as the first thing she sees after signing in.
+ *
+ * ⚠️ Derived from the SAME nav the sidebar renders, not from a second
+ * area→route table. If her nav is empty there is nowhere to send her and this
+ * returns null rather than inventing a route; the caller leaves her on the
+ * default and she sees the honest error instead of a redirect loop.
+ */
+export function landingRouteForAreas(
+  nav: NavigationConfig,
+  limitedToAreas: string[] | null | undefined,
+): string | null {
+  if (limitedToAreas === null || limitedToAreas === undefined) return null;
+  const restricted = restrictNavToAreas(nav, limitedToAreas);
+  for (const sec of restricted.sections) {
+    for (const item of sec.items) {
+      if (item.href) return item.href;
+      const kid = (item.children || []).find((c) => c.href);
+      if (kid) return kid.href;
+    }
+  }
+  return null;
+}
 
 export function getNavigation(
   vertical: string | null,
@@ -132,6 +234,9 @@ function getManufacturingNav(
       href: "/payroll",
       icon: "Receipt",
       permission: "payroll.view",
+      // The one tagged item today. Matches the `area:payroll` tag on the
+      // payroll-reports router, which is what the server enforces.
+      area: "payroll",
       aliases: ["payroll", "dues", "union dues"],
     },
   ];

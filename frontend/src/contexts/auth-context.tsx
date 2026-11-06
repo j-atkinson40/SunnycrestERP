@@ -22,6 +22,8 @@ interface AuthContextType {
   enabledModules: Set<string>;
   hasModule: (key: string) => boolean;
   functionalAreas: Set<string>;
+  /** `roles.limited_to_areas`: null/undefined = unlimited, list = limited. */
+  limitedToAreas: string[] | null | undefined;
   hasFunctionalArea: (key: string) => boolean;
   track: string;
   consoleAccess: Set<string>;
@@ -64,6 +66,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const functionalAreas = useMemo(
     () => new Set(user?.functional_areas ?? []),
     [user?.functional_areas]
+  );
+
+  /**
+   * The server's area limit, passed through unchanged.
+   *
+   * ⚠️ **NOT COERCED TO A SET OR TO `[]`.** `null` and `[]` mean different
+   * things — no limit versus limited to nothing — and every helper downstream
+   * distinguishes them. Normalising here would destroy the distinction at the
+   * one point where it is still intact, which is how `functional_areas` came
+   * to be read as "unrestricted" when empty.
+   */
+  const limitedToAreas = useMemo<string[] | null | undefined>(
+    () => user?.limited_to_areas,
+    [user?.limited_to_areas]
   );
 
   const hasFunctionalArea = useCallback(
@@ -207,6 +223,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         enabledModules,
         hasModule,
         functionalAreas,
+        limitedToAreas,
         hasFunctionalArea,
         track,
         consoleAccess,

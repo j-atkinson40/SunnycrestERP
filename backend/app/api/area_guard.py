@@ -176,7 +176,12 @@ def enforce_area_limit(
             },
         )
 
-    if is_common(path):
+    # ⚠️ THE METHOD IS PART OF THE MATCH AS OF 2026-11-06. The common set is
+    # exact (method, path) pairs, not prefixes — a prefix admitted every sibling
+    # route anyone added under it later, including 17 unreviewed writes, and
+    # that is how `GET /locations/users` came to disclose another user's
+    # access level to a payroll-limited user.
+    if is_common(request.method, path):
         return  # (3) the shell's common set
 
     area = area_for_tags(getattr(route, "tags", None))

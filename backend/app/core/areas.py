@@ -56,82 +56,181 @@ KNOWN_AREAS: frozenset[str] = frozenset({
 #: ─────────────────────────────────────────────────────────────────────────────
 #: THE COMMON SET — reachable by every signed-in user regardless of area.
 #:
-#: ⚠️ EVERY ENTRY IS HERE BECAUSE THE SHELL CANNOT RENDER WITHOUT IT, and the
-#: list was DERIVED rather than guessed: `TenantProviders.tsx` declares the boot
-#: provider chain, and each provider's fetch was traced to its path. Nothing is
-#: on this list because it seemed harmless.
+#: ⚠️ **EXACT (METHOD, PATH) PAIRS, NOT PREFIXES, AND THAT CHANGE HAS A CAUSE.**
+#: James's ruling of 2026-11-06, after a probe found `GET /locations/users`
+#: reachable by a payroll-limited user on production. It returned another user's
+#: location-access row — `access_level='admin'` — and it was admitted by the
+#: `/locations` entry, whose own stated reason reads "the tenant's facility list
+#: — organisational configuration, not business records". That reason describes
+#: `GET /locations`. It says nothing about the per-user access table.
 #:
-#: The test `test_common_prefixes_are_real_routes` fails if an entry matches no
-#: route, so a stale entry cannot sit here granting nothing.
+#: ⚠️ **THE DEFECT WAS PREFIX BREADTH, NOT SLOPPY MATCHING.** `is_common` already
+#: respected segment boundaries, and a test pinned that. The hole was that a
+#: prefix admits every SIBLING route somebody adds under it later — including
+#: routes that did not exist when the reason was written, and including writes.
+#: Measured before the change: **7 prefixes admitted 39 method+path pairs**, of
+#: which 17 were writes nobody had reviewed against any stated reason. The
+#: listing below is 21 pairs, each one named by the reason beside it.
 #:
-#: Matched as a prefix of the route's PATH TEMPLATE, after the /api/v1 (or /api)
-#: mount prefix is stripped.
-COMMON_PREFIXES: tuple[tuple[str, str], ...] = (
+#: Adding a route here is now a per-route decision that shows up in a diff. A
+#: new sibling endpoint is denied by default, which is the direction the
+#: asymmetry should point: forgetting to add something costs a 403 and a bug
+#: report, where forgetting to remove something costs a disclosure nobody sees.
+#:
+#: Entries were DERIVED, not guessed: `TenantProviders.tsx` declares the boot
+#: provider chain and each provider's fetch was traced to its path.
+#:
+#: Three tests hold this: `test_common_routes_are_real_routes` (no stale entry
+#: granting nothing), `test_common_set_admits_only_what_it_lists` (no sibling
+#: creeps back), and `test_locations_users_is_not_reachable` (the specific
+#: disclosure, pinned by name).
+#:
+#: Matched EXACTLY against the route's method and PATH TEMPLATE, after the
+#: /api/v1 (or /api) mount prefix is stripped.
+COMMON_ROUTES: tuple[tuple[str, str, str], ...] = (
+    # ── identity and session ──────────────────────────────────────────────
     (
-        "/auth",
-        "Identity and session. `/auth/me` supplies the user, permissions and "
-        "modules the shell is built from — without it nothing renders at all — "
-        "and `/auth/refresh` is called by the api-client interceptor, without "
-        "which she is signed out when the access token expires. Also carries "
-        "`/auth/change-password`, which she must be able to reach to rotate her "
-        "own password.",
+        "GET", "/auth/me",
+        "Supplies the user, permissions, modules and — since 2026-11-06 — the "
+        "allowed AREAS the shell is built from. Without it nothing renders at "
+        "all. This is also the single source of truth the frontend nav reads, "
+        "so that the menu is filtered by the same rule the server enforces "
+        "rather than by a second list that drifts.",
     ),
     (
-        "/feature-flags/me",
+        "POST", "/auth/refresh",
+        "Called by the api-client interceptor. Without it she is signed out "
+        "the moment her access token expires.",
+    ),
+    (
+        "POST", "/auth/change-password",
+        "She must be able to rotate her own password.",
+    ),
+    (
+        "POST", "/auth/login",
+        "⚠️ KEPT DELIBERATELY, AND THE PREVIOUS REASON DID NOT NAME IT. An "
+        "AUTHENTICATION endpoint must never be refused by an AUTHORIZATION "
+        "guard. The guard returns early when there is no authenticated tenant "
+        "user, so in the ordinary flow login never reaches it — but a browser "
+        "holding a stale-yet-decodable token that posts to login would get a "
+        "403 on the one request that could fix its state, and a lockout whose "
+        "cause is invisible from the sign-in page. Carries no tenant data.",
+    ),
+    # ⚠️ `POST /auth/register` IS DELIBERATELY ABSENT. It was admitted by the
+    # old `/auth` prefix and named by nothing. It creates a user and is gated
+    # by `get_current_company` alone — which is its own question, raised
+    # separately and NOT fixed here, because a guard entry is the wrong place
+    # to fix an endpoint's own authorization.
+
+    # ── shell boot chain ──────────────────────────────────────────────────
+    (
+        "GET", "/feature-flags/me",
         "`FeatureFlagProvider` is the second provider in the boot chain and "
         "fetches this on mount. Scoped to the caller. Deliberately NOT the "
-        "whole `/feature-flags` router — the matrix and audit-log endpoints are "
-        "admin surfaces and stay denied.",
+        "whole `/feature-flags` router — the matrix and audit-log endpoints "
+        "are admin surfaces and stay denied.",
     ),
     (
-        "/spaces",
-        "`SpaceProvider` plus the DotNav at the bottom of the sidebar. Every row "
-        "is per-user and already scoped by `user_id`, including the affinity "
-        "writes, so this grants her only her own workspace configuration.",
-    ),
-    (
-        "/themes/resolve",
+        "GET", "/themes/resolve",
         "`PresetThemeProvider` resolves the tenant's design tokens. Read-only "
         "presentation values; an unstyled app is not a usable one.",
     ),
     (
-        "/edge-panel",
-        "`EdgePanelProvider` and `EdgePanelHost` mount at the app root, outside "
-        "the route tree, so a refusal here throws above every page rather than "
-        "degrading one. `preferences` is per-user; `resolve` and `tenant-config` "
-        "are shell configuration.",
+        "GET", "/edge-panel/preferences",
+        "`EdgePanelProvider` mounts at the app root, outside the route tree, "
+        "so a refusal here throws above every page rather than degrading one. "
+        "Per-user.",
     ),
     (
-        "/locations",
+        "PATCH", "/edge-panel/preferences",
+        "Her own panel preferences. Per-user, and named by the original "
+        "reason's phrase `preferences is per-user`.",
+    ),
+    (
+        "GET", "/edge-panel/resolve",
+        "Shell configuration for the edge panel. Read-only.",
+    ),
+    (
+        "GET", "/edge-panel/tenant-config",
+        "Shell configuration for the edge panel. Read-only.",
+    ),
+    (
+        "GET", "/locations",
         "`LocationProvider` is in the boot chain above the route tree. Returns "
-        "the tenant's facility list — organisational configuration, not business "
-        "records.",
+        "the tenant's facility list — organisational configuration, not "
+        "business records.\n"
+        "⚠️ THIS IS THE ONLY `/locations` ROUTE ADMITTED. The nine siblings the "
+        "old prefix also granted are denied: `GET /locations/users` "
+        "(company-wide user access-level rows — the disclosure that prompted "
+        "this change), `GET /locations/overview`, `GET /locations/{id}`, "
+        "`GET /locations/{id}/summary`, and the five writes. The four writes "
+        "remain gated by `require_admin` at the endpoint, unchanged; they now "
+        "also no longer reach it, which is defence in depth rather than a "
+        "replacement for it.",
+    ),
+    # ── the notification bell, mounted for every user by app-layout.tsx ───
+    (
+        "GET", "/notifications",
+        "The notification bell in the header. Her own notifications.\n"
+        "⚠️ This entry read `/vault/notifications` in the first draft, taken "
+        "from that string in `notification-dropdown.tsx` — which is a "
+        "client-side `navigate()` target, NOT an API path. It matched no route, "
+        "so it granted nothing while reading as protection.",
     ),
     (
-        "/notifications",
-        "The notification bell in the header, mounted for every user by "
-        "`app-layout.tsx`: `/notifications` and `/notifications/unread-count`, "
-        "plus the read/read-all marks. Her own notifications.\n"
-        "⚠️ This entry read `/vault/notifications` in the first draft, taken from "
-        "that string in `notification-dropdown.tsx` — which is a client-side "
-        "`navigate()` target, NOT an API path. It matched no route, so it granted "
-        "nothing while reading as protection. Caught by "
-        "`test_common_prefixes_are_real_routes`, which exists for exactly this.",
+        "GET", "/notifications/unread-count",
+        "The unread badge on the bell. Her own count.",
+    ),
+    (
+        "PATCH", "/notifications/{notification_id}/read",
+        "Marking her own notification read.",
+    ),
+    (
+        "PATCH", "/notifications/read-all",
+        "Marking all of her own notifications read.",
+    ),
+    # ── spaces: the sidebar's DotNav and the affinity signal ──────────────
+    #
+    # ⚠️ READ AND ACTIVATE ONLY. Every `spaces` row is per-user and scoped by
+    # `user_id`, so the old prefix disclosed nothing — but it admitted nine
+    # writes (create, rename, delete, reorder, reapply-defaults, and four pin
+    # mutations) that the stated reason never named. An area-limited user's
+    # pin and space-editing controls are hidden by the same area rule as the
+    # nav itself, so those endpoints are not something her shell calls.
+    (
+        "GET", "/spaces",
+        "`SpaceProvider` plus the DotNav at the bottom of the sidebar. "
+        "Per-user rows, scoped by `user_id`.",
+    ),
+    (
+        "GET", "/spaces/{space_id}",
+        "One of her own spaces, read by the DotNav.",
+    ),
+    (
+        "POST", "/spaces/{space_id}/activate",
+        "Switching between her own spaces — the DotNav's only write.",
+    ),
+    (
+        "GET", "/spaces/affinity/count",
+        "The 'N tracked signals' counter. Her own count.",
+    ),
+    (
+        "POST", "/spaces/affinity/visit",
+        "The affinity write, named explicitly by the original reason. "
+        "Per-user, fire-and-forget.",
+    ),
+    (
+        "DELETE", "/spaces/affinity",
+        "'Clear my learning history' — a privacy action over her own rows.",
     ),
 )
 
-#: ⚠️ DELIBERATELY NOT IN THE COMMON SET, recorded so the omission reads as a
-#: decision rather than an oversight:
-#:
-#:   /focus, /focus/recent — `FocusProvider` is in the boot chain, but
-#:       `/focus/recent` returns recently-opened ENTITIES, which is exactly the
-#:       cross-area leak this guard exists to prevent. A 403 there costs a
-#:       recents list; it does not block sign-in. Revisit when Focus grows a
-#:       per-area scope.
-#:
-#:   /companies/settings — already gated on `company.view`
-#:       (`app/api/routes/companies.py:35`) and called only by two non-shell
-#:       pages, so it was never a boot dependency.
+#: ⚠️ Kept as an alias so a stale import fails LOUDLY at the name rather than
+#: silently iterating two-tuples as three-tuples. Remove once nothing imports
+#: it.
+COMMON_PREFIXES = None  # noqa: N816 — intentionally un-iterable; see above
+
+
 EXCLUDED_FROM_COMMON: tuple[str, ...] = ("/focus", "/companies/settings")
 
 
@@ -158,11 +257,16 @@ def strip_mount_prefix(path: str) -> str:
     return path
 
 
-def is_common(path: str) -> bool:
-    """Is this route in the common set every signed-in user may reach?"""
+def is_common(method: str, path: str) -> bool:
+    """Is this exact (method, route template) in the common set?
+
+    ⚠️ **EXACT, NOT PREFIX.** The signature changed on 2026-11-06 and the method
+    parameter is not optional, deliberately: a caller that still passes one
+    argument fails with a TypeError rather than silently treating a path as a
+    method and admitting nothing — or worse, admitting everything. The old
+    prefix form admitted 39 method+path pairs across 7 entries; this admits the
+    21 that are named.
+    """
     rel = strip_mount_prefix(path)
-    # ⚠️ EXACT OR SEGMENT-BOUNDED ONLY. A bare `rel.startswith(p)` would let
-    # `/authorization-anything` through on the `/auth` entry — a prefix match
-    # that ignores segment boundaries is how an allowlist grows holes nobody
-    # typed. Pinned by `test_common_match_respects_segment_boundaries`.
-    return any(rel == p or rel.startswith(p + "/") for p, _reason in COMMON_PREFIXES)
+    m = (method or "").upper()
+    return any(m == cm and rel == cp for cm, cp, _reason in COMMON_ROUTES)

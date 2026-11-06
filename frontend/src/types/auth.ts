@@ -10,6 +10,17 @@ export interface User {
   enabled_modules: string[];
   enabled_extensions: string[];
   functional_areas: string[];
+  /**
+   * The server-enforced area limit from `roles.limited_to_areas` — the exact
+   * column `enforce_area_limit` refuses by.
+   *
+   * ⚠️ `null` = no limit (every existing role). A list = reachable areas and
+   * nothing else. `undefined` = an older `/auth/me` payload that predates the
+   * field. All three are distinct and the nav filter treats null/undefined as
+   * unlimited and `[]` as limited-to-nothing — a falsy check would conflate
+   * them, which is the exact bug this field replaces.
+   */
+  limited_to_areas?: string[] | null;
   is_active: boolean;
   company_id: string;
   created_at: string;
