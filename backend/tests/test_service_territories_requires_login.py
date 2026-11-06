@@ -352,3 +352,294 @@ def test_auth_register_is_gone_and_stays_gone():
         "deleted. This control exists because the two were confused for each "
         "other in the first place."
     )
+
+
+def test_debug_network_is_gone_and_stays_gone():
+    """⚠️ THE DELETION, PINNED — and written BEFORE the deletion, failing.
+
+    `GET /website-intelligence/debug-network` needed no sign-in, took an
+    arbitrary `url`, and by its own docstring ran "the FULL intelligence
+    pipeline synchronously" against it. Self-described as a temporary
+    diagnostic. What that actually meant per anonymous request:
+
+      * SSRF — the production server fetches whatever address the caller names
+      * a BILLED Claude call (`analyze_website_content`)
+      * an outbound probe to api.anthropic.com
+      * 500 chars of scraped content and 500 chars of traceback, returned
+      * no rate limit, and no tenant scoping (the execution row logs
+        `company_id=None`)
+
+    ⚠️ It also returned `ANTHROPIC_API_KEY[:10]`, which READS like a credential
+    leak and is not one: ten characters of an Anthropic key is `sk-ant-api`,
+    the public key-type prefix, carrying no entropy — and the adjacent
+    `api_key_set` boolean already disclosed that a key existed. Recorded
+    precisely because overstating a finding is its own defect.
+
+    Measured on production before deletion, without triggering a fetch: no
+    params -> 422 (reachable, validation refused first), `?url=` empty -> 200
+    (the handler ran). No real URL was ever supplied.
+
+    Deleted rather than gated, as with `POST /auth/register`: a temporary
+    diagnostic that nothing consumes is not a capability worth keeping behind
+    a guard.
+    """
+    from fastapi.routing import APIRoute
+
+    from app.main import app
+
+    offenders = sorted(
+        f"{m} {r.path}"
+        for r in app.routes
+        if isinstance(r, APIRoute) and "debug-network" in r.path
+        for m in (r.methods or set()) - {"HEAD", "OPTIONS"}
+    )
+    assert offenders == [], (
+        f"debug-network is back: {offenders}. Unauthenticated SSRF plus a "
+        f"billed AI call per request."
+    )
+
+    # ⚠️ CONTROL: the rest of the router must survive. Without this the test
+    # could pass by deleting the whole file, and the real routes next to it
+    # (`/website-intelligence`, the suggestion endpoints) are in use.
+    survivors = sorted(
+        r.path for r in app.routes
+        if isinstance(r, APIRoute) and r.path == "/api/v1/website-intelligence"
+    )
+    assert survivors, (
+        "GET /api/v1/website-intelligence is missing — this test must not pass "
+        "by deleting the router it is pruning one route from."
+    )
+
+
+# ─────────────────── the unauthenticated-route inventory (2026-11-06)
+#
+# ⚠️ **EVERY ROUTE REACHABLE WITH NO AUTHENTICATED USER IS NAMED HERE, WITH THE
+# REASON IT IS ALLOWED TO BE.** James's ruling of 2026-11-06, after a census
+# found 50 such routes and nobody had a list of them. Two of the 50 should not
+# have existed: `POST /auth/register`, which created an account in any tenant
+# for anyone who asked, and `GET /website-intelligence/debug-network`, an
+# unauthenticated SSRF with a billed AI call per request. Both survived because
+# **there was nothing that required anyone to look at the set as a set.**
+#
+# A route absent from this dict fails `test_every_unauthenticated_route_is_named`.
+# That is the whole mechanism: a new public route cannot ship quietly, and the
+# diff that adds it carries the sentence justifying it.
+#
+# ⚠️ THE REASONS ARE LOAD-BEARING, NOT DECORATION. `/auth/register` was exempted
+# for years by a sentence that was true of `/auth/login` and false of it —
+# "they cannot require a user because producing one is their job". A reason that
+# does not survive being read aloud against the specific route is the defect,
+# not the documentation of it.
+UNAUTHENTICATED_ROUTES: dict[tuple[str, str], str] = {
+    # ── authentication itself: producing a SESSION is the job ──────────────
+    ("POST", "/api/v1/auth/login"):
+        "Producing a session is the job. Cannot require a session.",
+    ("POST", "/api/v1/auth/refresh"):
+        "Exchanges a refresh token for an access token; the refresh token IS "
+        "the credential. Called by the api-client interceptor.",
+
+    # ── the token IS the credential: a single-use secret in the URL ────────
+    # ⚠️ These are not 'unauthenticated' so much as 'authenticated by
+    # something other than a session'. Each resolves a hashed or opaque token
+    # to exactly one subject and refuses everything else.
+    ("GET", "/api/v1/invites/{token}"):
+        "Invite preview. She has no credential yet; the single-use token is "
+        "what stands in for one. One message for every failure mode.",
+    ("POST", "/api/v1/invites/{token}/accept"):
+        "Invite acceptance — sets her password and clears the token.",
+    ("GET", "/api/v1/sign/{token}/document"):
+        "E-signature: the signer is external and has no account. Token-scoped "
+        "to one envelope party.",
+    ("GET", "/api/v1/sign/{token}/status"): "As above.",
+    ("POST", "/api/v1/sign/{token}/sign"): "As above.",
+    ("POST", "/api/v1/sign/{token}/consent"): "As above.",
+    ("POST", "/api/v1/sign/{token}/decline"): "As above.",
+    ("GET", "/api/v1/urns/proof-approval/{token}"):
+        "Funeral-home engraving proof approval, 72h token. The FH is another "
+        "tenant's customer and has no account here.",
+    ("POST", "/api/v1/urns/proof-approval/{token}/approve"): "As above.",
+    ("POST", "/api/v1/urns/proof-approval/{token}/request-changes"): "As above.",
+    ("GET", "/api/v1/portal/family/{token}"):
+        "Family portal: the family has no account by design.",
+    ("POST", "/api/v1/portal/family/{token}/message"): "As above.",
+    ("POST", "/api/v1/portal/family/{token}/documents"): "As above.",
+    ("POST", "/api/v1/portal/family/{token}/obituary/approve"): "As above.",
+    ("GET", "/api/v1/portal/{tenant_slug}/personalization-studio/family-approval/{token}"):
+        "Family approval of a personalization design; token-as-auth.",
+    ("POST", "/api/v1/portal/{tenant_slug}/personalization-studio/family-approval/{token}"):
+        "As above.",
+    ("GET", "/api/v1/agents/approve/{token}"):
+        "Accounting-agent approval gate, 72h token emailed to the approver. "
+        "The token is the auth, by design (CLAUDE.md §11 approval gate).",
+    ("POST", "/api/v1/agents/approve/{token}"): "As above.",
+    ("GET", "/api/v1/calendar/actions/{token}"):
+        "Inline calendar action from an email; external attendee, no account.",
+    ("POST", "/api/v1/calendar/actions/{token}/commit"): "As above.",
+    ("GET", "/api/v1/email/actions/{token}"):
+        "Inline email action; same shape as the calendar one.",
+    ("POST", "/api/v1/email/actions/{token}/commit"): "As above.",
+    ("GET", "/api/v1/intake/{token}"):
+        "Disinterment intake form, token-scoped to one request.",
+    ("POST", "/api/v1/intake/{token}"): "As above.",
+    ("GET", "/api/v1/vault/calendar.ics"):
+        "iCal feed. Authenticated by `users.calendar_token` in the query "
+        "string, because a calendar client cannot send an Authorization "
+        "header. Documented at the site.",
+    ("GET", "/api/v1/integrations/ringcentral/events"):
+        "SSE stream. JWT in the query string because EventSource cannot send "
+        "headers; validated before the stream opens. Documented at the site.",
+
+    # ── the portal realm's own front door ─────────────────────────────────
+    ("GET", "/api/v1/portal/{tenant_slug}/branding"):
+        "Renders the branded login page before anyone has signed in.",
+    ("POST", "/api/v1/portal/{tenant_slug}/login"):
+        "Portal sign-in. Producing a session is the job.",
+    ("POST", "/api/v1/portal/{tenant_slug}/refresh"): "As above.",
+    ("POST", "/api/v1/portal/{tenant_slug}/password/recover/request"):
+        "Password recovery; generic responses, 1h single-use token.",
+    ("POST", "/api/v1/portal/{tenant_slug}/password/recover/confirm"): "As above.",
+
+    # ── provider callbacks: the provider is the caller, not a user ─────────
+    # ⚠️ Each verifies the provider's own signature or state parameter. That
+    # verification is the authorization; being on this list is not.
+    ("GET", "/api/v1/accounting/qbo/callback"):
+        "QuickBooks OAuth redirect. State parameter is verified.",
+    ("GET", "/api/v1/integrations/ringcentral/oauth/callback"):
+        "RingCentral OAuth redirect; state verified.",
+    ("GET", "/api/v1/legacy/auth/dropbox/callback"): "Dropbox OAuth redirect.",
+    ("GET", "/api/v1/legacy/auth/gdrive/callback"): "Google Drive OAuth redirect.",
+    ("POST", "/api/v1/integrations/ringcentral/webhook"):
+        "RingCentral webhook; signature-verified.",
+    ("POST", "/api/v1/docusign/webhook"): "DocuSign Connect webhook.",
+    ("POST", "/api/v1/email/webhooks/gmail"): "Gmail Pub/Sub push.",
+    ("POST", "/api/v1/email/webhooks/msgraph"): "MS Graph change notification.",
+    ("POST", "/api/v1/webhooks/twilio/sms"): "Twilio SMS status callback.",
+
+    # ── genuinely public surfaces ─────────────────────────────────────────
+    ("POST", "/api/v1/companies/register"):
+        "New-COMPANY signup. Refuses an existing slug with 409, so it cannot "
+        "add a user to a tenant that already exists — which is the distinction "
+        "`POST /auth/register` failed and was deleted for. ⚠️ Open follow-up in "
+        "STATE: no rate limit and no CAPTCHA, so it is a spam surface.",
+    ("GET", "/api/v1/intake-adapters/forms/{tenant_slug}/{form_slug}"):
+        "Public intake form render; CAPTCHA gates the write.",
+    ("POST", "/api/v1/intake-adapters/forms/{tenant_slug}/{form_slug}/submit"):
+        "Public intake submission; CAPTCHA-gated.",
+    ("GET", "/api/v1/intake-adapters/uploads/{tenant_slug}/{upload_slug}"):
+        "Public upload page render; CAPTCHA gates the write.",
+    ("POST", "/api/v1/intake-adapters/uploads/{tenant_slug}/{upload_slug}/presign"):
+        "Presigned R2 PUT, size- and type-capped; CAPTCHA-gated.",
+    ("POST", "/api/v1/intake-adapters/uploads/{tenant_slug}/{upload_slug}/complete"):
+        "Records a completed upload; CAPTCHA-gated.",
+    ("GET", "/api/v1/personalization/config"):
+        "Static platform config — tiers, prints, symbols. No database, no "
+        "tenant, no caller-supplied input.",
+}
+
+#: ⚠️ A path containing any of these may NEVER be unauthenticated, whatever
+#: reason someone writes beside it. `debug-network` described itself as a
+#: temporary diagnostic in its own docstring and lived long enough to be found
+#: by a census rather than by anyone needing it. A diagnostic belongs in a
+#: script under `railway run`, where an operator can reach it and the internet
+#: cannot.
+NEVER_UNAUTHENTICATED = ("debug", "diagnostic", "temp", "test-", "_test", "dev-only")
+
+
+def _unauthenticated_routes_live():
+    """Every (method, path) under /api/v1 reachable with no authenticated user."""
+    from fastapi.routing import APIRoute
+
+    from app.main import app
+
+    USER = {"get_current_user", "require_admin", "require_permission",
+            "get_current_portal_user", "get_current_platform_user"}
+
+    def deps(route):
+        out, seen = set(), set()
+
+        def walk(d):
+            if d is None or id(d) in seen:
+                return
+            seen.add(id(d))
+            call = getattr(d, "call", None)
+            if call is not None:
+                out.add(getattr(call, "__name__", repr(call)))
+            for sub in getattr(d, "dependencies", []) or []:
+                walk(sub)
+
+        walk(getattr(route, "dependant", None))
+        return out
+
+    found = set()
+    for r in app.routes:
+        if not isinstance(r, APIRoute) or not r.path.startswith("/api/v1/"):
+            continue
+        if deps(r) & USER:
+            continue
+        for m in (r.methods or set()) - {"HEAD", "OPTIONS"}:
+            found.add((m, r.path))
+    return found
+
+
+def test_every_unauthenticated_route_is_named():
+    """⚠️ THE RULE. A publicly-reachable route nobody listed is the defect.
+
+    Both of 2026-11-06's findings were routes in this set that no document
+    named and no test counted. The fix is not more vigilance; it is that the
+    set now has to be declared, so adding to it happens in a diff.
+    """
+    live = _unauthenticated_routes_live()
+    unlisted = sorted(f"{m} {p}" for m, p in live - set(UNAUTHENTICATED_ROUTES))
+    assert unlisted == [], (
+        "these routes are reachable with NO authenticated user and are named "
+        "nowhere:\n  " + "\n  ".join(unlisted) +
+        "\n\nAdd each to UNAUTHENTICATED_ROUTES with the reason it may be "
+        "public, or give it an auth dependency. A reason that does not survive "
+        "being read aloud against that specific route is the defect."
+    )
+    # ⚠️ NON-ZERO CONTROL: an empty `live` would satisfy the assertion above
+    # trivially and would mean the dependency walker had stopped working.
+    assert len(live) > 30, (
+        f"only {len(live)} unauthenticated routes found — the walker is broken, "
+        f"not the surface"
+    )
+
+
+def test_the_inventory_names_no_route_that_does_not_exist():
+    """⚠️ A stale entry pre-exempts a reinstatement, as with the sweep above.
+
+    If a public route is deleted and its entry is left behind, the entry is a
+    standing exemption waiting for somebody to re-add that path.
+    """
+    live = _unauthenticated_routes_live()
+    stale = sorted(f"{m} {p}" for m, p in set(UNAUTHENTICATED_ROUTES) - live)
+    assert stale == [], (
+        f"inventory entries naming routes that are not reachable "
+        f"unauthenticated: {stale}. Delete the entry — a leftover exemption "
+        f"waves through whoever re-adds that path."
+    )
+
+
+def test_no_diagnostic_route_is_ever_unauthenticated():
+    """⚠️ Not a judgement call. `debug-network` had a reason written on it too.
+
+    Its docstring said "Temporary endpoint" and "not consumed by production
+    flows", and it was unauthenticated SSRF with a billed AI call per request.
+    A diagnostic belongs in a script under `railway run`.
+    """
+    live = _unauthenticated_routes_live()
+    offenders = sorted(
+        f"{m} {p}" for m, p in live
+        if any(bad in p.lower() for bad in NEVER_UNAUTHENTICATED)
+    )
+    assert offenders == [], (
+        f"diagnostic-looking routes reachable with no authentication: "
+        f"{offenders}. Move it to a script under `railway run`; a route is "
+        f"reachable from the internet by definition."
+    )
+
+    # The control: the ban list is non-empty and actually matches something,
+    # so this cannot pass by comparing against an empty tuple.
+    assert NEVER_UNAUTHENTICATED
+    assert any(b in "/api/v1/website-intelligence/debug-network" for b in NEVER_UNAUTHENTICATED), \
+        "the ban list would not have caught the route that prompted it"

@@ -2,6 +2,41 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+  ## ⚠️ 2026-11-06 — RULE IN FORCE: no new Sunnycrest user on any role until that role has an area list
+
+  **James's ruling 4 of 2026-11-06. Payroll is the ONLY role open for invites.** Until Phase B sets a role's `limited_to_areas`, a user on that role reaches everything that requires only being signed in — measured as **1,012 of 1,918** tenant method+path pairs, 532 of them writes. So onboarding someone onto `office`, `driver`, `production`, `dispatcher` or `director` today hands them the whole surface, and it is the onboarding rather than the role that would cause it.
+
+  **Confirmed read-only on production 2026-11-06, which is what makes the ordering safe:**
+
+      role           real users across ALL tenants
+      office                      0
+      office_staff                0
+      driver                      0
+      production                  0
+      dispatcher                  0
+      director                    0
+      TOTAL                       0
+
+      sunnycrest: admin 1 (real, James) + payroll 1 (real, the test user)
+      everything else: testco / hopkins-fh / st-marys, all seeded
+
+  ⚠️ "Seeded" is decided by email domain (`@testco.com`, `.example.com`) and is a **HEURISTIC labelled as one** — a real user at such an address would be miscounted, and so would a seeded user at a real-looking one.
+
+  ⚠️ **AND PHASE A IS STILL A PREREQUISITE FOR PHASE B, WHICH THE ORDERING CHANGE DOES NOT REMOVE.** James's ruling 3 removes the *measurement* burden — with 0 real users there is nobody to lock out, so the before/after set comparison is no longer load-bearing for those roles. It does **not** remove the tagging. `KNOWN_AREAS` holds two entries and only the payroll-reports router carries an `area:` tag, so setting `office.limited_to_areas` today would leave an office user reaching the common set and nothing else. That locks out nobody who exists — and makes the role unusable **the moment somebody is onboarded onto it**, which is exactly when nobody is watching for it. So: A, then B, with B now able to follow immediately rather than waiting on a measured rollout.
+
+  ## 2026-11-06 — Phase D (the 532 group-3 writes): method proposed, nothing changed
+
+  **James's ruling 5: propose the method before touching them; nothing changes on writes this round.** The census probed GETs only, because **probing a write mutates the thing it is probing** — and a write surface cannot be measured the way a read surface can.
+
+  Proposed method, in preference order:
+
+  1. **Read, do not probe, for the irreversible ones.** For each of the 532, classify from the handler what it mutates. Slower than probing and it is the only approach that cannot damage anything. This is the bulk of the work and it is unavoidable.
+  2. **Probe on a DISPOSABLE tenant, never a shared one.** A tenant created for the run and deleted after, so a write that lands has nowhere to leak to. ⚠️ **Not `testco`** — it is the canonical manufacturing dev tenant that other suites depend on, and 287 tables carry an FK to `users`, so cleanup after a write sweep is not something to improvise. Measured this session: a cleanup covering 4 of those 287 tables left 3 rows behind.
+  3. **Ordering by blast radius, not by router size.** Writes that touch money or the books first (`/journal-entries`, `/statements`, `/tax`, `/finance-charges`, `/reconciliation`, `/price-management`, `/inter-licensee-pricing`), then writes that send things to people (`/email`, anything that dispatches), then configuration, then the rest.
+  4. **The area mechanism covers writes for free once a role is limited** — `enforce_area_limit` does not care about the method. So Phase B closes the write surface for a limited role at the same moment it closes the read surface, and Phase D is about knowing WHICH writes matter rather than about building a second guard.
+
+  ⚠️ **What this does not propose: a sweep that calls 532 write endpoints to see what happens.** That is how a census becomes an incident.
+
   ## ⚠️ 2026-11-06 — NEXT SECURITY ITEM, PROMOTED BY RULING: the 1,027 endpoints gated only by "is signed in"
 
   **James's ruling of 2026-11-06 moves this up.** It was the thing the `/auth/register` finding made urgent, and it outlives that finding: closing registration removes the easy way to GET such an account, and changes nothing about what one can reach.

@@ -5,7 +5,7 @@ import logging
 import threading
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_platform_role
@@ -154,80 +154,38 @@ def get_extension_suggestions(
 
 
 # ---------------------------------------------------------------------------
-# Network diagnostic (temporary)
+# ⚠️ `GET /website-intelligence/debug-network` WAS DELETED ON 2026-11-06.
+# DO NOT REINSTATE IT, AND DO NOT WRITE ANOTHER ONE LIKE IT.
+#
+# It required no sign-in, took an arbitrary `url`, and ran the full
+# intelligence pipeline on it. Per anonymous request that meant: the
+# production server fetching whatever address the caller named (SSRF), a
+# BILLED Claude call, an outbound probe to api.anthropic.com, and 500 chars
+# each of scraped content and traceback returned to the caller. No rate
+# limit, no tenant scoping — the execution row logged `company_id=None`.
+#
+# ⚠️ It also returned `ANTHROPIC_API_KEY[:10]`. That READS like a credential
+# leak and is not one — ten characters of an Anthropic key is `sk-ant-api`,
+# the public key-type prefix, and the adjacent `api_key_set` boolean already
+# said a key existed. Recorded precisely because overstating a finding is
+# its own defect.
+#
+# Deleted rather than gated, as with `POST /auth/register`: a temporary
+# diagnostic that no production flow consumes is not a capability worth
+# keeping behind a guard. Its own docstring said "Temporary endpoint" and
+# "not consumed by production flows", and it had been live long enough to be
+# found by a census rather than by anyone needing it.
+#
+# ⚠️ IF YOU NEED THIS DIAGNOSTIC AGAIN: run the pipeline from a script under
+# `railway run`, where it is reachable by an operator and by nobody else. A
+# route is the wrong shape for a diagnostic, because a route is reachable
+# from the internet by definition.
+#
+# Pinned by `test_debug_network_is_gone_and_stays_gone`, and by the
+# group-0 inventory in the same file, which refuses any route whose path
+# looks diagnostic. See
+# docs/investigations/2026-11-06-tenant-route-authorization-census.md.
 # ---------------------------------------------------------------------------
-
-
-@router.get("/website-intelligence/debug-network")
-def debug_network(
-    url: str = Query(..., description="URL to scrape for diagnostic purposes (required, no default)"),
-    db: Session = Depends(get_db),
-):
-    """Temporary endpoint: run the FULL intelligence pipeline synchronously.
-
-    R-8.4: URL must be supplied by the caller — no hardcoded tenant-named
-    default. Diagnostic endpoint; not consumed by production flows.
-    """
-    import traceback
-    results = {"requested_url": url}
-
-    # Test 1: Scrape
-    try:
-        from app.services.website_scraper_service import scrape_website
-        scrape_result = scrape_website(url)
-        results["scrape"] = f"OK: {len(scrape_result['pages_scraped'])} pages, {len(scrape_result['raw_content'])} chars"
-        results["scrape_preview"] = scrape_result["raw_content"][:500]
-    except Exception as e:
-        results["scrape"] = f"FAILED: {type(e).__name__}: {e}"
-        results["scrape_traceback"] = traceback.format_exc()[-500:]
-        return results
-
-    # Test 1b: Can we reach api.anthropic.com?
-    try:
-        import requests as _req
-        r = _req.get("https://api.anthropic.com", timeout=10)
-        results["anthropic_network"] = f"OK: {r.status_code}"
-    except Exception as e:
-        root = e
-        while root.__cause__ or root.__context__:
-            root = root.__cause__ or root.__context__
-        results["anthropic_network"] = f"FAILED: {type(root).__name__}: {root}"
-
-    # Test 1c: Check API key
-    from app.config import settings
-    results["api_key_set"] = bool(settings.ANTHROPIC_API_KEY)
-    results["api_key_prefix"] = settings.ANTHROPIC_API_KEY[:10] + "..." if settings.ANTHROPIC_API_KEY else "EMPTY"
-
-    # Test 2: Analyze
-    try:
-        from app.services.website_analysis_service import analyze_website_content
-        # Diagnostic endpoint — no tenant scoping; execution row logs with company_id=None
-        analysis = analyze_website_content(db, scrape_result["raw_content"])
-        results["analyze"] = f"OK: {analysis['input_tokens']} in / {analysis['output_tokens']} out tokens"
-        results["analysis_keys"] = list(analysis["analysis"].keys()) if isinstance(analysis["analysis"], dict) else str(type(analysis["analysis"]))
-        # Show vault lines
-        a = analysis["analysis"]
-        results["vault_lines"] = a.get("vault_lines", "not found")
-        results["product_lines"] = a.get("product_lines", "not found")
-        results["summary"] = a.get("summary", "not found")
-    except Exception as e:
-        results["analyze"] = f"FAILED: {type(e).__name__}: {e}"
-        results["analyze_traceback"] = traceback.format_exc()[-500:]
-        return results
-
-    # Test 3: DB write test
-    try:
-        from app.database import SessionLocal
-        from app.models.website_intelligence import TenantWebsiteIntelligence
-        db = SessionLocal()
-        # Just test we can query the table
-        count = db.query(TenantWebsiteIntelligence).count()
-        db.close()
-        results["db_table"] = f"OK: {count} records in tenant_website_intelligence"
-    except Exception as e:
-        results["db_table"] = f"FAILED: {type(e).__name__}: {e}"
-
-    return results
 
 
 # ---------------------------------------------------------------------------
