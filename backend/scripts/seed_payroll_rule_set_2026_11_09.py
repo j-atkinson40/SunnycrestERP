@@ -90,11 +90,49 @@ CHANGES: dict[str, tuple[object, dict[str, str]]] = {
 DISPUTED: dict[str, str] = {}
 
 
+#: The seed runner's exit-code contract (`scripts/run_canonical_seeds.sh`):
+#:   0  did the work, or there was nothing left to do
+#:   3  a declared SKIP — a prerequisite is absent. Never a warning.
+#:   2  a disputed key is being held. Deliberately a FAILURE: a money figure
+#:      nobody agreed must not scroll past in a boot log.
+#:   1  a real fault.
+EXIT_OK, EXIT_FAULT, EXIT_DISPUTED, EXIT_SKIP = 0, 1, 2, 3
+
+
+def decide_exit(*, tenants_with_a_rulebook: int, created: int,
+                already_had_it: int, disputed: bool) -> int:
+    """Which exit code this run earned.
+
+    ⚠️ **PULLED OUT BECAUSE I CONFLATED THREE OUTCOMES AND IT FAILED CI.** The
+    first version returned 1 whenever it created nothing, and "created nothing"
+    has three causes that could not be more different:
+
+      * no tenant has a rulebook at all — the PREREQUISITE is absent, which on
+        a fresh database is the normal state, not a fault. This is what
+        happened: the seed runner picked the script up as a boot seed, ran it
+        against an empty database, and a correct no-op was reported as
+        `seed_payroll_rule_set_2026_11_09 failed with exit code 1`.
+      * every tenant already has the target set — the seed is IDEMPOTENT and
+        this is success.
+      * something genuinely went wrong — a fault.
+
+    A pure function because the distinction is the thing worth testing, and
+    testing it should not need a database.
+    """
+    if tenants_with_a_rulebook == 0:
+        return EXIT_SKIP
+    if disputed:
+        return EXIT_DISPUTED
+    return EXIT_OK
+
+
 def main(commit: bool) -> int:
     db = SessionLocal()
     try:
         companies = db.query(Company).all()
         touched = 0
+        already = 0
+        carried_forward_from = 0
         for company in companies:
             current = (
                 db.query(PayrollRuleSet)
@@ -104,6 +142,7 @@ def main(commit: bool) -> int:
             )
             if current is None:
                 continue                      # no payroll rulebook on this tenant
+            carried_forward_from += 1
             existing = (
                 db.query(PayrollRuleSet)
                 .filter(PayrollRuleSet.tenant_id == company.id,
@@ -112,6 +151,7 @@ def main(commit: bool) -> int:
             )
             if existing is not None:
                 print(f"  {company.id}: a {EFFECTIVE} set already exists — skipped")
+                already += 1
                 continue
 
             # Copy the CURRENT set forward, then apply only the changes.
@@ -132,27 +172,45 @@ def main(commit: bool) -> int:
             db.add(row)
             touched += 1
 
-        if not touched:
-            print("⚠️  no tenant has a payroll rule set to carry forward — "
-                  "nothing was seeded, and that is a finding, not a success.")
-            return 1
-
-        if commit:
+        # ⚠️ **`touched == 0` HAS TWO CAUSES AND THEY ARE NOT THE SAME THING.**
+        # My first version returned 1 for both, which is how this script failed
+        # CI: the seed runner picked it up as a boot seed, ran it against a
+        # fresh database with no payroll rulebook anywhere, and read "nothing to
+        # carry forward" as a failure. A prereq that is absent is a SKIP; a
+        # target that is already in place is a SUCCESS; only a real fault is a
+        # failure. Conflating the three made an idempotent seed look broken on
+        # every fresh database.
+        verdict = decide_exit(tenants_with_a_rulebook=carried_forward_from,
+                              created=touched, already_had_it=already,
+                              disputed=bool(DISPUTED))
+        if verdict == EXIT_SKIP:
+            print("no tenant has a payroll rule set, so there is nothing to "
+                  "carry forward. Payroll is not configured on this database — "
+                  "this is a SKIP, not a failure. Seed a base rule set first.")
+            return EXIT_SKIP
+        if touched and commit:
             db.commit()
             print(f"\ncommitted: {touched} rule set(s) effective {EFFECTIVE}")
-        else:
+        elif touched:
             db.rollback()
             print(f"\ndry run: {touched} rule set(s) would be created. "
                   "Re-run with --commit.")
+        else:
+            db.rollback()
+            print(f"\nevery tenant with a rulebook ({already}) already has a "
+                  f"{EFFECTIVE} set. Nothing to do.")
 
+        # ⚠️ Exit 2 FAILS the seed runner, deliberately. A disputed key means a
+        # money figure nobody has agreed is sitting in a rulebook, and a boot
+        # log that scrolled past it would be the whole problem. It is empty
+        # today, so this path does not run.
         if DISPUTED:
             print("\n" + "=" * 70)
             print("⚠️  DISPUTED KEYS NOT SEEDED — these need a ruling:")
             for key, why in DISPUTED.items():
                 print(f"\n  {key}:\n    " + why.replace(". ", ".\n    "))
             print("=" * 70)
-            return 2        # non-zero: a disputed key is not a clean run
-        return 0
+        return verdict
     finally:
         db.close()
 

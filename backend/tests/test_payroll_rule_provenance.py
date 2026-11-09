@@ -137,10 +137,20 @@ def test_the_dispute_mechanism_survives_having_nothing_to_hold():
 
     assert isinstance(seed.DISPUTED, dict)
     assert seed.DISPUTED == {}, "update this test when something is disputed again"
-    # The machinery that acts on it is still present and still reachable.
-    source = io_read = __import__("inspect").getsource(seed.main)
-    assert "if DISPUTED:" in source
-    assert "return 2" in source, "a disputed key must still make the run non-clean"
+    # ⚠️ The machinery is asserted through its BEHAVIOUR, not by grepping the
+    # source for `return 2`. My first version did grep for it, and the refactor
+    # that moved the literal into `decide_exit` broke the test without
+    # weakening the rule it was guarding — a test that fails on a rename is a
+    # test that will be deleted rather than understood.
+    assert seed.decide_exit(tenants_with_a_rulebook=1, created=1,
+                            already_had_it=0, disputed=True) == seed.EXIT_DISPUTED
+    assert seed.EXIT_DISPUTED != seed.EXIT_OK, (
+        "a disputed key must still make the run non-clean"
+    )
+    assert "if DISPUTED:" in __import__("inspect").getsource(seed.main), (
+        "main() no longer reports the disputed keys, so a held value would be "
+        "invisible in the boot log even though the exit code was right"
+    )
 
 
 def test_every_disputed_key_explains_the_disagreement():
@@ -168,3 +178,78 @@ def test_from_registers_is_its_own_status_between_confirmed_and_assumed():
         "status": "from_registers",
         "source": "registers Nov 2026; contract to confirm",
     }
+
+
+# ── the seed runner's exit-code contract ─────────────────────────────────────
+#
+# ⚠️ **THIS SECTION EXISTS BECAUSE THE SEED FAILED CI AND THE BUG WAS MINE.**
+# `scripts/run_canonical_seeds.sh` picks the script up as a boot seed. It ran
+# against a fresh CI database with no payroll rulebook anywhere, created
+# nothing — correctly — and my code returned 1, so the boot log said
+# `seed_payroll_rule_set_2026_11_09 failed with exit code 1` and Backend CI went
+# red. "Created nothing" had three causes and I had given them one exit code.
+
+
+def test_a_fresh_database_with_no_rulebook_is_a_SKIP_not_a_failure():
+    """⚠️ The exact case that broke CI.
+
+    No tenant has a rule set, so there is nothing to carry forward. On a fresh
+    database that is the normal state. Exit 3 is the runner's declared-skip
+    contract: counted as skipped, never as a warning.
+    """
+    from scripts.seed_payroll_rule_set_2026_11_09 import EXIT_SKIP, decide_exit
+
+    assert decide_exit(tenants_with_a_rulebook=0, created=0,
+                       already_had_it=0, disputed=False) == EXIT_SKIP == 3
+
+
+def test_a_seed_that_has_already_run_is_a_SUCCESS():
+    """Idempotent. Every tenant already has the target set, so there is
+    nothing to do — and nothing wrong."""
+    from scripts.seed_payroll_rule_set_2026_11_09 import EXIT_OK, decide_exit
+
+    assert decide_exit(tenants_with_a_rulebook=3, created=0,
+                       already_had_it=3, disputed=False) == EXIT_OK == 0
+
+
+def test_doing_the_work_is_a_SUCCESS():
+    from scripts.seed_payroll_rule_set_2026_11_09 import EXIT_OK, decide_exit
+
+    assert decide_exit(tenants_with_a_rulebook=3, created=3,
+                       already_had_it=0, disputed=False) == EXIT_OK
+
+
+def test_a_disputed_key_FAILS_the_seed_runner_deliberately():
+    """⚠️ Not a skip. A money figure nobody agreed must not scroll past.
+
+    A disputed key means the rulebook is carrying a value because something had
+    to be there, not because it is agreed. That belongs in a red boot log.
+    """
+    from scripts.seed_payroll_rule_set_2026_11_09 import EXIT_DISPUTED, decide_exit
+
+    assert decide_exit(tenants_with_a_rulebook=3, created=3,
+                       already_had_it=0, disputed=True) == EXIT_DISPUTED == 2
+
+
+def test_the_prerequisite_check_comes_before_the_dispute_check():
+    """⚠️ Order matters, and the skip has to win.
+
+    A database with no payroll at all cannot have a disputed payroll rule.
+    Reporting a dispute there would be a red boot log on every fresh database
+    about a tenant that does not exist.
+    """
+    from scripts.seed_payroll_rule_set_2026_11_09 import EXIT_SKIP, decide_exit
+
+    assert decide_exit(tenants_with_a_rulebook=0, created=0,
+                       already_had_it=0, disputed=True) == EXIT_SKIP
+
+
+def test_the_four_exit_codes_are_distinct():
+    """Two outcomes sharing a code is how the three got conflated."""
+    from scripts.seed_payroll_rule_set_2026_11_09 import (
+        EXIT_DISPUTED, EXIT_FAULT, EXIT_OK, EXIT_SKIP)
+
+    codes = (EXIT_OK, EXIT_FAULT, EXIT_DISPUTED, EXIT_SKIP)
+    assert len(set(codes)) == 4, codes
+    # And 3 is the runner's contract, not an arbitrary choice.
+    assert EXIT_SKIP == 3
