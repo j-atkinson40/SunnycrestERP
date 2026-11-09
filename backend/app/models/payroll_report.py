@@ -89,6 +89,25 @@ class PayrollReportEmployee(Base):
     union_join_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     initiation_fee_due: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    # ⚠️ Payroll 4 Phase 4. A DIFFERENT FACT from `initiation_fee_due`, not a
+    # second copy of it: that one is forward-looking ("charge this member a fee
+    # next time dues arise"), this one records that a fee WAS charged, and when.
+    #
+    # It exists because Phase 2 needed it and could not have it. Six checks in
+    # the measured year carry dues exactly 10.00 above what the member's pay
+    # lines imply — the fee — but only 2 of the 6 are that member's first
+    # `Union` check in the register's window. So "first check seen" is a wrong
+    # rule: it would charge four established members a fee they had already
+    # paid, and would miss anyone whose membership began before whatever range
+    # of registers happened to be uploaded. Membership history is a fact about
+    # the person, so it lives here and `dues_for_check` takes the answer from
+    # its caller.
+    #
+    # NULLABLE ON PURPOSE: NULL means "not established", which is not the same
+    # as "never paid one" (CLAUDE.md §5).
+    initiation_fee_paid_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

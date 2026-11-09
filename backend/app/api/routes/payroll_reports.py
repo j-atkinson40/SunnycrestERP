@@ -48,6 +48,7 @@ from app.services.payroll import service as payroll_service
 from app.services.payroll.column_mapping import UnverifiedMapping, available_mappings
 from app.services.payroll.parsers import ExportParseError, ExportPayload
 from app.services.payroll.register_import import import_register
+from app.services.payroll.register_people import apply_fills, reconcile
 from app.services.payroll.register_parser import RegisterParseError
 from app.services.payroll.reports import to_csv
 from app.services.payroll.rules import RULE_FIELDS, RULE_STATUSES
@@ -578,3 +579,86 @@ def get_rule_sets(
             ),
         })
     return {"rule_sets": out, "statuses": list(RULE_STATUSES)}
+
+
+@router.post("/register/people/reconcile")
+def reconcile_register_people(
+    apply: bool = Form(False),
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Compare the imported register against the payroll roster.
+
+    Admin only, behind the payroll data switch. **Dry run unless `apply` is
+    true**, and even then only `fill` proposals are written.
+
+    ⚠️ **IT NEVER OVERWRITES A CURATED FACT.** Every fact the register
+    establishes is one somebody may have corrected by hand — a fixed display
+    name, a membership flag set for a member between vacation entitlements. So
+    a proposal is `fill` (the roster has nothing, nothing to lose), `agree`
+    (already says this), or `conflict` (they disagree and a person decides).
+    `conflict` is returned and never written.
+
+    ⚠️ **AND `is_union_member` ONLY EVER FILLS UPWARD.** A dues deduction
+    PROVES membership; its absence disproves nothing, because a member on
+    leave, between entitlements, or simply not paid in the uploaded range has
+    no dues line to show.
+    """
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    assert_payroll_data_enabled(company)
+
+    # ⚠️ RESOLVED PER CHECK DATE, AND IT REFUSES RATHER THAN FALLING BACK.
+    # `resolve_rule_set` deliberately raises when a tenant has no rule set
+    # effective on a date, because a dues figure computed from code defaults is
+    # a figure that cannot say which rules produced it. A register spans a year,
+    # so the rules are resolved per check rather than once.
+    def rules_for_date(when):
+        row = payroll_service.resolve_rule_set(db, current_user.company_id, when)
+        return payroll_service.rules_from_row(row)
+
+    try:
+        proposals, facts = reconcile(
+            db, tenant_id=current_user.company_id, rules_for_date=rules_for_date)
+    except payroll_service.PayrollError as exc:
+        # 409, not 500: the request is fine and the refusal is a stated one —
+        # this tenant has no rulebook covering the checks it has imported.
+        raise HTTPException(409, str(exc)) from exc
+
+    applied = []
+    if apply:
+        applied = apply_fills(db, tenant_id=current_user.company_id,
+                              proposals=proposals)
+        audit_service.log_action(
+            db,
+            current_user.company_id,
+            "payroll_register_people_reconciled",
+            "payroll_report_employee",
+            None,
+            user_id=current_user.id,
+            changes={"applied": [
+                {"emp_id": p.emp_id, "field": p.field, "value": str(p.register_says)}
+                for p in applied
+            ]},
+        )
+        db.commit()
+
+    def shape(p):
+        return {"emp_id": p.emp_id, "field": p.field,
+                "register_says": str(p.register_says),
+                "roster_says": None if p.roster_says is None else str(p.roster_says),
+                "verdict": p.verdict, "why": p.why}
+
+    return {
+        "employees_seen": len(facts),
+        "union_members_proved": sum(1 for f in facts.values() if f["is_union_member"]),
+        "applied": [shape(p) for p in applied],
+        "proposals": [shape(p) for p in proposals],
+        "conflicts": [shape(p) for p in proposals if p.verdict == "conflict"],
+        # ⚠️ Reported, never merged: an id with two printed names is either a
+        # parse fault or a real name change, and only a person can tell.
+        "ambiguous_names": {
+            emp_id: f["name_candidates"] for emp_id, f in facts.items()
+            if len(f["name_candidates"]) > 1
+        },
+        "dry_run": not apply,
+    }
