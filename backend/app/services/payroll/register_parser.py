@@ -445,8 +445,16 @@ def _totals_from_rows(rows: list[list[dict]]) -> dict[str, Decimal]:
                 amts = [x for x in tail if 250 <= x["x0"] < 290]
                 if amts:
                     out["earnings"] = _dec(amts[-1]["text"])
-            elif nxt == "Taxes" and tail:
-                out["taxes"] = _dec(tail[-1]["text"])
+            elif nxt == "Taxes":
+                # ⚠️ Band-scoped, like the other two. `tail[-1]` reads the LAST
+                # money token at or right of this `Total`, and the row also
+                # carries the DEDUCTIONS total further right — so the plain
+                # version silently returned the deduction total as the tax
+                # total. It went unnoticed because validation does not use the
+                # tax total; a reader would still have trusted it.
+                amts = [x for x in tail if 490 <= x["x0"] < 520]
+                if amts:
+                    out["taxes"] = _dec(amts[-1]["text"])
             elif nxt == "Deductions" and tail:
                 out["deductions"] = _dec(tail[-1]["text"])
     return out

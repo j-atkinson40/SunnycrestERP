@@ -774,3 +774,4 @@ tests/test_two_step_recovery_script.py
 # from the same place you write the code protects you from mistakes and not
 # from yourself. No database, no network, ~4s.
 tests/test_frontend_url_guard.py
+tests/test_payroll_register_parser.py
