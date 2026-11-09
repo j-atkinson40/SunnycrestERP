@@ -342,3 +342,176 @@ class PayrollWeekResult(Base):
     week = relationship("PayrollWeek", back_populates="results")
     employee = relationship("PayrollReportEmployee")
     rule_set = relationship("PayrollRuleSet")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Payroll 4 — the register. What was actually PAID.
+#
+# `payroll_weeks` and `payroll_week_lines` above hold the HOURS export: what we
+# are about to pay. These three hold the Payroll Register: the checks Payentry
+# issued, with their earnings, taxes and deductions exactly as printed. The two
+# are deliberately separate tables rather than one with a flag, because they
+# answer different questions and only one of them is authoritative about money
+# that left the building.
+# ─────────────────────────────────────────────────────────────────────────────
+
+CHECK_LINE_KINDS = ("earning", "tax", "deduction")
+
+
+class PayrollRegisterImport(Base):
+    """One upload of one register PDF, and what reading it produced.
+
+    ⚠️ **THE REPORT IS STORED, NOT JUST SHOWN.** `report` keeps the unknown
+    codes, the employee ids with more than one candidate name, and the
+    `Union`+`Sal` anomalies from this parse. An import whose anomalies were
+    only ever rendered into a response is an import nobody can audit later —
+    and these are exactly the findings that need a person, so they have to
+    outlive the request that produced them.
+
+    The PDF itself is NOT stored. It carries names, pay rates, child support
+    and garnishment lines; the parsed rows are what the reports need, and
+    keeping the source document would be a second copy of the most sensitive
+    file the tenant has.
+    """
+
+    __tablename__ = "payroll_register_imports"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    uploaded_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    #: The name the file arrived under, for tracing an import back to a
+    #: download. Not a path: nothing is written to disk.
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    pages: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    checks_parsed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    checks_inserted: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    #: Already present under the same idempotency key, so not inserted again.
+    checks_duplicate: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    checks_failed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    #: Page and company TOTAL blocks. Counted so "0 failures" cannot hide a
+    #: block-detection change that started swallowing real checks.
+    summary_blocks_skipped: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    report: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class PayrollCheck(Base):
+    """One check, as the register printed it.
+
+    ⚠️ **IDEMPOTENT ON (check number, check date, employee id).** The number
+    alone is not unique: off-cycle checks are first-class and a person can hold
+    more than one check on the same date. Re-uploading a register that overlaps
+    one already imported must change nothing, because the natural way to use
+    this is to pull a fresh year and upload it — and a dues figure that doubled
+    because a register was uploaded twice is the failure mode that matters.
+
+    ⚠️ **THE PRINTED TOTALS ARE STORED ALONGSIDE THE LINES, ON PURPOSE.** They
+    are what the parse was validated against, and keeping them means a later
+    reader can re-check the arithmetic without the PDF. A check whose lines
+    stop agreeing with its printed totals is a parse fault that can then be
+    found by a query rather than only at import time.
+    """
+
+    __tablename__ = "payroll_checks"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "check_number", "check_date", "emp_id",
+                         name="uq_payroll_check_tenant_number_date_emp"),
+        Index("ix_payroll_check_tenant_date", "tenant_id", "check_date"),
+        Index("ix_payroll_check_tenant_emp", "tenant_id", "emp_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    import_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("payroll_register_imports.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    #: The Payentry employee id, as printed. A string because it is an
+    #: identifier, not a quantity — leading zeros and any future prefix must
+    #: survive a round trip.
+    emp_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    #: The display name resolved for this employee at import, by frequency
+    #: across the register. Kept on the check because a register is a
+    #: historical document: the name it printed is the name it printed.
+    person: Mapped[str] = mapped_column(String(160), nullable=False, default="")
+
+    check_number: Mapped[str] = mapped_column(String(32), nullable=False)
+    check_date: Mapped[date] = mapped_column(Date, nullable=False)
+    #: "Reg", or an off-cycle label. Off-cycle checks count for dues.
+    check_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    batch: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    net: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
+    base_rate: Mapped[Decimal | None] = mapped_column(RATE, nullable=True)
+
+    printed_total_earnings: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
+    printed_total_hours: Mapped[Decimal | None] = mapped_column(HOURS, nullable=True)
+    printed_total_deductions: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
+
+    source_page: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    lines: Mapped[list["PayrollCheckLine"]] = relationship(
+        back_populates="check", cascade="all, delete-orphan"
+    )
+
+
+class PayrollCheckLine(Base):
+    """One earnings, tax or deduction line on a check.
+
+    ⚠️ **`ChSup1` AND `Garn` LIVE HERE AND NOWHERE ELSE.** Child support and
+    garnishment are real deductions and the register must import them, or a
+    check's deduction total will not add up. What they must never do is leave
+    the payroll area: they are readable line by line by a payroll user and they
+    never appear in a note, a summary, a report total or any Opas text outside
+    it. `SENSITIVE_DEDUCTION_CODES` names them and
+    `tests/test_sensitive_deduction_codes.py` holds the line.
+
+    ⚠️ **A NEGATIVE AMOUNT IS STORED NEGATIVE.** Reimbursements (`CellReimb`,
+    `BootReim`, `GasReim`, `Med2Reim`) are printed as negative deductions —
+    measured: 105 lines across the year. Storing the absolute value would
+    overstate total deductions by twice the reimbursement and break the
+    agreement with the printed total that validates the parse.
+    """
+
+    __tablename__ = "payroll_check_lines"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('earning', 'tax', 'deduction')",
+            name="ck_payroll_check_line_kind",
+        ),
+        Index("ix_payroll_check_line_check", "check_id"),
+        Index("ix_payroll_check_line_tenant_kind_code", "tenant_id", "kind", "code"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    check_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("payroll_checks.id", ondelete="CASCADE"), nullable=False
+    )
+
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    code: Mapped[str] = mapped_column(String(32), nullable=False)
+    description: Mapped[str] = mapped_column(String(160), nullable=False, default="")
+
+    hours: Mapped[Decimal | None] = mapped_column(HOURS, nullable=True)
+    rate: Mapped[Decimal | None] = mapped_column(RATE, nullable=True)
+    amount: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    check: Mapped["PayrollCheck"] = relationship(back_populates="lines")

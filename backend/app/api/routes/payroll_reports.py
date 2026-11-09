@@ -47,6 +47,8 @@ from app.models.user import User
 from app.services.payroll import service as payroll_service
 from app.services.payroll.column_mapping import UnverifiedMapping, available_mappings
 from app.services.payroll.parsers import ExportParseError, ExportPayload
+from app.services.payroll.register_import import import_register
+from app.services.payroll.register_parser import RegisterParseError
 from app.services.payroll.reports import to_csv
 from app.services.payroll.validation import summarize
 
@@ -431,3 +433,94 @@ def set_data_enabled(
     )
     db.commit()
     return {"setting": PAYROLL_DATA_ENABLED, "enabled": bool(enabled), "changed": True}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Payroll 4 Phase 1 — the register upload.
+#
+# ⚠️ **UPLOAD ONLY. NOTHING HERE READS PAYENTRY.** James's ruling: the register
+# arrives as a file a person downloaded and chose to upload. There is no
+# Payentry credential in this process, no scheduled pull, and no outbound call
+# of any kind — so there is nothing here to be given a credential later by
+# accident.
+# ─────────────────────────────────────────────────────────────────────────────
+
+#: A year of registers for one licensee is ~2 MB of PDF. 25 allows several
+#: years in one file without allowing a wrong file to be read into memory.
+MAX_REGISTER_BYTES = 25 * 1024 * 1024
+
+
+@router.post("/register/upload")
+async def upload_register(
+    file: UploadFile = File(...),
+    # ⚠️ ADMIN ONLY, NOT payroll.view — the same reasoning as the hours
+    # upload above. Importing a register is the act that brings paid-wage data
+    # into existence, and the payroll reviewer never needs to do it.
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Import a Payentry Payroll Register PDF.
+
+    Admin only, and refused outright for a tenant whose payroll data switch is
+    off. Idempotent on (check number, check date, employee id): re-uploading an
+    overlapping range counts the duplicates and changes nothing.
+
+    The response carries the import report — unknown codes, employee ids with
+    more than one candidate name, checks carrying both salary and union dues,
+    and any check that did not add up. All of it is also stored on the import
+    row, because a finding that lives only in a response body is a finding
+    nobody can audit later.
+    """
+    content = await file.read()
+    if len(content) > MAX_REGISTER_BYTES:
+        raise HTTPException(413, f"Register exceeds {MAX_REGISTER_BYTES} bytes")
+    if not content:
+        raise HTTPException(422, "Register is empty")
+
+    # ⚠️ THE DATA SWITCH, CHECKED BEFORE THE BYTES ARE INTERPRETED. Off by
+    # default per tenant. A register is the most sensitive payroll file there
+    # is — names, pay rates, child support, garnishments — so the switch gates
+    # it for the same reason it gates the hours export, and first.
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    assert_payroll_data_enabled(company)
+
+    try:
+        result = import_register(
+            db,
+            tenant_id=current_user.company_id,
+            content=content,
+            filename=file.filename or "register.pdf",
+            uploaded_by_user_id=current_user.id,
+        )
+    except RegisterParseError as exc:
+        # 422, not 500: the request is well-formed and the refusal is a stated
+        # one — this file is not a readable Payroll Register.
+        raise HTTPException(422, str(exc)) from exc
+
+    audit_service.log_action(
+        db,
+        current_user.company_id,
+        "payroll_register_imported",
+        "payroll_register_import",
+        result.import_id,
+        user_id=current_user.id,
+        changes={
+            "filename": file.filename,
+            "pages": result.pages,
+            "checks_inserted": result.checks_inserted,
+            "checks_duplicate": result.checks_duplicate,
+            "checks_failed": result.checks_failed,
+        },
+    )
+    db.commit()
+
+    return {
+        "import_id": result.import_id,
+        "pages": result.pages,
+        "checks_parsed": result.checks_parsed,
+        "checks_inserted": result.checks_inserted,
+        "checks_duplicate": result.checks_duplicate,
+        "checks_failed": result.checks_failed,
+        "summary_blocks_skipped": result.summary_blocks_skipped,
+        "report": result.report,
+    }
