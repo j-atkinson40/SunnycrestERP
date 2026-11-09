@@ -543,3 +543,75 @@ class PayrollCheckLine(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     check: Mapped["PayrollCheck"] = relationship(back_populates="lines")
+
+
+#: The R-115's status flow. Forward only, and `filed` is TERMINAL — the same
+#: discipline as an approved payroll week, for the same reason: once a figure
+#: has been sent to the union, changing the record of what was sent is not an
+#: edit, it is a second filing. A correction is a new form, not a mutation.
+R115_STATUSES = ("draft", "submitted", "filed")
+
+#: Which status may follow which. Absent from this map means "nowhere" —
+#: `filed` is terminal by having no entry rather than by a special case.
+R115_TRANSITIONS: dict[str, tuple[str, ...]] = {
+    "draft": ("submitted",),
+    "submitted": ("filed", "draft"),
+}
+
+
+class PayrollUnionFormR115(Base):
+    """One month's union remittance form, and where it is in its flow.
+
+    ⚠️ **THE SNAPSHOT IS THE RECORD, NOT A CACHE.** `rows` holds the table as
+    it stood when the form was submitted. Recomputing it later from
+    `payroll_checks` would give a DIFFERENT answer the moment a register for
+    an overlapping range is imported, or a check is corrected — and then
+    nothing in the system would say what was actually sent to the union. A form
+    that cannot reproduce its own filing is not a record of a filing.
+
+    ⚠️ Keyed on (tenant, year, month) so one month has one form. A correction
+    is a new form with a later `supersedes` link, never an edit to a filed one.
+    """
+
+    __tablename__ = "payroll_union_forms_r115"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "year", "month", "superseded_by_id",
+                         name="uq_payroll_r115_tenant_year_month"),
+        CheckConstraint(
+            "status IN ('draft', 'submitted', 'filed')",
+            name="ck_payroll_r115_status",
+        ),
+        CheckConstraint("month >= 1 AND month <= 12", name="ck_payroll_r115_month"),
+        Index("ix_payroll_r115_tenant_period", "tenant_id", "year", "month"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    month: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="draft")
+
+    member_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_dues: Mapped[Decimal] = mapped_column(MONEY, nullable=False,
+                                                default=Decimal("0.00"))
+    total_hours: Mapped[Decimal] = mapped_column(HOURS, nullable=False,
+                                                 default=Decimal("0"))
+    #: The table as filed, with its own meta — including the check dates it
+    #: covered, so a reader can check them against the payroll calendar.
+    rows: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+    #: A correction supersedes rather than replaces. NULL on the live form, so
+    #: the unique key admits any number of superseded ones.
+    superseded_by_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+    submitted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+    filed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now)

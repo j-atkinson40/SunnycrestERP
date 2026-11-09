@@ -42,13 +42,19 @@ from app.services.payroll.data_gate import (
     assert_payroll_data_enabled,
     is_payroll_data_enabled,
 )
-from app.models.payroll_report import PayrollRuleSet, PayrollWeek
+from app.models.payroll_report import (
+    R115_STATUSES,
+    PayrollRuleSet,
+    PayrollUnionFormR115,
+    PayrollWeek,
+)
 from app.models.user import User
 from app.services.payroll import service as payroll_service
 from app.services.payroll.column_mapping import UnverifiedMapping, available_mappings
 from app.services.payroll.parsers import ExportParseError, ExportPayload
 from app.services.payroll.register_import import import_register
 from app.services.payroll.register_people import apply_fills, reconcile
+from app.services.payroll import r115 as r115_service
 from app.services.payroll.register_parser import RegisterParseError
 from app.services.payroll.reports import to_csv
 from app.services.payroll.rules import RULE_FIELDS, RULE_STATUSES
@@ -662,3 +668,159 @@ def reconcile_register_people(
         },
         "dry_run": not apply,
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Payroll 4 Phase 6 — the R-115 union remittance form.
+#
+# ⚠️ Two remittance reports exist on purpose and are named distinctly:
+#   `monthly_dues_remittance`  — from the HOURS export: dues the rules IMPLY
+#   `union_remittance_r115`    — from the REGISTER: dues actually DEDUCTED
+# They disagree on 76 checks in a measured year. The form sent to the union
+# must state what was taken; the other report is how you learn whether what
+# was taken was right. Collapsing them would lose that.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _form_shape(form: PayrollUnionFormR115) -> dict:
+    return {
+        "id": form.id,
+        "year": form.year,
+        "month": form.month,
+        "status": form.status,
+        "member_count": form.member_count,
+        "total_dues": str(form.total_dues),
+        "total_hours": str(form.total_hours),
+        "submitted_at": form.submitted_at.isoformat() if form.submitted_at else None,
+        "filed_at": form.filed_at.isoformat() if form.filed_at else None,
+        "superseded_by_id": form.superseded_by_id,
+        "table": form.rows,
+    }
+
+
+@router.get("/r115/preview")
+def preview_r115(
+    year: int = Query(...),
+    month: int = Query(..., ge=1, le=12),
+    # Reading the form is the payroll reviewer's job, so `payroll.view` —
+    # unlike the register upload, which brings the data into existence.
+    current_user: User = Depends(require_permission("payroll.view")),
+    db: Session = Depends(get_db),
+):
+    """The R-115 as it would be for one month. Stores nothing.
+
+    Always grouped by CHECK DATE, and not by a setting: a register has a check
+    date and carries no week-end date at all, so the alternative is not a
+    choice here, it is unavailable.
+    """
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    assert_payroll_data_enabled(company)
+    table = r115_service.preview(
+        db, tenant_id=current_user.company_id, year=year, month=month)
+    return {
+        "report_key": table.report_key,
+        "columns": list(table.columns),
+        "rows": list(table.rows),
+        "totals": table.totals,
+        "meta": table.meta,
+    }
+
+
+@router.post("/r115")
+def build_r115(
+    year: int = Form(...),
+    month: int = Form(..., ge=1, le=12),
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Create or refresh this month's DRAFT form from the register.
+
+    A submitted or filed form is never rebuilt in place — it refuses with 409,
+    the same way an approved payroll week refuses recalculation. The stored
+    table is the record of what was sent; rebuilding it would replace that
+    record with today's answer.
+    """
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    assert_payroll_data_enabled(company)
+    try:
+        form = r115_service.build(
+            db, tenant_id=current_user.company_id, year=year, month=month)
+    except r115_service.R115Error as exc:
+        raise HTTPException(409, str(exc)) from exc
+    audit_service.log_action(
+        db, current_user.company_id, "payroll_r115_built",
+        "payroll_union_form_r115", form.id, user_id=current_user.id,
+        changes={"year": year, "month": month,
+                 "member_count": form.member_count,
+                 "total_dues": str(form.total_dues)},
+    )
+    db.commit()
+    return _form_shape(form)
+
+
+@router.post("/r115/{form_id}/status")
+def advance_r115(
+    form_id: str,
+    to_status: str = Form(...),
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Move the form through draft -> submitted -> filed.
+
+    `filed` is terminal. A correction is a NEW form that supersedes this one,
+    never a change to it: a filed figure that can be overwritten is not
+    evidence of anything.
+    """
+    form = (
+        db.query(PayrollUnionFormR115)
+        .filter(PayrollUnionFormR115.id == form_id,
+                PayrollUnionFormR115.tenant_id == current_user.company_id)
+        .first()
+    )
+    if form is None:
+        raise HTTPException(404, "no such R-115 form")
+    before = form.status
+    try:
+        r115_service.advance(db, form, to_status)
+    except r115_service.R115Error as exc:
+        raise HTTPException(409, str(exc)) from exc
+    audit_service.log_action(
+        db, current_user.company_id, "payroll_r115_status_changed",
+        "payroll_union_form_r115", form.id, user_id=current_user.id,
+        changes={"status": {"before": before, "after": form.status}},
+    )
+    db.commit()
+    return _form_shape(form)
+
+
+@router.post("/r115/{form_id}/supersede")
+def supersede_r115(
+    form_id: str,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Replace a submitted or filed form with a fresh draft correction.
+
+    The old form keeps its stored table and gains `superseded_by_id`, so the
+    record of what was sent survives the correction.
+    """
+    form = (
+        db.query(PayrollUnionFormR115)
+        .filter(PayrollUnionFormR115.id == form_id,
+                PayrollUnionFormR115.tenant_id == current_user.company_id)
+        .first()
+    )
+    if form is None:
+        raise HTTPException(404, "no such R-115 form")
+    try:
+        replacement = r115_service.supersede(db, form)
+    except r115_service.R115Error as exc:
+        raise HTTPException(409, str(exc)) from exc
+    audit_service.log_action(
+        db, current_user.company_id, "payroll_r115_superseded",
+        "payroll_union_form_r115", form.id, user_id=current_user.id,
+        changes={"superseded_by": replacement.id},
+    )
+    db.commit()
+    return {"superseded": _form_shape(form), "replacement": _form_shape(replacement),
+            "statuses": list(R115_STATUSES)}

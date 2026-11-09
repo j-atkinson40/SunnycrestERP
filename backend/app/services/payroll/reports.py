@@ -313,3 +313,112 @@ def to_csv(table: ReportTable) -> str:
                 total_row.append("" if v is None else v)
         writer.writerow(total_row)
     return buf.getvalue()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Payroll 4 Phase 6 — the R-115 union remittance form.
+#
+# ⚠️ **THIS IS A SECOND REPORT, NOT A REPLACEMENT.** James's ruling: keep both,
+# named distinctly. `monthly_dues_remittance` above is built from the HOURS
+# export and reports dues the rules IMPLY — it is the figure to check a
+# deduction against. `union_remittance_r115` is built from the REGISTER and
+# reports dues that were actually DEDUCTED. They answer different questions and
+# they disagree on 76 checks in a year, which is precisely why both are needed:
+# the form filed with the union must say what was taken, and the other report
+# is how you find out whether what was taken was right.
+#
+# ⚠️ **ALWAYS GROUPED BY CHECK DATE, AND NOT BY A SETTING.** A register has a
+# check date and carries no week-end date at all, so `week_end_date` is not a
+# choice here — it is unavailable. `monthly_dues_remittance` keeps the setting
+# because its source has both.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class R115Row:
+    """One check's union deduction, as the register recorded it."""
+
+    emp_id: str
+    display_name: str
+    check_date: date
+    check_number: str
+    dues_deducted: Decimal
+    dues_hours: Decimal
+
+
+def union_remittance_r115(
+    rows: list[R115Row], *, year: int, month: int
+) -> ReportTable:
+    """Per member, the union dues actually deducted in one calendar month.
+
+    ⚠️ **A MEMBER WITH NO DEDUCTION IN THE MONTH DOES NOT APPEAR.** The form
+    reports money taken; a member who was not paid, or was paid with no dues
+    line, has nothing to remit. Their absence is visible in `meta` as a
+    `check_dates_included` list a reader can compare against the payroll
+    calendar, rather than as a silently shorter table.
+    """
+    per_member: dict[str, dict] = {}
+    dates_seen: set = set()
+    considered = 0
+
+    for row in rows:
+        if row.check_date is None:
+            raise ValueError(
+                f"check {row.check_number or '?'} for employee {row.emp_id} has "
+                "no check date; an R-115 row cannot be placed in a month "
+                "without one"
+            )
+        if (row.check_date.year, row.check_date.month) != (year, month):
+            continue
+        considered += 1
+        dates_seen.add(row.check_date)
+        slot = per_member.setdefault(row.emp_id, {
+            "emp_id": row.emp_id,
+            "display_name": row.display_name,
+            "checks": 0,
+            "_dues": ZERO,
+            "_hours": ZERO,
+        })
+        slot["checks"] += 1
+        slot["_dues"] += row.dues_deducted
+        slot["_hours"] += row.dues_hours
+
+    out = []
+    # Sorted by employee id NUMERICALLY where it is a number, so 10 does not
+    # sort before 2 on a form somebody reads down a column.
+    def sort_key(slot):
+        eid = slot["emp_id"]
+        return (0, int(eid), "") if eid.isdigit() else (1, 0, eid)
+
+    for slot in sorted(per_member.values(), key=sort_key):
+        out.append({
+            "emp_id": slot["emp_id"],
+            "display_name": slot["display_name"],
+            "checks": slot["checks"],
+            "dues_hours": fmt_exact(slot["_hours"]),
+            "dues_deducted": _money(slot["_dues"]),
+        })
+
+    columns = (
+        ("emp_id", "Emp #"),
+        ("display_name", "Name"),
+        ("checks", "Checks"),
+        ("dues_hours", "Hours"),
+        ("dues_deducted", "Dues deducted"),
+    )
+    totals = {
+        "row_count": len(out),
+        "dues_deducted": _money(sum((Decimal(r["dues_deducted"]) for r in out), ZERO)),
+        "dues_hours": fmt_exact(sum((Decimal(r["dues_hours"]) for r in out), ZERO)),
+    }
+    meta = {
+        "year": year,
+        "month": month,
+        # Stated rather than configurable: see the section comment above.
+        "group_by": "check_date",
+        "check_dates_included": sorted(d.isoformat() for d in dates_seen),
+        "check_rows_considered": considered,
+        "check_rows_available": len(rows),
+        "source": "payroll register — dues actually deducted",
+    }
+    return ReportTable("union_remittance_r115", columns, tuple(out), totals, meta)

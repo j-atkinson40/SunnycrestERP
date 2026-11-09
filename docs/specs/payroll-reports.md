@@ -497,3 +497,84 @@ name per employee id is resolved by frequency, and any id with a second
 candidate is **reported, never merged**: a real name change is possible and only
 a person can tell it from a parse fault. Measured after the fix: 30 ids, 30
 names, 0 ambiguous.
+
+### 11.7 Phase 4 — people facts, proposed not written
+
+The register is the only record of which employee ids were paid, what names
+were printed beside them, which had dues taken, and when a member was charged
+an initiation fee. `payroll_report_employees` already carried every one of
+those fields except the last, so the register **populates** them.
+
+One column is new: `initiation_fee_paid_date`. It is not a second copy of
+`initiation_fee_due` — that one is forward-looking ("charge a fee next time
+dues arise"), this one is historical ("a fee was charged, on this date").
+
+Reconciliation returns **proposals**, never writes: `fill` (the roster has
+nothing), `agree`, or `conflict`. Only `fill` is applied, and only on request.
+`is_union_member` fills **upward only** — a dues line proves membership, its
+absence disproves nothing, because a member on leave or between entitlements
+has no dues line to show.
+
+Measured: 30 employee ids, 18 with membership proved, 0 ambiguous names, 6 with
+an initiation fee observed (one date each, no conflicts).
+
+### 11.8 Phase 6 — the R-115, beside the existing remittance report
+
+| report_key | source | says |
+|---|---|---|
+| `monthly_dues_remittance` | hours export | dues the rules **imply** |
+| `union_remittance_r115` | register | dues actually **deducted** |
+
+Both are kept (James, 2026-11-09). They disagree on 76 of 629 checks, which is
+why: the form filed with the union must state what was taken, and the other
+report is how you learn whether what was taken was right.
+
+The R-115 is **always grouped by check date** and that is not a setting — a
+register has a check date and carries no week-end date, so the alternative is
+unavailable rather than unselected. `monthly_dues_remittance` keeps its setting
+because its source has both dates.
+
+Status flow `draft -> submitted -> filed`, with one step back from `submitted`.
+`filed` is **terminal**, enforced by having no entry in `R115_TRANSITIONS`
+rather than by a branch — a terminal state guarded by an `if` can be bypassed
+by whoever adds the next `elif`. A correction is a **new form** that supersedes
+the old one, which keeps its own stored table: the stored rows are the record of
+what was sent, not a cache of a query, because recomputing a filed month gives a
+different answer as soon as an overlapping register is imported.
+
+October 2026 local check (`scripts/check_r115_october.py`), by check date:
+five check dates — Oct 1, 8, 15, 22, 29, exactly as the ruling named — 61 check
+rows, 13 members, 2,731.14 hours, **979.73** dues.
+
+### 11.9 OPEN — `vacation_bonus` tiers are DISPUTED, and Phase 5 waits on them
+
+Phase 5 (vacation pay) is **not built**, because the figure it would compute
+with is not agreed. See the `disputed` provenance on `vacation_bonus` and
+§11.10.
+
+The register also shows that vacation pay and the vacation bonus are **two
+separate earning lines** (`Vac` and `VacBonus`), each rounded to the cent on its
+own — not one combined amount. The current formula in §3.1 adds the bonus inside
+a single `round2(...)`, which is a different computation and can differ by a
+cent. This is the shape of the correction already noted for the spec
+(975.47 -> 900.46 + 75.00 = 975.46).
+
+### 11.10 The measured vacation bonus
+
+Paid as a **total per vacation entitlement**, in equal instalments alongside
+each vacation week:
+
+| entitlement | total | as paid |
+|---|---|---|
+| one week (40 h) | 75.00 | once |
+| one week (48 h) | 85.00 | once |
+| two weeks | 125.00 | 62.50 x2, or 125.00 once |
+| three weeks | 155.00 | 51.67 / 51.66 / 51.67 |
+| four weeks | 155.00 | 38.75 x4 |
+
+One week at 75.00 and three weeks at 155.00 agree with the dispatch. A **second
+week does not**: the registers say the two-week total is 125.00, not
+75.00 + 30.00 = 105.00. The 48-hour week at 85.00 is a shape the dispatch does
+not describe, suggesting the bonus may be a function of vacation **hours**
+rather than whole weeks. Four weeks paying the same as three suggests 155.00 is
+a ceiling.
