@@ -25,6 +25,26 @@ same visual row belongs to three different records. Measured on the real file
     520 - 670   DEDUCTIONS  code@530 desc@567            amount@642
     x >= 670    per-check metadata, by label
 
+⚠️ **A CODE GLUED TO ITS DESCRIPTION IS SPLIT BY CHARACTER POSITION, NOT BY
+GUESSING A PREFIX.** When a code fills its column the renderer emits no space,
+so `extract_words` returns `MedicalPTMedical` as one token. The first version
+split these against a list of known codes, which cannot work: the list is what
+you are trying to discover, so an unknown glued code stays glued and is
+reported as an unknown code that does not exist. The description column starts
+at a FIXED x in every band (115 earnings, 335 taxes, 567 deductions) and the
+code never overlaps it, so the characters themselves say where the code ends.
+Measured: `MedicalPTMedical` -> `MedicalPT` + `Medical`, `HSAEEIndHealth` ->
+`HSAEEInd` + `Health`, `Med2ReimMedical` -> `Med2Reim` + `Medical`,
+`HealthInsSHealth` -> `HealthInsS` + `Health`.
+
+⚠️ **THE PERSON NAME IS READ FROM THE ROWS ABOVE `Emp Id`, AND NOTHING ELSE.**
+The first version swept every left-band row in the block, which on the LAST
+block of each page also swallowed the page footer — 256 pages of it. The result
+was 72 distinct "people" for 30 employees, with 29 ids carrying more than one
+name. The name occupies exactly the rows between the block header and the
+`Emp Id` row: surname on the first, given name and middle initial on the
+second. Rows at or after `Emp Id` are never name.
+
 ⚠️ **EVERY CHECK IS VALIDATED AND A FAILURE IS NEVER SILENTLY KEPT.** The sum
 of a check's earnings must equal its printed Total Earnings, and the sum of its
 deductions its printed Total Deductions. A register that does not add up means
@@ -49,20 +69,58 @@ BAND_META = (670.0, 10_000.0)
 #: line height, so it joins a line and never joins two.
 ROW_TOLERANCE = 3.5
 
-#: Earnings codes the register is known to use. An unknown code is REPORTED,
-#: never dropped — a code nobody has seen is either a new pay type or a parse
-#: fault, and both need a person to look.
+#: (code column x, description column x) for the earnings, tax and deduction
+#: bands. A token that STARTS at a code x and reaches past its description x
+#: has a code glued to its description; see the module docstring.
+#:
+#: ⚠️ **"STARTS AT THE CODE COLUMN" IS LOAD-BEARING.** Crossing the description
+#: x is not on its own enough: the printed label `Total Earnings` puts
+#: `Earnings` at x=97, which reaches past 115 and is one word. Splitting on
+#: crossing alone cut it to `Earn` + `ings`, `_totals_from_rows` then found no
+#: `Earnings` after `Total`, every printed total read as None, and all 1,275
+#: checks failed with "block boundaries are wrong" — a reason that named
+#: neither the cause nor the column. A real glued code always begins exactly
+#: where its column begins.
+CODE_AND_DESC_X = ((78.0, 115.0), (297.0, 335.0), (530.0, 567.0))
+
+#: How far a token's x0 may sit from its code column and still be that column.
+CODE_COLUMN_TOLERANCE = 1.5
+
+#: Earnings codes, measured across the full year (1,275 checks). An unknown
+#: code is REPORTED, never dropped — a code nobody has seen is either a new pay
+#: type or a parse fault, and both need a person to look.
 KNOWN_EARNING_CODES = frozenset({
-    "Reg", "OT", "PTO", "Sick", "Vac", "VacBonus", "Ber", "Hol",
-    "Winter", "Bonus", "Comm", "HealthInsS",
-    # ⚠️ `Sal` IS NOT IN THE BRIEF'S EXPECTED LIST AND APPEARS 260 TIMES.
-    # Salaried pay, measured on the real register across the year. Added
-    # because a code this common is not an anomaly to report every import —
-    # but FLAGGED here rather than folded in silently, because the brief's
-    # list came from James reading the registers and this one was missed.
-    "Sal",
+    "Reg", "OT", "Sal", "PTO", "Vac", "Sick", "Comm", "HealthInsS",
+    "Bonus", "Hol", "Ber", "Winter",
+    #: Not seen in the year parsed, but named in the brief and expected by
+    #: Phase 5. Kept so its first appearance is not reported as an anomaly.
+    "VacBonus",
 })
-KNOWN_DEDUCTION_CODES = frozenset({"Union"})
+
+#: Deduction codes, measured across the full year. Thirteen, of which `Union`
+#: is the only one that affects dues.
+KNOWN_DEDUCTION_CODES = frozenset({
+    "Union",
+    "MedicalPT", "401k", "Kloan", "HSAEEInd", "CellReimb", "CafMed",
+    "ChSup1", "Roth401K", "Garn", "Med2Reim", "BootReim", "GasReim",
+})
+
+#: ⚠️ **SENSITIVE. LINE-LEVEL ONLY, PAYROLL AREA ONLY.** Child support and
+#: garnishment are a person's private legal circumstances. They are stored and
+#: shown on the check they belong to, inside the payroll area, and they never
+#: appear in a home note, a summary, a report total or any Opas text outside
+#: the payroll area. `test_sensitive_deduction_codes.py` holds that line.
+SENSITIVE_DEDUCTION_CODES = frozenset({"ChSup1", "Garn"})
+
+#: The only deduction that is union dues.
+DUES_DEDUCTION_CODE = "Union"
+
+#: Earning codes that are NOT dues wage and NOT dues hours.
+#:   `Sal` — salaried pay. Union members are hourly, so a check carrying both
+#:           a Union deduction and a Sal line is an anomaly, reported by name.
+#:   `Sick` — settled by the accountant on 2026-11-03: out of both dues wage
+#:           and dues hours. The rulebook key `sick_in_dues_hours` is False.
+DUES_EXCLUDED_EARNING_CODES = frozenset({"Sal", "Sick"})
 
 _MONEY = re.compile(r"^-?[\d,]+\.\d{2}$")
 _HOURS = re.compile(r"^-?[\d,]+\.\d{2}$")
@@ -125,10 +183,32 @@ class RegisterParseResult:
     #: Page/company TOTAL blocks skipped — reported so "0 failures" cannot hide
     #: a block-detection change that started swallowing real checks.
     summary_blocks: int = 0
+    #: One display name per Emp Id, chosen by frequency.
+    display_names: dict[str, str] = field(default_factory=dict)
+    #: Every name seen per Emp Id, with counts. More than one entry is
+    #: REPORTED, never merged — see `resolve_display_names`.
+    name_candidates: dict[str, dict[str, int]] = field(default_factory=dict)
+    #: Tokens that straddled a description column but could not be split from
+    #: their own characters. Counted so a layout change is visible.
+    unsplit_glued_tokens: int = 0
 
     @property
     def people(self) -> set[str]:
         return {c.emp_id or c.person for c in self.checks}
+
+    @property
+    def ambiguous_names(self) -> dict[str, dict[str, int]]:
+        """Emp Ids carrying more than one candidate name."""
+        return {k: v for k, v in self.name_candidates.items() if len(v) > 1}
+
+    @property
+    def union_people(self) -> set[str]:
+        """Emp Ids with at least one `Union` deduction line."""
+        return {
+            c.emp_id for c in self.checks
+            if c.emp_id and any(l.kind == "deduction" and l.code == DUES_DEDUCTION_CODE
+                                for l in c.lines)
+        }
 
 
 def _dec(text: str) -> Decimal | None:
@@ -196,19 +276,52 @@ def unglue_amount(token: str) -> tuple[str, Decimal | None]:
     return (letters, val) if val is not None else (token, None)
 
 
-def split_glued_code(token: str, known: frozenset[str]) -> tuple[str, str]:
-    """Separate a code from a description printed over it.
+def split_glued_tokens(
+    words: list[dict], chars: list[dict], columns=CODE_AND_DESC_X
+) -> tuple[list[dict], int]:
+    """Split tokens whose code is glued to the start of their description.
 
-    ⚠️ Measured: `"HealthInsSHealth"` is the code `HealthInsS` followed by the
-    start of "Health Insurance Stipend". Same overlapping-glyph cause as
-    `unglue_amount`. Resolved by the LONGEST known code that prefixes the
-    token, so a code that is a prefix of another (none today) cannot win by
-    accident.
+    ⚠️ **SPLITS BY CHARACTER POSITION, NOT BY A KNOWN-CODE PREFIX.** The
+    previous version tried the longest known code that prefixed the token,
+    which is circular — the code list is what the parse is meant to discover,
+    so an unknown glued code stayed glued and was then reported as an unknown
+    code that does not exist (`MedicalPTMedical`). The description column
+    starts at a fixed x in every band and a code never reaches into it, so the
+    character positions say exactly where the code ends.
+
+    Only tokens that BEGIN at a code column are candidates — see
+    `CODE_AND_DESC_X` for the printed label this protects.
+
+    A candidate is only split when its own characters reconstruct it exactly.
+    Anything else is left whole and COUNTED, so a font or layout change shows
+    up as a number in the import report rather than as a silent mis-split.
     """
-    for code in sorted(known, key=len, reverse=True):
-        if token.startswith(code) and token != code:
-            return code, token[len(code):]
-    return token, ""
+    out: list[dict] = []
+    unsplit = 0
+    for w in words:
+        desc_x = next(
+            (d for c, d in columns
+             if abs(w["x0"] - c) <= CODE_COLUMN_TOLERANCE and w["x1"] > d + 1.0),
+            None,
+        )
+        if desc_x is None:
+            out.append(w)
+            continue
+        own = sorted(
+            (c for c in chars
+             if abs(c["top"] - w["top"]) <= 1.0
+             and c["x0"] >= w["x0"] - 0.5 and c["x1"] <= w["x1"] + 0.5),
+            key=lambda c: c["x0"],
+        )
+        left = [c for c in own if c["x0"] < desc_x - 1.0]
+        right = [c for c in own if c["x0"] >= desc_x - 1.0]
+        if not left or not right or "".join(c["text"] for c in own) != w["text"]:
+            unsplit += 1
+            out.append(w)
+            continue
+        out.append({**w, "text": "".join(c["text"] for c in left), "x1": left[-1]["x1"]})
+        out.append({**w, "text": "".join(c["text"] for c in right), "x0": right[0]["x0"]})
+    return out, unsplit
 
 
 def _band(row: list[dict], band: tuple[float, float]) -> list[dict]:
@@ -259,9 +372,9 @@ def _lines_from_rows(rows: list[list[dict]]) -> tuple[list[RegisterLine], dict[s
         # ── earnings ──
         e = _band(row, BAND_EARNINGS)
         if e and e[0]["text"] not in ("Code", "Total"):
-            code, glued_desc = split_glued_code(e[0]["text"], KNOWN_EARNING_CODES)
+            code = e[0]["text"]
             nums = [w for w in e[1:] if _MONEY.match(w["text"]) or _RATE.match(w["text"])]
-            desc = " ".join([glued_desc] + [w["text"] for w in e[1:] if w not in nums])
+            desc = " ".join(w["text"] for w in e[1:] if w not in nums)
             hours = rate = amount = None
             # ⚠️ Assign by x-position, not by order: a line with no rate (a
             # flat Bonus) would otherwise shift its amount into the rate slot.
@@ -291,7 +404,7 @@ def _lines_from_rows(rows: list[list[dict]]) -> tuple[list[RegisterLine], dict[s
         # ── deductions ──
         d = _band(row, BAND_DEDUCTIONS)
         if d and d[0]["text"] not in ("Code", "Total"):
-            code, glued = split_glued_code(d[0]["text"], KNOWN_DEDUCTION_CODES)
+            code = d[0]["text"]
             amt = next((_dec(w["text"]) for w in reversed(d)
                         if _MONEY.match(w["text"]) and w["x0"] >= 630), None)
             if amt is None:
@@ -304,8 +417,8 @@ def _lines_from_rows(rows: list[list[dict]]) -> tuple[list[RegisterLine], dict[s
                         amt = _val
                         break
             if amt is not None:
-                desc = " ".join([glued] + [unglue_amount(w["text"])[0]
-                                           for w in d[1:] if not _MONEY.match(w["text"])])
+                desc = " ".join(unglue_amount(w["text"])[0]
+                                for w in d[1:] if not _MONEY.match(w["text"]))
                 if code not in KNOWN_DEDUCTION_CODES:
                     unknown[f"deduction:{code}"] = unknown.get(f"deduction:{code}", 0) + 1
                 lines.append(RegisterLine("deduction", code, desc.strip(), None, None, amt))
@@ -340,22 +453,83 @@ def _totals_from_rows(rows: list[list[dict]]) -> dict[str, Decimal]:
 
 
 def _person_from_rows(rows: list[list[dict]]) -> tuple[str, str, Decimal | None]:
-    """Person name, Emp Id and base rate from the left-hand block."""
-    name_parts: list[str] = []
+    """Person name, Emp Id and base rate from the left-hand block.
+
+    ⚠️ **THE NAME IS ONLY WHAT SITS ABOVE `Emp Id`.** See the module docstring:
+    sweeping the whole left band also reads the page footer on the last block
+    of each page, which produced 72 "people" for 30 employees. Reading stops at
+    the `Emp Id` row, so a footer, a department line or anything else below it
+    cannot become part of a name.
+
+    Returns an empty name for a block with no `Emp Id` row at all — a page or
+    company TOTAL block — rather than inventing a person out of its totals.
+    """
+    name_rows: list[str] = []
     emp_id = ""
     base_rate: Decimal | None = None
+    found_emp_id = False
+
     for row in rows:
         p = _band(row, BAND_PERSON)
         if not p:
             continue
         texts = [w["text"] for w in p]
-        if "Emp" in texts and "Id" in texts:
-            emp_id = texts[-1]
-        elif "Rate" in texts:
+        if not found_emp_id:
+            if "Emp" in texts and "Id" in texts:
+                emp_id, found_emp_id = texts[-1], True
+            else:
+                name_rows.append(" ".join(texts))
+        elif texts[0] == "Rate":
             base_rate = _dec(texts[-1])
-        elif not any(t in ("Code", "Total") for t in texts):
-            name_parts.extend(texts)
-    return " ".join(name_parts).strip(), emp_id, base_rate
+
+    if not found_emp_id:
+        return "", "", None
+
+    # Surname on the first row, given name and middle initial on the second.
+    # Rendered "Surname, Given M" so the two halves stay distinguishable.
+    surname = name_rows[0] if name_rows else ""
+    given = " ".join(name_rows[1:]).strip()
+    person = f"{surname}, {given}" if surname and given else (surname or given)
+    return person.strip().strip(","), emp_id, base_rate
+
+
+def resolve_display_names(
+    checks: list["RegisterCheck"],
+) -> tuple[dict[str, str], dict[str, dict[str, int]]]:
+    """One display name per Emp Id, by frequency, plus every candidate seen.
+
+    ⚠️ **CANDIDATES ARE REPORTED, NEVER MERGED.** An id with two names is
+    either a parse fault or a real name change, and only a person can tell
+    which. The frequency winner is what the import shows; the full candidate
+    list goes in the report so a second name is never silently absorbed.
+    Ties break on the name text so the chosen name does not depend on page
+    order.
+    """
+    counts: dict[str, dict[str, int]] = {}
+    for chk in checks:
+        if not chk.emp_id or not chk.person:
+            continue
+        per = counts.setdefault(chk.emp_id, {})
+        per[chk.person] = per.get(chk.person, 0) + 1
+    display = {
+        emp_id: sorted(per.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+        for emp_id, per in counts.items()
+    }
+    return display, counts
+
+
+def union_salary_anomalies(checks: list["RegisterCheck"]) -> list["RegisterCheck"]:
+    """Checks carrying BOTH a Union deduction and a `Sal` earning line.
+
+    ⚠️ Union members are hourly (James, 2026-11-09). A check with both is a
+    contradiction worth a person's attention, not something to resolve in code:
+    either the pay type or the membership is wrong in Payentry.
+    """
+    return [
+        chk for chk in checks
+        if any(l.kind == "deduction" and l.code == DUES_DEDUCTION_CODE for l in chk.lines)
+        and any(l.kind == "earning" and l.code == "Sal" for l in chk.lines)
+    ]
 
 
 def parse_register(pdf, *, max_pages: int | None = None) -> RegisterParseResult:
@@ -369,10 +543,13 @@ def parse_register(pdf, *, max_pages: int | None = None) -> RegisterParseResult:
     failed: list[tuple[RegisterCheck, str]] = []
     unknown: dict[str, int] = {}
     skipped_summary_blocks: list[tuple[int, object]] = []
+    unsplit = 0
     pages = pdf.pages if max_pages is None else pdf.pages[:max_pages]
 
     for pno, page in enumerate(pages, start=1):
-        rows = cluster_rows(page.extract_words())
+        words, page_unsplit = split_glued_tokens(page.extract_words(), page.chars)
+        unsplit += page_unsplit
+        rows = cluster_rows(words)
         # Block boundaries: each check opens with the `Code … Hours … Amount`
         # header row. Everything up to the next header belongs to that check.
         starts = [i for i, r in enumerate(rows) if _is_header_row(r)]
@@ -432,9 +609,12 @@ def parse_register(pdf, *, max_pages: int | None = None) -> RegisterParseResult:
             why = validate_check(chk)
             (failed.append((chk, why)) if why else checks.append(chk))
 
+    display, candidates = resolve_display_names(checks)
     return RegisterParseResult(checks=checks, failed=failed,
                                unknown_codes=unknown, pages=len(pages),
-                               summary_blocks=len(skipped_summary_blocks))
+                               summary_blocks=len(skipped_summary_blocks),
+                               display_names=display, name_candidates=candidates,
+                               unsplit_glued_tokens=unsplit)
 
 
 def validate_check(chk: RegisterCheck) -> str | None:
