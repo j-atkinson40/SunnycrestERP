@@ -778,3 +778,4 @@ tests/test_payroll_register_parser.py
 tests/test_payroll_register_upload.py
 tests/test_sensitive_deduction_codes.py
 tests/test_payroll_register_dues.py
+tests/test_payroll_rule_provenance.py

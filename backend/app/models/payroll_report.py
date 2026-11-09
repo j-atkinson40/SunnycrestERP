@@ -187,6 +187,15 @@ class PayrollRuleSet(Base):
         String(16), nullable=False, default="week_end_date"
     )
 
+    #: Payroll 4 Phase 3. Per-key `{status, source}` — see
+    #: `rules.rule_provenance`. ⚠️ NO VALUE LIVES HERE: every rule's value
+    #: stays in its own typed column above, which is its only home. This
+    #: answers "who said so, and how sure are we", which Payroll 1 could not
+    #: express — seven of these ten values were the accountant's workbook
+    #: reproduced faithfully and three were open questions, and nothing in the
+    #: data told them apart.
+    rule_provenance: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 

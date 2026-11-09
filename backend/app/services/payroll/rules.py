@@ -79,3 +79,48 @@ RULE_FIELDS: tuple[str, ...] = (
     "sick_in_dues_hours",
     "remittance_group_by",
 )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Payroll 4 Phase 3 — provenance, per key.
+#
+# ⚠️ **THE VALUE IS NOT STORED HERE.** Every rule's value stays in its own typed
+# column on `payroll_rule_sets`, which is the only place it lives. What this
+# adds is the answer to "who said so, and how sure are we" — a thing the
+# rulebook has needed since Payroll 1, where seven values were the accountant's
+# workbook reproduced faithfully and three were open questions, and nothing in
+# the data could tell them apart. A reader looking at `sick_in_dues_hours =
+# True` could not know whether that was a decision or a placeholder.
+#
+# James's ruling, 2026-11-09: extend `payroll_rule_sets`; do not add a
+# `payroll_rules` table. So this is one JSON column of metadata beside the
+# typed value columns, and no second copy of any value.
+# ─────────────────────────────────────────────────────────────────────────────
+
+#: `confirmed` — a person with the authority to decide said so, and `source`
+#:               names them and when.
+#: `measured`  — derived from real data, with `source` naming the measurement.
+#:               Strong, but it is evidence rather than a decision.
+#: `assumed`   — reproduces the accountant's workbook and nobody has confirmed
+#:               it. The Payroll 1 default state.
+#: `disputed`  — two sources disagree and it is NOT settled. A `disputed` key
+#:               must never be quietly seeded with one side's figure.
+RULE_STATUSES = ("confirmed", "measured", "assumed", "disputed")
+
+
+def rule_provenance(status: str, source: str) -> dict[str, str]:
+    """One key's provenance, validated.
+
+    ⚠️ Both fields are required and `source` must be substantive. "confirmed"
+    with an empty source is indistinguishable from an assumption that someone
+    felt confident about, which is the exact confusion this column exists to
+    remove.
+    """
+    if status not in RULE_STATUSES:
+        raise ValueError(f"status must be one of {RULE_STATUSES}, got {status!r}")
+    if len(source.strip()) < 8:
+        raise ValueError(
+            f"source must say who or what settled this key, got {source!r}. "
+            "A status without a source is not provenance."
+        )
+    return {"status": status, "source": source.strip()}

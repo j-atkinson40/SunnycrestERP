@@ -42,7 +42,7 @@ from app.services.payroll.data_gate import (
     assert_payroll_data_enabled,
     is_payroll_data_enabled,
 )
-from app.models.payroll_report import PayrollWeek
+from app.models.payroll_report import PayrollRuleSet, PayrollWeek
 from app.models.user import User
 from app.services.payroll import service as payroll_service
 from app.services.payroll.column_mapping import UnverifiedMapping, available_mappings
@@ -50,6 +50,7 @@ from app.services.payroll.parsers import ExportParseError, ExportPayload
 from app.services.payroll.register_import import import_register
 from app.services.payroll.register_parser import RegisterParseError
 from app.services.payroll.reports import to_csv
+from app.services.payroll.rules import RULE_FIELDS, RULE_STATUSES
 from app.services.payroll.validation import summarize
 
 router = APIRouter()
@@ -524,3 +525,56 @@ async def upload_register(
         "summary_blocks_skipped": result.summary_blocks_skipped,
         "report": result.report,
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Payroll 4 Phase 3 — the rulebook, readable.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.get("/rules")
+def get_rule_sets(
+    # ⚠️ ADMIN, not payroll.view. These are the constants that decide what
+    # every member is charged; reading them is a tenant-administration act, and
+    # the payroll reviewer reads the RESULTS, which already carry their
+    # `rule_set_id`.
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Every effective-dated rule set for this tenant, newest first.
+
+    ⚠️ **EACH VALUE COMES WITH WHO SETTLED IT.** Payroll 1 shipped ten
+    constants of which seven faithfully reproduced the accountant's workbook
+    and three were open questions, and nothing in the data told them apart — a
+    reader seeing `sick_in_dues_hours = True` could not know whether that was a
+    decision or a placeholder. `provenance` answers that per key:
+    `confirmed` (a person with the authority said so), `measured` (derived from
+    real data), `assumed` (reproduces the workbook, nobody confirmed it), or
+    `disputed` (two sources disagree and it is NOT settled).
+
+    A `disputed` key is the important one: it means the stored value is being
+    used because something has to be, not because it is agreed.
+    """
+    rows = (
+        db.query(PayrollRuleSet)
+        .filter(PayrollRuleSet.tenant_id == current_user.company_id)
+        .order_by(PayrollRuleSet.effective_date.desc())
+        .all()
+    )
+    out = []
+    for row in rows:
+        provenance = row.rule_provenance or {}
+        out.append({
+            "id": row.id,
+            "effective_date": row.effective_date.isoformat(),
+            "values": {field: str(getattr(row, field)) for field in RULE_FIELDS},
+            "provenance": {
+                field: provenance.get(field, {"status": "assumed", "source": ""})
+                for field in RULE_FIELDS
+            },
+            "disputed_keys": sorted(
+                k for k, v in provenance.items()
+                if isinstance(v, dict) and v.get("status") == "disputed"
+            ),
+        })
+    return {"rule_sets": out, "statuses": list(RULE_STATUSES)}
