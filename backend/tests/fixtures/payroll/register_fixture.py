@@ -38,6 +38,43 @@ EXPECTED_DISPLAY_NAMES = {
 }
 EXPECTED_UNION_PEOPLE = {"E01", "E03", "E04"}
 
+#: ⚠️ **HAND-DERIVED FROM THE RULES, NOT FROM RUNNING THE ENGINE.** Each
+#: `Union` amount below is the dues figure its own check's pay lines imply,
+#: worked out on paper from the default rulebook (dues_pct 0.0145,
+#: dues_cap_multiplier 0.6461, dues_per_hour 0.02, initiation_fee 10.00). A
+#: fixture whose answer key came from the code under test would agree with any
+#: formula at all, including a wrong one.
+#:
+#:   E01  dues wage = Reg 1000.00 + OT 375.00            = 1375.00
+#:        dues hours = 40.00 + 10.00                     =   50.00
+#:        (the Sick line — 8.00 hours, 200.00 — is in NEITHER, per the
+#:         accountant's answer of 2026-11-03)
+#:        a = 1375.00 * 0.0145                           = 19.9375  -> 19.94
+#:        b = (1375.00 / 50.00) * 0.6461
+#:          = 27.50 * 0.6461                             = 17.76775 -> 17.77
+#:        c = 50.00 * 0.02                               =  1.00
+#:        dues = min(19.94, 17.77) + 1.00 = 18.77                  (b binds)
+#:
+#:   E03  dues wage = Reg 720.00,  dues hours = 40.00
+#:        a = 720.00 * 0.0145                            = 10.44
+#:        b = (720.00 / 40.00) * 0.6461 = 18.00 * 0.6461 = 11.6298 -> 11.63
+#:        c = 40.00 * 0.02                               =  0.80
+#:        dues = min(10.44, 11.63) + 0.80 = 11.24                  (a binds)
+#:        CHARGED 21.24 — exactly 10.00 more, an initiation fee. A deliberate
+#:        MISS, so the classifier has a real case of its most important bucket.
+#:
+#:   E04  Sal only, so dues wage = 0 and dues hours = 0 -> dues 0.00, while
+#:        45.00 was charged. The `no_dues_bearing_earnings` case, and the same
+#:        check as the Sal+Union anomaly.
+EXPECTED_DUES = {
+    "E01": {"wage": "1375.00", "hours": "50.00", "dues": "18.77",
+            "charged": "18.77", "matches": True,  "binds": "b"},
+    "E03": {"wage": "720.00",  "hours": "40.00", "dues": "11.24",
+            "charged": "21.24", "matches": False, "binds": "a"},
+    "E04": {"wage": "0",       "hours": "0",     "dues": "0.00",
+            "charged": "45.00", "matches": False, "binds": "zero"},
+}
+
 
 def build() -> bytes:
     p1 = Page()
@@ -52,10 +89,10 @@ def build() -> bytes:
             ("Sick", "Sick", "8.00", "25.0000", "200.00"),
         ],
         taxes=[("FITW", "Federal Income Tax", "150.00"), ("SS", "OASDI", "85.25")],
-        deductions=[("Union", "Union Dues", "41.25", False),
+        deductions=[("Union", "Union Dues", "18.77", False),
                     ("401k", "401k", "55.00", False)],
         total_hours="58.00", total_earnings="1575.00",
-        total_taxes="235.25", total_deductions="96.25",
+        total_taxes="235.25", total_deductions="73.77",
     )
     top = check_block(
         p1, top,
@@ -86,9 +123,9 @@ def build() -> bytes:
         taxes=[("FITW", "Federal Income Tax", "70.00")],
         deductions=[("ChSup1", "Child Support", "150.00", False),
                     ("Garn", "Garnishment", "80.00", False),
-                    ("Union", "Union Dues", "21.60", False)],
+                    ("Union", "Union Dues", "21.24", False)],
         total_hours="40.00", total_earnings="720.00",
-        total_taxes="70.00", total_deductions="251.60",
+        total_taxes="70.00", total_deductions="251.24",
     )
     page_footer(p1, top)
 

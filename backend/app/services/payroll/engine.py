@@ -152,6 +152,35 @@ def compute_dues(
                              ot_rate=rate, rules=rules)
     hours = compute_dues_hours(line, rules)
 
+    return dues_from_wage_and_hours(
+        wage, hours, rules,
+        apply_initiation_fee=apply_initiation_fee,
+        ot_rate_used=rate, ot_rate_derived=derived,
+    )
+
+
+def dues_from_wage_and_hours(
+    wage: Decimal,
+    hours: Decimal,
+    rules: PayrollRules,
+    *,
+    apply_initiation_fee: bool = False,
+    ot_rate_used: Decimal = ZERO,
+    ot_rate_derived: bool = False,
+) -> DuesResult:
+    """The dues formula itself, given a wage and an hour count.
+
+    ⚠️ **EXTRACTED SO THERE IS EXACTLY ONE COPY OF THE FORMULA.** Payroll 4
+    computes dues from the REGISTER — the amounts actually paid on a check —
+    rather than from hours times a typed rate. That is a different way of
+    arriving at `wage` and `hours`, not a different formula, and the two paths
+    disagreeing by a cent on the same inputs is the sort of thing nobody would
+    find for a year. `compute_dues` now calls this, so the goldens cover both.
+
+    `ot_rate_used` / `ot_rate_derived` are carried for the hours-export path's
+    detail report; the register path has no typed OT rate to report, because
+    the register prints the rate it actually used.
+    """
     # ⚠️ The zero guard runs BEFORE any division and is the only thing making
     # component b safe. There is no other division in the dues path.
     if hours == 0:
@@ -159,7 +188,7 @@ def compute_dues(
             dues_wage=wage, dues_hours=hours,
             component_a=None, component_b=None, component_c=None, capped=None,
             initiation_fee=Decimal("0.00"), dues=Decimal("0.00"),
-            ot_rate_used=rate, ot_rate_derived=derived,
+            ot_rate_used=ot_rate_used, ot_rate_derived=ot_rate_derived,
         )
 
     a = round2(wage * rules.dues_pct)
@@ -172,7 +201,7 @@ def compute_dues(
         dues_wage=wage, dues_hours=hours,
         component_a=a, component_b=b, component_c=c, capped=capped,
         initiation_fee=fee, dues=capped + c + fee,
-        ot_rate_used=rate, ot_rate_derived=derived,
+        ot_rate_used=ot_rate_used, ot_rate_derived=ot_rate_derived,
     )
 
 

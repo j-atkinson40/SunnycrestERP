@@ -385,3 +385,115 @@ That was not predicted; it was found by breaking the thing and watching nothing 
 
 No UI. Does not run payroll. Does not touch existing accounting, payroll-adjacent
 reconciliation, or anomaly code. Does not touch the planned Check integration.
+
+---
+
+## 11. Payroll 4 — the register
+
+Payroll 1–3 read the weekly **hours export**: what we are about to pay. Payroll 4
+reads the Payentry **Payroll Register**: the checks actually issued, with their
+earnings, taxes and deductions exactly as printed. Measured against one year —
+2025-11-09 to 2026-11-09, 262 pages, 1,275 checks, 30 employee ids.
+
+The register never enters the repository. It carries names, pay rates, child
+support and garnishment lines; it is read in place and only parsed rows are kept.
+
+### 11.1 What the register contains
+
+| | codes | count |
+|---|---|---|
+| earnings | `Reg` `OT` `Sal` `PTO` `Vac` `Sick` `VacBonus` `Comm` `HealthInsS` `Bonus` `Hol` `Ber` `Winter` | 13 |
+| deductions | `Union` `MedicalPT` `401k` `Kloan` `HSAEEInd` `CellReimb` `CafMed` `ChSup1` `Roth401K` `Garn` `Med2Reim` `BootReim` `GasReim` | 13 |
+
+`Union` is the only deduction that affects dues. 629 `Union` lines across 18 of
+the 30 employee ids. 105 deduction lines are **negative** — reimbursements
+(`CellReimb` 88, `Med2Reim` 8, `BootReim` 6, `GasReim` 2, `MedicalPT` 1) — and
+are stored negative; `abs()` would overstate the deduction total by twice the
+amount and break the agreement with the printed total that validates the parse.
+
+`ChSup1` and `Garn` are **sensitive**: line-level only, payroll area only, never
+summarised in a note, report or Opas text outside that area (James, 2026-11-09).
+Enforced structurally by `tests/test_sensitive_deduction_codes.py`, which
+requires every module that can reach a check line to be named with a reason.
+
+### 11.2 Dues from actual pay lines — 553 of 629
+
+The dues code map was **measured**, not chosen: candidate maps were scored
+against the 629 real `Union` deductions, which are the answer key.
+
+| | codes |
+|---|---|
+| dues **wage** | `Reg` `OT` `PTO` `Ber` `Vac` `VacBonus` `Hol` |
+| dues **hours** | `Reg` `OT` `PTO` `Ber` `Vac` `Hol` |
+| neither | `Sal` `Sick` `Comm` `Bonus` `HealthInsS` `Winter` |
+
+Each exclusion is a measurement. Adding `Comm`, `Bonus`, `HealthInsS` and
+`Winter` **lowers** the match count from 553 to 552. `VacBonus` is in the wage
+and not the hours because all 29 of its lines are flat amounts with no hours.
+`Vac` alone changes nothing (535); `Vac`+`VacBonus` takes 535 → 552; `Hol` → 553.
+
+The 76 disagreements, by shape:
+
+| count | shape |
+|---|---|
+| 34 | off by up to 1.00 |
+| 22 | off by 1.00 to 5.00 |
+| 10 | within 2 cents |
+| 6 | actual exactly 10.00 higher — an initiation fee |
+| 2 | no dues-bearing earnings on the check at all |
+| 2 | off by more than 5.00 |
+
+The two largest buckets are small, signed in both directions and spread across
+17 of the 18 members. That is the shape of dues computed from a **different
+week's** figures: the accountant works from the hours export and types the
+result into Payentry, so a timing offset would look like this. Recorded as the
+leading hypothesis only — it has not been tested against an hours export for
+the same weeks, and doing so is the obvious next measurement.
+
+### 11.3 §7.2 SETTLED — sick is out of both
+
+The accountant answered on 2026-11-03: sick is excluded from dues wage **and**
+dues hours. `sick_in_dues_hours` becomes `False`, reversing the shipped default.
+
+The register adds a fact that makes this cheap to accept: of the 76 missing
+checks, **none carries a `Sick` line at all**. Including sick hours could not
+turn a single miss into a match, so no evidence in a year of registers argues
+against the accountant's answer. `scripts/check_register_dues.py` re-asks the
+question on every run and reports rather than acts.
+
+### 11.4 §7.5 — the register barely speaks to `winter_hrs`
+
+`Winter` appears on **2** earning lines in the whole year, and neither is on a
+check that carries union dues. Excluding it is what the measured map does, but
+2 lines is not evidence. §7.5 stays open and still needs the accountant.
+
+### 11.5 The initiation fee is a people fact, not an inference
+
+Six checks show an actual dues figure exactly 10.00 above the computed one — the
+fee. Only **2 of those 6** are that member's first `Union` check in the
+register's window, so "first check seen" would charge four established members a
+fee they had already paid and would miss members whose membership began before
+whatever range happened to be uploaded. Whether a member has paid an initiation
+fee belongs in the people facts of Phase 4. `dues_for_check` therefore takes
+`apply_initiation_fee` from its caller and never infers it.
+
+### 11.6 Two notes on reading the PDF, kept because both were silent faults
+
+**A code glued to its description must be split by character position, not by a
+known-code prefix.** When a code fills its column the renderer emits no space,
+so `extract_words` returns `MedicalPTMedical` as one token. Splitting against a
+list of known codes is circular — the list is what the parse is meant to
+discover. Worse, it fails *quietly* when the wrong prefix is also a real code:
+the first version read every `VacBonus` line as `Vac`, because `Vac` is a
+legitimate prefix of it. No unknown code was reported, 29 vacation-bonus lines
+were counted as vacation pay, and nothing disagreed. The description column
+starts at a fixed x in every band, so the characters themselves say where the
+code ends.
+
+**A person's name is only what sits above the `Emp Id` row.** Reading the whole
+left-hand band also reads the page footer on the last block of each page — 256
+pages of it — which turned 30 employees into 72 distinct "people". One display
+name per employee id is resolved by frequency, and any id with a second
+candidate is **reported, never merged**: a real name change is possible and only
+a person can tell it from a parse fault. Measured after the fix: 30 ids, 30
+names, 0 ambiguous.
