@@ -75,14 +75,31 @@ The `dues_hours == 0` guard is what makes `b` safe; there is no other division.
 `ot_rate` is nullable. **Null means `reg_rate * 1.5`**, derived at calculation time. The
 workbook carries typed-in OT rates that are frequently *not* 1.5x — see §6.
 
-### 3.1 Vacation pay
+### 3.1 Vacation pay — CORRECTED 2026-11-09, see §11.11
 
 ```
-vacation_pay = round2(
+rate = trunc4((prior_year_gross / prior_year_hours) + vacation_increment)
+vac_pay   = round2(rate * vac_hours)          # the `Vac` line
+vac_bonus = <yearly total / number of payments>   # the `VacBonus` line, §11.10
+```
+
+Two separately-rounded earning lines, because that is what the register pays.
+The hourly rate is **truncated** to four decimals, not rounded — this is what
+makes Hunt's first week 900.46 + 75.00 = **975.46** rather than the 975.47 this
+section used to give.
+
+The superseded form folded the bonus inside one `round2(...)` and left the rate
+unrounded:
+
+```
+vacation_pay = round2(                        # SUPERSEDED — do not use
     ((prior_year_gross / prior_year_hours) + vacation_increment) * vac_hours
     + vacation_bonus
 )
 ```
+
+It remains in `compute_vacation_pay` so weeks already calculated under it still
+re-derive their stored figures, pinned by a characterization test that says so.
 
 Optionally split across up to 3 periods by fractions that must sum to exactly 1.
 
@@ -546,18 +563,16 @@ October 2026 local check (`scripts/check_r115_october.py`), by check date:
 five check dates — Oct 1, 8, 15, 22, 29, exactly as the ruling named — 61 check
 rows, 13 members, 2,731.14 hours, **979.73** dues.
 
-### 11.9 OPEN — `vacation_bonus` tiers are DISPUTED, and Phase 5 waits on them
+### 11.9 SETTLED 2026-11-09 — the bonus basis
 
-Phase 5 (vacation pay) is **not built**, because the figure it would compute
-with is not agreed. See the `disputed` provenance on `vacation_bonus` and
-§11.10.
+The dispatch's goldens were wrong and the register was right: *"Same tiers,
+different basis."* Seeded with status `from_registers`, source "registers Nov
+2026; contract to confirm". The `disputed` mark is cleared.
 
-The register also shows that vacation pay and the vacation bonus are **two
-separate earning lines** (`Vac` and `VacBonus`), each rounded to the cent on its
-own — not one combined amount. The current formula in §3.1 adds the bonus inside
-a single `round2(...)`, which is a different computation and can differ by a
-cent. This is the shape of the correction already noted for the spec
-(975.47 -> 900.46 + 75.00 = 975.46).
+Two goldens were **dropped** and are recorded here so nobody re-derives them:
+"second week, days 6-8 -> 30.00" (the registers pay a two-week entitlement
+125.00, not 105.00) and "three weeks -> 155.00 as one figure" (155.00 is the
+yearly total, paid 51.67 / 51.66 / 51.67).
 
 ### 11.10 The measured vacation bonus
 
@@ -578,3 +593,73 @@ week does not**: the registers say the two-week total is 125.00, not
 not describe, suggesting the bonus may be a function of vacation **hours**
 rather than whole weeks. Four weeks paying the same as three suggests 155.00 is
 a ceiling.
+
+### 11.11 Phase 5 — the vacation bonus, and what actually moved the cent
+
+**The rule.** A yearly total from the year's entitlement in **days**
+(hours ÷ 8), cumulative: $15/day for days 1–5, $10 for 6–10, $6 for 11–15,
+nothing after. Then paid in equal parts, one with each vacation payment.
+
+155.00 is a **ceiling because the tiers run out**, not because a cap is stored.
+A stored cap would give the same number today and a different number the moment
+a tier changed, with nothing to say which rule produced the old figures.
+
+**The cent placement is cumulative rounding**, and the register chose it:
+part *i* = `round2(total × i / n) − round2(total × (i−1) / n)`.
+
+| | emp 6 — 155.00 over three payments, date order |
+|---|---|
+| register | 51.67 / 51.66 / **51.67** |
+| cumulative | 51.67 / 51.66 / **51.67** ✓ adopted |
+| largest-remainder (`_allocate_exact`) | 51.67 / 51.67 / **51.66** ✗ |
+
+⚠️ **The evidence is one case deep, and that is worth stating.** 12 of the 13
+entitlement groups cannot tell the two rules apart — their totals divide into
+exactly equal cents (38.75 ×4, 62.50 ×2, a single payment) — so agreeing with
+them proves nothing. Exactly one group discriminates. `_allocate_exact` is left
+alone: it splits vacation *pay* by caller-chosen fractions, a different problem.
+
+**Measured on the year** (`scripts/check_vacation_bonus.py`): 13 entitlement
+groups, 29 bonus lines. Tiers reproduce the yearly total in **12 of 12
+checkable** groups; cumulative reproduces the cent placement in **13 of 13**;
+largest-remainder in 12 of 13.
+
+#### ⚠️ What actually moved 975.47 → 975.46, and what did not
+
+Splitting `Vac` and `VacBonus` into separately-rounded lines **cannot change any
+total**. `round2(x + c) == round2(x) + c` whenever `c` is a whole number of
+cents, and every bonus part is one — verified over 200,000 random pairs, zero
+differ. The split is a *structural* correction: it makes a vacation payment
+reconcilable against the register line by line, which the combined form never
+was.
+
+The cent moved because the hourly rate is **truncated** to four decimals:
+
+| | rate | × 40 h | `Vac` line |
+|---|---|---|---|
+| truncated to 4dp | **22.5116** | 900.4640 | **900.46** ✓ register |
+| rounded to 4dp | 22.5117 | 900.4680 | 900.47 |
+| left unrounded | 22.51168637… | 900.46745 | 900.47 |
+
+Only truncation gives the stated 22.5116. ⚠️ **One case deep:** Hunt's is the
+only `Vac` line in the year whose rate is not already exact to 4dp (the others
+are 27.1900, 22.3000, 29.8600), so it is the only one that can tell truncation
+from rounding. Worth confirming against Payentry's own rate field.
+
+#### Parts that are not the entitlement in weeks — reported, not resolved
+
+| employee | parts | hours | why |
+|---|---|---|---|
+| emp 8 | 1 | 48 (6 days = 1.2 wk) | a 48-hour entitlement is one payment |
+| emp 28 | 1 | 48 (6 days = 1.2 wk) | same |
+| emp 10 | 1 | 80 (2 wk) | two weeks paid on one check, carrying both parts |
+
+So "parts = entitlement in weeks" holds except where the register shows
+otherwise, which is exactly the three cases above.
+
+#### Two `Vac` lines in the year print no hours
+
+`Vac | Vacation | 861.66` — an amount with no hours column (2 of 42 lines:
+emp 28 on 2025-11-20, emp 25 on 2026-06-04). Absent hours are **not zero
+hours**: one entitlement therefore has no checkable tier total, and the local
+check reports it as "hours not printed" rather than inventing a disagreement.

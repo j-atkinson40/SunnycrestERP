@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from decimal import ROUND_DOWN, Decimal
 
 from app.services.payroll.money import round2, to_decimal
-from app.services.payroll.rules import PayrollRules
+from app.services.payroll.rules import VACATION_HOURS_PER_DAY, PayrollRules
 
 ZERO = Decimal("0")
 
@@ -294,3 +294,180 @@ def compute_stonebucks_per_day(tons: object, csr_count: object,
     if n == 0:
         return Decimal("0.00")
     return round2(t * rules.stonebucks_per_ton / n)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Payroll 4 Phase 5 — the vacation bonus, as the register actually pays it.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def vacation_bonus_for_year(entitlement_hours: object, rules: PayrollRules) -> Decimal:
+    """The YEARLY vacation bonus for an entitlement, from the day tiers.
+
+    ⚠️ **A YEARLY TOTAL FROM THE YEAR'S ENTITLEMENT — NOT A PER-VACATION
+    CHARGE.** This is the correction of 2026-11-09. The tiers pay per day of
+    entitlement, cumulatively: 15.00 for days 1-5, 10.00 for 6-10, 6.00 for
+    11-15, nothing after. Measured against a year of registers:
+
+        40 h   5 days   5x15                 =  75.00
+        48 h   6 days   75 + 1x10            =  85.00
+        80 h  10 days   75 + 5x10            = 125.00
+       120 h  15 days   125 + 5x6            = 155.00
+       160 h  20 days   155 + 0              = 155.00
+
+    ⚠️ **155.00 IS A CEILING BECAUSE THE TIERS RUN OUT, NOT BECAUSE OF A CAP
+    RULE.** Writing it as `min(total, 155)` would be the same number today and
+    a different number the moment a tier changed — and nothing would say which
+    rule produced the old figures.
+
+    A rule set with no tiers falls back to the flat `vacation_bonus`, so a week
+    already calculated under an older set still re-derives its own figure.
+    """
+    hours = to_decimal(entitlement_hours, "entitlement_hours")
+    if hours <= 0:
+        return Decimal("0.00")
+    if not rules.vacation_bonus_day_tiers:
+        return rules.vacation_bonus
+
+    days = hours / VACATION_HOURS_PER_DAY
+    total = Decimal("0")
+    previous = 0
+    for tier in rules.vacation_bonus_day_tiers:
+        through = Decimal(tier["through_day"])
+        # Days falling inside this tier, never negative once the tier is past.
+        in_tier = min(days, through) - Decimal(previous)
+        if in_tier <= 0:
+            break
+        total += in_tier * tier["per_day"]
+        previous = tier["through_day"]
+    return round2(total)
+
+
+def allocate_cumulative(total: Decimal, parts: int) -> tuple[Decimal, ...]:
+    """Split `total` into `parts` equal payments summing to it exactly.
+
+    ⚠️ **CUMULATIVE ROUNDING, AND THE REGISTER CHOSE IT — I DID NOT.** Part i
+    is `round2(total * i / n) - round2(total * (i-1) / n)`: each running total
+    is rounded, so the parts absorb the cents wherever the rounding falls.
+
+    The existing `_allocate_exact` uses largest-remainder, which is a different
+    answer. Measured against every `VacBonus` line in a year of registers —
+    17 entitlement groups, 29 lines:
+
+      * 16 groups cannot tell the two rules apart. Their totals divide into
+        exactly equal cents (38.75 x4, 62.50 x2, a single payment), so both
+        rules give the same parts and agreeing with them proves nothing.
+      * EXACTLY ONE group discriminates: 155.00 over three payments. The
+        register pays 51.67 / 51.66 / 51.67 in date order. Cumulative gives
+        51.67 / 51.66 / 51.67. Largest-remainder gives 51.67 / 51.67 / 51.66
+        — right total, wrong payments.
+
+    So the evidence is one case deep, and that is worth stating plainly rather
+    than reporting "17 of 17 matched". `_allocate_exact` is left alone: it
+    splits vacation PAY by caller-chosen fractions, which is a different
+    problem from splitting a bonus into equal payments.
+    """
+    if parts < 1:
+        raise ValueError(f"a bonus is paid in at least one part, got {parts}")
+    out: list[Decimal] = []
+    previous = Decimal("0")
+    for i in range(1, parts + 1):
+        cumulative = round2(total * Decimal(i) / Decimal(parts))
+        out.append(cumulative - previous)
+        previous = cumulative
+    # The identity the whole function exists for. Cheap, and it would have
+    # caught a `parts` of the wrong type before the figures reached a report.
+    if sum(out) != round2(total):
+        raise AssertionError(
+            f"parts {out} sum to {sum(out)}, not {total} — the split lost money"
+        )
+    return tuple(out)
+
+
+@dataclass(frozen=True)
+class VacationBonusResult:
+    entitlement_hours: Decimal
+    entitlement_days: Decimal
+    yearly_total: Decimal
+    parts: tuple[Decimal, ...]
+
+
+def compute_vacation_bonus(
+    entitlement_hours: object, parts: int, rules: PayrollRules
+) -> VacationBonusResult:
+    """The yearly bonus and the equal payments it is paid in."""
+    hours = to_decimal(entitlement_hours, "entitlement_hours")
+    total = vacation_bonus_for_year(hours, rules)
+    return VacationBonusResult(
+        entitlement_hours=hours,
+        entitlement_days=hours / VACATION_HOURS_PER_DAY,
+        yearly_total=total,
+        parts=allocate_cumulative(total, parts),
+    )
+
+
+#: Payentry prints and stores pay rates to four decimals. See
+#: `vacation_rate` for why the fourth is TRUNCATED and not rounded.
+RATE_PLACES = Decimal("0.0001")
+
+
+def vacation_rate(prior_year_gross: object, prior_year_hours: object,
+                  rules: PayrollRules) -> Decimal:
+    """The vacation hourly rate: (prior gross / prior hours) + increment, to 4dp.
+
+    ⚠️ **TRUNCATED TO FOUR DECIMALS, NOT ROUNDED, AND THIS IS THE CENT.** The
+    register prints rates to 4dp and this is where the spec's 975.47 was wrong.
+    On the week-44 figures (gross 33,062.74 over 1,512.36 hours) the rate is
+    22.51168637…:
+
+        truncated to 4dp  ->  22.5116   x 40 = 900.4640  ->  900.46
+        rounded   to 4dp  ->  22.5117   x 40 = 900.4680  ->  900.47
+        left unrounded                  x 40 = 900.46745 ->  900.47
+
+    James gives the rate as **22.5116** and the pay as **900.46**, which only
+    truncation produces. Rounding and leaving it unrounded both give 900.47.
+
+    ⚠️ **AND IT IS TRUNCATION — NOT "ROUNDING TWICE" — THAT MOVES THE FIGURE.**
+    I checked the other explanation before writing this: splitting `Vac` and
+    `VacBonus` into separately-rounded lines CANNOT change any total, because
+    `round2(x + c) == round2(x) + c` whenever `c` is a whole number of cents,
+    and every bonus part is (75.00, 85.00, 62.50, 51.67, 38.75…). Verified over
+    200,000 random pairs: zero differ. So the two-line split is a structural
+    correction that makes the model match what Payentry prints; the 975.47 ->
+    975.46 correction is this truncation, and conflating them would leave the
+    real cause unfixed while a passing test said otherwise.
+
+    ⚠️ **THE EVIDENCE IS ONE CASE DEEP.** Hunt's is the only vacation line in
+    the year whose rate is not already exact to 4dp, so it is the only one that
+    can tell truncation from rounding. Every other `Vac` line has a rate like
+    27.1900 or 22.3000 and agrees with either rule. Worth confirming against
+    Payentry's own rate field before this is treated as settled.
+    """
+    gross = to_decimal(prior_year_gross, "prior_year_gross")
+    hours = to_decimal(prior_year_hours, "prior_year_hours")
+    if hours == 0:
+        raise ValueError(
+            "prior_year_hours is zero; the average hourly rate is undefined. "
+            "An employee with no prior-year hours needs a rule, not a division."
+        )
+    return (gross / hours + rules.vacation_increment).quantize(
+        RATE_PLACES, rounding=ROUND_DOWN)
+
+
+def compute_vacation_pay_only(
+    prior_year_gross: object, prior_year_hours: object, vac_hours: object,
+    rules: PayrollRules,
+) -> Decimal:
+    """Vacation PAY for one payment, rounded on its own, with NO bonus in it.
+
+    ⚠️ **TWO LINES, BECAUSE THE REGISTER PAYS TWO LINES.** `Vac` and
+    `VacBonus` are separate earning lines, each rounded to the cent. The old
+    `compute_vacation_pay` folds the bonus inside one `round2(...)`, which
+    makes a vacation payment impossible to reconcile against the register line
+    by line even though — see `vacation_rate` — it produces the same total.
+
+    `compute_vacation_pay` is NOT deleted: weeks already calculated under it
+    must still re-derive their stored figures.
+    """
+    vac = to_decimal(vac_hours, "vac_hours")
+    return round2(vacation_rate(prior_year_gross, prior_year_hours, rules) * vac)

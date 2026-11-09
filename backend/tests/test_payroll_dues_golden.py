@@ -269,14 +269,64 @@ def test_the_five_unchanged_members_are_unchanged_for_two_different_reasons():
 # ------------------------------------------------------------------ vacation
 
 
-def test_week44_vacation_pay():
-    """  33062.74 / 1512.36 = 21.86168637096987489751117459
-                    + 0.65 = 22.51168637096987489751117459
-                      * 40 = 900.4674548387949959004469836
-                      + 75 = 975.4674548387949959004469836
-                    round2 = 975.47
+#: Hunt's first vacation week, as the register prints it. James, 2026-11-09.
+#: Hand-derived; `test_hunts_first_vacation_week_is_two_lines` shows the work.
+HUNT_PRIOR_GROSS = "33062.74"
+HUNT_PRIOR_HOURS = "1512.36"
+HUNT_RATE = D("22.5116")
+HUNT_VAC_PAY = D("900.46")
+HUNT_VAC_BONUS = D("75.00")
+
+
+def test_week44_vacation_pay_is_the_SUPERSEDED_combined_computation():
+    """⚠️ A CHARACTERIZATION TEST, NOT A TARGET.
+
+    `compute_vacation_pay` folds the bonus inside one `round2(...)` and leaves
+    the hourly rate unrounded. The register does neither: it prints `Vac` and
+    `VacBonus` as separate lines and its rates carry four decimals. This figure
+    is therefore WRONG against the register and is pinned only because payroll
+    weeks already calculated under this function must still re-derive their
+    stored figures. New work uses `compute_vacation_pay_only` plus
+    `vacation_bonus_for_year` — see the test below.
+
+      33062.74 / 1512.36 = 21.86168637096987489751117459
+                  + 0.65 = 22.51168637096987489751117459
+                    * 40 = 900.4674548387949959004469836
+                    + 75 = 975.4674548387949959004469836
+                  round2 = 975.47        <- 975.46 per the register
     """
-    r = compute_vacation_pay("33062.74", "1512.36", "40", DEFAULT_RULES)
+    r = compute_vacation_pay(HUNT_PRIOR_GROSS, HUNT_PRIOR_HOURS, "40", DEFAULT_RULES)
     assert r.vacation_pay == D("975.47")
-    assert r.average_hourly == D("33062.74") / D("1512.36")
+    assert r.average_hourly == D(HUNT_PRIOR_GROSS) / D(HUNT_PRIOR_HOURS)
     assert r.periods == ()
+
+
+def test_hunts_first_vacation_week_is_two_lines(): 
+    """The replacement golden: Vac 900.46 + VacBonus 75.00 = 975.46.
+
+      rate  = 33062.74 / 1512.36 + 0.65 = 22.51168637096987489751117459
+      TRUNCATED to 4dp (not rounded)    = 22.5116
+      Vac   = round2(22.5116 * 40)      = round2(900.4640) = 900.46
+      Bonus = 5 entitlement days x 15.00                   =  75.00
+      total = 900.46 + 75.00                               = 975.46
+
+    ⚠️ Truncation is what moves this figure, NOT the two-line split. Rounding
+    the rate to 4dp gives 22.5117 and 900.47; leaving it unrounded also gives
+    900.47. Only truncation gives James's stated 22.5116. And the split cannot
+    change a total at all — `round2(x + c) == round2(x) + c` for any whole
+    number of cents `c`, which every bonus part is. See `engine.vacation_rate`.
+    """
+    from app.services.payroll.engine import (
+        compute_vacation_pay_only, vacation_bonus_for_year, vacation_rate)
+
+    assert vacation_rate(HUNT_PRIOR_GROSS, HUNT_PRIOR_HOURS, DEFAULT_RULES) == HUNT_RATE
+    pay = compute_vacation_pay_only(HUNT_PRIOR_GROSS, HUNT_PRIOR_HOURS, "40",
+                                    DEFAULT_RULES)
+    bonus = vacation_bonus_for_year(D("40"), DEFAULT_RULES)
+    assert pay == HUNT_VAC_PAY
+    assert bonus == HUNT_VAC_BONUS
+    assert pay + bonus == D("975.46")
+    # ⚠️ And the superseded path really does disagree, or this test is
+    # asserting a difference that is not there.
+    assert compute_vacation_pay(HUNT_PRIOR_GROSS, HUNT_PRIOR_HOURS, "40",
+                                DEFAULT_RULES).vacation_pay == D("975.47")

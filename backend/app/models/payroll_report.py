@@ -196,6 +196,18 @@ class PayrollRuleSet(Base):
     vacation_bonus: Mapped[Decimal] = mapped_column(
         MONEY, nullable=False, default=Decimal("75.00")
     )
+    # ⚠️ Payroll 4 Phase 5. SUPERSEDES `vacation_bonus` above, which is kept
+    # only so rule sets predating the tiers still reproduce their own figures.
+    # The bonus is a YEARLY total built from the entitlement in days — 15.00 a
+    # day for days 1-5, 10.00 for 6-10, 6.00 for 11-15, nothing after — not a
+    # flat amount per vacation. 75.00 is what the tiers give for five days,
+    # which is why a flat 75.00 looked correct for a year.
+    #
+    # NULLABLE: a NULL means "this rule set predates the tiers", which is a
+    # real and different thing from an empty tier table.
+    vacation_bonus_day_tiers: Mapped[list | None] = mapped_column(
+        JSON, nullable=True
+    )
     stonebucks_per_ton: Mapped[Decimal] = mapped_column(
         MONEY, nullable=False, default=Decimal("11.00")
     )

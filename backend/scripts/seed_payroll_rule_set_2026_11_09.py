@@ -5,12 +5,14 @@
 Dry run by default. Prints exactly what it would change and why, and writes
 nothing until `--commit`.
 
-⚠️ **IT REFUSES TO SEED A DISPUTED KEY, AND ONE IS DISPUTED.** James's ruling
-of 2026-11-09 was *"If the current set's values disagree with the Phase 3 list,
-stop and show me before seeding."* The `vacation_bonus` tiers do disagree with
-what a year of registers actually paid — see `DISPUTED` below — so this script
-seeds the two settled keys, marks that one `disputed`, LEAVES ITS VALUE ALONE,
-and exits non-zero so the disagreement cannot be mistaken for a clean run.
+⚠️ **IT REFUSES TO SEED A DISPUTED KEY. NOTHING IS DISPUTED ANY MORE.** The
+machinery stays, because the next disagreement is not the last one. The
+vacation bonus WAS held here: the dispatch's goldens and a year of registers
+disagreed about the two-week total. James settled it on 2026-11-09 in the
+register's favour — *"the register is right and the dispatch's goldens were
+wrong. Same tiers, different basis"* — so `vacation_bonus_day_tiers` is now
+seeded with status `from_registers`, and `DISPUTED` is empty. When it is empty
+the script exits 0.
 
 ⚠️ **IT COPIES THE CURRENT SET FORWARD RATHER THAN RE-STATING DEFAULTS.** An
 effective-dated rule set that silently reverted a tenant's edited value to a
@@ -36,6 +38,22 @@ EFFECTIVE = date(2026, 11, 9)
 
 #: The keys this set changes, with the value and the provenance for each.
 CHANGES: dict[str, tuple[object, dict[str, str]]] = {
+    # ⚠️ **THE BONUS IS A YEARLY TOTAL, NOT A PER-VACATION AMOUNT.** 15.00 a
+    # day for entitlement days 1-5, 10.00 for 6-10, 6.00 for 11-15, nothing
+    # after — so 155.00 is a ceiling because the tiers run out, not because a
+    # cap is stored. Verified against every vacation line in the year:
+    # 40 h -> 75.00, 48 h -> 85.00, 80 h -> 125.00, 120 h -> 155.00,
+    # 160 h -> 155.00.
+    #
+    # `from_registers`, not `confirmed`: this is the register's behaviour
+    # adopted as the rule, and the union contract has still to be read.
+    "vacation_bonus_day_tiers": (
+        [{"through_day": 5, "per_day": "15.00"},
+         {"through_day": 10, "per_day": "10.00"},
+         {"through_day": 15, "per_day": "6.00"}],
+        rule_provenance("from_registers",
+                        "registers Nov 2026; contract to confirm"),
+    ),
     # The accountant answered on 2026-11-03: sick is out of BOTH the dues wage
     # and the dues hours. This reverses Payroll 1's shipped default of True,
     # which reproduced the workbook's asymmetry (spec §7.2).
@@ -60,24 +78,16 @@ CHANGES: dict[str, tuple[object, dict[str, str]]] = {
 }
 
 #: Keys that must NOT be seeded, with the disagreement spelled out. A key here
-#: gets its provenance marked `disputed` and its VALUE LEFT UNTOUCHED.
-DISPUTED: dict[str, str] = {
-    "vacation_bonus": (
-        "The dispatch gives the tiers as 75.00 for one week, 30.00 for a "
-        "second week, 155.00 for three weeks. A full year of registers pays a "
-        "bonus TOTAL per vacation entitlement, in equal instalments alongside "
-        "each vacation week, and the totals measured are: one week 75.00 "
-        "(2 employees), one 48-hour week 85.00 (1), two weeks 125.00 (3), "
-        "three weeks 155.00 (1), four weeks 155.00 (4). One week at 75.00 and "
-        "three weeks at 155.00 agree with the dispatch. A SECOND week does "
-        "not: the registers say the two-week total is 125.00, not 75.00 + "
-        "30.00 = 105.00. The 48-hour week at 85.00 is a shape the dispatch "
-        "does not describe at all, which suggests the bonus may be a function "
-        "of vacation HOURS rather than of whole weeks. Seeding either figure "
-        "would put a number nobody has agreed into a rulebook that computes "
-        "money, so it is held."
-    ),
-}
+#: gets its provenance marked `disputed` and its VALUE LEFT UNTOUCHED, and the
+#: script exits 2.
+#:
+#: ⚠️ **EMPTY, AND THE MECHANISM STAYS ANYWAY.** `vacation_bonus` was held here
+#: while the dispatch's goldens and the registers disagreed about the two-week
+#: total (125.00 against 75.00 + 30.00 = 105.00). James settled it on
+#: 2026-11-09 in the register's favour, so the key moved to CHANGES. Deleting
+#: the mechanism with it would mean the next disagreement has nowhere to go and
+#: gets resolved by whoever is seeding at the time.
+DISPUTED: dict[str, str] = {}
 
 
 def main(commit: bool) -> int:
@@ -135,12 +145,14 @@ def main(commit: bool) -> int:
             print(f"\ndry run: {touched} rule set(s) would be created. "
                   "Re-run with --commit.")
 
-        print("\n" + "=" * 70)
-        print("⚠️  DISPUTED KEYS NOT SEEDED — these need a ruling:")
-        for key, why in DISPUTED.items():
-            print(f"\n  {key}:\n    " + why.replace(". ", ".\n    "))
-        print("=" * 70)
-        return 2            # non-zero: a disputed key is not a clean run
+        if DISPUTED:
+            print("\n" + "=" * 70)
+            print("⚠️  DISPUTED KEYS NOT SEEDED — these need a ruling:")
+            for key, why in DISPUTED.items():
+                print(f"\n  {key}:\n    " + why.replace(". ", ".\n    "))
+            print("=" * 70)
+            return 2        # non-zero: a disputed key is not a clean run
+        return 0
     finally:
         db.close()
 

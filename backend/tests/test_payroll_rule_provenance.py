@@ -91,19 +91,56 @@ def test_the_seed_sets_remittance_grouping_to_check_date():
     assert DEFAULT_RULES.remittance_group_by == "week_end_date", "not a reversal"
 
 
-def test_the_seed_refuses_to_set_a_disputed_key():
+def test_no_key_is_both_changed_and_held():
     """⚠️ THE RULING, HELD IN CODE.
 
     *"If the current set's values disagree with the Phase 3 list, stop and show
-    me before seeding."* `vacation_bonus` disagrees, so it must appear in
-    DISPUTED and must NOT appear in CHANGES — a key in both would be seeded
-    while claiming to be held.
+    me before seeding."* A key in both CHANGES and DISPUTED would be seeded
+    while claiming to be held, which is the one outcome the mechanism exists to
+    prevent. This holds whether or not anything is currently disputed.
     """
     from scripts.seed_payroll_rule_set_2026_11_09 import CHANGES, DISPUTED
 
-    assert "vacation_bonus" in DISPUTED
-    assert "vacation_bonus" not in CHANGES
     assert not (set(CHANGES) & set(DISPUTED)), "a key cannot be both changed and held"
+
+
+def test_the_vacation_bonus_dispute_was_settled_in_the_registers_favour():
+    """James, 2026-11-09: *"the register is right and the dispatch's goldens
+    were wrong. Same tiers, different basis."*
+
+    The key that WAS held is now seeded, with `from_registers` rather than
+    `confirmed` — the register's behaviour adopted as the rule, with the union
+    contract still to be read.
+    """
+    from scripts.seed_payroll_rule_set_2026_11_09 import CHANGES, DISPUTED
+
+    assert "vacation_bonus" not in DISPUTED
+    assert "vacation_bonus_day_tiers" in CHANGES
+    value, provenance = CHANGES["vacation_bonus_day_tiers"]
+    assert provenance["status"] == "from_registers"
+    assert "contract to confirm" in provenance["source"]
+    # The tiers themselves, as the ruling states them.
+    assert value == [{"through_day": 5, "per_day": "15.00"},
+                     {"through_day": 10, "per_day": "10.00"},
+                     {"through_day": 15, "per_day": "6.00"}]
+
+
+def test_the_dispute_mechanism_survives_having_nothing_to_hold():
+    """⚠️ Deleting it with the dispute would be the mistake.
+
+    `DISPUTED` is empty now. If the mechanism had gone with the key, the next
+    disagreement would have nowhere to go and would get resolved by whoever was
+    seeding at the time. So the seed must still import, still check, and still
+    exit non-zero when something IS held.
+    """
+    import scripts.seed_payroll_rule_set_2026_11_09 as seed
+
+    assert isinstance(seed.DISPUTED, dict)
+    assert seed.DISPUTED == {}, "update this test when something is disputed again"
+    # The machinery that acts on it is still present and still reachable.
+    source = io_read = __import__("inspect").getsource(seed.main)
+    assert "if DISPUTED:" in source
+    assert "return 2" in source, "a disputed key must still make the run non-clean"
 
 
 def test_every_disputed_key_explains_the_disagreement():
@@ -117,10 +154,17 @@ def test_every_disputed_key_explains_the_disagreement():
         assert "register" in why.lower()
 
 
-def test_the_disputed_explanation_names_the_figures_it_disagrees_about():
-    """⚠️ Prose that does not contain the numbers cannot be checked by anyone."""
-    from scripts.seed_payroll_rule_set_2026_11_09 import DISPUTED
+def test_from_registers_is_its_own_status_between_confirmed_and_assumed():
+    """⚠️ The vacation bonus needed a status that did not exist.
 
-    why = DISPUTED["vacation_bonus"]
-    for figure in ("75.00", "125.00", "155.00", "85.00", "105.00"):
-        assert figure in why, f"the explanation does not mention {figure}"
+    It is in force (so not `measured`, which is only an observation) and the
+    authoritative document has not been read (so not `confirmed`). Collapsing
+    it into either would lose the one thing a reader needs to know: that the
+    contract is still outstanding.
+    """
+    assert "from_registers" in RULE_STATUSES
+    assert rule_provenance("from_registers",
+                           "registers Nov 2026; contract to confirm") == {
+        "status": "from_registers",
+        "source": "registers Nov 2026; contract to confirm",
+    }
