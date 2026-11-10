@@ -121,3 +121,107 @@ def summarise(findings: list[WeekFinding]) -> dict[str, int]:
     for f in findings:
         out[f.kind] = out.get(f.kind, 0) + 1
     return out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Why a dues figure differs — Payroll 3 follow-up, settled 2026-11-10.
+#
+# ⚠️ **PAYENTRY DOES NOT CALCULATE DUES. IT DEDUCTS WHAT THE ACCOUNTANT TYPES
+# IN FROM HER WORKBOOK.** James, 2026-11-10. That single fact explains every
+# difference, and it is the reason the first two hypotheses failed: both
+# assumed Payentry was computing something.
+#
+# Proved on week 44, three ways:
+#
+#   1. The sum of Payentry's 2026-11-05 `Union` deductions is 193.93 — exactly
+#      the workbook's week-44 golden total in spec §6, to the cent.
+#   2. Per member, Payentry's deduction equals the workbook's golden dues for
+#      11 of the 12 (the twelfth is Stevenson, who has no hours in Payentry at
+#      all; his golden row is 42 hours and 16.05, which is what was deducted).
+#   3. Re-running our own formula with the workbook's TYPED OT rate instead of
+#      1.5x the current rate reproduces Payentry's figure for all 8 that
+#      differed.
+#
+# ⚠️ **AND THE WORKBOOK'S OT RATES ARE STALE FOR SOME PEOPLE AND NOT OTHERS.**
+# Twelve employees were raised on the 2026-10-29 check. Three of them had their
+# workbook OT rate updated to 1.5x the new rate — employee 1 at 45.00, and 4
+# and 6 at 36.585 — and those three agree with us exactly. The other eight
+# still carry 1.5x their PRE-raise rate, and those eight are precisely the
+# eight differences. Skutt's workbook OT is 35.835, which is 1.5 x 23.89, his
+# rate before the raise; 1.5 x his current 24.54 would be 36.81.
+#
+# ⚠️ **SO THESE ARE NOT ERRORS IN EITHER SYSTEM — THEY ARE THE THING THE
+# WEEKLY FOCUS EXISTS TO CATCH.** Every one is a member charged slightly too
+# little because a rate in a spreadsheet was not updated. Once Bridgeable
+# supplies the dues figures they disappear, which is the point.
+# ─────────────────────────────────────────────────────────────────────────────
+
+#: The cause string, stated once so a finding and a report cannot word it
+#: differently.
+TYPED_FROM_WORKBOOK = "typed from the workbook, whose overtime rate is stale"
+
+
+@dataclass(frozen=True)
+class DuesCause:
+    emp_id: str
+    ours: Decimal
+    payentry: Decimal
+    #: What the workbook's OT rate would have to be to explain it.
+    workbook_ot_rate: Decimal | None
+    current_ot_rate: Decimal | None
+    cause: str | None
+
+    @property
+    def explained(self) -> bool:
+        return self.cause is not None
+
+
+def explain_dues_difference(*, emp_id: str, ours: Decimal, payentry: Decimal,
+                            recompute, current_ot_rate: Decimal,
+                            stale_ot_rate: Decimal | None) -> DuesCause:
+    """Does the workbook's stale OT rate account for this difference?
+
+    `recompute(ot_rate)` must return the dues our formula gives with that
+    overtime rate and everything else unchanged — passed in rather than
+    imported so this stays a pure comparison with no engine dependency.
+
+    ⚠️ **THE CAUSE IS ONLY CLAIMED WHEN THE RECOMPUTATION LANDS ON PAYENTRY'S
+    FIGURE EXACTLY.** "Close enough" would let a wrong explanation stand and
+    send Susan to update a rate that was not the problem.
+    """
+    if ours == payentry:
+        return DuesCause(emp_id, ours, payentry, None, current_ot_rate, None)
+    if stale_ot_rate is None or stale_ot_rate == current_ot_rate:
+        return DuesCause(emp_id, ours, payentry, None, current_ot_rate, None)
+    if recompute(stale_ot_rate) == payentry:
+        return DuesCause(emp_id, ours, payentry, stale_ot_rate,
+                         current_ot_rate, TYPED_FROM_WORKBOOK)
+    return DuesCause(emp_id, ours, payentry, None, current_ot_rate, None)
+
+
+def dues_cause_findings(causes, *, names=None) -> list[WeekFinding]:
+    """One line per member whose dues differ, with the cause where there is one."""
+    names = names or {}
+    out = []
+    for c in causes:
+        if c.ours == c.payentry:
+            continue
+        who = names.get(c.emp_id, "employee")
+        diff = c.ours - c.payentry
+        if c.explained:
+            tail = (f"Payentry deducts what the workbook says, and the "
+                    f"workbook still has their overtime at "
+                    f"${c.workbook_ot_rate} — 1.5x their rate before the "
+                    f"October raise — instead of ${c.current_ot_rate}. "
+                    f"Updating that rate would close it.")
+        else:
+            tail = ("Unexplained: the pre-raise rate on all hours, the "
+                    "register's own wage and hours, and the workbook's typed "
+                    "overtime rate were all tested and none reproduces it.")
+        out.append(WeekFinding(
+            kind="dues_difference",
+            line=(f"{who} ({c.emp_id}): we calculate ${c.ours} of dues, "
+                  f"Payentry deducted ${c.payentry}, a difference of ${diff}. "
+                  f"{tail}"),
+            emp_ids=(c.emp_id,), cause=c.cause))
+    return out

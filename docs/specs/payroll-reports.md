@@ -746,3 +746,53 @@ its output by exactly the cent that truncation explains.
 effective-dated: a change to it would apply retroactively to every recomputed
 vacation figure. If that matters it should become a rulebook key — the work is
 a column, a migration and a line in the engine.
+
+### 11.14 SETTLED 2026-11-10 — why computed dues differ from deducted dues
+
+⚠️ **Payentry does not calculate dues. It deducts what the accountant types in
+from her workbook.** That single fact explains every difference measured in
+Payroll 3, and it is why two earlier hypotheses failed — both assumed Payentry
+was computing something.
+
+Proved on week 44, three independent ways:
+
+1. The sum of Payentry's 2026-11-05 `Union` deductions is **193.93** — exactly
+   the workbook's week-44 golden total in §6, to the cent.
+2. Per member, Payentry's deduction equals the workbook's golden dues for
+   **11 of 12**. The twelfth is Stevenson, who has no hours in Payentry at all;
+   his golden row is 42 hours and $16.05, which is what was deducted.
+3. Re-running our formula with the workbook's **typed** overtime rate instead
+   of 1.5× the current rate reproduces Payentry's figure for all **8** that
+   differed.
+
+#### The workbook's overtime rates are stale for some people and not others
+
+Twelve employees were raised on the 2026-10-29 check. **Three** had their
+workbook overtime rate updated to 1.5× the new rate — and those three are
+exactly the three whose dues agree with ours:
+
+| golden | reg rate | typed OT | 1.5× current | agrees? |
+|---|---|---|---|---|
+| E01 | 30.00 | 45.000 | 45.000 | ✓ |
+| E03 | 24.39 | 36.585 | 36.585 | ✓ |
+| E06 | 24.39 | 36.585 | 36.585 | ✓ |
+| E02 (Skutt) | 24.54 | **35.835** | 36.810 | ✗ by $0.16 |
+
+35.835 is 1.5 × 23.89 — Skutt's rate *before* the raise. The other seven are
+the same shape.
+
+⚠️ **If the workbook's rates were uniformly stale, every member would differ —
+and they do not.** That asymmetry is what makes the explanation credible rather
+than merely arithmetically available.
+
+#### These are not errors in either system
+
+Every one is a member charged slightly too little because a rate in a
+spreadsheet was not updated after a raise. They are precisely what the weekly
+Focus exists to surface, and they disappear once Bridgeable supplies the dues
+figures rather than reconciling against a typed one.
+
+⚠️ Recorded so nobody re-tests them: the **pre-raise rate on all hours** gives
+dues 0.29–0.46 *below* Payentry's (further off, not closer), and the
+**register's own wage and hours** give a figure identical to ours in all eleven
+cases. Neither is the cause.

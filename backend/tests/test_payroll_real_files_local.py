@@ -234,3 +234,27 @@ def test_the_hours_file_has_one_employee_the_register_has_never_paid():
     report = validate_identity(hours, known_emp_ids=known)
     assert not report.ok
     assert any("38" in f.detail for f in report.blocking)
+
+
+def test_payentrys_deductions_are_the_workbooks_figures():
+    """⚠️ THE PROOF THAT SETTLED THE EIGHT DIFFERENCES.
+
+    Payentry does not calculate dues; it deducts what the accountant types in
+    from her workbook. The sum of Payentry's 2026-11-05 `Union` deductions is
+    193.93 — exactly the workbook's week-44 golden total in spec §6, to the
+    cent. A coincidence at that precision across twelve members is not
+    available.
+    """
+    import pdfplumber
+
+    from app.services.payroll.register_parser import parse_register
+    from tests.test_payroll_dues_golden import TOTAL_DUES
+
+    with pdfplumber.open(_require(REGISTER_ENV)) as pdf:
+        reg = parse_register(pdf)
+    total = sum(
+        (line.amount for chk in reg.checks if chk.check_date == date(2026, 11, 5)
+         for line in chk.lines
+         if line.kind == "deduction" and line.code == "Union"),
+        D("0"))
+    assert total == TOTAL_DUES == D("193.93"), total

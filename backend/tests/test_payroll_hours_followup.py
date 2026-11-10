@@ -307,3 +307,128 @@ def test_a_tested_cause_is_stated():
         [("5", D("13.39"), D("23.39"), "an initiation fee")], names={})
     assert "Most likely an initiation fee" in out[0].line
     assert out[0].cause == "an initiation fee"
+
+
+# ── why the dues differ: settled 2026-11-10 ──────────────────────────────────
+#
+# ⚠️ **PAYENTRY DOES NOT CALCULATE DUES. IT DEDUCTS WHAT THE ACCOUNTANT TYPES
+# IN FROM HER WORKBOOK.** That one fact explains all eight differences, and it
+# is why the first two hypotheses failed: both assumed Payentry was computing
+# something. The tests below need no real file, because the workbook's week-44
+# figures are already in the repository as the spec's golden table.
+
+
+def test_the_workbook_golden_explains_skutts_dues():
+    """⚠️ THE WHOLE MECHANISM, FROM COMMITTED DATA ONLY.
+
+    Golden row E02 is Skutt: 40 regular and 12.8 overtime hours, his CURRENT
+    rate of 24.54, and a typed overtime rate of 35.835 — which is 1.5 x 23.89,
+    his rate BEFORE the October raise. 1.5 x his current rate would be 36.81.
+
+    So the workbook pays his regular hours at the new rate and his overtime at
+    the old one, and its dues figure is 18.68. Payentry deducted 18.68. We
+    calculate 18.84. The difference is the stale rate and nothing else.
+    """
+    from app.services.payroll.engine import LineInputs, compute_dues
+    from app.services.payroll.rules import DEFAULT_RULES
+    from app.services.payroll.week_findings import (
+        TYPED_FROM_WORKBOOK,
+        explain_dues_difference,
+    )
+    from tests.test_payroll_dues_golden import GOLDEN
+
+    row = next(r for r in GOLDEN if r[0] == "E02")
+    reg_h, ot_h, reg_rate, typed_ot, workbook_dues = (
+        D(row[1]), D(row[3]), D(row[4]), D(row[5]), D(row[11]))
+    assert typed_ot == (D("23.89") * D("1.5")).quantize(D("0.001")), (
+        "E02's typed overtime rate should be 1.5x the PRE-raise 23.89")
+    current_ot = (reg_rate * D("1.5")).quantize(D("0.0001"))
+    assert current_ot == D("36.8100")
+
+    line = LineInputs(reg_hrs=reg_h, ot_hrs=ot_h)
+
+    def recompute(ot_rate):
+        return compute_dues(line, reg_rate, ot_rate, DEFAULT_RULES).dues
+
+    ours = recompute(current_ot)
+    assert ours == D("18.84")
+    assert recompute(typed_ot) == workbook_dues == D("18.68")
+
+    cause = explain_dues_difference(
+        emp_id="3", ours=ours, payentry=workbook_dues, recompute=recompute,
+        current_ot_rate=current_ot, stale_ot_rate=typed_ot)
+    assert cause.explained
+    assert cause.cause == TYPED_FROM_WORKBOOK
+    assert cause.workbook_ot_rate == typed_ot
+
+
+def test_the_three_that_agree_have_an_updated_workbook_rate():
+    """⚠️ The other half of the explanation, and it is what makes it credible.
+
+    Twelve people were raised. Three had their workbook overtime rate updated
+    to 1.5x the NEW rate, and those three are exactly the three whose dues
+    agree with ours. If the workbook's rates were uniformly stale, every member
+    would differ — and they do not.
+    """
+    from tests.test_payroll_dues_golden import GOLDEN
+
+    for gid, reg_rate, typed_ot in (("E01", "30", "45"),
+                                    ("E03", "24.39", "36.585"),
+                                    ("E06", "24.39", "36.585")):
+        row = next(r for r in GOLDEN if r[0] == gid)
+        assert row[4] == reg_rate and row[5] == typed_ot, row
+        assert D(row[5]) == (D(row[4]) * D("1.5")).quantize(D("0.001")), (
+            f"{gid}'s typed overtime rate is 1.5x its CURRENT rate")
+
+
+def test_a_cause_is_not_claimed_unless_the_recomputation_lands_exactly():
+    """⚠️ "Close enough" would send Susan to fix a rate that was not the
+    problem."""
+    from app.services.payroll.week_findings import explain_dues_difference
+
+    cause = explain_dues_difference(
+        emp_id="9", ours=D("20.00"), payentry=D("19.00"),
+        recompute=lambda ot: D("19.50"),          # never reaches 19.00
+        current_ot_rate=D("30.0000"), stale_ot_rate=D("28.0000"))
+    assert not cause.explained and cause.cause is None
+
+
+def test_no_difference_means_no_cause_and_no_finding():
+    from app.services.payroll.week_findings import (
+        dues_cause_findings,
+        explain_dues_difference,
+    )
+
+    same = explain_dues_difference(
+        emp_id="1", ours=D("21.77"), payentry=D("21.77"),
+        recompute=lambda ot: D("21.77"),
+        current_ot_rate=D("45.0000"), stale_ot_rate=D("39.0600"))
+    assert not same.explained
+    assert dues_cause_findings([same]) == []
+
+
+def test_an_identical_stale_rate_cannot_explain_anything():
+    """If the workbook's rate equals the current one, it is not the cause."""
+    from app.services.payroll.week_findings import explain_dues_difference
+
+    cause = explain_dues_difference(
+        emp_id="9", ours=D("20.00"), payentry=D("19.00"),
+        recompute=lambda ot: D("19.00"),
+        current_ot_rate=D("30.0000"), stale_ot_rate=D("30.0000"))
+    assert not cause.explained
+
+
+def test_the_finding_names_the_remedy():
+    from app.services.payroll.week_findings import (
+        dues_cause_findings,
+        explain_dues_difference,
+    )
+
+    cause = explain_dues_difference(
+        emp_id="3", ours=D("18.84"), payentry=D("18.68"),
+        recompute=lambda ot: D("18.68") if ot == D("35.8350") else D("18.84"),
+        current_ot_rate=D("36.8100"), stale_ot_rate=D("35.8350"))
+    line = dues_cause_findings([cause], names={"3": "Skutt"})[0].line
+    assert "35.8350" in line and "36.8100" in line
+    assert "workbook" in line
+    assert "Updating that rate would close it" in line
