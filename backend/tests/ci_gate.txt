@@ -782,3 +782,5 @@ tests/test_payroll_rule_provenance.py
 tests/test_payroll_register_people.py
 tests/test_payroll_r115.py
 tests/test_payroll_vacation_bonus.py
+tests/test_payroll_hours_parser.py
+tests/test_payroll_hours_validation.py
