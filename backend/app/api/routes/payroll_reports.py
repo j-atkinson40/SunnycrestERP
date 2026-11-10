@@ -44,6 +44,8 @@ from app.services.payroll.data_gate import (
 )
 from app.models.payroll_report import (
     R115_STATUSES,
+    PayrollCheck,
+    PayrollReportEmployee,
     PayrollRuleSet,
     PayrollUnionFormR115,
     PayrollWeek,
@@ -52,6 +54,11 @@ from app.models.user import User
 from app.services.payroll import service as payroll_service
 from app.services.payroll.column_mapping import UnverifiedMapping, available_mappings
 from app.services.payroll.parsers import ExportParseError, ExportPayload
+from app.services.payroll.hours_import import (
+    HoursImportRefused,
+    import_hours,
+)
+from app.services.payroll.hours_parser import HoursParseError
 from app.services.payroll.register_import import import_register
 from app.services.payroll.register_people import apply_fills, reconcile
 from app.services.payroll import r115 as r115_service
@@ -203,6 +210,54 @@ async def upload_export(
     # people, and anyone holding payroll.view could import an export.
     company = db.query(Company).filter(Company.id == current_user.company_id).first()
     assert_payroll_data_enabled(company)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Payroll 3: Payentry's own Employee Hours PDF.
+    #
+    # ⚠️ **THE SAME ENDPOINT AND THE SAME PARSER AS THE FUTURE MONDAY PULL.**
+    # A new format key rather than a new route, and `import_hours` takes BYTES
+    # rather than a request — so the scheduled job of Phase 4 hands it exactly
+    # what an upload does and there is no second code path to drift.
+    #
+    # ⚠️ **IDENTITY IS CHECKED AGAINST THE REGISTER AND THE ROSTER, AND A
+    # BLOCKING FINDING REFUSES THE WHOLE FILE.** A naive read of the real
+    # export reproduces every hour total while turning one employee number
+    # into 12008; the only thing that can reject that is a roster.
+    if format_key == HOURS_FORMAT_KEY:
+        known = _known_emp_ids(db, current_user.company_id)
+        checks = db.query(PayrollCheck).filter(
+            PayrollCheck.tenant_id == current_user.company_id).all()
+        try:
+            result = import_hours(
+                db, tenant_id=current_user.company_id, content=content,
+                filename=file.filename or "employee_hours.pdf",
+                week_end_date=week_end_date,
+                uploaded_by_user_id=current_user.id,
+                known_emp_ids=known, checks=checks)
+        except HoursImportRefused as exc:
+            # 422: the request is well-formed and the refusal is a stated one.
+            raise HTTPException(422, {"code": "hours_import_refused",
+                                      "message": str(exc),
+                                      "findings": [
+                                          {"kind": f.kind, "detail": f.detail}
+                                          for f in (exc.report.findings
+                                                    if exc.report else [])]}) from exc
+        except HoursParseError as exc:
+            raise HTTPException(422, {"code": "hours_unreadable",
+                                      "message": str(exc)}) from exc
+        audit_service.log_action(
+            db, current_user.company_id, "payroll_hours_imported",
+            "payroll_hours_import", result.import_id, user_id=current_user.id,
+            changes={"filename": file.filename, "week_end_date": str(week_end_date),
+                     "rows": result.rows_stored,
+                     "duplicate_of": result.duplicate_of})
+        db.commit()
+        return {"import_id": result.import_id, "week_id": result.week_id,
+                "week_end_date": str(result.week_end_date),
+                "rows_stored": result.rows_stored,
+                "week_lines_written": result.week_lines_written,
+                "duplicate_of": result.duplicate_of,
+                "report": result.report}
 
     payload = ExportPayload(
         filename=file.filename or "upload",
@@ -452,6 +507,25 @@ def set_data_enabled(
 # of any kind — so there is nothing here to be given a credential later by
 # accident.
 # ─────────────────────────────────────────────────────────────────────────────
+
+#: Payroll 3. Payentry's own Employee Hours report, as a PDF.
+HOURS_FORMAT_KEY = "payentry_employee_hours"
+
+
+def _known_emp_ids(db: Session, tenant_id: str) -> set[str]:
+    """Every employee id the tenant can account for.
+
+    ⚠️ **THE REGISTER *OR* THE ROSTER** (James, 2026-11-10). The register
+    alone is not enough: employee 38 is listed in the real hours file with no
+    hours and appears nowhere in a YEAR of registers, so she has to be put on
+    the roster before her week will import. That refusal is the check working.
+    """
+    from_checks = {e for (e,) in db.query(PayrollCheck.emp_id)
+                   .filter(PayrollCheck.tenant_id == tenant_id).distinct().all() if e}
+    from_roster = {e for (e,) in db.query(PayrollReportEmployee.payentry_file_number)
+                   .filter(PayrollReportEmployee.tenant_id == tenant_id).all() if e}
+    return from_checks | from_roster
+
 
 #: A year of registers for one licensee is ~2 MB of PDF. 25 allows several
 #: years in one file without allowing a wrong file to be read into memory.

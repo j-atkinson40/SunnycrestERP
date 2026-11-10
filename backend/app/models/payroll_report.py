@@ -108,6 +108,15 @@ class PayrollReportEmployee(Base):
     # as "never paid one" (CLAUDE.md §5).
     initiation_fee_paid_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
+    # ⚠️ Payroll 3. Why a person with no hours this week is not a problem.
+    # NULL means "no reason recorded", which is exactly the state the roster
+    # coverage check flags — it is NOT a synonym for "working normally".
+    # Measured need: Staring has been on workers_comp since the 2026-10-08
+    # check, so he appears in the last four registers and has no week-44
+    # hours, and without this column he would be flagged every week forever.
+    payroll_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    payroll_status_since: Mapped[date | None] = mapped_column(Date, nullable=True)
+
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
@@ -627,3 +636,183 @@ class PayrollUnionFormR115(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Payroll 3 — hours in. The raw evidence behind a week.
+#
+# `payroll_week_lines` holds the INTERPRETATION a calculation reads: hours in
+# buckets. These hold what the files actually said, per line, immutable. The
+# distinction matters because a week's figures have to be defensible to a union
+# auditor, and "this is what Payentry's report printed" is the only thing that
+# settles a disagreement about a bucket.
+#
+# ⚠️ **CORRECTIONS ARE NEW RECORDS, NEVER EDITS** (the brief). An import batch
+# is identified by its file hash, so re-uploading the same file is detectable
+# and a changed file is a different batch sitting beside the first.
+# ─────────────────────────────────────────────────────────────────────────────
+
+HOURS_SOURCE_KINDS = ("employee_hours", "punch_location")
+
+
+class PayrollHoursImport(Base):
+    """One upload of one file, and what reading it produced."""
+
+    __tablename__ = "payroll_hours_imports"
+    __table_args__ = (
+        CheckConstraint("source_kind IN ('employee_hours', 'punch_location')",
+                        name="ck_payroll_hours_import_kind"),
+        Index("ix_payroll_hours_import_tenant_week", "tenant_id", "week_end_date"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False, index=True)
+    source_kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    #: ⚠️ sha256 of the bytes. The only reliable way to tell "they uploaded the
+    #: same file again" from "they uploaded a corrected file" — the filename
+    #: cannot, and Payentry regenerates reports with a new timestamp each time.
+    file_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    week_end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    uploaded_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    rows_parsed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    #: Findings from parsing and validation, stored so they outlive the request.
+    report: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class PayrollHoursLine(Base):
+    """One pay line exactly as the Employee Hours report printed it.
+
+    ⚠️ **IMMUTABLE.** No `updated_at`, and nothing updates these rows. A
+    correction is a new import batch.
+    """
+
+    __tablename__ = "payroll_hours_lines"
+    __table_args__ = (
+        Index("ix_payroll_hours_line_import", "import_id"),
+        Index("ix_payroll_hours_line_tenant_week_emp",
+              "tenant_id", "week_end_date", "emp_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False, index=True)
+    import_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("payroll_hours_imports.id", ondelete="CASCADE"),
+        nullable=False)
+    week_end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    #: The Payentry employee number. ⚠️ The key, always — Payentry spells one
+    #: real name "Micheal" and a long name collides with the dept column.
+    emp_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    name: Mapped[str] = mapped_column(String(160), nullable=False, default="")
+    home_dept: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    worked_dept: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    work_date: Mapped[date] = mapped_column(Date, nullable=False)
+    pay_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    #: ⚠️ Signed. The automatic lunch deduction prints as -0.50 and a 0.00 line
+    #: is real; both are stored as printed.
+    hours: Mapped[Decimal] = mapped_column(HOURS, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class PayrollPunch(Base):
+    """One clock event.
+
+    ⚠️ **NO COORDINATES, BY DESIGN** (James, 2026-11-10). Payroll does not use
+    them and location history on thirty people is a liability for no benefit.
+    `has_location` records only that a punch came from a phone rather than the
+    kiosk. There is deliberately no latitude, longitude, accuracy or IP column
+    for one to be written into later.
+    """
+
+    __tablename__ = "payroll_punches"
+    __table_args__ = (
+        Index("ix_payroll_punch_tenant_week", "tenant_id", "week_end_date"),
+        Index("ix_payroll_punch_tenant_name_at", "tenant_id", "person_name",
+              "punch_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False, index=True)
+    import_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("payroll_hours_imports.id", ondelete="CASCADE"),
+        nullable=False)
+    week_end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    #: ⚠️ The punch file carries NO employee number — only a name. The emp_id
+    #: is resolved by matching and may legitimately be NULL until a person
+    #: confirms the mapping; an unresolved punch is a finding, not a guess.
+    emp_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    person_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    dept: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    punch_at: Mapped[datetime] = mapped_column(DateTime(timezone=False),
+                                               nullable=False)
+    has_location: Mapped[bool] = mapped_column(Boolean, nullable=False,
+                                               default=False)
+    origin: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class PayrollNameAlias(Base):
+    """A punch-file name confirmed to be a particular employee.
+
+    ⚠️ **A PERSON CONFIRMS EACH ONE. NOTHING IS FUZZY-MATCHED SILENTLY**
+    (James, 2026-11-10). Payentry spells one real name "Micheal"; that mapping
+    to employee 22 is the first alias. Normalised exact matching happens
+    automatically; anything unmatched or ambiguous is a finding that waits for
+    a human, and the human's answer lands here.
+    """
+
+    __tablename__ = "payroll_name_aliases"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "normalised_name",
+                         name="uq_payroll_name_alias_tenant_name"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False, index=True)
+    #: The name as it appears in the punch file, normalised.
+    normalised_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    #: The name as printed, kept so a reader can see what was matched.
+    raw_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    emp_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    confirmed_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class PayrollShiftRule(Base):
+    """When a department is expected to start and end.
+
+    ⚠️ Carries `status` from the Payroll 4 provenance vocabulary.
+    `default_unconfirmed` means these hours are in force because the punch
+    detectors need something, not because anyone agreed them — and every
+    finding derived from the rule reports that status with it.
+    """
+
+    __tablename__ = "payroll_shift_rules"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "dept_code", "effective_date",
+                         name="uq_payroll_shift_rule_tenant_dept_date"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False, index=True)
+    dept_code: Mapped[str] = mapped_column(String(16), nullable=False)
+    effective_date: Mapped[date] = mapped_column(Date, nullable=False)
+    shift_start: Mapped[str] = mapped_column(String(5), nullable=False)   # "06:30"
+    shift_end: Mapped[str] = mapped_column(String(5), nullable=False)     # "15:30"
+    status: Mapped[str] = mapped_column(String(32), nullable=False,
+                                        default="default_unconfirmed")
+    source: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
