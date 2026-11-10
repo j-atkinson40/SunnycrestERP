@@ -41,10 +41,39 @@ RATE_SOURCE_CODE = "Reg"
 OT_MULTIPLIER = Decimal("1.5")
 
 
+#: ⚠️ **READ AT THE CHECK DATE, STORED EFFECTIVE FROM THE WEEK IT PAYS.**
+#: James's rule is stated in terms of the week's CHECK date — "the printed Reg
+#: rate on their most recent check dated on or before that week's check date".
+#: But `service.resolve_rate` looks for a rate effective on or before the
+#: week's END date, which is five days earlier. Storing the rate at the check
+#: date therefore misses by exactly that lag, and `calculate_week` flags
+#: `missing_rate` for EVERY employee — measured: all 18 of week 44.
+#:
+#: So the two dates have different jobs. The check date is where the rate is
+#: READ; the week it pays is where it is EFFECTIVE.
+CHECK_LAG_DAYS = 5
+
+
+def week_end_for_check_date(check_date: date) -> date:
+    """The week-end date a check pays for. Inverse of `check_date_for_week`."""
+    from datetime import timedelta
+    return check_date - timedelta(days=CHECK_LAG_DAYS)
+
+
 @dataclass(frozen=True)
 class RateAt:
+    #: The check date the rate was read from.
     effective_date: date
     reg_rate: Decimal
+
+    @property
+    def week_effective_date(self) -> date:
+        """The week-end date from which this rate should be stored effective.
+
+        ⚠️ Use THIS when writing `payroll_rates`, not `effective_date`. See the
+        note above `week_end_for_check_date`.
+        """
+        return week_end_for_check_date(self.effective_date)
 
     @property
     def ot_rate(self) -> Decimal:
