@@ -35,6 +35,12 @@ httpx>=0.27.0
 icalendar~=6.1
 PyMuPDF>=1.24.0
 openpyxl>=3.1.0
+# ⚠️ openpyxl reads .xlsx ONLY. Payentry's Punch Location export is a real
+# BIFF8 / OLE2 binary .xls (verified: CDFV2 container, 'Root Entry' +
+# 'Workbook' streams, '(c) MPAY Inc.' in its print-footer record), which
+# openpyxl cannot open at all. xlrd 2.x dropped .xlsx and kept .xls, so the
+# two are complements rather than alternatives. Payroll 3 Phase 2.
+xlrd>=2.0.1
 pdfplumber>=0.10.0
 python-docx>=1.1.0
 apscheduler>=3.10.0
