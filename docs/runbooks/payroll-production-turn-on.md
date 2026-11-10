@@ -265,6 +265,90 @@ is on, and know that it writes no audit row — the HTTP path does.
 
 ---
 
+## 4a. The roster, from the register
+
+⚠️ **AFTER the register upload and before anything calculates.** The reconcile
+reads the imported checks, so it has nothing to work from until step 4 has run.
+And `payroll_week_lines.employee_id` is a foreign key into
+`payroll_report_employees`, so a week of hours cannot be stored for a person
+who is not on the roster — Payroll 3's import refuses the whole file rather
+than dropping them.
+
+Dry run first. It PROPOSES; only `fill` proposals are written, and `conflict`
+is returned for a person to settle.
+
+```bash
+curl -s -X POST https://api.getbridgeable.com/api/v1/payroll-reports/register/people/reconcile \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "X-Company-Slug: sunnycrest" \
+  -F "apply=false" | python3 -m json.tool
+```
+
+Read `conflicts` and `ambiguous_names` before applying. Then:
+
+```bash
+curl -s -X POST https://api.getbridgeable.com/api/v1/payroll-reports/register/people/reconcile \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "X-Company-Slug: sunnycrest" \
+  -F "apply=true" | python3 -m json.tool
+```
+
+### 4b. Read-only check
+
+```bash
+$PROD $PY - <<'EOF'
+import sys; sys.path.insert(0, ".")
+from datetime import date
+from app.database import SessionLocal
+from app.models.company import Company
+from app.models.payroll_report import PayrollCheck, PayrollReportEmployee
+from app.services.payroll.roster_coverage import recent_check_dates
+db = SessionLocal()
+co = db.query(Company).filter(Company.slug == "sunnycrest").first()
+roster = db.query(PayrollReportEmployee).filter(
+    PayrollReportEmployee.tenant_id == co.id).all()
+print(f"people on the roster         {len(roster)}")
+print(f"  marked union members       {sum(1 for e in roster if e.is_union_member)}")
+print(f"  with no display name       {sum(1 for e in roster if not e.display_name)}")
+
+checks = db.query(PayrollCheck).filter(PayrollCheck.tenant_id == co.id).all()
+print(f"distinct emp ids in checks   {len({c.emp_id for c in checks})}")
+window = set(recent_check_dates(checks, before=max(c.check_date for c in checks), count=4))
+print(f"last 4 check dates           {sorted(d.isoformat() for d in window)}")
+recent_union = {c.emp_id for c in checks if c.check_date in window
+                and any(l.kind == "deduction" and l.code == "Union" for l in c.lines)}
+year_union = {c.emp_id for c in checks
+              if any(l.kind == "deduction" and l.code == "Union" for l in c.lines)}
+print(f"union by deduction, last 4   {len(recent_union)}")
+print(f"union by deduction, all time  {len(year_union)}")
+db.close()
+EOF
+```
+
+**Expected on the year's register, measured locally:**
+
+| figure | value |
+|---|---|
+| people on the roster | **30** |
+| union by `Union` deduction in the **last 4 checks** | **12** |
+| union by `Union` deduction **across the year** | 18 |
+
+⚠️ **12, NOT 13 — AND THE DIFFERENCE IS A PERSON, NOT A ROUNDING.** The October
+R-115 has 13 members because it groups by check date across all of October,
+including the Oct 1 and Oct 8 checks. The last-four-checks window is
+Oct 15 – Nov 5. The one member in the first and not the second is **Staring**,
+whose last check is 2026-10-08 — he has been on workers_comp since. Both
+figures are right for their own question.
+
+**Report whatever the command prints.** If it says something other than 30/12,
+that is a finding about the data and not a number to adjust the expectation to.
+
+⚠️ `with no display name` should be 0. A roster row with an empty name means
+the reconcile created it from a check whose person could not be read, which
+would be a parser regression rather than a data question.
+
+---
+
 ## 5. Verification — read-only
 
 ```bash
