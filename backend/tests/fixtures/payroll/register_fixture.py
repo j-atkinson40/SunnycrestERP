@@ -14,9 +14,17 @@ Each check is here for a reason:
   C3  E03  `ChSup1` and `Garn`: the sensitive codes, so the test that keeps
            them out of non-payroll surfaces has something to find.
   C4  E04  `Sal` AND a `Union` deduction on one check: the anomaly James asked
-           to be reported rather than resolved in code. It also carries a
-           `PTO` line with HOURS AND NO AMOUNT — the shape the parser used to
-           drop, losing the hours while every amount total still balanced.
+           to be reported rather than resolved in code. Also the zero-dues
+           guard: no dues-bearing earnings at all, so component b's division
+           never happens.
+  C5  E05  a salaried check carrying a `PTO` line with HOURS AND NO AMOUNT —
+           the shape the parser used to drop, losing the hours while every
+           amount total still balanced. On its OWN check, and with no union
+           deduction, because that is where the 36 real ones are: salaried
+           staff who are not union members. Putting it on E04 was my first
+           attempt and it was wrong twice over — it broke the zero-dues guard
+           AND claimed a shape the register has never printed on a check that
+           carries dues.
   T   —    a page TOTAL block with no `Chk/Vcr #`, which must be SKIPPED and
            COUNTED, not reported as a failed check.
 
@@ -29,14 +37,15 @@ from .build_register_pdf import Page, check_block, page_footer, write_pdf
 
 #: What the fixture says, so a test asserts against a stated expectation
 #: rather than against whatever the parser happens to produce.
-EXPECTED_CHECKS = 4
+EXPECTED_CHECKS = 5
 EXPECTED_SUMMARY_BLOCKS = 1
-EXPECTED_PEOPLE = {"E01", "E02", "E03", "E04"}
+EXPECTED_PEOPLE = {"E01", "E02", "E03", "E04", "E05"}
 EXPECTED_DISPLAY_NAMES = {
     "E01": "Alpha, Ann A",
     "E02": "Bravo, Ben B",
     "E03": "Charlie, Cal C",
     "E04": "Delta, Dee D",
+    "E05": "Echo, Eve E",
 }
 EXPECTED_UNION_PEOPLE = {"E01", "E03", "E04"}
 
@@ -137,29 +146,38 @@ def build() -> bytes:
         p2, top,
         surname="Delta", given="Dee D", emp_id="E04", base_rate=None,
         check_number="9004", check_date="11/13/2025", net="1255.00",
-        earnings=[
-            ("Sal", "Salary", None, None, "1500.00"),
-            # ⚠️ HOURS WITH NO AMOUNT — the shape that was silently dropped.
-            # The salary covers the pay, so the register prints hours alone.
-            # Requiring an amount lost the hours, and because the line carried
-            # no money every AMOUNT total still added up, so validation saw
-            # nothing. `dues_hours` is two of the three dues components.
-            ("PTO", "Paid Time Off", "8.00", None, None),
-        ],
+        earnings=[("Sal", "Salary", None, None, "1500.00")],
         taxes=[("FITW", "Federal Income Tax", "200.00")],
         deductions=[("Union", "Union Dues", "45.00", False)],
-        total_hours="8.00", total_earnings="1500.00",
+        total_hours="0.00", total_earnings="1500.00",
         total_taxes="200.00", total_deductions="45.00",
+    )
+    top = check_block(
+        p2, top,
+        surname="Echo", given="Eve E", emp_id="E05", base_rate=None,
+        check_number="9005", check_date="11/13/2025", net="1010.00",
+        earnings=[
+            ("Sal", "Salary", None, None, "1200.00"),
+            # ⚠️ HOURS WITH NO AMOUNT. The salary already covers the pay, so
+            # the register prints the hours alone. Requiring an amount lost
+            # them — and because the line carries no money, every AMOUNT total
+            # still balanced, so validation saw nothing at all.
+            ("PTO", "Paid Time Off", "8.00", None, None),
+        ],
+        taxes=[("FITW", "Federal Income Tax", "150.00")],
+        deductions=[("401k", "401k", "40.00", False)],
+        total_hours="8.00", total_earnings="1200.00",
+        total_taxes="150.00", total_deductions="40.00",
     )
     top = check_block(
         p2, top,
         surname="Totals", given="For Page", emp_id="", base_rate=None,
         check_number=None, check_date="11/13/2025", net="3601.90",
-        earnings=[("Reg", "Regular", "138.00", None, "4645.00")],
-        taxes=[("FITW", "Federal Income Tax", "595.25")],
-        deductions=[("Union", "Union Dues", "447.85", False)],
-        total_hours="138.00", total_earnings="4645.00",
-        total_taxes="595.25", total_deductions="447.85",
+        earnings=[("Reg", "Regular", "146.00", None, "5845.00")],
+        taxes=[("FITW", "Federal Income Tax", "745.25")],
+        deductions=[("Union", "Union Dues", "487.85", False)],
+        total_hours="146.00", total_earnings="5845.00",
+        total_taxes="745.25", total_deductions="487.85",
     )
     page_footer(p2, top)
 

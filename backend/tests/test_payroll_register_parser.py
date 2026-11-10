@@ -89,7 +89,7 @@ def test_a_total_block_is_skipped_and_counted(parsed):
     assert all(c.check_number for c in parsed.checks)
     # Its grand total is far larger than any real check: proof the block was
     # seen and rejected rather than never produced.
-    assert Decimal("4645.00") not in {c.printed_total_earnings for c in parsed.checks}
+    assert Decimal("5845.00") not in {c.printed_total_earnings for c in parsed.checks}
 
 
 # ── the two glue faults ──────────────────────────────────────────────────────
@@ -331,8 +331,8 @@ def test_idempotency_keys_are_distinct_per_check(parsed):
 
 
 def test_an_earning_line_with_hours_and_no_amount_is_kept(by_emp):
-    """E04 carries `PTO 8.00` with no money beside it."""
-    earn = lines(by_emp["E04"], "earning")
+    """E05, a salaried check, carries `PTO 8.00` with no money beside it."""
+    earn = lines(by_emp["E05"], "earning")
     assert "PTO" in earn, f"the hours-only line was dropped; got {sorted(earn)}"
     assert earn["PTO"].hours == Decimal("8.00")
     assert earn["PTO"].amount == Decimal("0.00"), (
@@ -343,8 +343,8 @@ def test_an_earning_line_with_hours_and_no_amount_is_kept(by_emp):
 
 def test_the_hours_only_line_does_not_disturb_the_earnings_total(by_emp):
     """Zero is the right amount: the printed earnings total excludes it."""
-    chk = by_emp["E04"]
-    assert chk.sum_of("earning") == chk.printed_total_earnings == Decimal("1500.00")
+    chk = by_emp["E05"]
+    assert chk.sum_of("earning") == chk.printed_total_earnings == Decimal("1200.00")
 
 
 def test_line_hours_are_validated_against_the_printed_total(parsed):
@@ -373,7 +373,7 @@ def test_validation_rejects_a_check_whose_HOURS_do_not_match(by_emp):
     hours-only line and requires the VALIDATOR to object, and to say hours.
     """
     import copy
-    chk = copy.deepcopy(by_emp["E04"])
+    chk = copy.deepcopy(by_emp["E05"])
     assert validate_check(chk) is None
     chk.lines = [l for l in chk.lines if l.code != "PTO"]
     # ⚠️ Every AMOUNT still balances — which is exactly why this went unseen.
