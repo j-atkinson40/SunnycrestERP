@@ -437,11 +437,23 @@ def vacation_rate(prior_year_gross: object, prior_year_hours: object,
     975.46 correction is this truncation, and conflating them would leave the
     real cause unfixed while a passing test said otherwise.
 
-    ⚠️ **THE EVIDENCE IS ONE CASE DEEP.** Hunt's is the only vacation line in
-    the year whose rate is not already exact to 4dp, so it is the only one that
-    can tell truncation from rounding. Every other `Vac` line has a rate like
-    27.1900 or 22.3000 and agrees with either rule. Worth confirming against
-    Payentry's own rate field before this is treated as settled.
+    ⚠️ **ONE CASE DEEP, AND THE CASE IS CONFIRMED.** Hunt's is the only
+    vacation line in the year whose rate is not already exact to 4dp, so it is
+    the only one that can tell truncation from rounding — every other `Vac`
+    line has a rate like 27.1900 or 22.3000 and agrees with either rule. The
+    provenance of that one case was the open question and it is now closed:
+    33,062.74 over 1,512.36 is Hunt's row on the accountant's workbook, Vac
+    Calc tab — the same row that computed 900.47 — and his real 2026 `Vac`
+    line is 900.46 (James, 2026-11-10).
+
+    PROVENANCE: status `from_registers`, source
+    "Hunt Vac line 2026 + workbook Vac Calc".
+
+    ⚠️ `from_registers`, not `confirmed`: this is the register's behaviour
+    adopted as the rule. It is not a rule-set COLUMN, so it carries its
+    provenance here and in spec §11.13 rather than in `rule_provenance`. If it
+    should be effective-dated like the other money rules, it needs to become a
+    key — say so and it will.
     """
     gross = to_decimal(prior_year_gross, "prior_year_gross")
     hours = to_decimal(prior_year_hours, "prior_year_hours")

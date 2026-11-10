@@ -253,3 +253,66 @@ def test_the_four_exit_codes_are_distinct():
     assert len(set(codes)) == 4, codes
     # And 3 is the runner's contract, not an arbitrary choice.
     assert EXIT_SKIP == 3
+
+
+# ── the base rule set seed ───────────────────────────────────────────────────
+
+def test_the_base_seed_defaults_before_the_registers_earliest_check():
+    """⚠️ The date is load-bearing, and the wrong one fails silently LATER.
+
+    `resolve_rule_set` returns the newest set effective on or before a date and
+    RAISES when there is none. The real register begins 2025-11-13. A base set
+    dated 2026-01-01 — which is what the week-44 seed uses — resolves fine for
+    "today" and raises for the register's first seven weeks, so a turn-on that
+    only checked today's date would look complete and then fail on import.
+    Measured on the dev database: 2025-11-13 raises, today resolves.
+    """
+    from datetime import date
+
+    from scripts.seed_payroll_base_rule_set import DEFAULT_EFFECTIVE
+
+    earliest_real_check = date(2025, 11, 13)
+    assert DEFAULT_EFFECTIVE < earliest_real_check, (
+        f"the base rule set defaults to {DEFAULT_EFFECTIVE}, which is not "
+        f"before the register's earliest check ({earliest_real_check})"
+    )
+
+
+def test_the_base_seed_has_no_default_tenant():
+    """⚠️ One tenant, named explicitly.
+
+    Turning payroll on is a per-tenant decision. A default — or a loop over
+    every company — is how three other tenants get a rulebook nobody asked
+    for. `--tenant-slug` is required.
+    """
+    import argparse
+    import scripts.seed_payroll_base_rule_set as seed
+
+    parser = argparse.ArgumentParser()
+    # Reconstructed from the module's own source so a change to the flag fails
+    # here rather than being described by a stale assertion.
+    import inspect
+    src = inspect.getsource(seed.main)
+    assert '"--tenant-slug", required=True' in src
+    assert "default=" not in src.split('"--tenant-slug"')[1].split(")")[0]
+
+
+def test_the_base_seed_marks_every_key_assumed():
+    """These values reproduce the workbook and nobody has confirmed them.
+
+    Writing them `confirmed` would be a lie told by a seed.
+    """
+    import inspect
+
+    import scripts.seed_payroll_base_rule_set as seed
+
+    assert 'rule_provenance("assumed"' in inspect.getsource(seed.main)
+    assert len(seed._WHY) > 30
+
+
+def test_the_base_seed_shares_the_exit_contract():
+    from scripts.seed_payroll_base_rule_set import EXIT_FAULT, EXIT_OK, EXIT_SKIP
+    from scripts.seed_payroll_rule_set_2026_11_09 import (
+        EXIT_FAULT as F2, EXIT_OK as O2, EXIT_SKIP as S2)
+
+    assert (EXIT_OK, EXIT_FAULT, EXIT_SKIP) == (O2, F2, S2) == (0, 1, 3)

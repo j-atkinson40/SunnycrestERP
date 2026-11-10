@@ -729,8 +729,20 @@ And since Payentry rounds half-up, the internal rate must lie below 22.511625 �
 which excludes both the 4dp-rounded value and the unrounded average outright.
 **Truncation is the only one of the three candidates that survives.**
 
-⚠️ **This rests on Hunt's prior-year figures being 33,062.74 over 1,512.36** —
-the week-44 fixture's numbers. If those are someone else's, the elimination
-does not apply and the question reopens. That is the one thing still worth
-confirming, and it does not need Payentry: it needs whoever produced the
-week-44 fixture to say whose prior year it was.
+#### SETTLED 2026-11-10 — the provenance of Hunt's figures
+
+The elimination rested on 33,062.74 over 1,512.36 being Hunt's. Confirmed: it
+is **Hunt's row on the accountant's workbook, Vac Calc tab** — the same row
+that computed 900.47 — and his real 2026 `Vac` line is 900.46 (James,
+2026-11-10). The register agrees with the workbook's inputs and disagrees with
+its output by exactly the cent that truncation explains.
+
+| key | value | status | source |
+|---|---|---|---|
+| vacation rate rounding | truncate to 4dp | `from_registers` | Hunt Vac line 2026 + workbook Vac Calc |
+
+⚠️ This is **not** a rule-set column, so its provenance lives here and in
+`engine.vacation_rate` rather than in `rule_provenance`. It is therefore not
+effective-dated: a change to it would apply retroactively to every recomputed
+vacation figure. If that matters it should become a rulebook key — the work is
+a column, a migration and a line in the engine.
