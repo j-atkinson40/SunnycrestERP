@@ -307,3 +307,80 @@ def test_rows_are_clustered_not_bucketed():
 def test_idempotency_keys_are_distinct_per_check(parsed):
     keys = [c.idempotency_key for c in parsed.checks]
     assert len(set(keys)) == len(keys)
+
+
+# ── hours with no money, and the validation hole that hid them ───────────────
+#
+# ⚠️ **FOUND AFTER THE PR WAS GREEN, WHICH IS THE POINT OF THE STORY.** The
+# register prints earning lines carrying HOURS AND NO AMOUNT — a `Vac`, `PTO`,
+# `Sick` or `Reg` line for salaried staff whose pay the salary already covers.
+# Measured: 36 such lines across 29 checks in the year, for 4 salaried
+# employees. The parser required an amount, so it dropped them and lost their
+# hours.
+#
+# `validate_check` did not notice, and could not: it compared earnings AMOUNTS
+# against the printed earnings total and deduction amounts against theirs.
+# The dropped lines carried no money, so every amount still balanced to the
+# cent. 1,275 of 1,275 checks "validated" with 36 lines missing.
+#
+# Hours are not a lesser fact than money here. `dues_hours` is the divisor in
+# dues component b and the multiplier in component c, so an hour that goes
+# missing understates somebody's dues twice over. None of the 29 checks carries
+# union dues, so no dues figure actually moved — but that is luck about who
+# happens to be salaried, not a property of the parse.
+
+
+def test_an_earning_line_with_hours_and_no_amount_is_kept(by_emp):
+    """E04 carries `PTO 8.00` with no money beside it."""
+    earn = lines(by_emp["E04"], "earning")
+    assert "PTO" in earn, f"the hours-only line was dropped; got {sorted(earn)}"
+    assert earn["PTO"].hours == Decimal("8.00")
+    assert earn["PTO"].amount == Decimal("0.00"), (
+        "an hours-only line is stored at zero, not None — a null amount would "
+        "break every sum that touches it"
+    )
+
+
+def test_the_hours_only_line_does_not_disturb_the_earnings_total(by_emp):
+    """Zero is the right amount: the printed earnings total excludes it."""
+    chk = by_emp["E04"]
+    assert chk.sum_of("earning") == chk.printed_total_earnings == Decimal("1500.00")
+
+
+def test_line_hours_are_validated_against_the_printed_total(parsed):
+    """⚠️ THE CHECK THAT WAS MISSING.
+
+    Comparing only amounts cannot see a line that carries no money. This
+    compares hours, which is the only thing that can.
+    """
+    for chk in parsed.checks:
+        if chk.printed_total_hours is None:
+            continue
+        got = sum((l.hours or Decimal("0") for l in chk.lines
+                   if l.kind == "earning"), Decimal("0"))
+        assert got == chk.printed_total_hours, (
+            f"{chk.emp_id} chk {chk.check_number}: line hours {got} != printed "
+            f"{chk.printed_total_hours}"
+        )
+
+
+def test_validation_rejects_a_check_whose_HOURS_do_not_match(by_emp):
+    """⚠️ A positive control on the new rule.
+
+    `test_line_hours_are_validated_against_the_printed_total` would pass
+    against a `validate_check` that ignored hours entirely — it recomputes the
+    comparison itself rather than exercising the validator. So this drops the
+    hours-only line and requires the VALIDATOR to object, and to say hours.
+    """
+    import copy
+    chk = copy.deepcopy(by_emp["E04"])
+    assert validate_check(chk) is None
+    chk.lines = [l for l in chk.lines if l.code != "PTO"]
+    # ⚠️ Every AMOUNT still balances — which is exactly why this went unseen.
+    assert chk.sum_of("earning") == chk.printed_total_earnings
+    why = validate_check(chk)
+    assert why is not None, (
+        "dropping an hours-only line left validation silent, which is the "
+        "original defect"
+    )
+    assert "hours" in why, why

@@ -386,6 +386,25 @@ def _lines_from_rows(rows: list[list[dict]]) -> tuple[list[RegisterLine], dict[s
                     rate = v
                 elif 250 <= w["x0"] < 290:
                     amount = v
+            # ⚠️ **AN EARNING LINE WITH HOURS AND NO AMOUNT IS KEPT, AT ZERO.**
+            # The register prints these for salaried staff: a `Vac`, `PTO` or
+            # `Hol` line carrying hours with no money beside it, because the
+            # salary already covers the pay. Measured: 29 checks across the
+            # year, for 4 salaried employees.
+            #
+            # Requiring an amount dropped them, which lost their HOURS — and
+            # `validate_check` never noticed, because it compared earnings
+            # AMOUNTS and deduction amounts and nothing compared hours. The
+            # dropped lines carried no money, so every amount still added up.
+            # That is the exact shape of a check that passes for the wrong
+            # reason, and the hours matter: `dues_hours` is two of the three
+            # dues components.
+            #
+            # None of the 29 carries union dues, so no dues figure moved. That
+            # is luck about who happens to be salaried, not a property of the
+            # parse.
+            if amount is None and hours is not None:
+                amount = Decimal("0.00")
             if amount is not None:
                 if code not in KNOWN_EARNING_CODES:
                     unknown[code] = unknown.get(code, 0) + 1
@@ -638,6 +657,18 @@ def validate_check(chk: RegisterCheck) -> str | None:
         if gotd != chk.printed_total_deductions:
             return (f"deductions sum {gotd} != printed total "
                     f"{chk.printed_total_deductions} (diff {gotd - chk.printed_total_deductions})")
+    # ⚠️ **HOURS ARE VALIDATED TOO, AND THEY WERE NOT BEFORE.** This is the
+    # hole that hid 29 dropped lines: a line with hours and no money leaves
+    # every AMOUNT total intact, so comparing only amounts cannot see it. And
+    # hours are not a lesser fact than money here — `dues_hours` is the
+    # divisor in dues component b and the multiplier in component c, so an
+    # hour that goes missing understates somebody's dues twice over.
+    if chk.printed_total_hours is not None:
+        goth = sum((l.hours or Decimal("0") for l in chk.lines
+                    if l.kind == "earning"), Decimal("0"))
+        if goth != chk.printed_total_hours:
+            return (f"earnings hours {goth} != printed total hours "
+                    f"{chk.printed_total_hours} (diff {goth - chk.printed_total_hours})")
     if not chk.check_number:
         return "no check number — cannot be made idempotent"
     return None

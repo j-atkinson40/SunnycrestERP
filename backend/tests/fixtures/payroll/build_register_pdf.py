@@ -207,7 +207,11 @@ def check_block(
             page.at(X["earn_hours"], r, hours)
         if rate is not None:
             page.at(X["earn_rate"], r, rate)
-        page.at(X["earn_amt"], r, amount)
+        # ⚠️ `amount=None` prints HOURS WITH NO MONEY, which the register does
+        # for salaried staff — a `Vac`, `PTO` or `Hol` line whose pay the
+        # salary already covers. 36 such lines in the measured year.
+        if amount is not None:
+            page.at(X["earn_amt"], r, amount)
 
     for i, (code, desc, amount) in enumerate(taxes):
         r = body_top + i * ROW_H

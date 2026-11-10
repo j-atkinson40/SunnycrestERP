@@ -663,3 +663,74 @@ otherwise, which is exactly the three cases above.
 emp 28 on 2025-11-20, emp 25 on 2026-06-04). Absent hours are **not zero
 hours**: one entitlement therefore has no checkable tier total, and the local
 check reports it as "hours not printed" rather than inventing a disagreement.
+
+### 11.12 Hours with no money — a dropped line, and the validation hole
+
+⚠️ **FOUND AFTER PR #19 WAS GREEN.** The register prints earning lines carrying
+**hours and no amount** — a `Vac`, `PTO`, `Sick` or `Reg` line for salaried
+staff whose pay the salary already covers. Measured: **36 lines across 29
+checks**, for 4 salaried employees (emp 15, 17, 22, 24).
+
+The parser required an amount, so it dropped them and lost their hours.
+`validate_check` did not notice and **could not**: it compared earnings amounts
+against the printed earnings total, and deduction amounts against theirs. The
+dropped lines carried no money, so every amount still balanced to the cent.
+1,275 of 1,275 checks "validated" with 36 lines missing.
+
+Hours are not a lesser fact than money here: `dues_hours` is the divisor in
+dues component b and the multiplier in component c, so a missing hour
+understates dues twice over. **None of the 29 checks carries union dues**, so
+no dues figure actually moved — but that is luck about who happens to be
+salaried, not a property of the parse.
+
+Fixed both ways: an hours-only earning line is kept at `amount = 0.00`, and
+`validate_check` now compares **line hours against the printed total hours**.
+After the fix: 1,275 checks pass the stricter validation, 0 hours
+disagreements, dues unchanged at 553 of 629.
+
+### 11.13 Payentry's rounding, measured — and the vacation rate settled
+
+**The register does NOT print a rate on every line.** 1,957 of 2,369 earning
+lines print one; `Vac` lines mostly do not (8 of 48), and **Hunt's prints no
+rate at all**. Every printed rate carries exactly 4 decimals.
+
+**Payentry rounds half-up.** Of 813 rated lines whose rate × hours needs
+rounding, 750 are not an exact half-cent, and on those:
+
+| mode | agrees |
+|---|---|
+| ROUND_HALF_UP | **750 of 750** |
+| truncate | 373 of 750 |
+
+So `money.round2`'s `ROUND_HALF_UP` ("matching Excel's ROUND") is right, and
+truncation of line amounts is excluded.
+
+Of the 63 lines that *are* an exact half-cent, half-up matches 58 and misses 5
+— each printed one cent **lower** than half-up gives. No single mode explains
+those 5 (half-down would break the other 58). The likely explanation is that
+the printed 4-decimal rate is a **rounded display of a longer internal rate**:
+a true rate a hair below the printed value puts the product just under the
+half. Recorded, not resolved; no stored figure depends on it, because dues wage
+comes from the register's printed amounts rather than from a recomputation.
+
+#### The vacation rate: rounding is excluded, truncation survives
+
+Hunt's `Vac` line prints 40.00 hours and 900.46 with no rate, so the rate
+cannot be read off. But the **amount constrains it**. Working back, the 4-decimal
+rates that print 900.46 for 40 hours are 22.5114, 22.5115 and 22.5116:
+
+| candidate derivation | rate | × 40 h | prints |
+|---|---|---|---|
+| truncate to 4dp | **22.5116** | 900.4640 | **900.46** ✓ |
+| round to 4dp | 22.5117 | 900.4680 | 900.47 ✗ |
+| unrounded average | 22.51168637… | 900.46745 | 900.47 ✗ |
+
+And since Payentry rounds half-up, the internal rate must lie below 22.511625 —
+which excludes both the 4dp-rounded value and the unrounded average outright.
+**Truncation is the only one of the three candidates that survives.**
+
+⚠️ **This rests on Hunt's prior-year figures being 33,062.74 over 1,512.36** —
+the week-44 fixture's numbers. If those are someone else's, the elimination
+does not apply and the question reopens. That is the one thing still worth
+confirming, and it does not need Payentry: it needs whoever produced the
+week-44 fixture to say whose prior year it was.

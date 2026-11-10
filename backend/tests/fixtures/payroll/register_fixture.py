@@ -14,7 +14,9 @@ Each check is here for a reason:
   C3  E03  `ChSup1` and `Garn`: the sensitive codes, so the test that keeps
            them out of non-payroll surfaces has something to find.
   C4  E04  `Sal` AND a `Union` deduction on one check: the anomaly James asked
-           to be reported rather than resolved in code.
+           to be reported rather than resolved in code. It also carries a
+           `PTO` line with HOURS AND NO AMOUNT — the shape the parser used to
+           drop, losing the hours while every amount total still balanced.
   T   —    a page TOTAL block with no `Chk/Vcr #`, which must be SKIPPED and
            COUNTED, not reported as a failed check.
 
@@ -135,10 +137,18 @@ def build() -> bytes:
         p2, top,
         surname="Delta", given="Dee D", emp_id="E04", base_rate=None,
         check_number="9004", check_date="11/13/2025", net="1255.00",
-        earnings=[("Sal", "Salary", None, None, "1500.00")],
+        earnings=[
+            ("Sal", "Salary", None, None, "1500.00"),
+            # ⚠️ HOURS WITH NO AMOUNT — the shape that was silently dropped.
+            # The salary covers the pay, so the register prints hours alone.
+            # Requiring an amount lost the hours, and because the line carried
+            # no money every AMOUNT total still added up, so validation saw
+            # nothing. `dues_hours` is two of the three dues components.
+            ("PTO", "Paid Time Off", "8.00", None, None),
+        ],
         taxes=[("FITW", "Federal Income Tax", "200.00")],
         deductions=[("Union", "Union Dues", "45.00", False)],
-        total_hours="0.00", total_earnings="1500.00",
+        total_hours="8.00", total_earnings="1500.00",
         total_taxes="200.00", total_deductions="45.00",
     )
     top = check_block(
