@@ -162,7 +162,8 @@ def test_a_persons_punches_are_gathered_from_every_block(parsed):
     hours it implied would be wrong in a way nothing else here would catch.
     """
     ann = parsed.by_person()["Alpha, Ann"]
-    assert len(ann) == 6, [p.punch_at for p in ann]
+    # 6 on weekdays plus her 2 Saturday punches, added with the Saturday rule.
+    assert len(ann) == 8, [p.punch_at for p in ann]
     assert ann == sorted(ann, key=lambda p: p.punch_at), "not in time order"
 
 
@@ -263,11 +264,25 @@ def test_the_shift_default_is_marked_unconfirmed():
     assert len(rule.source) > 20
 
 
-def test_every_finding_carries_the_shift_status(days):
+#: Findings that are NOT derived from the shift rule, and so carry no shift
+#: status. ⚠️ `saturday_overtime_worked` belongs here: hours worked are a fact
+#: and need no rule to interpret, and stamping an unconfirmed-shift status on
+#: them would imply the figure depended on a guess when it does not.
+_NO_SHIFT_STATUS = {"unpaired_punch", "saturday_overtime_worked"}
+
+
+def test_every_shift_derived_finding_carries_the_shift_status(days):
     """A reader must be able to tell a conclusion from a guess in place."""
+    checked = 0
     for f in all_findings(days):
-        if f.kind != "unpaired_punch":
-            assert f.shift_status == "default_unconfirmed", f
+        if f.kind in _NO_SHIFT_STATUS:
+            assert f.shift_status is None, f
+            continue
+        assert f.shift_status == "default_unconfirmed", f
+        checked += 1
+    # ⚠️ A positive control: if every finding were exempt this would pass
+    # while asserting nothing.
+    assert checked, "no shift-derived finding was checked"
 
 
 # ── the three detectors ──────────────────────────────────────────────────────
@@ -276,7 +291,9 @@ def test_an_early_clock_in_is_found(days):
     found = find_early_clock_ins(days)
     assert {f.people[0] for f in found} == {"Alpha, Ann"}
     assert all("06:00" in f.detail for f in found)
-    assert len(found) == 2, [f.on_date for f in found]   # Oct 26 and Oct 29
+    # Oct 26 and Oct 29 only. ⚠️ Ann is also in at 06:00 on SATURDAY Oct 31 and
+    # that is not a finding — Saturday has no regular shift.
+    assert len(found) == 2, [f.on_date for f in found]
 
 
 def test_clocking_in_just_before_the_shift_is_not_early(days):
@@ -324,10 +341,30 @@ def test_an_unpaired_punch_is_reported(days):
     assert "No shift end is assumed" in found[0].detail
 
 
+def test_the_fixtures_saturday_produces_no_early_finding(days):
+    """⚠️ END TO END THROUGH THE xls CONTAINER, not on hand-built objects.
+
+    The fixture had no Saturday at all until the follow-up, so the Saturday
+    rule was only ever tested against DayPunches built in a test file. Two
+    people are now in at 06:00 and out together at 10:53 and 10:58 on
+    Saturday 2026-10-31 — early by the weekday rule on both counts, and a
+    finding on neither.
+    """
+    from datetime import date as _date
+
+    saturday = [f for f in all_findings(days)
+                if f.on_date == _date(2026, 10, 31)]
+    assert saturday, "the fixture has no Saturday punches"
+    assert {f.kind for f in saturday} == {"saturday_overtime_worked"}, saturday
+    assert {p for f in saturday for p in f.people} == \
+        fixture.EXPECTED_SATURDAY_PEOPLE
+
+
 def test_the_detectors_return_findings_and_nothing_else(days):
     """No side effects: findings are data, not actions."""
     found = all_findings(days)
     assert found and all(hasattr(f, "kind") and hasattr(f, "detail")
                          for f in found)
     assert {f.kind for f in found} <= {
-        "unpaired_punch", "early_clock_in", "clustered_early_departure"}
+        "unpaired_punch", "early_clock_in", "clustered_early_departure",
+        "saturday_overtime_worked"}

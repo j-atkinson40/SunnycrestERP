@@ -32,6 +32,22 @@ EARLY_OUT_CLUSTER_WINDOW = timedelta(minutes=15)
 #: Two is a coincidence; this is the smallest group the finding is about.
 EARLY_OUT_MIN_PEOPLE = 2
 
+SATURDAY = 5                    # Python weekday(): Monday=0
+
+#: ⚠️ **THE EARLY DETECTORS RUN MONDAY TO FRIDAY ONLY** (James, 2026-11-10):
+#: *"Saturday has no regular shift."* Measured on the real week 44: four
+#: people clocked out from 10:53 on Saturday 2026-10-31 and the
+#: clustered-departure detector called it a finding. It is not one — every
+#: Saturday hour is overtime and a short Saturday is exactly what a short
+#: Saturday looks like. A detector that cries wolf every weekend stops being
+#: read within a month.
+SHIFT_WEEKDAYS = frozenset({0, 1, 2, 3, 4})
+
+
+def has_regular_shift(on_date) -> bool:
+    """Is this a day the shift rule describes at all?"""
+    return on_date.weekday() in SHIFT_WEEKDAYS
+
 
 @dataclass(frozen=True)
 class ShiftRule:
@@ -114,6 +130,9 @@ def find_early_clock_ins(days: list[DayPunches], *, rules=DEFAULT_SHIFT_RULES
     """Clocking in more than `EARLY_IN_THRESHOLD` before shift start."""
     out = []
     for day in days:
+        # ⚠️ Saturday and Sunday have no regular shift, so "early" is undefined.
+        if not has_regular_shift(day.on_date):
+            continue
         first = day.first_in
         if first is None:
             continue
@@ -147,6 +166,9 @@ def find_clustered_early_departures(days: list[DayPunches], *,
     out = []
     by_date: dict[date, list[tuple[Punch, DayPunches, ShiftRule]]] = {}
     for day in days:
+        # ⚠️ Saturday and Sunday have no shift END to be early against.
+        if not has_regular_shift(day.on_date):
+            continue
         out_punch = day.last_out
         if out_punch is None:
             continue
@@ -185,8 +207,37 @@ def find_clustered_early_departures(days: list[DayPunches], *,
     return out
 
 
+def find_saturday_work(days: list[DayPunches]) -> list[PunchFinding]:
+    """Saturday hours, reported as overtime WORKED.
+
+    ⚠️ **THE POSITIVE FORM OF THE SATURDAY RULE** (James, 2026-11-10):
+    *"Saturday hours are reported as overtime worked, never as leaving
+    early."* Every Saturday hour is overtime, so what a reader wants is how
+    much was worked — not whether somebody left before a shift end that does
+    not exist on a Saturday.
+
+    Reported for every department, including those with no shift rule: hours
+    worked are a fact and need no rule to interpret.
+    """
+    out = []
+    for day in days:
+        if day.on_date.weekday() != SATURDAY or not day.pairs:
+            continue
+        total = day.worked.total_seconds() / 3600
+        first, last = day.pairs[0][0], day.pairs[-1][1]
+        out.append(PunchFinding(
+            kind="saturday_overtime_worked", on_date=day.on_date,
+            detail=(f"{day.name} worked {total:.2f} hours on Saturday "
+                    f"({first.punch_at.strftime('%H:%M')}-"
+                    f"{last.punch_at.strftime('%H:%M')}); every Saturday hour "
+                    f"is overtime"),
+            people=(day.name,)))
+    return out
+
+
 def all_findings(days: list[DayPunches], *, rules=DEFAULT_SHIFT_RULES
                  ) -> list[PunchFinding]:
     return (find_unpaired_punches(days)
             + find_early_clock_ins(days, rules=rules)
-            + find_clustered_early_departures(days, rules=rules))
+            + find_clustered_early_departures(days, rules=rules)
+            + find_saturday_work(days))

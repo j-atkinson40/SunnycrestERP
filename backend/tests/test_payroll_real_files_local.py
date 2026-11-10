@@ -168,14 +168,15 @@ def test_week_44_punch_findings():
     r = parse_punch_location(_require(PUNCH_ENV).read_bytes())
     found = all_findings(pair_punches(r))
     kinds = Counter(f.kind for f in found)
-    assert kinds == {"early_clock_in": 9, "clustered_early_departure": 2}, kinds
-    # ⚠️ The Oct 31 cluster is a SATURDAY. Every Saturday hour is overtime and
-    # a short Saturday is expected, so that finding is almost certainly not
-    # one. The shift rule has no notion of Saturday — recorded here because a
-    # detector that cannot tell Saturday from Thursday will cry wolf weekly.
-    saturday = [f for f in found if f.on_date == date(2026, 10, 31)
-                and f.kind == "clustered_early_departure"]
-    assert len(saturday) == 1
+    # ⚠️ AFTER THE SATURDAY RULE (James, 2026-11-10). Before it: 9 early
+    # clock-ins and 2 clusters, three of the clock-ins and one cluster falling
+    # on Saturday 2026-10-31 — four people out from 10:53, which is what a
+    # short Saturday looks like, not a finding. The early detectors now run
+    # Monday to Friday and Saturday hours are reported as overtime worked.
+    assert kinds == {"early_clock_in": 6, "clustered_early_departure": 1,
+                     "saturday_overtime_worked": 8}, kinds
+    saturday = [f for f in found if f.on_date == date(2026, 10, 31)]
+    assert {f.kind for f in saturday} == {"saturday_overtime_worked"}, saturday
 
 
 # ── hours against the register ───────────────────────────────────────────────

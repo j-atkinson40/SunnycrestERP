@@ -48,15 +48,30 @@ PUNCHES = [
     # ── a department with NO shift rule: must yield no findings ──
     ("[107] Office",     "Golf, Gus",   "Oct 30, 2026", "5:00a", "kiosk punch", "Kiosk"),
     ("[107] Office",     "Golf, Gus",   "Oct 30, 2026", "1:00p", "kiosk punch", "Kiosk"),
+    # ── SATURDAY. ⚠️ Two people in at 06:00 and out together at 10:53 and
+    #    10:58 — early by the weekday rule on both counts, and a finding on
+    #    NEITHER, because Saturday has no regular shift. Measured on the real
+    #    week 44: exactly this shape, four people out from 10:53, and the
+    #    detector called it a finding. The fixture had no Saturday at all, so
+    #    the Saturday tests ran on hand-built objects and never went through
+    #    the xls container.
+    ("[103] Production", "Alpha, Ann",  "Oct 31, 2026", "6:00a", "kiosk punch", "Kiosk"),
+    ("[103] Production", "Bravo, Ben",  "Oct 31, 2026", "6:00a", "kiosk punch", "Kiosk"),
+    ("[103] Production", "Alpha, Ann",  "Oct 31, 2026", "10:53a", "kiosk punch", "Kiosk"),
+    ("[103] Production", "Bravo, Ben",  "Oct 31, 2026", "10:58a", "kiosk punch", "Kiosk"),
 ]
 
 EXPECTED_PUNCHES = len(PUNCHES)
 EXPECTED_PEOPLE = {"Alpha, Ann", "Bravo, Ben", "Delta, Dee", "Echo, Eve",
                    "Foxtrot, Fay", "Golf, Gus"}
-#: ⚠️ MEASURED, not counted by hand — I guessed 13 and it is 12. Ann heads
-#: three blocks and Ben two in the first department, which is the interleaving
-#: this fixture exists to reproduce.
-EXPECTED_BLOCKS = 12
+#: ⚠️ MEASURED, not counted by hand — I guessed 13 and it was 12 before the
+#: Saturday rows were added. Ann heads three blocks and Ben two in the first
+#: department, which is the interleaving this fixture exists to reproduce.
+EXPECTED_BLOCKS = 16
+
+#: The Saturday rows: two people, in together and out together, early by the
+#: weekday rule and a finding on neither.
+EXPECTED_SATURDAY_PEOPLE = {"Alpha, Ann", "Bravo, Ben"}
 EXPECTED_WITH_LOCATION = 1
 
 

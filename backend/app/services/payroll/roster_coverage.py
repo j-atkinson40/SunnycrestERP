@@ -23,6 +23,8 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
+from app.services.payroll.employment import classify_employment
+
 #: Reasons a person legitimately has no hours. Anything else — including
 #: nothing at all — is flagged.
 EXCUSED_STATUSES = frozenset({"workers_comp", "leave", "left"})
@@ -30,7 +32,8 @@ EXCUSED_STATUSES = frozenset({"workers_comp", "leave", "left"})
 #: How far back to look for "who is being paid". Four checks is about a month.
 REGISTERS_LOOKBACK = 4
 
-#: Earning codes that mean somebody was paid for TIME rather than salary.
+#: Kept for readers: these are the codes that LOOK hourly and are not
+#: sufficient. See `employment.classify_employment` for the rule that decides.
 HOURLY_EARNING_CODES = frozenset({"Reg", "OT", "PTO", "Sick", "Hol", "Ber", "Vac"})
 
 #: ⚠️ **A `Sal` LINE ANYWHERE IN THE WINDOW MEANS SALARIED, WHATEVER ELSE THE
@@ -62,29 +65,39 @@ def recent_check_dates(checks, *, before: date,
 
 def hourly_people_recently_paid(checks, *, before: date,
                                 count: int = REGISTERS_LOOKBACK) -> set[str]:
-    """Employee ids paid for HOURS in the recent registers.
+    """Employee ids paid HOURLY in the recent registers.
 
-    ⚠️ Hourly, not everyone. A salaried person has no line in the Employee
-    Hours report at all, so counting them here would flag every one of them
-    every week — and there are five in the real register.
+    ⚠️ **DELEGATES TO `employment.classify_employment`, AND THAT IS THE POINT
+    OF THE FOLLOW-UP.** This function had its own idea of "hourly" and the rate
+    resolver had another, and both got it wrong in the same way — reading an
+    hours-bearing line as evidence of hourly pay. James's rule, 2026-11-10:
+    salaried is any `Sal` line in the last four checks; hourly is a `Reg` line
+    WITH A PRINTED RATE. Hours-only $0.00 lines never make anyone hourly.
+
+    The earlier version here was narrower than the bug but still too wide: a
+    person with only a `PTO 8.00` line at $0.00 and no `Sal` line counted as
+    hourly, because it tested the CODES and merely subtracted the salaried.
+
+    ⚠️ **TWO DIFFERENT WINDOWS, AND CONFLATING THEM BROKE THIS.**
+    `classify_employment` asks "how is this person PAID", so it looks at THEIR
+    last four checks, whenever those were — a person off payroll for two months
+    is still salaried or still hourly. This function asks "who was being paid
+    RECENTLY", which is the last four check dates of the PAYROLL. My first
+    attempt at the follow-up delegated wholesale and flagged 8 people instead
+    of 1 — including Staring, whom James explicitly said must never be
+    flagged, because Staring is permanently hourly and simply has not been
+    paid since 2026-10-08.
+
+    So the two are composed: in the payroll's recent window, AND classified
+    hourly.
     """
     window = set(recent_check_dates(checks, before=before, count=count))
-    hourly: set[str] = set()
-    salaried: set[str] = set()
-    for chk in checks:
-        if chk.check_date not in window or not chk.emp_id:
-            continue
-        for line in chk.lines:
-            if line.kind != "earning":
-                continue
-            if line.code == SALARY_EARNING_CODE:
-                salaried.add(chk.emp_id)
-            elif (line.code in HOURLY_EARNING_CODES
-                    and (line.hours or Decimal("0")) != 0):
-                hourly.add(chk.emp_id)
-    # ⚠️ Salaried wins. A `Sal` line is positive evidence of how somebody is
-    # paid; hours on a PTO line are not evidence of the opposite.
-    return hourly - salaried
+    in_window = {c.emp_id for c in checks
+                 if c.check_date in window and c.emp_id}
+    hourly = {emp_id for emp_id, e in
+              classify_employment(checks, before=before, count=count).items()
+              if e.is_hourly}
+    return in_window & hourly
 
 
 def check_roster_coverage(result, checks, *, week_check_date: date,

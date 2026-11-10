@@ -26,7 +26,7 @@ one from amount / hours without telling me how many."* Nothing here infers.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 
@@ -141,7 +141,10 @@ class RateResolution:
     """Rates for a week, and the people who have none."""
 
     rates: dict[str, RateAt]
+    #: No rate AND not known to be salaried: a genuine gap to look into.
     missing: list[str]
+    #: No rate because they are salaried: expected, not a finding.
+    salaried: list[str] = field(default_factory=list)
 
     @property
     def missing_count(self) -> int:
@@ -150,14 +153,29 @@ class RateResolution:
 
 
 def rates_for_week(emp_ids, *, check_date: date,
-                   history: dict[str, list[RateAt]]) -> RateResolution:
-    """Resolve every employee's rate for one week's check date."""
+                   history: dict[str, list[RateAt]],
+                   employment: dict | None = None) -> RateResolution:
+    """Resolve every employee's rate for one week's check date.
+
+    ⚠️ **A SALARIED PERSON IS NOT `missing_rate`** (James, 2026-11-10). They
+    have no hourly rate because they are not paid one, and reporting it as
+    missing data sends somebody looking for a number that does not exist.
+    Measured: employee 22 was the only "missing" rate in week 44 and he is
+    salaried. Pass `employment` from `employment.classify_employment`; without
+    it every rateless employee is reported missing, which is the old behaviour
+    and is kept so the argument is additive rather than a silent change.
+    """
     rates: dict[str, RateAt] = {}
     missing: list[str] = []
+    salaried: list[str] = []
     for emp_id in sorted(emp_ids, key=lambda e: (len(e), e)):
         found = rate_for(emp_id, check_date, history)
-        if found is None:
-            missing.append(emp_id)
-        else:
+        if found is not None:
             rates[emp_id] = found
-    return RateResolution(rates=rates, missing=missing)
+            continue
+        known = (employment or {}).get(emp_id)
+        if known is not None and getattr(known, "is_salaried", False):
+            salaried.append(emp_id)
+        else:
+            missing.append(emp_id)
+    return RateResolution(rates=rates, missing=missing, salaried=salaried)
