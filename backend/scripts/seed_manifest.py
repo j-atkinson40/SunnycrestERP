@@ -145,13 +145,38 @@ TIERS: dict[str, tuple[str, str]] = {
     ),
     "seed_accounting_demo": (
         "manual",
-        "an --tenant-slug-REQUIRED ops tool, not a boot seed. It is the only "
-        "seed with argparse `required=True`, so the runner's bare invocation "
+        "an --tenant-slug-REQUIRED ops tool, not a boot seed. Its argparse "
+        "marks the slug `required=True`, so the runner's bare invocation "
         "exits rc=2 on EVERY canonical run — including every staging deploy, "
         "where it has been a standing WARN in the boot log. Same shape as "
         "seed_reconciliation_test below: giving it a default tenant would seed "
         "demo accounting data into that tenant on every deploy, which is the "
         "harm that entry exists to prevent. Run it explicitly with a slug.",
+    ),
+    # ⚠️ ADDED 2026-11-10, AND IT WOULD HAVE TAKEN BACKEND CI DOWN. The
+    # canonical runner DISCOVERS every `seed_*.py` and invokes it with no
+    # arguments, so a script whose argparse marks anything `required=True`
+    # exits rc=2 — not 0 and not the declared-skip 3 — and `seed_dev.sh` fails
+    # the step before the test gate runs. That is exactly how this payroll arc
+    # already turned Backend CI red once, with
+    # `seed_payroll_rule_set_2026_11_09` returning 1 on a fresh database.
+    #
+    # ⚠️ Declared `manual` rather than softened with an in-script "no slug, so
+    # skip", for the reason the `seed_payroll_week44` entry above gives: the
+    # tier is read ONCE per boot and LOGGED WITH THIS REASON, whereas a silent
+    # in-script skip would also hide a real misuse — someone running this
+    # against the wrong database would get silence instead of a refusal.
+    "seed_payroll_base_rule_set": (
+        "manual",
+        "Creates a tenant's FIRST payroll rule set — the accountant's workbook "
+        "values, every key `assumed`. An --tenant-slug-REQUIRED ops tool with "
+        "no default, so the runner's bare invocation exits rc=2. Turning "
+        "payroll on is a per-tenant decision and a default would give three "
+        "other tenants a rulebook nobody asked for. It also refuses a tenant "
+        "that already has one, because a tuned rate is the accountant's "
+        "decision. Run it explicitly: `python -m "
+        "scripts.seed_payroll_base_rule_set --tenant-slug sunnycrest "
+        "--commit`. See docs/runbooks/payroll-production-turn-on.md.",
     ),
     "seed_reconciliation_test": (
         "manual",

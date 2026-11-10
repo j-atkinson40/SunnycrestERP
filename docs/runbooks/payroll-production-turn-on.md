@@ -118,6 +118,18 @@ $PROD $PY scripts/seed_payroll_rule_set_2026_11_09.py
 $PROD $PY scripts/seed_payroll_rule_set_2026_11_09.py --commit
 ```
 
+⚠️ **A DEPLOY WILL DO THIS FOR YOU ONCE STEP 1 HAS RUN.** This seed is a boot
+seed — the canonical runner discovers it and runs it on every deploy — and it
+exits 3 only while there is no rulebook to carry forward. The moment step 1
+creates the base set, the next production deploy will create the 2026-11-09
+set automatically. That is the intended end state and the seed is idempotent,
+but it means this step can appear already done. Run it here anyway: a dry run
+that reports "already has a 2026-11-09 set" is the confirmation.
+
+(The base-rule-set seed of step 1 is NOT a boot seed. It is declared `manual`
+in `scripts/seed_manifest.py`, because the runner invokes every seed with no
+arguments and that one requires `--tenant-slug`.)
+
 It copies the current set forward and changes three keys:
 `sick_in_dues_hours` → False (`confirmed`, accountant 2026-11-03),
 `remittance_group_by` → check_date (`confirmed`),

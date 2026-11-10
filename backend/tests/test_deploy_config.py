@@ -251,3 +251,76 @@ def test_railway_echoes_back_the_keys_it_read_from_the_file():
         assert len(echoed) == 1, echoed
         echoed = echoed[0]
     assert echoed == "bash railway-prep.sh", echoed
+
+# ─────────────────────────────────────────────────────────────────────────────
+# A seed with a required argument cannot survive the canonical runner.
+#
+# ⚠️ **THIS LIVES HERE, IN A GATED FILE, DELIBERATELY.** I wrote it first in
+# `test_seed_hygiene.py`, which is in `ci_excluded.txt` — so the guard would
+# never have run in CI, which is the same "a guard that is not in the gate is
+# documentation" mistake this arc already made once. `test_deploy_config.py`
+# is gated and already asserts a manifest rule
+# (`test_a_demo_seed_without_a_production_guard_is_manual`), so the rule sits
+# beside its neighbour.
+#
+# ⚠️ **AND THE RULE EXISTS BECAUSE THE SAME MISTAKE WAS MADE TWICE IN TWO
+# DAYS.** `run_canonical_seeds.sh` DISCOVERS every `seed_*.py` and invokes it
+# with NO arguments. A script whose argparse marks anything `required=True`
+# exits rc=2 — not 0, and not the declared-skip 3 — so `seed_dev.sh` fails the
+# boot-seed step BEFORE the test gate runs and the job goes red with no test
+# results at all. It happened 2026-11-09 with
+# `seed_payroll_rule_set_2026_11_09` (which returned 1 on a fresh database
+# instead of declaring a skip) and would have happened again the next day with
+# `seed_payroll_base_rule_set`. A manifest entry fixes an instance; this
+# fixes the class.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _seeds_with_a_required_argument():
+    import ast
+
+    scripts = pathlib.Path(__file__).resolve().parent.parent / "scripts"
+    found = {}
+    for path in sorted(scripts.glob("seed_*.py")):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:                                   # pragma: no cover
+            continue
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "add_argument"):
+                continue
+            for kw in node.keywords:
+                if (kw.arg == "required" and isinstance(kw.value, ast.Constant)
+                        and kw.value.value is True):
+                    flag = next((a.value for a in node.args
+                                 if isinstance(a, ast.Constant)), "?")
+                    found.setdefault(path.stem, []).append(flag)
+    return found
+
+
+def test_the_required_argument_scanner_can_see():
+    """⚠️ Control: an AST walk that matches nothing proves nothing.
+
+    If the scan found no seed at all, the rule below would pass while
+    completely unenforced.
+    """
+    found = _seeds_with_a_required_argument()
+    assert found, "the scanner found no seed with a required argument at all"
+    assert "seed_payroll_base_rule_set" in found, sorted(found)
+    assert found["seed_payroll_base_rule_set"] == ["--tenant-slug"], found
+
+
+def test_every_seed_with_a_required_argument_is_declared_manual():
+    from scripts.seed_manifest import TIERS
+
+    found = _seeds_with_a_required_argument()
+    offenders = {name: flags for name, flags in found.items()
+                 if TIERS.get(name, ("all",))[0] != "manual"}
+    assert not offenders, (
+        "these seeds have a required argument but are not declared `manual` "
+        f"in scripts/seed_manifest.py: {offenders}. The canonical runner "
+        "invokes every seed_*.py with NO arguments, so each exits rc=2 on "
+        "every deploy and fails the boot-seed step before the test gate runs."
+    )
