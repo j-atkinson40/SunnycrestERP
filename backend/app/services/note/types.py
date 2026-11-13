@@ -11,6 +11,8 @@ Prose fragments are the other register and live in `app/services/fragments/`.
 
 from __future__ import annotations
 
+from app.core.areas import CROSS_AREA
+
 from dataclasses import dataclass
 from typing import Any, Literal, Mapping
 
@@ -71,6 +73,21 @@ class StandingEntry:
     target_surface: StandingTargetSurface = "peek"
     target_key: str = ""
 
+    #: ⚠️ (6) AREA — which area this line's content belongs to, Payroll 5a.
+    #:
+    #: The note is a COMPOSED SURFACE: it shows an area-limited user only their
+    #: own areas. The prose fragments declare an area and so must these, or the
+    #: register becomes the hole the prose closed. `workload` is the live
+    #: example — it summarises deliveries and the ancillary pool, so a
+    #: payroll-limited user must not be given it, and it is `CROSS_AREA`.
+    #:
+    #: Unlike a fragment this one has a DEFAULT, and the default is the
+    #: cautious answer: an entry that never declares an area is treated as
+    #: cross-area and withheld from limited roles. A standing set is tenant
+    #: CONFIGURABLE — `set_override` writes entries from a request — so the
+    #: registration-time enforcement fragments use cannot reach every entry.
+    area: str = CROSS_AREA
+
     #: How the live count is resolved, or None for a line that carries no count.
     #: ⚠️ COUNTS ARE OF DISTINCT SUBJECTS, never of raw rows — see
     #: `counts.resolve_count`. A count is a fact the user reads; a badge is a
@@ -95,6 +112,7 @@ class StandingEntry:
             "target_surface": self.target_surface,
             "target_key": self.target_key,
             "count_source": self.count_source,
+            "area": self.area,
             "metadata": dict(self.metadata or {}),
         }
 
@@ -106,6 +124,12 @@ class StandingEntry:
             target_surface="peek",
             target_key=str(d.get("target_key", "")),
             count_source=d.get("count_source"),
+            # ⚠️ ROUND-TRIPS, AND FALLS BACK TO CROSS_AREA RATHER THAN TO "".
+            # Entries written before 5a carry no `area` key. Reading them as
+            # cross-area withholds them from a limited role, which is the safe
+            # direction: the unsafe one shows a payroll user a stored entry
+            # nobody ever classified.
+            area=str(d.get("area") or CROSS_AREA),
             metadata=d.get("metadata") or {},
         )
 

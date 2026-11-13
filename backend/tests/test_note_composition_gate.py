@@ -14,6 +14,7 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
+from app.core.areas import CROSS_AREA
 from app.models.daily_note import DailyNote
 from app.models.note_fragment_render import NoteFragmentRender
 from app.services.fragments import (
@@ -71,6 +72,7 @@ def _declare(fid: str, *, kind: str, inputs: dict, subject: str = "subj-1"):
     register_fragment(FragmentDeclaration(
         fragment_id=fid, label=fid, kind=kind,
         audience=Audience.any_authenticated(),
+        area=CROSS_AREA,
         condition=lambda db, *, user: [FragmentInstance(
             subject_id=subject,
             payload=FragmentPayload(title="T", synthesized_text="prose"),
@@ -214,6 +216,7 @@ def test_the_digest_ignores_the_PROSE(db_session, user):
         register_fragment(FragmentDeclaration(
             fragment_id="np", label="np", kind="non_prompt",
             audience=Audience.any_authenticated(),
+            area=CROSS_AREA,
             condition=lambda db, *, user: [FragmentInstance(
                 subject_id="subj-1",
                 payload=FragmentPayload(title="DIFFERENT",
@@ -236,6 +239,7 @@ def test_two_subjects_do_not_share_a_verdict(db_session, user):
         register_fragment(FragmentDeclaration(
             fragment_id="np2", label="np2", kind="non_prompt",
             audience=Audience.any_authenticated(),
+            area=CROSS_AREA,
             condition=lambda db, *, user: [
                 FragmentInstance(subject_id="A",
                                  payload=FragmentPayload(title="A", synthesized_text="a"),

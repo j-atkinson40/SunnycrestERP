@@ -28,6 +28,8 @@ under a user who has learned their positions is not.
 
 from __future__ import annotations
 
+from app.core.areas import CROSS_AREA
+
 import logging
 from typing import Mapping
 
@@ -40,13 +42,24 @@ from app.services.note.types import (
 logger = logging.getLogger(__name__)
 
 
-def _e(entry_id: str, label: str, target_key: str, count_source: str | None = None):
+def _e(entry_id: str, label: str, target_key: str, count_source: str | None = None,
+       *, area: str):
+    """⚠️ `area` is KEYWORD-ONLY AND HAS NO DEFAULT, on purpose.
+
+    `StandingEntry.area` defaults to `CROSS_AREA` so that a tenant-configured
+    entry is withheld from a limited role rather than leaked. That default is
+    right for configuration and wrong here: a PLATFORM entry silently defaulting
+    to cross-area would vanish from every limited role's register with nothing
+    to show it had happened. Making it required means each platform line states
+    whose work it is.
+    """
     return StandingEntry(
         entry_id=entry_id,
         label=label,
         target_surface="peek",
         target_key=target_key,
         count_source=count_source,
+        area=area,
     )
 
 
@@ -109,36 +122,36 @@ def _e(entry_id: str, label: str, target_key: str, count_source: str | None = No
 #: nobody references.
 ROLE_TEMPLATES: dict[tuple[str, str], tuple[StandingEntry, ...]] = {
     ("manufacturing", "admin"): (
-        _e("schedule", "Schedule", "vault_schedule"),
-        _e("production", "Production", "line_status"),
-        _e("deliveries", "Deliveries", "today"),
+        _e("schedule", "Schedule", "vault_schedule", area="scheduling"),
+        _e("production", "Production", "line_status", area="production"),
+        _e("deliveries", "Deliveries", "today", area="scheduling"),
     ),
     ("manufacturing", "production"): (
-        _e("schedule", "Schedule", "vault_schedule"),
-        _e("production", "Production", "line_status"),
-        _e("deliveries", "Deliveries", "today"),
+        _e("schedule", "Schedule", "vault_schedule", area="scheduling"),
+        _e("production", "Production", "line_status", area="production"),
+        _e("deliveries", "Deliveries", "today", area="scheduling"),
     ),
     ("manufacturing", "dispatcher"): (
-        _e("schedule", "Schedule", "vault_schedule"),
-        _e("ancillary", "Ancillary pool", "scheduling.ancillary-pool"),
-        _e("deliveries", "Deliveries", "today"),
+        _e("schedule", "Schedule", "vault_schedule", area="scheduling"),
+        _e("ancillary", "Ancillary pool", "scheduling.ancillary-pool", area="scheduling"),
+        _e("deliveries", "Deliveries", "today", area="scheduling"),
     ),
     # An accountant is not asked about a delivery mid-call, so the work-summary
     # line is dropped here rather than carried for symmetry. Two entries is a
     # correct standing set under the tightened admission test.
     ("manufacturing", "accountant"): (
-        _e("ar", "Receivables", "ar_summary"),
+        _e("ar", "Receivables", "ar_summary", area="accounting"),
     ),
     # The three non-manufacturing verticals share the sparse default the
     # operational layer already falls back to. Two entries, not five.
     ("funeral_home", "director"): (
-        _e("workload", "Workload", "today"),
+        _e("workload", "Workload", "today", area=CROSS_AREA),
     ),
     ("cemetery", "admin"): (
-        _e("workload", "Workload", "today"),
+        _e("workload", "Workload", "today", area=CROSS_AREA),
     ),
     ("crematory", "admin"): (
-        _e("workload", "Workload", "today"),
+        _e("workload", "Workload", "today", area=CROSS_AREA),
     ),
 }
 
@@ -151,7 +164,7 @@ ROLE_TEMPLATES: dict[tuple[str, str], tuple[StandingEntry, ...]] = {
 #: with no standing set has no positional memory to build, and the register's
 #: whole value is that position means something.
 FALLBACK_TEMPLATE: tuple[StandingEntry, ...] = (
-    _e("workload", "Workload", "today"),
+    _e("workload", "Workload", "today", area=CROSS_AREA),
 )
 
 

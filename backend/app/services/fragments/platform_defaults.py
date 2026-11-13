@@ -67,11 +67,15 @@ it does not get cheaper with practice the way the assembly does.
 
 from __future__ import annotations
 
+import logging
+
 from datetime import date
+from decimal import Decimal
 from typing import Sequence
 
 from sqlalchemy.orm import Session
 
+from app.core.areas import CROSS_AREA
 from app.models.user import User
 from app.services.fragments.registry import register_fragment
 from app.services.fragments.synthesis import compose, measured, plain
@@ -86,9 +90,12 @@ from app.services.fragments.types import (
 )
 
 # ── Fragment ids ─────────────────────────────────────────────────────
+logger = logging.getLogger(__name__)
+
 ANOMALY_WATCHLIST = "anomaly_watchlist"
 COMPLIANCE_FLAGS = "compliance_flags"
 TASKS_DUE_TODAY = "tasks_due_today"
+WEEKLY_DUES = "weekly_dues"
 
 
 # ── (2) CONDITIONS ───────────────────────────────────────────────────
@@ -538,6 +545,100 @@ def _expense_posting_map_condition(db: Session, *, user: User) -> Sequence[Fragm
     return out
 
 
+# ── Payroll 5a ───────────────────────────────────────────────────────────
+
+
+def _weekly_dues_condition(
+    db: Session, *, user: User
+) -> Sequence[FragmentInstance]:
+    """The most recent calculated week's union dues, for the payroll user.
+
+    ⚠️ **THE DATA SWITCH IS CHECKED FIRST AND RETURNS NOTHING WHEN OFF.** The
+    switch is tenant-wide and off by default, and a tenant that holds no payroll
+    data must not have a payroll line appear on its home page — least of all one
+    reporting a total. Returning `[]` is the honest answer: there is nothing to
+    say, rather than something being withheld.
+
+    ⚠️ Reports a CALCULATED week, not an imported one. An imported week has
+    hours and no numbers; a dues total read off it would be zero, and a zero
+    total on the note is a claim that this week's dues are nothing.
+    """
+    from app.models.company import Company
+    from app.models.payroll_report import PayrollWeek
+    from app.services.payroll.data_gate import is_payroll_data_enabled
+    from app.services.payroll.service import build_report
+
+    company = db.query(Company).filter(Company.id == user.company_id).first()
+    if company is None or not is_payroll_data_enabled(company):
+        return []
+
+    week = (
+        db.query(PayrollWeek)
+        .filter(
+            PayrollWeek.tenant_id == user.company_id,
+            PayrollWeek.status.in_(("calculated", "approved")),
+        )
+        .order_by(PayrollWeek.week_end_date.desc())
+        .first()
+    )
+    if week is None:
+        return []
+
+    try:
+        report = build_report(db, week, "weekly_dues_detail")
+    except Exception:
+        logger.exception("weekly dues report failed for week %s", week.id)
+        return []
+
+    rows = list(report.rows or ())
+    if not rows:
+        return []
+
+    # ⚠️ THE REPORT'S OWN TOTAL, NOT A SECOND SUM OVER ITS ROWS.
+    # `weekly_dues_detail` computes `totals["dues"]` from the underlying
+    # Decimals and documents that every row is in it — "no filter, no slice,
+    # no skip-if-zero". Re-adding the formatted per-row strings here would be a
+    # second implementation of the same number, free to disagree with the one
+    # the Focus and the deduction register show.
+    total = Decimal(report.totals.get("dues") or "0.00")
+    paying = sum(1 for r in rows if Decimal(r.get("dues") or "0.00") > 0)
+
+    approved = week.status == "approved"
+    text = (
+        f"Week {week.week_number} dues come to ${total:,.2f} — "
+        f"{paying} member{'' if paying == 1 else 's'} paying, "
+        f"worked out from what Payentry will pay. "
+        + ("Approved." if approved else "Not approved yet.")
+    )
+
+    return [
+        FragmentInstance(
+            # (5) IDENTITY: one line per WEEK, not per run and not per user.
+            # Two people opening the note see the same subject, and tomorrow's
+            # view of the same week is the same fragment rather than a new one.
+            subject_id=week.id,
+            payload=FragmentPayload(
+                title="Union dues",
+                synthesized_text=text,
+                referenced_items=(),
+                priority=80,
+            ),
+            predicate={"week_status_in": ["calculated", "approved"]},
+            expansion={"week_id": week.id},
+            condition_inputs={
+                "week_id": week.id,
+                "week_number": week.week_number,
+                "members_paying": paying,
+                # ⚠️ str, not float. This value is COMPARED against the stored
+                # digest to decide whether the note repeats itself, and binary
+                # float would make $193.93 compare unequal to itself.
+                "total_dues": f"{total:.2f}",
+                "status": week.status,
+            },
+        )
+    ]
+
+
 # ── Seed ─────────────────────────────────────────────────────────────
 
 
@@ -554,6 +655,9 @@ def seed() -> None:
             # `financials.view` is the honest gate — but it is a decision made
             # in this commit and should be reviewed, not inherited.
             audience=Audience(required_permission="financials.view"),
+            # (6) AREA — follows the gate above. `financials.view` is an
+            # accounting permission, so this is accounting's content.
+            area="accounting",
             condition=_anomaly_watchlist_condition,
             target_surface="peek",
             target_key="anomalies",
@@ -570,6 +674,7 @@ def seed() -> None:
             label="Compliance flags",
             kind="non_prompt",
             audience=Audience(required_permission="safety.view"),
+            area="safety",
             condition=_compliance_flags_condition,
             target_surface="peek",
             target_key="safety_alerts",
@@ -586,6 +691,19 @@ def seed() -> None:
             label="Tasks due today",
             kind="prompt",
             audience=Audience.any_authenticated(),
+            # ⚠️ (6) AREA — CROSS_AREA, AND THAT COSTS SOMETHING ON PURPOSE.
+            # Every area creates tasks, so an instance here is whatever this
+            # user happens to own: a payroll task, an order, a safety follow-up.
+            # The declaration cannot tell them apart, so an area-limited role is
+            # shown NONE of them rather than somebody else's.
+            #
+            # The alternative — treating "any_authenticated" as "safe for
+            # everyone" — leaks other areas' subject lines into Susan's note
+            # through the one fragment that admits it does not know which area
+            # it is in. If per-instance areas are wanted later, the fix is for
+            # the CONDITION to tag each instance and for emission to filter
+            # instances rather than types; this field is the type-level half.
+            area=CROSS_AREA,
             condition=_tasks_due_today_condition,
             target_surface="focus",
             target_key="task_triage",
@@ -615,6 +733,23 @@ def seed() -> None:
 
     register_fragment(
         FragmentDeclaration(
+            fragment_id=WEEKLY_DUES,
+            label="Union dues",
+            kind="non_prompt",
+            # Payroll 5 is reports-only, so this INFORMS and does not ask. A
+            # prompt would have to declare how it ends, and the ending — the
+            # week being approved — is 5's later work, not this one's.
+            audience=Audience(required_permission="payroll.view"),
+            area="payroll",
+            condition=_weekly_dues_condition,
+            target_surface="focus",
+            target_key="weekly_payroll",
+            subject_kind="payroll_week",
+        )
+    )
+
+    register_fragment(
+        FragmentDeclaration(
             fragment_id=COLLECTIONS_OUTSTANDING,
             label="Outstanding balances",
             kind="prompt",
@@ -623,6 +758,7 @@ def seed() -> None:
             # fragment that surfaces work whose target the reader cannot open
             # would be telling them about someone else's decision.
             audience=Audience(required_permission="invoice.approve"),
+            area="accounting",
             condition=_collections_outstanding_condition,
             target_surface="focus",
             target_key="ar_collections_triage",
@@ -657,6 +793,7 @@ def seed() -> None:
             label="Expense posting map",
             kind="prompt",
             audience=Audience(required_permission="invoice.approve"),
+            area="accounting",
             condition=_expense_posting_map_condition,
             target_surface="focus",
             # ⚠️ DECLARED AND NOT WIRED. The surface where a category's posting

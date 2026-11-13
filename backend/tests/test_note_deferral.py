@@ -14,6 +14,7 @@ from datetime import date, datetime, timezone
 
 import pytest
 
+from app.core.areas import CROSS_AREA
 from app.models.daily_note import DailyNote
 from app.models.note_fragment_deferral import NoteFragmentDeferral
 from app.models.note_fragment_render import NoteFragmentRender
@@ -117,6 +118,7 @@ def _declare(fid: str, *, kind: str = "prompt", inputs: dict, subject="subj-1"):
     register_fragment(FragmentDeclaration(
         fragment_id=fid, label=fid, kind=kind,
         audience=Audience.any_authenticated(),
+        area=CROSS_AREA,
         condition=lambda db, *, user: [FragmentInstance(
             subject_id=subject,
             payload=FragmentPayload(title="T", synthesized_text="prose"),
@@ -603,6 +605,7 @@ def test_the_record_serialises_spans_like_prose(db_session, user):
         register_fragment(FragmentDeclaration(
             fragment_id="rev_spans", label="rev_spans", kind="prompt",
             audience=Audience.any_authenticated(),
+            area=CROSS_AREA,
             condition=lambda db, *, user: [FragmentInstance(
                 subject_id="cust-1",
                 payload=FragmentPayload(

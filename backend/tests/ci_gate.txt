@@ -789,3 +789,4 @@ tests/test_payroll_real_files_local.py
 tests/test_payroll_hours_phase3.py
 tests/test_payroll_hours_followup.py
 tests/test_payroll_upload_permission.py
+tests/test_note_composed_by_area.py

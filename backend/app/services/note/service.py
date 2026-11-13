@@ -10,6 +10,9 @@ first-match-wins rather than overlaying.
 
 from __future__ import annotations
 
+from app.core.areas import allowed_area_grants, area_admits_read
+from app.models.role import Role
+
 import logging
 from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
@@ -144,8 +147,25 @@ def render_standing_set(db: Session, user: User) -> list[ResolvedStandingEntry]:
     the register's entire value.
     """
     entries, tier = resolve_standing_set(db, user)
+
+    # (6) AREA — the note is a composed surface. Resolved once; `None` means an
+    # unlimited role and is NOT `{}`. See `allowed_area_grants`.
+    role = db.query(Role).filter(Role.id == user.role_id).first()
+    grants = allowed_area_grants(role.limited_to_areas if role else None)
+
     out: list[ResolvedStandingEntry] = []
     for e in entries:
+        # ⚠️ Filtered BEFORE `resolve_count`, which is a real query against the
+        # line's own area. A withheld line must not cost a read of the data it
+        # was withheld for.
+        #
+        # An area-limited user can legitimately end up with an EMPTY standing
+        # set — a payroll role has no template, falls back to `workload`, and
+        # `workload` is cross-area. That is the register telling the truth: it
+        # has nothing of hers to hold. It is not an error and must not be
+        # back-filled with something from another area to avoid looking bare.
+        if not area_admits_read(e.area, grants):
+            continue
         count, state = resolve_count(db, user, e.count_source)
         out.append(
             ResolvedStandingEntry(entry=e, count=count, tier=tier, state=state)
