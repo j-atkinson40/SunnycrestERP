@@ -141,13 +141,48 @@ def test_the_payroll_role_is_area_limited_and_holds_only_payroll(roles_seeded):
     )
 
 
-def test_every_other_seeded_role_is_still_unlimited(roles_seeded):
-    """The new role must be the ONLY limited one. If seeding started writing
-    areas onto the others, every existing user's reach would narrow at once."""
-    for slug in ("accountant", "admin", "office"):
-        assert roles_seeded[slug]["areas"] is None, (
-            f"{slug} acquired limited_to_areas={roles_seeded[slug]['areas']!r}"
+def test_every_seeded_role_matches_its_planned_area_list(roles_seeded):
+    """⚠️ REPLACES `test_every_other_seeded_role_is_still_unlimited`.
+
+    The old claim — *"the new role must be the ONLY limited one. If seeding
+    started writing areas onto the others, every existing user's reach would
+    narrow at once"* — was the correct guard for the payroll slice and is the
+    exact thing Phase B does ON PURPOSE, by ruling, after measuring that no
+    real user holds any of those roles.
+
+    So the guard is not dropped, it is re-pointed: seeding must write EXACTLY
+    the planned list for each role, and `admin` must still come out NULL. That
+    keeps the original worry covered — a role acquiring areas nobody chose
+    still fails — while recognising that the chosen set is now larger than one.
+    """
+    from app.core.areas import PLANNED_ROLE_AREAS
+
+    # ⚠️ **COMPARED BY MEANING, NOT BY SPELLING, AND THE DIFFERENCE IS REAL.**
+    # The `payroll` role carries `["payroll"]` — written before levels existed
+    # and still live on production — while the plan says `["payroll:change"]`.
+    # Those are the SAME GRANT: a bare area name parses as `change`, which is
+    # the backward compatibility that let Phase A ship without touching the one
+    # role that was already limited. A string comparison fails on it and would
+    # have pushed me to rewrite production data for a spelling difference.
+    from app.core.areas import parse_area_grant
+
+    for slug, grants in PLANNED_ROLE_AREAS.items():
+        if slug not in roles_seeded:
+            continue
+        got = roles_seeded[slug]["areas"]
+        assert got is not None, f"{slug} seeded with NULL areas; planned {list(grants)!r}"
+        got_parsed = dict(parse_area_grant(g) for g in got)
+        want_parsed = dict(parse_area_grant(g) for g in grants)
+        assert got_parsed == want_parsed, (
+            f"{slug} seeded {got!r} -> {got_parsed}, planned {list(grants)!r} -> {want_parsed}"
         )
+
+    # ⚠️ admin is the one that must stay NULL, and its absence from
+    # PLANNED_ROLE_AREAS is the recorded decision rather than an oversight.
+    assert roles_seeded["admin"]["areas"] is None, (
+        f"admin acquired limited_to_areas={roles_seeded['admin']['areas']!r} — "
+        f"an unrestricted admin is a decision; see PLANNED_ROLE_AREAS"
+    )
 
 
 # -------------------------------------------- (a) she reaches payroll
@@ -196,14 +231,28 @@ def test_unlimited_roles_still_reach_non_payroll_endpoints(client, tokens, who):
     assert r.status_code == 200, f"{who} -> {r.status_code}: {r.text[:200]}"
 
 
-def test_the_office_role_is_refused_payroll_for_the_right_reason(client, tokens):
-    """Office holds no payroll.view, so the PERMISSION refuses — not the area
-    guard, because office is unlimited. Two mechanisms, and which one fired
-    matters for the next person debugging a 403."""
+def test_the_office_role_is_refused_payroll_by_the_AREA_guard_now(client, tokens):
+    """⚠️ REPLACES `..._for_the_right_reason`, AND THE RIGHT REASON CHANGED.
+
+    The old test asserted the PERMISSION refused and the area guard did NOT —
+    *"office is unlimited; the area guard must not fire"* — and its reasoning
+    was explicit about why: two mechanisms exist and which one fired matters to
+    whoever debugs the 403.
+
+    Phase B limits office, so the area guard now fires FIRST and the
+    permission check is never reached. Both refusals are correct and the
+    ORDER changed, which is exactly the thing the old test existed to pin. So
+    it still pins it — at the new answer.
+    """
     r = _get(client, tokens["office"], PAYROLL_OK)
     assert r.status_code == 403
-    assert "payroll.view" in str(r.json()["detail"])
-    assert not _area_refusal(r), "office is unlimited; the area guard must not fire"
+    detail = r.json()["detail"]
+    assert _area_refusal(r), (
+        f"expected the AREA guard to refuse office now that it is limited; got {detail}"
+    )
+    assert detail["code"] == "area_restricted"
+    assert detail["requested_area"] == "payroll"
+    assert "payroll" not in detail["allowed_areas"]
 
 
 def test_r222_granted_accountant_and_deliberately_not_accounting():

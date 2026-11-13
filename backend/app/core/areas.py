@@ -196,6 +196,18 @@ PLANNED_ROLE_AREAS: dict[str, tuple[str, ...]] = {
                       "customers:view"),
     # live today, unchanged by Phase A
     "payroll":       ("payroll:change",),
+    # ⚠️ **LIMITED TO NOTHING — THE COMMON SET AND NOTHING ELSE.** James's
+    # ruling of 2026-11-06. `employee` is the role `POST /auth/register`
+    # handed out to anyone who asked, and it carried no permissions AND no
+    # area limit, so it reached all 274 "signed in is enough" routes. The
+    # endpoint is deleted and no real user holds the role; this closes what it
+    # could have reached.
+    #
+    # ⚠️ `()` MEANS `[]`, NOT `None`. An empty list is "limited to nothing";
+    # absence from this dict is "no limit". `_planned_area_limit` decides by
+    # MEMBERSHIP for exactly that reason — an empty tuple is falsy and a
+    # truthiness check would have made this role unrestricted.
+    "employee":      (),
     # ⚠️ `admin` is DELIBERATELY ABSENT. An unlimited admin is a decision, and
     # its absence here is that decision rather than an oversight: `admin` keeps
     # `limited_to_areas = NULL` and the guard early-returns for it.
@@ -368,6 +380,21 @@ COMMON_ROUTES: tuple[tuple[str, str, str], ...] = (
     (
         "GET", "/edge-panel/resolve",
         "Shell configuration for the edge panel. Read-only.",
+    ),
+    (
+        "GET", "/capture/preferences",
+        "⚠️ **A MIS-TAG FOUND BY A TEST THAT IS NOT ABOUT AREAS.** `pick_modifier` "
+        "is which modifier key picks an item — a per-user UI preference read "
+        "from `current_user.preferences`. The router-level `area:orders` tag "
+        "swept it up with order capture, and `test_pick_modifier` went red for a "
+        "reason it knows nothing about. Its own docstring names the precedent: "
+        "\"edge_panel's preferences pair, which is the precedent this follows\" "
+        "— and that pair is two entries above. So it belongs here, beside the "
+        "thing it was modelled on.",
+    ),
+    (
+        "PATCH", "/capture/preferences",
+        "The write half of the pair above. Per-user.",
     ),
     (
         "GET", "/edge-panel/tenant-config",

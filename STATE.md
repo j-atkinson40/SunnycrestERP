@@ -1,5 +1,55 @@
 # Bridgeable — Current State
 
+## ⚠️ 2026-11-06 — HANDOFF: Phase B is WIP on `phase-b-role-area-limits`. Read this first.
+
+**Branch `phase-b-role-area-limits`, off `origin/main` at `1a01cc72` (Phase A).** NOT merged, NOT ready. Three tests fail and four items are owed. Nothing is on production: Phase B exists in this branch and in the local dev database only.
+
+**To finish it:** the two replacement tests, the empty-list test, the roles-screen levels, the STATE invite rule, then PR CI green. James fast-forwards.
+
+### What Phase B does, and what is already proven
+
+Seven roles get an enforced area list; `admin` stays SQL NULL; `payroll` unchanged. Measured on dev, reach compared **as sets**:
+
+    role          before  after   mis-tags  leaks  gained
+    driver           275     26          0      0       0
+    production       274     41          0      0       0
+    dispatcher       274     44          0      0       0
+    office           274     52          0      0       0
+    office_staff     275     53          0      0       0
+    director         274     55          0      0       0
+    accountant       274     93          0      0       0
+    employee         274     []          —      —       0
+
+⚠️ **Zero mis-tags, zero leaks, zero gains** — every loss is outside the role's own areas. Controls held: 12/12 group-1 refusals in both runs, before-sets non-empty.
+
+**The mechanism is a SEED, not an alembic migration**, and that is deliberate: the capture session's `r228_capture_prefix_offers` chains off `r227` and sits unmerged on `capture-slice2-gate`, so a migration of mine off the same parent becomes a SECOND HEAD the moment theirs lands — and `railway-prep.sh:84` aborts the deploy on that, as its own line-74 comment records having happened before. `scripts/seed_role_area_limits.py` writes **only where `limited_to_areas IS NULL`**, which is what makes it safe to re-run every deploy and what stops the next boot reverting an admin's per-tenant widening. It carries **no ENVIRONMENT guard on purpose** — unlike the demo seeds it writes the authorization lists James approved, and production is where they are needed.
+
+### The three failing tests, and what each needs
+
+1. **`test_payroll_role_slice.py::test_admin_and_accountant_still_reach_payroll[accountant]`** — needs replacing. ⚠️ **RULED 2026-11-06: the accountant NO LONGER REACHING PAYROLL IS INTENDED.** Payroll is Sue's role and is kept separate on purpose; an accountant — an outside CPA later — should not see wages by default. It can be widened per company if ever wanted. The replacement asserts the accountant gets **`out_of_area` for payroll with the reason checked**, and that **admin still reaches it**.
+2. **`test_payroll_role_slice.py::test_unlimited_roles_still_reach_non_payroll_endpoints[office]`** — needs replacing: office reaches **its own areas** and gets **`out_of_area`** elsewhere, asserting the reason rather than a bare 403.
+3. **`test_payroll_role_slice.py::test_every_company_has_a_payroll_role_with_the_right_areas_and_permissions`** — ⚠️ **PRE-EXISTING, NOT PART OF THIS PR.** It says *"30 company/companies have a role catalog but no 'payroll' role — r223 was supposed to cover every one"*. It fails on local test litter: dev holds 6,000+ companies from un-torn-down fixtures, and r223 covered the ones that existed when it ran. It was failing **before** Phase B — present in the 31-failure baseline measured at `four_after.out` earlier on 2026-11-06, with byte-identical failure sets with and without the Phase A changes. **Do not fix it inside Phase B.**
+
+### Owed items
+
+- **Ruling 3's test:** an empty area list stays `[]` through **every** path — seed, migration, schema round trip, `/auth/me`, and the guard — and never becomes NULL. Partly covered already (`test_the_planned_role_lists_are_well_formed_and_enforced` pins `_planned_area_limit("employee") == []`), but the end-to-end path is not.
+- **Roles admin screen:** `role-management.tsx` already renders areas via `AreaBadge` and allows editing. What is missing is **levels** — a grant is now `"orders:view"` and the badge shows the raw string. Show area + level, let an admin widen per tenant, audited.
+- **STATE invite rule**, replacing the earlier one: a role is open for invites when **(a)** it has an area list **AND (b)** the home note and Opas/command bar filter by the caller's areas. Today only `payroll` meets (b) in a usable way, because an area-limited user lands on their own page. ⚠️ **Composed-surface filtering for the note and Opas is a requirement of the NEW HOME BUILD, not a retrofit of today's note** — James's ruling: the new home and Opas were designed yesterday, and filtering the old ones would mean building it twice. Prototype: the "Home and Payroll" artifact.
+- **PR note:** limited roles currently get **no note, no Opas, no widgets, no tasks, no vault** — 85 untagged routes, by design, until the composed surfaces filter.
+
+### Decisions made today, with their reasons
+
+- **`employee` is `[]`, not NULL.** It is the role `POST /auth/register` handed out; the endpoint is deleted and **0 users hold it on production** (measured). `[]` means "common set only", so it is now a genuine placeholder: can sign in, reaches the shell, until an admin assigns a real role. Kept rather than deleted because `seed_default_roles` returns it in a tuple three callers unpack.
+- **Two mis-tags fixed as TAGS, never by widening a role**, per ruling. `/capture/preferences` (GET+PATCH) joined the **common set** — it is a per-user UI setting whose own docstring names its precedent, *"edge_panel's preferences pair, which is the precedent this follows"*. And the whole `capture` router moved **`documents` → `orders`**: its OpenAPI tag reads "Opas Typed Capture" and its sessions build an order. ⚠️ **Both were found by `test_pick_modifier`, a test that knows nothing about areas** — my own mis-tag analysis missed them because it only examined GETs a limited role lost.
+- **Grants are compared by MEANING, not spelling.** The live payroll role holds `["payroll"]`; the plan says `["payroll:change"]`. Same grant — a bare name parses as `change` — and a string comparison would have pushed a rewrite of production data over a spelling difference.
+- ⚠️ **A bug of mine worth keeping:** `PLANNED_ROLE_AREAS["employee"] = ()` is falsy, and `_planned_area_limit` read `list(grants) if grants else None` — turning **"limited to nothing" into "not limited at all"**. The same null-vs-empty inversion that let `filterByPermission` read an empty `functional_areas` as "no restriction", committed in my own code hours after I wrote that up. Now decided by **membership**, and verified through JSONB: employee 127 rows at `[]`, admin 4,374 at SQL NULL.
+- **The `actors` fixture's unlimited control moved office → admin.** It asserted `office role is not NULL-areas` as a precondition and 16 tests errored from that one line. Admin is the right control because its absence from `PLANNED_ROLE_AREAS` is a **recorded decision**, not a role that merely has not been limited yet.
+- **Two of my own Phase A assertions had to change**, and both read as warnings: the limited-roles ratchet took "declared" from explicit `_SYSTEM_ROLES` keys and so **fired on its own correct behaviour** (1 declared vs 9 limited); and `assert grants` forbade an empty list, then rejected the intended `employee: ()`.
+
+### Also repaired today, unrelated to Phase B
+
+The **dev** database was stamped at `r228_capture_prefix_offers`, a revision no longer in the repo, so `alembic upgrade head` failed locally. `alembic stamp` could not fix it — it resolves the current revision before computing a path — so `alembic stamp --purge r227_tenant_invite_email_template` was used. Dev is now r227, 508 tables intact, `prefix_offers` column left in place because `env.py` makes `add_column` idempotent. **Production was never at risk**: it is on `r227`, which is present at `origin/main` and is the head there.
+
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
   ## ⚠️ 2026-11-06 — RULE IN FORCE: no new Sunnycrest user on any role until that role has an area list
