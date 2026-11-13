@@ -31,6 +31,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.core.areas import CROSS_AREA
+
 _AGENTS = Path(__file__).resolve().parents[1] / "app" / "services" / "agents"
 
 #: Measured 2026-09-04 at phase 1: **64 call sites, 30 pass a subject, 34 do not.**
@@ -172,6 +174,7 @@ def test_a_fragment_whose_instances_all_reject_logs_an_error(caplog):
                 label="All reject",
                 kind="non_prompt",
                 audience=Audience.any_authenticated(),
+                area=CROSS_AREA,
                 # Every instance carries an empty subject -> all rejected.
                 condition=lambda db, *, user: [
                     FragmentInstance(
@@ -222,6 +225,7 @@ def test_a_genuinely_quiet_fragment_logs_no_error(caplog):
                 label="Quiet",
                 kind="non_prompt",
                 audience=Audience.any_authenticated(),
+                area=CROSS_AREA,
                 condition=lambda db, *, user: [],  # legitimately false
                 target_surface="peek",
                 target_key="t",

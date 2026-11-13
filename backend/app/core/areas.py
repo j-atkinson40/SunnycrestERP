@@ -108,6 +108,57 @@ def parse_area_grant(grant: str) -> tuple[str, str]:
     return grant.strip(), CHANGE
 
 
+#: ⚠️ **A FRAGMENT THAT SPANS AREAS AND CANNOT BE ATTRIBUTED TO ONE.**
+#:
+#: `tasks_due_today` is the live example: every area creates tasks, so its
+#: instances are whatever the user happens to own. A composed surface WITHHOLDS
+#: a cross-area fragment from a limited role rather than showing it, because
+#: the alternative is leaking another area's subject lines through a fragment
+#: whose own declaration admits it cannot tell which area it is in.
+#:
+#: It is a declaration, not a default — `""` still fails registration. The
+#: author has to say "this spans areas" out loud, and the cost of saying it is
+#: that limited roles stop seeing the fragment.
+CROSS_AREA = "cross_area"
+
+
+def allowed_area_grants(limited_to_areas) -> dict[str, str] | None:
+    """A role's areas as `{area: level}` — or `None`, meaning UNLIMITED.
+
+    ⚠️ **THREE OUTCOMES, AND THE CALLER MUST NOT COLLAPSE THEM TO TWO.**
+
+        None   no restriction was ever set. Reaches everything.
+        {}     limited to nothing. Reaches NOTHING — a real, deliberate state.
+        {...}  limited to these.
+
+    ⚠️ **NEVER `if role.limited_to_areas:`.** `None` and `[]` are both falsey
+    and mean OPPOSITE things — "everything" and "nothing". The model comment on
+    `Role.limited_to_areas` has warned about this since r221; this function
+    exists so the distinction is made once, in code that says so, rather than
+    at each call site by an author who may not have read that comment.
+    """
+    if limited_to_areas is None:
+        return None
+    return dict(parse_area_grant(g) for g in limited_to_areas)
+
+
+def area_admits_read(area: str, grants: dict[str, str] | None) -> bool:
+    """May a caller holding `grants` READ something belonging to `area`?
+
+    `grants is None` is the unlimited role and admits everything, including
+    `CROSS_AREA`. Every other caller is refused `CROSS_AREA` — see the constant.
+
+    Read, not write: a composed surface shows things. `view` is enough, so the
+    LEVEL is not consulted here; a surface that offers an action must check the
+    level itself with `grant_admits`.
+    """
+    if grants is None:
+        return True
+    if area == CROSS_AREA:
+        return False
+    return area in grants
+
+
 def grant_admits(level: str, method: str, path: str) -> bool:
     """Does a grant at `level` admit this method on this route?
 
@@ -474,6 +525,47 @@ def strip_mount_prefix(path: str) -> str:
         if path == mount:
             return "/"
     return path
+
+
+#: ─────────────────────────────────────────────── composed surfaces, built
+#:
+#: ⚠️ **ROUTES THAT FILTER THEIR OWN OUTPUT TO THE CALLER'S AREAS.**
+#:
+#: `COMPOSED_SURFACES` above is the PLAN — the routers that must eventually do
+#: this. This is the much shorter list of routes where it is actually BUILT, and
+#: the guard reads this one. The two are deliberately separate: being on the
+#: plan must not let anything through, or every surface would open the day
+#: somebody listed it.
+#:
+#: ⚠️ **AN ENTRY HERE IS A PROMISE, AND A WRONG ONE IS A LEAK.** The guard stops
+#: refusing the route; the handler becomes the only thing standing between a
+#: limited role and another area's data. Add an entry only together with the
+#: filtering it claims, and with a test that a limited caller gets ONLY their
+#: own areas back — not merely that the route returns 200. A 200 full of
+#: somebody else's work is the failure this is most likely to produce.
+COMPOSED_ROUTES: tuple[tuple[str, str, str], ...] = (
+    (
+        "GET", "/note/today",
+        "Payroll 5a. The note composes fragments, and each fragment declares "
+        "its AREA; `emit_for_user` drops the ones the caller's areas do not "
+        "admit, before running their conditions. A payroll-limited user gets "
+        "her payroll fragments and an otherwise empty note — which is the "
+        "surface working, not failing. Before this she got a 403 on the first "
+        "screen after sign-in.",
+    ),
+)
+
+
+def is_composed(method: str, path: str) -> bool:
+    """Is this exact (method, route template) a surface that filters itself?
+
+    Exact matching, like `is_common` and for the same reason: a prefix here
+    would admit every sibling route anyone later adds under `/note`, including
+    writes, none of which filter anything.
+    """
+    rel = strip_mount_prefix(path)
+    m = (method or "").upper()
+    return any(m == cm and rel == cp for cm, cp, _reason in COMPOSED_ROUTES)
 
 
 def is_common(method: str, path: str) -> bool:

@@ -28,6 +28,7 @@ from datetime import date, timedelta
 
 import pytest
 
+from app.core.areas import CROSS_AREA
 from app.database import SessionLocal
 from app.services.fragments import (
     Outcome,
@@ -168,6 +169,7 @@ def _decl(**over):
         label="Test",
         kind="non_prompt",
         audience=Audience.any_authenticated(),
+        area=CROSS_AREA,
         condition=lambda db, *, user: [_instance()],
         target_surface="peek",
         target_key="thing",
@@ -298,6 +300,7 @@ def test_excluded_audience_does_not_run_the_condition(clean_registry, db, user):
         _decl(
             fragment_id="secret",
             audience=Audience(required_permission="settings.permissions"),
+            area=CROSS_AREA,
             condition=_condition,
         )
     )
@@ -319,6 +322,7 @@ def test_admitted_audience_does_run_the_condition(clean_registry, db, user):
         _decl(
             fragment_id="open",
             audience=Audience.any_authenticated(),
+            area=CROSS_AREA,
             condition=_condition,
         )
     )
@@ -632,6 +636,7 @@ def _prompt(fid: str, *, outcomes):
     return FragmentDeclaration(
         fragment_id=fid, label=fid, kind="prompt",
         audience=Audience.any_authenticated(),
+        area=CROSS_AREA,
         condition=lambda db, *, user: [FragmentInstance(
             subject_id="s", payload=FragmentPayload(title="T", synthesized_text="p"),
             predicate={"k": 1}, condition_inputs={"a": 1},

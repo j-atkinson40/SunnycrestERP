@@ -282,7 +282,7 @@ ConditionFn = Callable[..., Sequence[FragmentInstance]]
 
 @dataclass(frozen=True)
 class FragmentDeclaration:
-    """A registered fragment type. All four declarations are structural.
+    """A registered fragment type. All declarations are structural.
 
     OWNED BY THIS MODULE, in the manner of `ActionRegistryEntry`. Later arcs
     extend it with new fields; they do not redefine it.
@@ -309,6 +309,23 @@ class FragmentDeclaration:
     # fragment about?" at registration rather than discovering at deferral time
     # that the answer was "the run that found it".
     subject_kind: str = ""
+
+    # (6) AREA — which area this fragment's content belongs to, added for
+    # Payroll 5a when the note became the first COMPOSED SURFACE.
+    #
+    # ⚠️ **THIS IS WHAT STOPS SUSAN'S NOTE SHOWING HER ANOTHER AREA'S WORK.**
+    # Her role is `limited_to_areas = ["payroll"]`. Before this field the note
+    # had no way to ask "whose work is this?", so the only two options were
+    # showing a limited user everything or refusing her the surface outright —
+    # and refusing is what it did, which is why `GET /note/today` answered 403
+    # for the one person the note was built for.
+    #
+    # Must be a member of `KNOWN_AREAS`, or `CROSS_AREA` for a fragment that
+    # genuinely spans areas. `""` is not a value — it fails registration, in
+    # the manner of the other five. A fragment reaching a user without a
+    # declared area is the same class of defect as one reaching them without a
+    # declared audience.
+    area: str = ""
 
     # (4) END TRANSITION — required iff kind == "prompt".
     end_transition: EndTransition | None = None

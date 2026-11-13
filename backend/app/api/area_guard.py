@@ -19,7 +19,7 @@ outer `APIRouter` sees `scope["route"].path` as the full template and
 It is attached in exactly one place — `app/api/v1.py`, on the `v1_router`
 constructor — so it cannot be forgotten on a new router.
 
-### Three ways this deliberately does NOT fire
+### Four ways this deliberately does NOT fire
 
 1. **No authenticated tenant user** → returns. The guard is an ADDITIONAL
    restriction on top of authentication, never a replacement for it. An
@@ -29,6 +29,9 @@ constructor — so it cannot be forgotten on a new router.
 2. **The role's `limited_to_areas` is NULL** → returns. Every existing role is
    NULL and keeps behaving exactly as before.
 3. **The route is in the common set** → returns. See `app/core/areas.py`.
+4. **The route is a COMPOSED SURFACE** → returns, because that route filters
+   its own output to the caller's areas. See `COMPOSED_ROUTES`. This one is a
+   promise the handler has to keep: the guard has stopped checking.
 
 ⚠️ **IT READS THE TOKEN ITSELF RATHER THAN DEPENDING ON `get_current_user`.**
 That dependency raises — 401 on a missing token, 404 when no company slug
@@ -50,6 +53,7 @@ from app.core.areas import (
     area_for_tags,
     grant_admits,
     is_common,
+    is_composed,
     parse_area_grant,
 )
 from app.core.security import decode_token
@@ -198,6 +202,19 @@ def enforce_area_limit(
         return  # (3) the shell's common set
 
     area = area_for_tags(getattr(route, "tags", None))
+
+    # ⚠️ (4) A COMPOSED SURFACE FILTERS ITSELF, so the guard steps aside.
+    #
+    # These routers span areas and carry no tag. One tag would either
+    # over-grant (the note shows everything) or break the surface (the note
+    # shows nothing) — James's ruling of 2026-11-06 — so the surface filters
+    # per item instead, and the guard cannot do that from out here.
+    #
+    # Checked AFTER the two-step branch above deliberately: a user who owes a
+    # second step is confined to `mfa_enroll`, and `/note/today` is not it. A
+    # composed surface must not become the one screen that skips enrolment.
+    if not owes_second_step and is_composed(request.method, path):
+        return  # (4) the surface filters its own output — see COMPOSED_ROUTES
 
     if area is not None and area in allowed:
         # ⚠️ The LEVEL decides, not just membership. `mfa_enroll` is unioned in

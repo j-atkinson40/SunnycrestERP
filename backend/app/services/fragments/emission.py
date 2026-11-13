@@ -40,6 +40,8 @@ from typing import Sequence
 
 from sqlalchemy.orm import Session
 
+from app.core.areas import allowed_area_grants, area_admits_read
+from app.models.role import Role
 from app.models.user import User
 from app.services.fragments.registry import get_registry
 #: ⚠️ DERIVED FROM MEASUREMENT, NOT PICKED. The largest real predicate is
@@ -197,8 +199,22 @@ def emit_for_user(
     """
     out: list[EmittedFragment] = []
 
+    # (6) AREA — resolved ONCE per call, not per fragment. `None` here means an
+    # unlimited role and is NOT the same as `{}`; see `allowed_area_grants`.
+    role = db.query(Role).filter(Role.id == user.role_id).first()
+    grants = allowed_area_grants(role.limited_to_areas if role else None)
+
     for fragment_id, decl in get_registry().items():
         if fragment_ids is not None and fragment_id not in fragment_ids:
+            continue
+
+        # (6) AREA — checked BEFORE the audience and before the condition, so
+        # an out-of-area fragment's query never runs at all. "Non-existence,
+        # not inert" applies with more force here than to the audience: the
+        # condition for an accounting fragment READS accounting data, and a
+        # payroll-limited user's request must not cause that read even if the
+        # result would have been discarded.
+        if not area_admits_read(decl.area, grants):
             continue
 
         # (1) AUDIENCE — non-existence, not inert. The condition below never

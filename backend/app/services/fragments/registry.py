@@ -19,11 +19,13 @@ This module follows that lifecycle exactly. Registration is the code half;
 `emission.emit_for_user` applies the audience gate at read time, which is the
 config half's evaluation point.
 
-⚠️ REGISTRATION IS WHERE THE FOUR DECLARATIONS ARE ENFORCED. A fragment type
+⚠️ REGISTRATION IS WHERE THE DECLARATIONS ARE ENFORCED. A fragment type
 missing any of them raises `FragmentDeclarationError` at import, not at render.
 The enforcement is deliberately loud and early: a fragment that reaches a user
-without a declared audience is a permission leak, and one without a declared
-end transition is a prompt that can never leave the note.
+without a declared audience is a permission leak, one without a declared end
+transition is a prompt that can never leave the note, and — since Payroll 5a —
+one without a declared AREA cannot be filtered by a composed surface, which in
+practice means shown to everybody.
 """
 
 from __future__ import annotations
@@ -31,6 +33,7 @@ from __future__ import annotations
 import logging
 from typing import Mapping
 
+from app.core.areas import CROSS_AREA, KNOWN_AREAS
 from app.services.fragments.types import (
     Audience,
     FragmentDeclaration,
@@ -115,6 +118,30 @@ def _validate(decl: FragmentDeclaration) -> None:
             f"{decl.subject_kind!r}, which is the EVALUATION rather than its "
             "subject. Two evaluations of the same condition must yield the "
             "same key; keying on the run guarantees they never do."
+        )
+
+    # (6) AREA — must be declared, and must name an area that exists.
+    #
+    # ⚠️ Enforced here, loudly, for the same reason as AUDIENCE: a fragment
+    # that reaches a user without a declared area cannot be filtered by a
+    # composed surface, and "cannot be filtered" resolves to "shown to
+    # everyone" in every implementation that does not check. Registration is
+    # where that is cheapest to catch — at import, in CI, naming the fragment.
+    if not decl.area or not decl.area.strip():
+        raise FragmentDeclarationError(
+            f"{decl.fragment_id}: declaration (6) AREA is missing. Name the "
+            f"area this fragment's content belongs to (one of "
+            f"{sorted(KNOWN_AREAS)}), or CROSS_AREA if it genuinely spans "
+            "areas — a cross-area fragment is WITHHELD from an area-limited "
+            "role rather than shown to them."
+        )
+    if decl.area != CROSS_AREA and decl.area not in KNOWN_AREAS:
+        raise FragmentDeclarationError(
+            f"{decl.fragment_id}: declaration (6) AREA names {decl.area!r}, "
+            f"which is not an area. Valid: {sorted(KNOWN_AREAS)}, or "
+            "CROSS_AREA. A typo here would silently never match a grant, so "
+            "the fragment would vanish for every limited role and nothing "
+            "would look broken."
         )
 
     # (4) END TRANSITION — required iff prompt, forbidden otherwise.
