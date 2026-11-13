@@ -64,7 +64,10 @@ def actors():
     def wipe():
         for uid, rid in ids.values():
             db.execute(text("DELETE FROM audit_logs WHERE user_id=:u"), {"u": uid})
-            db.execute(text("DELETE FROM daily_notes WHERE subject_id=:u"), {"u": uid})
+            # ⚠️ `user_id`. `DailyNote.subject_id` is a PROPERTY — "<user>:<date>" —
+            # not a column, and the note endpoint writes rows here on a GET.
+            db.execute(text("DELETE FROM note_fragment_renders WHERE user_id=:u"), {"u": uid})
+            db.execute(text("DELETE FROM daily_notes WHERE user_id=:u"), {"u": uid})
             db.execute(text("DELETE FROM users WHERE id=:u"), {"u": uid})
             db.execute(text("DELETE FROM role_permissions WHERE role_id=:r"), {"r": rid})
             db.execute(text("DELETE FROM roles WHERE id=:r"), {"r": rid})
@@ -301,3 +304,79 @@ def test_every_registered_fragment_declares_a_real_area():
     bad = {fid: d.area for fid, d in reg.items()
            if d.area != CROSS_AREA and d.area not in KNOWN_AREAS}
     assert bad == {}, f"fragment(s) declaring a non-area: {bad}"
+
+
+# ── a fragment that genuinely WOULD leak ────────────────────────────────────
+#
+# ⚠️ **THE TESTS ABOVE WERE VACUOUS UNTIL THIS EXISTED, AND A BREAK TEST IS
+# WHAT SHOWED IT.** Deleting the area filter from `emit_for_user` left all of
+# them green: on a clean database the five platform fragments are excluded from
+# a payroll-limited probe by their AUDIENCE before area is ever consulted
+# (`financials.view`, `safety.view`, `invoice.approve`), and `weekly_dues`
+# emits nothing while the payroll data switch is off. Her prose was empty
+# either way, so "only payroll fragments" was true of a note with nothing in it.
+#
+# This probe closes that: `any_authenticated`, a condition that always yields,
+# and an area she does not hold. Removing the filter now reddens the test,
+# which is the only reason to trust the ones above.
+
+PROBE_FRAGMENT = "area_probe_accounting_leak"
+
+
+@pytest.fixture
+def leaky_probe():
+    """An accounting fragment that every authenticated user would otherwise see."""
+    from app.services.fragments.registry import register_fragment, reset_registry
+    from app.services.fragments.types import (
+        Audience,
+        FragmentDeclaration,
+        FragmentInstance,
+        FragmentPayload,
+    )
+
+    def _cond(db, *, user):
+        return [FragmentInstance(
+            subject_id=user.id,
+            payload=FragmentPayload(title="Receivables",
+                                    synthesized_text="An accounting sentence."),
+            predicate={"probe": True},
+            condition_inputs={"probe": "area"},
+        )]
+
+    reset_registry()
+    register_fragment(FragmentDeclaration(
+        fragment_id=PROBE_FRAGMENT, label="Receivables probe", kind="non_prompt",
+        audience=Audience.any_authenticated(),
+        area="accounting",
+        condition=_cond,
+        target_surface="peek", target_key="ar", subject_kind="user",
+    ))
+    yield
+    reset_registry()
+
+
+def _ids(resp):
+    return {p["fragment_id"] for p in resp.json()["prose"]}
+
+
+def test_an_accounting_fragment_she_would_otherwise_see_is_withheld(
+        client, actors, leaky_probe):
+    """⚠️ THE LOAD-BEARING TEST. Both halves in one, and both are needed.
+
+    The admin half is not decoration: without it, a filter that dropped EVERY
+    fragment for EVERYONE would pass the payroll half. With it, the only
+    implementation that passes both is one that filters by area.
+    """
+    admin = client.get(TODAY, headers=H(actors["admin"]))
+    assert admin.status_code == 200, admin.text[:200]
+    assert PROBE_FRAGMENT in _ids(admin), (
+        "the probe did not reach an UNLIMITED user, so this test cannot "
+        "detect a leak — it would pass against a note that shows nobody "
+        "anything"
+    )
+
+    payroll = client.get(TODAY, headers=H(actors["payroll"]))
+    assert payroll.status_code == 200, payroll.text[:200]
+    assert PROBE_FRAGMENT not in _ids(payroll), (
+        "an accounting fragment reached a payroll-limited user's note"
+    )

@@ -150,6 +150,29 @@ def test_every_agent_can_still_reach_the_helper():
 # ── Item 5 — broken is distinguishable from quiet ────────────────────
 
 
+#: ⚠️ A SESSION AND A USER, WHERE THESE TESTS USED TO PASS `None, None`.
+#:
+#: Payroll 5a made `emit_for_user` resolve the caller's AREAS before it runs any
+#: condition, which means it now reads the user's role from the session. These
+#: two tests are about LOG BEHAVIOUR and never needed either, so they passed
+#: literal `None` and it happened to work.
+#:
+#: They are given stubs rather than the production code being taught to accept
+#: `None`. "No user" resolving to "no area restriction" would be a fail-OPEN
+#: path — unreachable today, because the route depends on `get_current_user`,
+#: and exactly the kind of thing that becomes reachable later.
+def _stub_db_and_user():
+    """A session whose role lookup finds nothing, and an unlimited user."""
+    class _Q:
+        def filter(self, *a, **k):
+            return self
+
+        def first(self):
+            return None
+
+    return SimpleNamespace(query=lambda *a, **k: _Q()), \
+        SimpleNamespace(id="ratchet-user", company_id="ratchet-co", role_id=None)
+
 def test_a_fragment_whose_instances_all_reject_logs_an_error(caplog):
     """⚠️ ITEM 5. A fragment yielding nothing is having a quiet day. A fragment
     yielding instances that ALL fail validation is broken. Both produce an empty
@@ -190,7 +213,8 @@ def test_a_fragment_whose_instances_all_reject_logs_an_error(caplog):
             )
         )
         with caplog.at_level(logging.ERROR):
-            out = emit_for_user(None, user=None, fragment_ids=["all_reject"])
+            _db, _user = _stub_db_and_user()
+            out = emit_for_user(_db, user=_user, fragment_ids=["all_reject"])
         assert out == []
         assert any(
             "ALL were rejected" in r.message or "ALL were rejected" in r.getMessage()
@@ -233,7 +257,8 @@ def test_a_genuinely_quiet_fragment_logs_no_error(caplog):
             )
         )
         with caplog.at_level(logging.ERROR):
-            out = emit_for_user(None, user=None, fragment_ids=["quiet"])
+            _db, _user = _stub_db_and_user()
+            out = emit_for_user(_db, user=_user, fragment_ids=["quiet"])
         assert out == []
         assert not [r for r in caplog.records if r.levelno >= logging.ERROR], (
             "a quiet day must not log an error, or the distinction is noise again"
