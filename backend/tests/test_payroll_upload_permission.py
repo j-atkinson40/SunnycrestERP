@@ -257,21 +257,89 @@ def test_the_admin_can_still_upload_when_the_switch_is_on(client, tokens, switch
 
 
 # ── a user outside the payroll area ──────────────────────────────────────────
+#
+# ⚠️ These tests build their OWN area-limited role rather than borrowing a
+# seeded one. The first version used the `office` role and passed on my machine
+# because this dev database carries the parked Phase B branch's hand-run area
+# seed. On a clean database `office` is NULL-areas — `test_area_limited_roles`
+# asserts that it is — so the test was reading a local accident as the regime
+# and CI was right to fail it. The `area-probe-` id prefix is the exemption
+# `test_no_undeclared_role_carries_areas` already allows for exactly this.
+
+PROBE_ROLE_ID = "area-probe-perm-upload"
+PROBE_USER_ID = "area-probe-perm-user"
+
+
+@pytest.fixture
+def out_of_area_token():
+    """A role limited to `scheduling` that HOLDS every payroll permission.
+
+    Granting the permissions is the point. If the probe held none of them it
+    would be refused either way and the test could not tell the area guard from
+    the permission guard — which is the one thing it exists to show.
+    """
+    from app.database import SessionLocal
+    from app.models.role import Role
+    from app.models.role_permission import RolePermission
+
+    db = SessionLocal()
+
+    def wipe():
+        db.execute(text("DELETE FROM audit_logs WHERE user_id=:u"), {"u": PROBE_USER_ID})
+        db.execute(text("DELETE FROM users WHERE id=:u"), {"u": PROBE_USER_ID})
+        db.execute(text("DELETE FROM role_permissions WHERE role_id=:r"), {"r": PROBE_ROLE_ID})
+        db.execute(text("DELETE FROM roles WHERE id=:r"), {"r": PROBE_ROLE_ID})
+
+    try:
+        wipe()
+        db.add(Role(id=PROBE_ROLE_ID, company_id=TESTCO_ID,
+                    name="Area Probe Scheduling", slug="area-probe-upload",
+                    is_system=False, is_active=True,
+                    limited_to_areas=["scheduling"]))
+        db.flush()
+        # ⚠️ via the ORM: `role_permissions.id` is a primary key with a
+        # PYTHON-side default, so a raw INSERT leaves it null.
+        for key in PAYROLL_DEFAULT_PERMISSIONS:
+            db.add(RolePermission(role_id=PROBE_ROLE_ID, permission_key=key))
+        db.add(User(id=PROBE_USER_ID, email="area-probe-upload@testco.example.com",
+                    hashed_password="not-a-credential", first_name="Area",
+                    last_name="Probe", role_id=PROBE_ROLE_ID, company_id=TESTCO_ID))
+        db.commit()
+
+        # Control: the probe must really be limited, and really hold the upload
+        # permission. Either one silently missing turns the assertions below
+        # into a test of nothing.
+        assert db.execute(text(
+            "SELECT limited_to_areas IS NOT NULL FROM roles WHERE id=:r"
+        ), {"r": PROBE_ROLE_ID}).scalar() is True, "probe role is not area-limited"
+        assert db.execute(text(
+            "SELECT count(*) FROM role_permissions "
+            "WHERE role_id=:r AND permission_key='payroll.upload'"
+        ), {"r": PROBE_ROLE_ID}).scalar() == 1, "probe role lacks payroll.upload"
+
+        yield tenant_token(PROBE_USER_ID, TESTCO_ID)
+    finally:
+        wipe()
+        db.commit()
+        db.close()
+
 
 @pytest.mark.parametrize("path", [UPLOAD, REGISTER, RULES, RECONCILE])
 def test_a_user_outside_the_payroll_area_is_refused_before_any_permission(
-        client, tokens, switch_on, path):
+        client, out_of_area_token, switch_on, path):
     """⚠️ The AREA guard answers first, and says so.
 
-    An office user holds none of these permissions either, so a bare 403 would
-    not tell the two refusals apart. The area guard's own code is what proves
-    the request never reached the permission check.
+    The probe holds `payroll.upload`, `payroll.view` and `payroll.approve`, so a
+    permission refusal here would be wrong on the merits. What refuses it is the
+    area limit, and the guard names it — `area_restricted`, requested area
+    `payroll` — which is also what makes a support call one request long.
     """
-    r = (client.get(path, headers=H(tokens["office"])) if path == RULES
-         else client.post(path, headers=H(tokens["office"]),
+    r = (client.get(path, headers=H(out_of_area_token)) if path == RULES
+         else client.post(path, headers=H(out_of_area_token),
                           data={"week_number": 44, "week_end_date": "2026-10-31"},
                           files={"file": ("x.pdf", b"%PDF-1.4\n", "application/pdf")}))
     assert r.status_code == 403, f"{path}: {r.status_code}"
     detail = r.json().get("detail")
     assert isinstance(detail, dict) and detail.get("code") == "area_restricted", detail
     assert detail.get("requested_area") == "payroll"
+    assert detail.get("allowed_areas") == ["scheduling"]
