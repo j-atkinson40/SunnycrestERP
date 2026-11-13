@@ -136,7 +136,7 @@ def test_the_payroll_role_is_area_limited_and_holds_only_payroll(roles_seeded):
         ), {"r": roles_seeded["payroll"]["id"]}).fetchall()}
     finally:
         db.close()
-    assert keys == {"payroll.view", "payroll.approve"}, (
+    assert keys == {"payroll.approve", "payroll.view", "payroll.upload"}, (
         f"the payroll role must hold exactly payroll.*, holds {sorted(keys)}"
     )
 
@@ -348,7 +348,10 @@ def test_the_seeder_still_creates_it_for_a_new_company():
         ), {"c": cid}).first()
         assert row is not None, "seed_default_roles did not create a payroll role"
         assert row[0] == '["payroll"]'
-        assert row[1] == "payroll.approve,payroll.view"
+        # ⚠️ `payroll.upload` added 2026-11-13. Alphabetical, as string_agg
+        # orders it. See `test_payroll_upload_permission.py` for why the
+        # 2026-11-03 admin-only ruling changed.
+        assert row[1] == "payroll.approve,payroll.upload,payroll.view"
     finally:
         db.execute(text(
             "DELETE FROM role_permissions WHERE role_id IN "
@@ -420,14 +423,27 @@ def _auth(token):
     return {"Authorization": f"Bearer {token}", **HEADERS}
 
 
-def test_view_only_is_refused_upload_because_it_is_admin_only(client, view_only):
-    """⚠️ BREAK TEST. Until the split, `payroll.view` opened the import path."""
+def test_view_only_is_refused_upload_because_it_lacks_payroll_upload(client,
+                                                                     view_only):
+    """⚠️ BREAK TEST, REPLACED 2026-11-13 — the claim held, the REASON changed.
+
+    Old: `test_view_only_is_refused_upload_because_it_is_admin_only`, which
+    asserted the refusal said "admin". Uploading is no longer admin-only: the
+    2026-11-03 ruling assumed Opas would pull the hours, the Monday pull is
+    designed and not built, and Susan runs her own week from uploads.
+
+    What this test is actually FOR is unchanged and still true: a look-only
+    reviewer must not be able to load data. She is now refused for holding
+    `payroll.view` without `payroll.upload`, which is a narrower and more
+    honest refusal than "you are not an admin" — and the message says which
+    permission is missing, so the person reading it can act on it.
+    """
     r = client.post("/api/v1/payroll-reports/weeks/upload", headers=_auth(view_only),
                     files={"file": ("w.csv", b"file_number\nE01\n", "text/csv")},
                     data={"week_number": 44, "week_end_date": "2026-10-31",
                           "format_key": "bridgeable_csv"})
     assert r.status_code == 403, f"{r.status_code}: {r.text[:200]}"
-    assert "Admin" in r.text or "admin" in r.text
+    assert "payroll.upload" in r.text, r.text[:200]
 
 
 def test_view_only_is_refused_approve(client, view_only):

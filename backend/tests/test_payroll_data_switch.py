@@ -287,22 +287,38 @@ def test_the_switch_is_per_company():
     assert others == 0, f"{others} other tenant(s) have payroll data enabled"
 
 
-def test_the_accountant_is_refused_upload_by_the_ADMIN_gate_not_the_switch(
+def test_the_accountant_is_refused_upload_by_the_PERMISSION_gate_not_the_switch(
     client, tokens, _switch_off
 ):
     """⚠️ TWO REFUSALS ON ONE ENDPOINT, AND WHICH ONE FIRED MATTERS.
 
-    With the switch ON, an accountant is still refused — by `require_admin`,
-    because loading hours is not the payroll reviewer's job (2026-11-03 ruling).
-    Asserting the DISTINCTION is what keeps this file honest: without it, the
-    switch tests could pass while the switch did nothing, simply because every
-    caller happened to be admin-refused.
+    ⚠️ **REPLACED 2026-11-13 — the claim held, the REASON changed.** Formerly
+    `..._by_the_ADMIN_gate_not_the_switch`, asserting the refusal said "Admin
+    access required". Uploading is no longer admin-only: the 2026-11-03 ruling
+    assumed Opas would pull the hours, the Monday pull is designed and not
+    built, and Susan runs her own week from uploads. The accountant is still
+    refused — now for lacking `payroll.upload`, which r222 deliberately did not
+    grant, because the old slug gate never reached the uploads either.
+
+    What this test is FOR is unchanged: asserting the DISTINCTION is what keeps
+    this file honest. Without it the switch tests could pass while the switch
+    did nothing, simply because every caller happened to be refused for some
+    other reason.
+
+    ⚠️ On a database carrying the parked Phase B branch's hand-run area-limit
+    seed, the accountant role is area-limited and the AREA guard answers before
+    the permission check, so this fails locally with `area_restricted`. That
+    seed is a script and not a migration, so CI's fresh database is unaffected.
+    Measured directly on an unlimited role holding exactly payroll.view and
+    payroll.approve, switch ON: 403 "Permission required: payroll.upload".
     """
     _switch_off(True)
     r = _upload(client, tokens["accountant"])
     assert r.status_code == 403
     detail = r.json()["detail"]
-    assert detail == "Admin access required", (
-        f"expected the admin refusal, got {detail!r}"
+    # ⚠️ Not the switch's refusal — that distinction is the whole test.
+    assert not (isinstance(detail, dict)
+                and detail.get("code") == "payroll_data_disabled"), detail
+    assert "payroll.upload" in str(detail), (
+        f"expected the permission refusal naming payroll.upload, got {detail!r}"
     )
-    assert not (isinstance(detail, dict) and detail.get("code") == "payroll_data_disabled")

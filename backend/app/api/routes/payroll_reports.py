@@ -90,6 +90,19 @@ MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 PAYROLL_READ = "payroll.view"
 PAYROLL_WRITE = "payroll.approve"
 
+#: ⚠️ **ADDED 2026-11-13, REVERSING PART OF THE 2026-11-03 RULING.** That
+#: ruling made the uploads admin-only because "the payroll reviewer never needs
+#: to do it: in the finished shape it is the background payroll job running
+#: under its own system actor". The premise was that Opas would pull the hours.
+#: The Monday pull is designed and NOT built, and until it exists Susan runs her
+#: own week from uploads — which is what she was asked to do.
+#:
+#: ⚠️ The "brings pay data into existence" gate did not go away; it moved to the
+#: control that actually is one. The payroll DATA SWITCH stays admin-only, is
+#: tenant-wide, and while it is off NO upload works for anyone, admin included.
+#: Uploading a week against a tenant whose switch is already on is routine work.
+PAYROLL_UPLOAD = "payroll.upload"
+
 
 def _get_week(db: Session, week_id: str, tenant_id: str) -> PayrollWeek:
     week = db.execute(
@@ -179,17 +192,20 @@ async def upload_export(
     week_number: int = Form(...),
     week_end_date: date = Form(...),
     format_key: str = Form("payentry"),
-    # ⚠️ ADMIN ONLY, NOT payroll.view. Loading hours is the act that brings pay
-    # data into existence, and the payroll reviewer never needs to do it: in the
-    # finished shape it is the background payroll job running under its own
-    # system actor (James, 2026-11-03). Until that actor exists, an admin does
-    # it by hand.
+    # ⚠️ `payroll.upload`, NOT admin — changed 2026-11-13. The 2026-11-03
+    # ruling made this admin-only because "the payroll reviewer never needs to
+    # do it: in the finished shape it is the background payroll job running
+    # under its own system actor". That premise was Opas pulling the hours, and
+    # the Monday pull is designed but NOT built — so until it exists Susan runs
+    # her own week from uploads, which is the job she was given.
     #
-    # The data switch below is a SECOND, independent gate on the same endpoint:
-    # this one asks "are you allowed to load", the switch asks "may this tenant
-    # hold payroll data at all". The future job actor will pass the first and
-    # still have to satisfy the second.
-    current_user: User = Depends(require_admin),
+    # The data switch below is a SECOND, independent gate on the same endpoint,
+    # and it is now the one carrying the "brings pay data into existence"
+    # weight: this one asks "are you allowed to load", the switch asks "may this
+    # tenant hold payroll data at all". The switch stays ADMIN-ONLY and refuses
+    # every upload while it is off, admin included. The future job actor will
+    # pass the first and still have to satisfy the second.
+    current_user: User = Depends(require_permission(PAYROLL_UPLOAD)),
     db: Session = Depends(get_db),
 ):
     """Upload a payroll export and create (or replace) the week's lines.
@@ -535,10 +551,11 @@ MAX_REGISTER_BYTES = 25 * 1024 * 1024
 @router.post("/register/upload")
 async def upload_register(
     file: UploadFile = File(...),
-    # ⚠️ ADMIN ONLY, NOT payroll.view — the same reasoning as the hours
-    # upload above. Importing a register is the act that brings paid-wage data
-    # into existence, and the payroll reviewer never needs to do it.
-    current_user: User = Depends(require_admin),
+    # ⚠️ `payroll.upload`, NOT admin — changed 2026-11-13, same reasoning as
+    # the hours upload. Susan pulls the Check Register from Payentry today;
+    # importing it here is the same act. The data switch below still refuses
+    # it outright while payroll data is off for the tenant.
+    current_user: User = Depends(require_permission(PAYROLL_UPLOAD)),
     db: Session = Depends(get_db),
 ):
     """Import a Payentry Payroll Register PDF.
@@ -615,11 +632,12 @@ async def upload_register(
 
 @router.get("/rules")
 def get_rule_sets(
-    # ⚠️ ADMIN, not payroll.view. These are the constants that decide what
-    # every member is charged; reading them is a tenant-administration act, and
-    # the payroll reviewer reads the RESULTS, which already carry their
-    # `rule_set_id`.
-    current_user: User = Depends(require_admin),
+    # ⚠️ READ-ONLY for the payroll area, changed 2026-11-13. Susan needs to see
+    # which rules produced a figure she is about to approve — a dues result
+    # carries its `rule_set_id` and that is meaningless if she cannot read the
+    # set. EDITING the rulebook remains an administration act and there is no
+    # write endpoint here at all; rule sets are seeded by script.
+    current_user: User = Depends(require_permission(PAYROLL_READ)),
     db: Session = Depends(get_db),
 ):
     """Every effective-dated rule set for this tenant, newest first.
@@ -804,7 +822,7 @@ def preview_r115(
 def build_r115(
     year: int = Form(...),
     month: int = Form(..., ge=1, le=12),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_permission(PAYROLL_WRITE)),
     db: Session = Depends(get_db),
 ):
     """Create or refresh this month's DRAFT form from the register.
@@ -836,7 +854,7 @@ def build_r115(
 def advance_r115(
     form_id: str,
     to_status: str = Form(...),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_permission(PAYROLL_WRITE)),
     db: Session = Depends(get_db),
 ):
     """Move the form through draft -> submitted -> filed.
@@ -870,7 +888,7 @@ def advance_r115(
 @router.post("/r115/{form_id}/supersede")
 def supersede_r115(
     form_id: str,
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_permission(PAYROLL_WRITE)),
     db: Session = Depends(get_db),
 ):
     """Replace a submitted or filed form with a fresh draft correction.

@@ -64,7 +64,9 @@ PERMISSION_CATEGORIES: dict[str, dict[str, list[str]]] = {
     # role is `limited_to_areas=["payroll"]`, so these two keys plus the common
     # shell set are the whole of what that role can reach. See app/core/areas.py.
     "payroll": {
-        "payroll": ["view", "approve"],
+        # ⚠️ `upload` ADDED 2026-11-13. See PAYROLL_DEFAULT_PERMISSIONS below
+        # for why the 2026-11-03 admin-only reasoning no longer holds.
+        "payroll": ["view", "approve", "upload"],
     },
     "settings": {
         "settings": ["view"],
@@ -175,6 +177,7 @@ def _slug_to_name(slug: str) -> str:
 PERMISSION_DISPLAY_NAMES: dict[str, str] = {
     "payroll.view": "View payroll reports",
     "payroll.approve": "Approve a payroll week",
+    "payroll.upload": "Upload payroll hours and registers",
     "financials.view": "View Financials",
     "financials.invoices.view": "View Invoices",
     "financials.invoices.create": "Create Invoices",
@@ -534,9 +537,32 @@ LEGACY_DESIGNER_DEFAULT_PERMISSIONS = [
 #: The payroll role holds payroll and nothing else. `dashboard.view` is NOT here:
 #: the area guard refuses /dashboard anyway (it carries no area tag), so granting
 #: the permission would be a grant that reads as access and produces none.
+#:
+#: ⚠️ **`payroll.upload` ADDED 2026-11-13, AND IT REVERSES PART OF THE
+#: 2026-11-03 RULING DELIBERATELY.** That ruling made loading hours admin-only
+#: on an explicit premise: *"Loading hours is the act that brings pay data into
+#: existence, and the payroll reviewer never needs to do it: in the finished
+#: shape it is the background payroll job running under its own system actor."*
+#: The premise was that Opas would pull the hours. It is no longer true — the
+#: Monday pull is designed and NOT built, and until it exists Susan runs her own
+#: week from uploads, which is what she was asked to do.
+#:
+#: ⚠️ **THE "BRINGS PAY DATA INTO EXISTENCE" GATE HAS NOT BEEN GIVEN AWAY — IT
+#: MOVED TO THE RIGHT CONTROL.** That gate is now the payroll DATA SWITCH, which
+#: stays admin-only: it is tenant-wide, off by default, and while it is off no
+#: upload works for anyone including an admin. Uploading a week's hours against
+#: a tenant whose switch is already on is Susan doing her job, not bringing the
+#: data regime into being. She pulls the Check Register from Payentry today.
+#:
+#: ⚠️ **NOT GRANTED TO `accountant`.** r222 exists to preserve the access the
+#: old slug gate gave that role, and that gate never reached the uploads — they
+#: were admin-only. Granting upload here would WIDEN the accountant rather than
+#: preserve it, which is the exact mistake r222's comment documents for the
+#: `accounting` alias.
 PAYROLL_DEFAULT_PERMISSIONS = [
     "payroll.view",
     "payroll.approve",
+    "payroll.upload",
 ]
 
 ROLE_DEFAULTS: dict[str, list[str]] = {
