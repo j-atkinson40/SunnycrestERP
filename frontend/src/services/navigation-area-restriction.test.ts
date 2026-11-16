@@ -56,12 +56,21 @@ function labels(cfg: NavigationConfig): Set<string> {
 }
 
 describe("a payroll-limited user", () => {
-  it("sees exactly the Payroll item and nothing else", () => {
+  it("sees her area, plus Today — and nothing else", () => {
     // ⚠️ `functional_areas` is EMPTY here on purpose — that is the production
     // state that produced the bug. The restriction must hold regardless of it,
     // because it is no longer what decides.
+    //
+    // ⚠️ "Today" JOINED THIS SET ON 2026-11-16, and the claim is unchanged:
+    // she sees her area and nothing from anyone else's. Measured that day, a
+    // payroll-limited user landed on `/home`, held exactly one nav item, and
+    // had NO WAY BACK to the note — navigate away once and the week's dues
+    // line, her only route into the Focus, was unreachable until she signed in
+    // again. `/home` is hers since Payroll 5a made the note a composed
+    // surface. It is NOT the "Home" hub at `/dashboard`, which the six-hubs
+    // test below still asserts is gone.
     const restricted = restrictNavToAreas(nav(PAYROLL_PERMS, new Set()), ["payroll"])
-    expect(labels(restricted)).toEqual(new Set(["Payroll"]))
+    expect(labels(restricted)).toEqual(new Set(["Today", "Payroll"]))
   })
 
   it("is not rescued by functional_areas being populated either", () => {
@@ -71,7 +80,7 @@ describe("a payroll-limited user", () => {
       nav(PAYROLL_PERMS, new Set(["invoicing_ar", "production_log", "full_admin"])),
       ["payroll"],
     )
-    expect(labels(restricted)).toEqual(new Set(["Payroll"]))
+    expect(labels(restricted)).toEqual(new Set(["Today", "Payroll"]))
   })
 
   it("loses the six hubs James actually saw", () => {
@@ -130,8 +139,28 @@ describe("the null/empty distinction", () => {
 
 describe("untagged items are denied, mirroring the server", () => {
   it("drops an item whose area is not in the allowed set", () => {
+    // ⚠️ The dropping is the claim, and it is unchanged: nothing of the
+    // office nav survives a user limited to an area it does not carry. Only
+    // "Today" remains, which belongs to no area and is her way back to the
+    // note — see the first test in this file.
     const restricted = restrictNavToAreas(nav(OFFICE_PERMS, new Set()), ["some_other_area"])
-    expect(labels(restricted)).toEqual(new Set())
+    expect(labels(restricted)).toEqual(new Set(["Today"]))
+  })
+
+  it("⚠️ gives a user limited to NOTHING no nav at all, not even Today", () => {
+    // `[]` is "limited to nothing" and is a real, deliberate state — distinct
+    // from `null`, which is unlimited. A user who reaches no area does not
+    // acquire a nav item from the Today injection.
+    expect(labels(restrictNavToAreas(nav(PAYROLL_PERMS, new Set()), []))).toEqual(
+      new Set(),
+    )
+  })
+
+  it("⚠️ Today is never the LANDING route — she lands on her area", () => {
+    // Taking the first nav item would now return "/home" and silently invert
+    // the ruling. `landingRouteForAreas` skips items with no area.
+    expect(landingRouteForAreas(nav(PAYROLL_PERMS, new Set()), ["payroll"]))
+      .toBe("/payroll")
   })
 
   it("admits the Payroll item only for a set containing payroll", () => {

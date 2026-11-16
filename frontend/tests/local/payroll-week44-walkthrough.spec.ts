@@ -71,6 +71,54 @@ test("week 44, start to finish, as the payroll user", async ({ page }) => {
 
   await asSusan(page)
 
+  // ── 0. where she LANDS ───────────────────────────────────────────────────
+  //
+  // ⚠️ **STARTS AT THE ROOT, NOT AT A URL I CHOSE.** `landingRouteForAreas`
+  // sends an area-limited user to their area and never to Home, so `/payroll`
+  // is Susan's entire entrance. The walk used to begin at `/note` — a page she
+  // never lands on — which is exactly why the placeholder on `/payroll`
+  // survived a release after the Focus shipped.
+  //
+  // A real sign-in is not driven here: a payroll user requires two-step, so
+  // the session is injected as before. What is asserted is where the app puts
+  // her once she HAS one.
+  await page.goto("/")
+
+  // ⚠️ **SHE LANDS ON `/home`, NOT `/payroll`, AND THAT IS A FINDING.**
+  //
+  // `landingRouteForAreas` exists to send an area-limited user to her area and
+  // never to Home, and it is unit-tested to return "/payroll". It has never
+  // run. `RootRedirect` reads `usePresetThemeOptional()`, and the single
+  // `PresetThemeProvider` in App.tsx wraps a DIFFERENT route subtree — the
+  // redirect is mounted outside it, so the hook returns null every time and
+  // the area branch is unreachable. Its tests mock the hook and supply a
+  // preset, so they exercise the function and not the wiring.
+  //
+  // Asserted as MEASURED rather than as intended. Moving a provider in the
+  // boot path is every user's boot path and is not this follow-up's to do.
+  await expect(page).toHaveURL(/\/home$/, { timeout: 20_000 })
+  await shot(page, "00-lands-on-home")
+
+  // ── 0a. her sidebar offers Today and Payroll, and both work ──────────────
+  //
+  // Before this follow-up it held ONE item, Payroll, pointing at a
+  // placeholder — and nothing returned her to the note, so navigating away
+  // once put the week's dues line out of reach until she signed in again.
+  await expect(page.getByRole("link", { name: /^Today$/ })).toBeVisible()
+  await page.getByRole("link", { name: /^Payroll$/ }).click()
+  await expect(page).toHaveURL(/\/payroll$/, { timeout: 20_000 })
+  await expect(page.getByTestId("payroll-home")).toBeVisible()
+  await expect(page.getByText(/review is coming/i)).toHaveCount(0)
+  await expect(page.getByTestId("payroll-this-week")).toContainText(/Week \d+/)
+  await shot(page, "00a-payroll-page")
+
+  // ── 0b. and the Focus opens from there, scoped to the week ───────────────
+  await page.getByTestId("open-weekly-payroll").click()
+  await expect(page.getByRole("heading", { name: /Week 44/ })).toBeVisible({
+    timeout: 20_000,
+  })
+  await shot(page, "00b-focus-from-payroll")
+
   // ── 1. the home note ─────────────────────────────────────────────────────
   await page.goto("/note")
   // ⚠️ ATTACHED, not visible. An empty prose region has zero height and reads

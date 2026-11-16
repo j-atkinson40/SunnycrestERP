@@ -104,6 +104,36 @@ export function restrictNavToAreas(
   if (limitedToAreas === null || limitedToAreas === undefined) return nav;
 
   const allowed = new Set(limitedToAreas);
+
+  // ⚠️ **THE NOTE IS THE ONE CROSS-AREA SURFACE SHE CAN REACH, AND WITHOUT
+  // THIS SHE CANNOT GET BACK TO IT.**
+  //
+  // Measured 2026-11-16 with a payroll-limited user: she lands on `/home`,
+  // her sidebar holds exactly one item (Payroll), and nothing returns her to
+  // the note. Navigate away once and the week's dues line — her way into the
+  // Focus — is unreachable until she signs in again.
+  //
+  // `/home` is hers since Payroll 5a made the note a composed surface: it
+  // serves only the fragments her areas allow. The nav's existing "Home"
+  // points at `/dashboard`, which is a different page and not one she can
+  // use, so this is a separate entry rather than a re-tag of that one.
+  //
+  // Added ONLY for limited users. The unlimited path above returns the very
+  // same object it was given, so no unlimited nav can be touched by this.
+  // ⚠️ **LABELLED "Today", NOT "Home", AND THAT IS NOT A STYLE CHOICE.**
+  // The nav's existing "Home" is the DASHBOARD hub at `/dashboard` — one of
+  // the six hubs a payroll-limited user wrongly saw in the incident that
+  // produced this whole restriction, and `navigation-area-restriction.test`
+  // asserts by name that "Home" is gone. Reusing the label would make that
+  // guard read as regressed while pointing somewhere else entirely.
+  //
+  // "Today" is also what the page calls itself.
+  const noteHome: NavItem = {
+    label: "Today",
+    href: "/home",
+    icon: "Home",
+    aliases: ["today", "note", "home", "my note"],
+  };
   const keep = (item: NavItem): NavItem | null => {
     if (!item.area || !allowed.has(item.area)) {
       // A parent may be untagged while a child is reachable; keep the parent
@@ -115,16 +145,36 @@ export function restrictNavToAreas(
     return kids ? { ...item, children: kids } : { ...item };
   };
 
+  const restrictedSections = nav.sections
+    .map((sec) => ({
+      ...sec,
+      items: sec.items.map(keep).filter((x): x is NavItem => x !== null),
+    }))
+    .filter((sec) => sec.items.length > 0);
+
+  // ⚠️ NOT for `limited_to_areas = []`. That is "limited to NOTHING", a real
+  // and deliberate state, and a user who reaches no area does not acquire a
+  // nav item by this. Her nav stays empty and says so.
+  if (allowed.size === 0) {
+    return { ...nav, sections: restrictedSections };
+  }
+
+  // Home goes first, so the way back is where a reader looks for it.
+  if (restrictedSections.length > 0) {
+    restrictedSections[0] = {
+      ...restrictedSections[0],
+      items: [noteHome, ...restrictedSections[0].items],
+    };
+  } else {
+    restrictedSections.push({ title: "", items: [noteHome] });
+  }
+
   return {
     ...nav,
-    sections: nav.sections
-      .map((sec) => ({
-        ...sec,
-        items: sec.items.map(keep).filter((x): x is NavItem => x !== null),
-      }))
-      .filter((sec) => sec.items.length > 0),
+    sections: restrictedSections,
   };
 }
+
 
 /**
  * Where an area-limited user should land. `null` for everyone else.
@@ -147,6 +197,12 @@ export function landingRouteForAreas(
   const restricted = restrictNavToAreas(nav, limitedToAreas);
   for (const sec of restricted.sections) {
     for (const item of sec.items) {
+      // ⚠️ **AN AREA ITEM, NOT MERELY THE FIRST ITEM.** `restrictNavToAreas`
+      // now prepends an untagged Home so she can get back to her note; taking
+      // the first item would make Home her landing route and silently invert
+      // the ruling that an area-limited user lands on their AREA and never on
+      // Home. You land on an area; Home is not one.
+      if (!item.area) continue;
       if (item.href) return item.href;
       const kid = (item.children || []).find((c) => c.href);
       if (kid) return kid.href;
