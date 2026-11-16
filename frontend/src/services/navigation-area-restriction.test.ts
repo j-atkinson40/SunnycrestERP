@@ -19,7 +19,6 @@ import { describe, expect, it } from "vitest"
 
 import {
   getNavigation,
-  landingRouteForAreas,
   restrictNavToAreas,
   type NavigationConfig,
 } from "./navigation-service"
@@ -93,9 +92,6 @@ describe("a payroll-limited user", () => {
     }
   })
 
-  it("lands on Payroll, never on Home", () => {
-    expect(landingRouteForAreas(nav(PAYROLL_PERMS, new Set()), ["payroll"])).toBe("/payroll")
-  })
 })
 
 describe("an unlimited user", () => {
@@ -114,10 +110,6 @@ describe("an unlimited user", () => {
     expect(labels(restrictNavToAreas(built, null))).toEqual(labels(built))
   })
 
-  it("gets no area landing redirect", () => {
-    expect(landingRouteForAreas(nav(OFFICE_PERMS, new Set()), null)).toBeNull()
-    expect(landingRouteForAreas(nav(OFFICE_PERMS, new Set()), undefined)).toBeNull()
-  })
 })
 
 describe("the null/empty distinction", () => {
@@ -130,11 +122,6 @@ describe("the null/empty distinction", () => {
     expect(restricted.sections).toEqual([])
   })
 
-  it("returns null for a landing route when she can reach nothing", () => {
-    // Better to leave her on the default and let her see the honest error than
-    // to invent a route or loop.
-    expect(landingRouteForAreas(nav(OFFICE_PERMS, new Set()), [])).toBeNull()
-  })
 })
 
 describe("untagged items are denied, mirroring the server", () => {
@@ -154,13 +141,6 @@ describe("untagged items are denied, mirroring the server", () => {
     expect(labels(restrictNavToAreas(nav(PAYROLL_PERMS, new Set()), []))).toEqual(
       new Set(),
     )
-  })
-
-  it("⚠️ Today is never the LANDING route — she lands on her area", () => {
-    // Taking the first nav item would now return "/home" and silently invert
-    // the ruling. `landingRouteForAreas` skips items with no area.
-    expect(landingRouteForAreas(nav(PAYROLL_PERMS, new Set()), ["payroll"]))
-      .toBe("/payroll")
   })
 
   it("admits the Payroll item only for a set containing payroll", () => {

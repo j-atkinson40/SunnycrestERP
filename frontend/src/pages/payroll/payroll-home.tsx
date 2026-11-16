@@ -1,13 +1,17 @@
 /**
  * The Payroll page — where a payroll-limited user LANDS.
  *
- * ⚠️ **THIS IS THE FIRST THING SUSAN SEES AFTER SIGNING IN.**
- * `landingRouteForAreas` sends an area-limited user to their area and never to
- * Home — James's ruling, because Home's own endpoints refuse her. So whatever
- * is here is her entire entrance to the week's work. It used to say "Payroll
- * review is coming", which after Payroll 5a was false: the Focus existed and
- * she had no way to reach it, because the only link into it was on a note she
- * does not land on.
+ * ⚠️ **THIS IS SUSAN'S ENTRANCE TO THE WEEK'S WORK, THOUGH NOT WHERE SHE
+ * LANDS.** She lands on `/home` — the note — like every user, per James's
+ * ruling of 2026-11-16. She reaches this page from "Payroll" in her sidebar,
+ * which alongside "Today" is the whole of her nav.
+ *
+ * It used to say "Payroll review is coming", which after Payroll 5a was false:
+ * the Focus existed and she had no way to reach it from here.
+ *
+ * ⚠️ An earlier version of this comment said `landingRouteForAreas` sends an
+ * area-limited user to their area. That function was DELETED on 2026-11-16 —
+ * it never ran, and the ruling above is the behaviour.
  *
  * ⚠️ **READ FROM THE PAYROLL ENDPOINTS, NOT FROM THE NOTE'S PROSE.** The note
  * is DIFFERENTIAL — its composition gate withholds a non-prompt whose digest

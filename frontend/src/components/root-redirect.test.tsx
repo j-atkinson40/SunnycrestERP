@@ -31,13 +31,12 @@ vi.mock("@/contexts/auth-context", () => ({
   useAuth: () => mockUseAuth(),
 }))
 
-// ⚠️ DEFAULTS TO null — "no PresetThemeProvider above me" — which is the state
-// the eight tests below were written against and must keep. Only the
-// area-limited cases override it.
-const mockPreset = vi.fn<() => { navigation: unknown } | null>(() => null)
-vi.mock("@/contexts/preset-theme-context", () => ({
-  usePresetThemeOptional: () => mockPreset(),
-}))
+// ⚠️ **THE PRESET HOOK IS NO LONGER MOCKED, AND THAT IS THE POINT.**
+// `RootRedirect` used to branch on `usePresetThemeOptional()`, and these tests
+// mocked it to supply a preset — so they exercised a helper while the real
+// component, mounted outside the only `PresetThemeProvider`, could never take
+// that branch. The branch is deleted (2026-11-16); nothing here supplies a
+// preset, which is the production condition.
 
 
 function renderAt(initial: string) {
@@ -192,150 +191,72 @@ describe("RootRedirect", () => {
 
 
 /**
- * Payroll 2 follow-up (2026-11-06) — an area-limited user lands on her area.
+ * ⚠️ WHERE AN AREA-LIMITED USER LANDS — **`/home`, like everyone else.**
  *
- * James signed in as the real Payroll-role user on production and landed on
- * Home, whose note comes from `/briefings/*` — which the server refuses for
- * her. The page reported an honest error rather than an empty day, so the
- * message was right and the destination was wrong.
+ * This replaces a block of tests for a branch that never ran. The old
+ * behaviour sent an area-limited user to her own area instead of Home, via
+ * `landingRouteForAreas`; `RootRedirect` read `usePresetThemeOptional()` and is
+ * mounted outside the only `PresetThemeProvider`, so the hook returned null on
+ * every render and the branch was unreachable. The tests supplied a preset
+ * through a mock, so they were green against code that could not execute.
  *
- * ⚠️ These tests mount `RootRedirect` WITHOUT a `PresetThemeProvider`, exactly
- * as the eight above do, because the no-provider case is load-bearing rather
- * than incidental: the first version of this feature used the throwing
- * `usePresetTheme` and reddened all eight. The component now reads the
- * optional hook, so "no provider" means "the nav is not knowable here" and the
- * redirect correctly does not fire.
+ * James's ruling of 2026-11-16: in the redesign every user lands on the note,
+ * area-limited users included — so the dead code was also the wrong behaviour,
+ * and deleting it was cheaper and safer than moving a provider that every
+ * user's sign-in passes through.
+ *
+ * ⚠️ NOTHING HERE MOCKS THE PRESET HOOK. That is the whole value of the test:
+ * it exercises the real component under the real production condition rather
+ * than a helper under a condition the app never produces.
  */
-describe("area-limited landing", () => {
-  it("does NOT redirect when the nav is not knowable (no provider mounted)", () => {
-    // ⚠️ The honest failure. Without the nav there is no way to know which
-    // route is hers, and guessing one would be the third list this change
-    // exists to avoid. She falls through to the default and sees the same
-    // honest error she saw before — no worse, and no invented route.
+
+
+
+describe("an area-limited user lands on the note", () => {
+  it("sends a payroll-limited user to /home", () => {
     mockUseAuth.mockReturnValue({
       user: { role_slug: "payroll" },
       isLoading: false,
       isAuthenticated: true,
       track: "office_management",
-      consoleAccess: [],
+      consoleAccess: new Set<string>(),
       limitedToAreas: ["payroll"],
     })
-    expect(renderAt("/").queryByTestId("home")).not.toBeNull()
+    renderAt("/")
+    expect(document.querySelector('[data-testid="home"]')).toBeTruthy()
+    // ⚠️ The deleted branch sent her HERE instead. The route still exists and
+    // she can reach it from her nav; she must not be redirected onto it.
+    expect(document.querySelector('[data-testid="payroll"]')).toBeFalsy()
   })
 
-  it("leaves an unlimited user on /home, limited_to_areas being null", () => {
-    // The mirror: the field exists for everyone, and null must change nothing.
-    mockUseAuth.mockReturnValue({
-      user: { role_slug: "office" },
-      isLoading: false,
-      isAuthenticated: true,
-      track: "office_management",
-      consoleAccess: [],
-      limitedToAreas: null,
-    })
-    expect(renderAt("/").queryByTestId("home")).not.toBeNull()
-  })
-
-  it("leaves a user on /home when /auth/me omits the field entirely", () => {
-    // An older payload. `undefined` must read as unlimited, not as limited to
-    // nothing — otherwise a version skew would strand every user.
-    mockUseAuth.mockReturnValue({
-      user: { role_slug: "office" },
-      isLoading: false,
-      isAuthenticated: true,
-      track: "office_management",
-      consoleAccess: [],
-      limitedToAreas: undefined,
-    })
-    expect(renderAt("/").queryByTestId("home")).not.toBeNull()
-  })
-})
-
-
-describe("area-limited landing, with the nav available", () => {
-  /** The shape PresetThemeProvider exposes, trimmed to what the redirect reads. */
-  function navWith(items: { label: string; href: string; area?: string }[]) {
-    return { navigation: { sections: [{ title: "", items }], presetAccent: "#000", presetLabel: "x" } }
-  }
-
-  it("sends a payroll-limited user to /payroll, not /home", () => {
-    // ⚠️ THE BEHAVIOUR JAMES ASKED FOR, at the wiring rather than at the
-    // helper. `landingRouteForAreas` is unit-tested next door; this asserts
-    // RootRedirect actually calls it and honours the answer — the gap that
-    // CLAUDE.md §11 shapes 2 and 3 are both about.
+  it("sends a user limited to NOTHING to /home too", () => {
+    // `[]` is "limited to nothing" and is distinct from `null`. She reaches no
+    // area, and the note composes to an empty note rather than an error.
     mockUseAuth.mockReturnValue({
       user: { role_slug: "payroll" },
       isLoading: false,
       isAuthenticated: true,
       track: "office_management",
-      consoleAccess: [],
-      limitedToAreas: ["payroll"],
-    })
-    mockPreset.mockReturnValue(
-      navWith([{ label: "Payroll", href: "/payroll", area: "payroll" }]) as never,
-    )
-    const r = renderAt("/")
-    expect(r.queryByTestId("payroll")).not.toBeNull()
-    expect(r.queryByTestId("home")).toBeNull()
-    mockPreset.mockReturnValue(null)
-  })
-
-  it("leaves an unlimited user on /home even with the nav available", () => {
-    // The control. Without it the test above would pass on a redirect that
-    // fires for everybody, which would send every office user to /payroll.
-    mockUseAuth.mockReturnValue({
-      user: { role_slug: "office" },
-      isLoading: false,
-      isAuthenticated: true,
-      track: "office_management",
-      consoleAccess: [],
-      limitedToAreas: null,
-    })
-    mockPreset.mockReturnValue(
-      navWith([
-        { label: "Home", href: "/dashboard" },
-        { label: "Payroll", href: "/payroll", area: "payroll" },
-      ]) as never,
-    )
-    const r = renderAt("/")
-    expect(r.queryByTestId("home")).not.toBeNull()
-    expect(r.queryByTestId("payroll")).toBeNull()
-    mockPreset.mockReturnValue(null)
-  })
-
-  it("does not redirect a limited user whose nav came back empty", () => {
-    // She can reach nothing, so there is nowhere to send her. Falling through
-    // beats a redirect loop or an invented route.
-    mockUseAuth.mockReturnValue({
-      user: { role_slug: "payroll" },
-      isLoading: false,
-      isAuthenticated: true,
-      track: "office_management",
-      consoleAccess: [],
+      consoleAccess: new Set<string>(),
       limitedToAreas: [],
     })
-    mockPreset.mockReturnValue(navWith([]) as never)
-    expect(renderAt("/").queryByTestId("home")).not.toBeNull()
-    mockPreset.mockReturnValue(null)
+    renderAt("/")
+    expect(document.querySelector('[data-testid="home"]')).toBeTruthy()
   })
 
-  it("still sends a driver to /driver even if limited", () => {
-    // A configuration nobody has made, asserted so the specialized entries
-    // keep priority rather than being silently reordered by this change.
+  it("⚠️ a driver is still routed to the console, not to the note", () => {
+    // The deleted branch carried an explicit driver/console carve-out, so
+    // removing it could have changed where those users go. This pins it.
     mockUseAuth.mockReturnValue({
       user: { role_slug: "driver" },
       isLoading: false,
       isAuthenticated: true,
       track: "office_management",
-      consoleAccess: [],
+      consoleAccess: new Set<string>(),
       limitedToAreas: ["payroll"],
     })
-    mockPreset.mockReturnValue(
-      navWith([{ label: "Payroll", href: "/payroll", area: "payroll" }]) as never,
-    )
-    const r = renderAt("/")
-    expect(r.queryByTestId("driver")).not.toBeNull()
-    expect(r.queryByTestId("payroll")).toBeNull()
-    mockPreset.mockReturnValue(null)
+    renderAt("/")
+    expect(document.querySelector('[data-testid="driver"]')).toBeTruthy()
+    expect(document.querySelector('[data-testid="home"]')).toBeFalsy()
   })
 })

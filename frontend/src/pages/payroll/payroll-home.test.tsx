@@ -2,10 +2,14 @@
  * The Payroll page — where a payroll-limited user LANDS.
  *
  * ⚠️ These tests exist because the page was a placeholder for one release
- * after the Focus shipped. `landingRouteForAreas` sends an area-limited user
- * to their area and never to Home, so "Payroll review is coming" was the whole
- * of Susan's entrance to a Focus that already worked — reachable only from a
- * note she does not land on.
+ * after the Focus shipped — "Payroll review is coming" was the whole of what a
+ * payroll-limited user found behind the one nav item she had, while the Focus
+ * already worked.
+ *
+ * ⚠️ An earlier version of this comment explained that via
+ * `landingRouteForAreas`. That function was DELETED on 2026-11-16: it never
+ * ran, and every user lands on `/home` per James's ruling. The page still
+ * matters — it is reached from her sidebar, not by landing.
  */
 
 import { render, screen, waitFor } from "@testing-library/react"

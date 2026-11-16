@@ -74,6 +74,27 @@ const PRESET_LABELS: Record<string, string> = {
 };
 
 /**
+ * ⚠️ `landingRouteForAreas` WAS HERE AND IS DELETED (2026-11-16).
+ *
+ * It computed a per-area landing route so an area-limited user would land on
+ * their area and never on Home. **It never ran.** `RootRedirect` reads
+ * `usePresetThemeOptional()`, and the only `PresetThemeProvider` in App.tsx
+ * wraps a different route subtree — the redirect is mounted outside it, so the
+ * hook returned null on every render and the branch was unreachable. Its tests
+ * passed because they mocked the hook and supplied a preset, so they exercised
+ * the function and never the wiring.
+ *
+ * James's ruling of 2026-11-16: in the redesign EVERY user lands on `/home`,
+ * the note, area-limited users included. So the dead code was also the wrong
+ * behaviour, and the fix is deletion rather than moving a provider that every
+ * user's sign-in passes through.
+ *
+ * `restrictNavToAreas` above is unaffected and still does the real work: it
+ * filters the nav to the caller's areas and prepends "Today" so a limited user
+ * can get back to the note.
+ */
+
+/**
  * Keep only the nav a user limited to `limitedToAreas` may actually reach.
  *
  * ⚠️ **ONE SOURCE OF TRUTH: `limitedToAreas` COMES FROM `/auth/me`, WHICH
@@ -176,40 +197,6 @@ export function restrictNavToAreas(
 }
 
 
-/**
- * Where an area-limited user should land. `null` for everyone else.
- *
- * James's ruling: "Area-limited users land on their area (Payroll), never on
- * Home, until a payroll-limited home exists." Home's note endpoint is
- * `/briefings/*`, which the server refuses for her — so landing there shows an
- * error page as the first thing she sees after signing in.
- *
- * ⚠️ Derived from the SAME nav the sidebar renders, not from a second
- * area→route table. If her nav is empty there is nowhere to send her and this
- * returns null rather than inventing a route; the caller leaves her on the
- * default and she sees the honest error instead of a redirect loop.
- */
-export function landingRouteForAreas(
-  nav: NavigationConfig,
-  limitedToAreas: string[] | null | undefined,
-): string | null {
-  if (limitedToAreas === null || limitedToAreas === undefined) return null;
-  const restricted = restrictNavToAreas(nav, limitedToAreas);
-  for (const sec of restricted.sections) {
-    for (const item of sec.items) {
-      // ⚠️ **AN AREA ITEM, NOT MERELY THE FIRST ITEM.** `restrictNavToAreas`
-      // now prepends an untagged Home so she can get back to her note; taking
-      // the first item would make Home her landing route and silently invert
-      // the ruling that an area-limited user lands on their AREA and never on
-      // Home. You land on an area; Home is not one.
-      if (!item.area) continue;
-      if (item.href) return item.href;
-      const kid = (item.children || []).find((c) => c.href);
-      if (kid) return kid.href;
-    }
-  }
-  return null;
-}
 
 export function getNavigation(
   vertical: string | null,

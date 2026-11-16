@@ -1,16 +1,13 @@
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/auth-context";
-import { usePresetThemeOptional } from "@/contexts/preset-theme-context";
-import { landingRouteForAreas } from "@/services/navigation-service";
 
 export function RootRedirect() {
-  const { user, isLoading, isAuthenticated, track, consoleAccess, limitedToAreas } = useAuth();
+  const { user, isLoading, isAuthenticated, track, consoleAccess } = useAuth();
   // ⚠️ OPTIONAL, NOT THE THROWING HOOK. This component previously needed
   // only `useAuth`; the throwing version made it unrenderable wherever the
   // provider is absent and reddened eight of its own tests. Null here means
   // the nav is not knowable, which for a landing decision correctly means
   // do not redirect.
-  const preset = usePresetThemeOptional();
 
   if (isLoading) {
     return (
@@ -24,30 +21,20 @@ export function RootRedirect() {
     return <Navigate to="/login" replace />;
   }
 
-  // ⚠️ **AN AREA-LIMITED USER LANDS ON HER AREA, NEVER ON HOME.** James's
-  // ruling of 2026-11-06, from signing in as the real payroll user: Home's
-  // note comes from `/briefings/*`, which the server refuses for her, so the
-  // first thing she saw after signing in was an error page. The page was
-  // behaving correctly — it reported an honest failure rather than an empty
-  // day — but it is the wrong destination, not a wrong message.
+  // ⚠️ THE AREA-LANDING BRANCH WAS HERE AND IS DELETED (2026-11-16).
   //
-  // ⚠️ THE ROUTE IS DERIVED FROM HER OWN RESTRICTED NAV, not from a second
-  // area→route table. A hardcoded `/payroll` would be a third list to drift
-  // alongside the two that already disagreed, and it would be wrong the moment
-  // a second area exists. If her nav is empty this returns null and she falls
-  // through to the default — she sees the honest error rather than a redirect
-  // loop, which is the better failure of the two.
+  // It sent an area-limited user to their own area instead of Home, via
+  // `landingRouteForAreas`. It never ran: this component reads
+  // `usePresetThemeOptional()`, and the only `PresetThemeProvider` in App.tsx
+  // wraps a different route subtree, so the hook returned null on every render
+  // and `areaLanding` was always null. The tests mocked the hook and supplied a
+  // preset, which is why they were green against code that could not execute.
   //
-  // Placed before the driver and console branches only in the sense of being
-  // checked against them: an area-limited DRIVER would be a configuration
-  // nobody has made, and the console branches key off `track`, so the ordering
-  // below keeps those paths exactly as they were.
-  const areaLanding = preset
-    ? landingRouteForAreas(preset.navigation, limitedToAreas)
-    : null;
-  if (areaLanding && user?.role_slug !== "driver" && track !== "production_delivery") {
-    return <Navigate to={areaLanding} replace />;
-  }
+  // James's ruling of 2026-11-16: every user lands on `/home` — the note —
+  // area-limited users included. That is the `return <Navigate to="/home" />`
+  // at the bottom of this function, which a payroll-limited user now reaches by
+  // falling through. `test_a_payroll_limited_user_lands_on_home` below pins it
+  // with no mocked hook, so it exercises the wiring rather than the helper.
 
   // Driver role → redirect immediately to driver console
   if (user?.role_slug === "driver") {
