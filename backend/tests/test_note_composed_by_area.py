@@ -343,6 +343,27 @@ def leaky_probe():
             condition_inputs={"probe": "area"},
         )]
 
+    # ⚠️ **CLEAR THIS PROBE'S RECORDED RENDERS FIRST, FOR EVERY USER.**
+    #
+    # The composition gate withholds a fragment whose digest matches what the
+    # note last SAID, so the second run of this test on the same database and
+    # the same day saw the probe gated out — and the admin-reaches-it control
+    # failed. It passed in CI only because CI's database is new every run, so
+    # the test was green on a property of the environment rather than of the
+    # code: run the gate twice against one database and it reddens.
+    #
+    # The actors fixture clears renders for the probe USERS, but the admin is a
+    # seeded identity it does not own, and the admin is the control. Keyed on
+    # the fragment instead, which covers whoever the test uses.
+    from app.database import SessionLocal as _S
+    _db = _S()
+    try:
+        _db.execute(text("DELETE FROM note_fragment_renders WHERE fragment_id=:f"),
+                    {"f": PROBE_FRAGMENT})
+        _db.commit()
+    finally:
+        _db.close()
+
     reset_registry()
     register_fragment(FragmentDeclaration(
         fragment_id=PROBE_FRAGMENT, label="Receivables probe", kind="non_prompt",

@@ -30,6 +30,7 @@ from sqlalchemy import (
     Numeric,
     String,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -816,3 +817,145 @@ class PayrollShiftRule(Base):
                                         default="default_unconfirmed")
     source: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+#: ─────────────────────────────────────────── Payroll 5a: the Focus's writes
+#:
+#: ⚠️ **NEITHER OF THESE MUTATES WHAT WAS PARSED.** `payroll_hours_lines` and
+#: `payroll_checks` hold what Payentry printed, and the arc's first rule is that
+#: a stored figure must be re-derivable from the import. A hand correction that
+#: overwrote an hours line would destroy the only copy of the thing being
+#: corrected, and the next re-import would silently undo it.
+#:
+#: So both tables are APPEND-ONLY OVERLAYS carrying their own attribution, in
+#: the manner `PayrollUnionFormR115` already establishes for the union form: "a
+#: correction is a new form, not a mutation." Superseding keeps the history
+#: readable — what was decided, by whom, and what it replaced.
+
+
+class PayrollHourCorrection(Base):
+    """One hand-entered hours correction for one person, day and pay type.
+
+    ⚠️ **SIGNED, AND A DELTA RATHER THAN A REPLACEMENT.** The parsed line stays
+    as printed and this is added to it, so "Payentry shows 6.5, it was 8" is
+    entered as +1.5 and the arithmetic stays visible. A replacement value would
+    make the correction unreadable without also knowing what it replaced, and
+    that is exactly what gets lost when the import is refreshed.
+
+    ⚠️ There may be NO parsed line to correct: a punch that never made it into
+    Payentry's export is the commonest real case, and the correction is then the
+    only row for that day. So this is not a foreign key to an hours line.
+    """
+
+    __tablename__ = "payroll_hour_corrections"
+    __table_args__ = (
+        Index("ix_payroll_hour_corrections_week",
+              "tenant_id", "week_end_date", "emp_id"),
+        # ⚠️ A SIGNED CHECK, NOT A POSITIVE ONE. A correction removing hours
+        # someone did not work is as legitimate as one adding hours, and the
+        # bound exists only to catch a decimal-place slip: no single day's
+        # correction is plausibly more than a day.
+        CheckConstraint("hours >= -24 AND hours <= 24",
+                        name="ck_payroll_hour_correction_plausible"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    week_end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    #: The Payentry employee number, as everywhere else in this arc. Never the
+    #: name — Payentry spells one real name "Micheal".
+    emp_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    work_date: Mapped[date] = mapped_column(Date, nullable=False)
+    pay_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    hours: Mapped[Decimal] = mapped_column(HOURS, nullable=False)
+
+    #: ⚠️ REQUIRED, AND ENFORCED AT THE EDGE TOO. A correction without a reason
+    #: is unreviewable six weeks later, which is when anybody asks.
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+
+    entered_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=False
+    )
+    entered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    #: ⚠️ Corrections ACCUMULATE rather than supersede — two corrections on one
+    #: day are two deltas and both count. These columns exist for withdrawing
+    #: one that was entered in error, and the same convention as decisions is
+    #: used deliberately: `superseded_at` is what "live" means everywhere in
+    #: this arc, so there is one answer to that question rather than two.
+    superseded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    superseded_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("payroll_hour_corrections.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+
+class PayrollWeekDecision(Base):
+    """What was decided about one finding on one week.
+
+    ⚠️ Keyed on the FINDING, not on a row id, because a finding is recomputed
+    from the imports every time the week is looked at. Keying on anything
+    derived from the run would lose the decision the moment the week was
+    recalculated — the same mistake `subject_kind` forbids for fragments.
+    """
+
+    __tablename__ = "payroll_week_decisions"
+    __table_args__ = (
+        Index("ix_payroll_week_decisions_week", "tenant_id", "week_end_date"),
+        # ⚠️ PARTIAL: one LIVE decision per finding, and any number of
+        # superseded ones behind it. A plain unique constraint would make the
+        # second decision on a finding an integrity error rather than a change
+        # of mind.
+        # ⚠️ KEYED ON `superseded_at`, NOT ON `superseded_by`, AND THE REASON
+        # IS AN ORDERING DEADLOCK I HIT BUILDING THIS.
+        #
+        # `superseded_by` is a foreign key to this same table, so it cannot be
+        # set until the replacement row exists. But the replacement cannot be
+        # inserted while the old row is still live, because this index forbids
+        # two live decisions on one finding. Liveness therefore has to be
+        # something settable BEFORE the new row exists — a timestamp. The
+        # pointer is then filled in afterwards, as provenance rather than as
+        # state.
+        Index("uq_payroll_week_decision_live",
+              "tenant_id", "week_end_date", "finding_key",
+              unique=True, postgresql_where=text("superseded_at IS NULL")),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    week_end_date: Mapped[date] = mapped_column(Date, nullable=False)
+
+    #: Stable identity of the finding: "<kind>:<emp_id>[:<date>]". Built by
+    #: `week_focus.finding_key`, never by a caller.
+    finding_key: Mapped[str] = mapped_column(String(128), nullable=False)
+
+    #: What was decided. Validated against a declared set at the edge rather
+    #: than by an enum column, so adding an outcome does not need a migration —
+    #: but it IS validated, because an unrecognised outcome renders as nothing.
+    outcome: Mapped[str] = mapped_column(String(32), nullable=False)
+    note: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+
+    decided_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=False
+    )
+    decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    #: NULL while this is the live decision. Set when a later one replaces it.
+    #: ⚠️ THIS, not `superseded_by`, is what "live" means — see the index above.
+    superseded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    #: Which decision replaced this one. Provenance, filled in after the
+    #: replacement exists; never read to decide whether a row is live.
+    superseded_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("payroll_week_decisions.id", ondelete="SET NULL"),
+        nullable=True
+    )

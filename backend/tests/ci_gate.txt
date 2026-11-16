@@ -790,3 +790,4 @@ tests/test_payroll_hours_phase3.py
 tests/test_payroll_hours_followup.py
 tests/test_payroll_upload_permission.py
 tests/test_note_composed_by_area.py
+tests/test_payroll_week_focus.py

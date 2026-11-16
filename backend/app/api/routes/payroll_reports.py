@@ -29,6 +29,7 @@ Spec: docs/specs/payroll-reports.md
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from sqlalchemy import select
@@ -52,6 +53,7 @@ from app.models.payroll_report import (
 )
 from app.models.user import User
 from app.services.payroll import service as payroll_service
+from app.services.payroll import week_focus
 from app.services.payroll.column_mapping import UnverifiedMapping, available_mappings
 from app.services.payroll.parsers import ExportParseError, ExportPayload
 from app.services.payroll.hours_import import (
@@ -916,3 +918,147 @@ def supersede_r115(
     db.commit()
     return {"superseded": _form_shape(form), "replacement": _form_shape(replacement),
             "statuses": list(R115_STATUSES)}
+
+
+# ─────────────────────────────────────────── Payroll 5a: the weekly Focus
+#
+# ⚠️ **THE READS TAKE `payroll.view`, THE TWO WRITES TAKE `payroll.approve`,
+# AND EVERY ONE OF THEM IS BEHIND THE DATA SWITCH.** James's ruling of
+# 2026-11-13. Reading a week's dues is the job Susan was given; deciding a
+# finding and correcting somebody's hours change what payroll pays, and they
+# sit at the change level with the week approval they feed.
+#
+# ⚠️ The switch is checked on the READS too, not only the writes. A tenant
+# whose switch is off holds no payroll data, so a Focus there can only report
+# on rows that should not exist — and answering 200 with an empty Focus would
+# make "the switch is off" look like "there is nothing this week".
+
+
+@router.get("/weeks/{week_id}/focus")
+def get_week_focus(
+    week_id: str,
+    current_user: User = Depends(require_permission(PAYROLL_READ)),
+    db: Session = Depends(get_db),
+):
+    """The weekly payroll Focus: the dues summary, decisions and corrections."""
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    assert_payroll_data_enabled(company)
+    week = _get_week(db, week_id, current_user.company_id)
+    return week_focus.week_focus(db, week)
+
+
+@router.get("/weeks/{week_id}/panes/union-dues")
+def get_union_dues_pane(
+    week_id: str,
+    current_user: User = Depends(require_permission(PAYROLL_READ)),
+    db: Session = Depends(get_db),
+):
+    """Pane: every member's hours and dues for the week, and the total."""
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    assert_payroll_data_enabled(company)
+    week = _get_week(db, week_id, current_user.company_id)
+    try:
+        return week_focus.union_dues_pane(db, week)
+    except payroll_service.PayrollError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@router.get("/weeks/{week_id}/panes/member/{employee_id}")
+def get_member_pane(
+    week_id: str,
+    employee_id: str,
+    current_user: User = Depends(require_permission(PAYROLL_READ)),
+    db: Session = Depends(get_db),
+):
+    """Pane: the working behind one member's dues — the figures and the rate."""
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    assert_payroll_data_enabled(company)
+    week = _get_week(db, week_id, current_user.company_id)
+    pane = week_focus.member_pane(db, week, employee_id)
+    if pane is None:
+        raise HTTPException(404, "No dues result for that employee on this week")
+    return pane
+
+
+@router.get("/weeks/{week_id}/panes/timecard/{employee_id}")
+def get_timecard_pane(
+    week_id: str,
+    employee_id: str,
+    current_user: User = Depends(require_permission(PAYROLL_READ)),
+    db: Session = Depends(get_db),
+):
+    """Pane: the week's days for one person, with corrections and punch counts.
+
+    ⚠️ Never coordinates. `any_punch_has_location` is a boolean and the only
+    thing stored — James's ruling of 2026-11-10.
+    """
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    assert_payroll_data_enabled(company)
+    week = _get_week(db, week_id, current_user.company_id)
+    return week_focus.timecard_pane(db, week, employee_id)
+
+
+@router.post("/weeks/{week_id}/corrections", status_code=201)
+def post_hour_correction(
+    week_id: str,
+    emp_id: str = Form(...),
+    work_date: date = Form(...),
+    pay_type: str = Form(...),
+    hours: Decimal = Form(...),
+    reason: str = Form(...),
+    current_user: User = Depends(require_permission(PAYROLL_WRITE)),
+    db: Session = Depends(get_db),
+):
+    """A hand-entered hours correction. Appended, never written over the import."""
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    assert_payroll_data_enabled(company)
+    week = _get_week(db, week_id, current_user.company_id)
+    try:
+        row = week_focus.record_correction(
+            db, week, emp_id=emp_id, work_date=work_date, pay_type=pay_type,
+            hours=hours, reason=reason, user_id=current_user.id,
+        )
+    except week_focus.FocusWriteError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+    audit_service.log_action(
+        db, current_user.company_id, "payroll_hours_corrected",
+        "payroll_week", week.id, user_id=current_user.id,
+        changes={"emp_id": emp_id, "work_date": work_date.isoformat(),
+                 "pay_type": pay_type, "hours": str(hours),
+                 "correction_id": row.id})
+    db.commit()
+    return {"id": row.id, "emp_id": row.emp_id,
+            "work_date": row.work_date.isoformat(), "pay_type": row.pay_type,
+            "hours": str(row.hours), "reason": row.reason}
+
+
+@router.post("/weeks/{week_id}/decisions", status_code=201)
+def post_week_decision(
+    week_id: str,
+    finding_key: str = Form(...),
+    outcome: str = Form(...),
+    note: str = Form(""),
+    current_user: User = Depends(require_permission(PAYROLL_WRITE)),
+    db: Session = Depends(get_db),
+):
+    """Record what was decided about one finding. Supersedes, never overwrites."""
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    assert_payroll_data_enabled(company)
+    week = _get_week(db, week_id, current_user.company_id)
+    try:
+        row = week_focus.record_decision(
+            db, week, key=finding_key, outcome=outcome, note=note,
+            user_id=current_user.id,
+        )
+    except week_focus.FocusWriteError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+    audit_service.log_action(
+        db, current_user.company_id, "payroll_week_decided",
+        "payroll_week", week.id, user_id=current_user.id,
+        changes={"finding_key": row.finding_key, "outcome": row.outcome,
+                 "decision_id": row.id})
+    db.commit()
+    return {"id": row.id, "finding_key": row.finding_key,
+            "outcome": row.outcome, "note": row.note}
