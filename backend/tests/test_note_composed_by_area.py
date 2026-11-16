@@ -327,18 +327,21 @@ PROBE_FRAGMENT = "area_probe_accounting_leak"
 def leaky_probe():
     """An accounting fragment that every authenticated user would otherwise see."""
     from app.services.fragments.registry import register_fragment, reset_registry
+    from app.services.fragments.synthesis import compose, plain
     from app.services.fragments.types import (
         Audience,
         FragmentDeclaration,
         FragmentInstance,
-        FragmentPayload,
     )
 
     def _cond(db, *, user):
         return [FragmentInstance(
             subject_id=user.id,
-            payload=FragmentPayload(title="Receivables",
-                                    synthesized_text="An accounting sentence."),
+            # ⚠️ Spans, because the note renders spans — a probe built the old
+            # way would be invisible and would also fail the membership test
+            # below, which is the point of that test.
+            payload=compose([plain("An accounting sentence.")],
+                            title="Receivables"),
             predicate={"probe": True},
             condition_inputs={"probe": "area"},
         )]
@@ -440,3 +443,58 @@ def test_openable_is_still_false_from_the_server(client, actors, leaky_probe):
     r = client.get(TODAY, headers=H(actors["admin"]))
     for p in r.json()["prose"]:
         assert p["openable"] is False, p["fragment_id"]
+
+
+def test_the_payroll_line_renders_as_text_not_an_empty_paragraph(
+        client, actors, leaky_probe):
+    """⚠️ **THE NOTE DRAWS SPANS AND NOTHING ELSE.**
+
+    A payload with `synthesized_text` and no spans returns a sentence over the
+    API and renders as an EMPTY PARAGRAPH — present in the DOM, zero height,
+    invisible on the one screen it exists for. That shipped, passed every
+    assertion here, and was found by walking the page.
+
+    So the test is on the SPANS, not on the text: `compose` derives the text
+    from them, which means asserting the text alone cannot distinguish a line
+    that renders from one that does not.
+    """
+    from app.services.fragments.registry import get_registry
+
+    decl = get_registry()["weekly_dues"]
+    assert decl.area == "payroll"
+
+    # The condition needs a calculated week and the switch on; neither is true
+    # in this suite, so the shape is asserted at the payload level instead —
+    # directly, rather than by hoping the fixture produces one.
+    from app.services.fragments.synthesis import compose, measured, plain
+    from app.services.fragments.types import ReferencedItem
+
+    payload = compose(
+        [
+            plain("Week 44 dues come to "),
+            measured("$193.93", ReferencedItem(
+                kind="payroll_week", entity_id="w1", label="week 44 dues")),
+            plain(" — 11 members paying."),
+        ],
+        title="Union dues",
+        priority=80,
+    )
+    assert payload.spans, "a payload with no spans renders as an empty line"
+    assert payload.synthesized_text == (
+        "Week 44 dues come to $193.93 — 11 members paying."
+    ), payload.synthesized_text
+
+
+def test_every_fragment_payload_carries_spans(client, actors, leaky_probe):
+    """Membership, so the next fragment cannot ship invisible.
+
+    Any payload reaching the note with empty spans is a line the reader cannot
+    see. Asserted over whatever the note actually returns rather than over a
+    list maintained by hand.
+    """
+    r = client.get(TODAY, headers=H(actors["admin"]))
+    assert r.status_code == 200
+    rendered = r.json()["prose"]
+    assert rendered, "no prose to check — this test would assert nothing"
+    blank = [p["fragment_id"] for p in rendered if not p["spans"]]
+    assert blank == [], f"fragment(s) render as an empty paragraph: {blank}"

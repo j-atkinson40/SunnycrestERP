@@ -659,3 +659,101 @@ def test_the_focus_serves_findings_recomputed_read_only(client, seeded, switch_o
         db.close()
     assert after == before, f"the Focus GET wrote results: {before} -> {after}"
     assert status_after == status_before, "the Focus GET changed the week status"
+
+
+def test_the_focus_reports_a_member_absent_from_the_hours_export(
+        client, seeded, switch_on):
+    """⚠️ **THE FINDING THAT MATTERS MOST, AND `calculate_week` DOES NOT RAISE IT.**
+
+    `calculate_week` flags things about LINES it can see. A union member with no
+    line has nothing to flag, so a week recalculated from stored rows says
+    nothing about them. The roster mismatch is raised at IMPORT and then gone —
+    which means the week Susan opens on Tuesday would have shown her nothing
+    about a member who was never paid.
+
+    That is how Stevenson went unpaid. The Focus re-runs `reconcile_roster`
+    from stored rows, through the same function the import uses.
+    """
+    from app.database import SessionLocal
+    from app.models.payroll_report import PayrollReportEmployee
+
+    db = SessionLocal()
+    try:
+        # A fourth member: configured, active, union — and NO week line.
+        absent = PayrollReportEmployee(
+            id=str(uuid.uuid4()), tenant_id=TESTCO_ID,
+            payentry_file_number="9404", display_name="Absent, Member",
+            dept="PRECAST", is_union_member=True, active=True,
+            initiation_fee_due=False,
+        )
+        db.add(absent)
+        db.commit()
+
+        r = client.get(f"{BASE}/weeks/{seeded['week_id']}/focus",
+                       headers=H(seeded["tokens"]["view"]))
+        assert r.status_code == 200, r.text[:300]
+        codes = {f["code"] for f in r.json()["findings"]}
+        assert "configured_member_missing_from_export" in codes, (
+            f"a union member with no hours produced no finding; got {codes}"
+        )
+        mine = next(f for f in r.json()["findings"]
+                    if f["code"] == "configured_member_missing_from_export")
+        assert mine["file_number"] == "9404", mine
+        # The key must be one the decision endpoint accepts, or the answer
+        # cannot be recorded against the finding.
+        assert mine["key"] == "configured_member_missing_from_export:9404:", mine
+        assert client.post(
+            f"{BASE}/weeks/{seeded['week_id']}/decisions",
+            headers=H(seeded["tokens"]["approve"]),
+            data={"finding_key": mine["key"], "outcome": "asked", "note": "x"},
+        ).status_code == 201
+    finally:
+        db.execute(text("DELETE FROM payroll_report_employees WHERE id=:i"),
+                   {"i": absent.id})
+        db.commit()
+        db.close()
+
+
+def test_a_whole_week_of_hours_can_be_corrected_in_one_entry(
+        client, seeded, switch_on):
+    """⚠️ **40 HOURS. THE COMMONEST REAL CORRECTION IS A WEEK, NOT A DAY.**
+
+    The first version bounded this at ±24 on the reasoning that no single day
+    is more than a day — true of a day and false of the job. Stevenson's week
+    never reached Payentry at all; Susan enters 40 REG against one date. At ±24
+    that insert raised a CheckViolation and the screen got a 500.
+
+    Every test I had written used small numbers, because I wrote them against
+    the constraint rather than against the work.
+    """
+    r = _correct(client, seeded["tokens"]["approve"], seeded["week_id"],
+                 hours="40.00", reason="whole week never reached Payentry")
+    assert r.status_code == 201, r.text[:300]
+    assert D(r.json()["hours"]) == D("40.00")
+
+
+def test_an_implausible_correction_is_refused_with_a_message_not_a_500(
+        client, seeded, switch_on):
+    """⚠️ The DATABASE is the backstop; the EDGE is the error surface.
+
+    Hitting the CHECK constraint produces an IntegrityError and a 500, which
+    tells the person at the screen nothing. The service refuses first and names
+    both the figure and the bound.
+    """
+    r = _correct(client, seeded["tokens"]["approve"], seeded["week_id"],
+                 hours="400", reason="decimal slip")
+    assert r.status_code == 422, f"{r.status_code}: {r.text[:200]}"
+    assert "400" in r.text and "168" in r.text, r.text[:300]
+
+
+def test_the_correction_bound_matches_the_database_constraint():
+    """The two are one number in two places; a drift makes the edge check
+    useless in one direction and the 500 return in the other."""
+    from app.services.payroll.week_focus import _MAX_CORRECTION_HOURS
+    import re as _re
+    src = open("app/models/payroll_report.py").read()
+    m = _re.search(r'hours >= -(\d+) AND hours <= (\d+)', src)
+    assert m, "could not find the CHECK constraint in the model"
+    assert int(m.group(1)) == int(m.group(2)) == int(_MAX_CORRECTION_HOURS), (
+        f"edge bound {_MAX_CORRECTION_HOURS} != constraint {m.groups()}"
+    )

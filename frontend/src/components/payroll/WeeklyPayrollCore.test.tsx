@@ -27,8 +27,12 @@ const FOCUS = {
   corrections: [],
   findings: [
     {
-      key: "no_hours:12008:",
-      code: "no_hours",
+      // ⚠️ A REAL FLAG CODE, read from app/services/payroll/validation.py.
+      // This fixture used to say `no_hours`, which does not exist — so the
+      // test was green against a fiction while the live screen would have
+      // shown the generic answers.
+      key: "configured_member_missing_from_export:12008:",
+      code: "configured_member_missing_from_export",
       severity: "warning",
       message: "Stevenson has no hours this week.",
       file_number: "12008",
@@ -130,7 +134,7 @@ describe("scope", () => {
 describe("findings, one at a time", () => {
   it("shows the open finding with a why line and numbered answers", async () => {
     renderCore()
-    expect(await screen.findByTestId("finding-no_hours")).toBeInTheDocument()
+    expect(await screen.findByTestId("finding-configured_member_missing_from_export")).toBeInTheDocument()
     expect(screen.getByText(/Stevenson has no hours/)).toBeInTheDocument()
     // The "why", keyed on the code rather than buried in the server message.
     expect(screen.getByText(/unpaid week is the one mistake/i)).toBeInTheDocument()
@@ -142,12 +146,12 @@ describe("findings, one at a time", () => {
   it("answers on the number keys, not only on click", async () => {
     const user = userEvent.setup()
     renderCore()
-    await screen.findByTestId("finding-no_hours")
+    await screen.findByTestId("finding-configured_member_missing_from_export")
     await user.keyboard("2")
     await waitFor(() =>
       expect(api.postWeekDecision).toHaveBeenCalledWith(
         WEEK_ID,
-        "no_hours:12008:",
+        "configured_member_missing_from_export:12008:",
         "not_an_issue",
         "He didn't work",
       ),
@@ -157,7 +161,7 @@ describe("findings, one at a time", () => {
   it("answer 1 opens the by-day form instead of posting an outcome", async () => {
     const user = userEvent.setup()
     renderCore()
-    await screen.findByTestId("finding-no_hours")
+    await screen.findByTestId("finding-configured_member_missing_from_export")
     await user.click(screen.getByTestId("answer-1"))
     expect(await screen.findByTestId("correction-form")).toBeInTheDocument()
     expect(api.postWeekDecision).not.toHaveBeenCalled()
@@ -166,7 +170,7 @@ describe("findings, one at a time", () => {
   it("⚠️ the number keys stop answering while the correction form is open", async () => {
     const user = userEvent.setup()
     renderCore()
-    await screen.findByTestId("finding-no_hours")
+    await screen.findByTestId("finding-configured_member_missing_from_export")
     await user.click(screen.getByTestId("answer-1"))
     await screen.findByTestId("correction-form")
 
@@ -181,7 +185,7 @@ describe("findings, one at a time", () => {
   it("a correction posts the hours AND records the answer", async () => {
     const user = userEvent.setup()
     renderCore()
-    await screen.findByTestId("finding-no_hours")
+    await screen.findByTestId("finding-configured_member_missing_from_export")
     await user.click(screen.getByTestId("answer-1"))
     await screen.findByTestId("correction-form")
     await user.type(screen.getByTestId("correction-date"), "2026-10-28")
@@ -203,7 +207,7 @@ describe("findings, one at a time", () => {
     await waitFor(() =>
       expect(api.postWeekDecision).toHaveBeenCalledWith(
         WEEK_ID,
-        "no_hours:12008:",
+        "configured_member_missing_from_export:12008:",
         "corrected",
         "hours entered by hand",
       ),
@@ -213,7 +217,7 @@ describe("findings, one at a time", () => {
   it("will not save a correction without a reason", async () => {
     const user = userEvent.setup()
     renderCore()
-    await screen.findByTestId("finding-no_hours")
+    await screen.findByTestId("finding-configured_member_missing_from_export")
     await user.click(screen.getByTestId("answer-1"))
     await screen.findByTestId("correction-form")
     await user.type(screen.getByTestId("correction-date"), "2026-10-28")
@@ -233,7 +237,7 @@ describe("read-only", () => {
   it("⚠️ offers no answer, no approve and no upload, and names the permission", async () => {
     api.getWeekFocus.mockResolvedValue({ ...FOCUS, status: "calculated" })
     renderCore({ readOnly: true })
-    await screen.findByTestId("finding-no_hours")
+    await screen.findByTestId("finding-configured_member_missing_from_export")
     expect(screen.queryByTestId("answer-1")).not.toBeInTheDocument()
     expect(screen.queryByTestId("approve-week")).not.toBeInTheDocument()
     expect(screen.getAllByText(/payroll\.approve/).length).toBeGreaterThan(0)
@@ -348,5 +352,65 @@ describe("approve, then Payentry", () => {
     // The corrections are listed as things to enter in Payentry too — a
     // corrected hour that nobody enters is a correction that did not happen.
     expect(screen.getByTestId("corrections-to-enter")).toHaveTextContent("12008")
+  })
+})
+
+
+describe("the answer map is keyed on codes the server actually sends", () => {
+  it("⚠️ every ANSWERS key is a flag code that exists in validation.py", async () => {
+    // Read from the backend source rather than restated here, so the day a
+    // code is renamed this fails instead of the screen quietly falling back to
+    // the generic three. That fallback is exactly what hid the first version's
+    // invented codes (`no_hours`, `missing_lunch`, `probation`).
+    const fs = await import("node:fs")
+    const path = await import("node:path")
+    const src = fs.readFileSync(
+      path.resolve(
+        process.cwd(),
+        "../backend/app/services/payroll/validation.py",
+      ),
+      "utf8",
+    )
+    const mod = await import("./WeeklyPayrollCore")
+    const keys = (mod as unknown as { __ANSWER_CODES__: string[] })
+      .__ANSWER_CODES__
+    expect(keys.length).toBeGreaterThan(0)
+    for (const k of keys) {
+      expect(src, `${k} is not a flag code in validation.py`).toContain(`"${k}"`)
+    }
+  })
+})
+
+
+describe("the fragment's target_key names a Focus this app registers", () => {
+  it("⚠️ weekly_dues opens a Focus that exists", async () => {
+    // ⚠️ CROSS-BOUNDARY, READ FROM THE BACKEND SOURCE. The server declares a
+    // `target_key`; the client decides openability by looking it up in its own
+    // registry and renders NOTHING when the lookup misses. That is correct
+    // fail-closed behaviour and it is silent — the link simply does not
+    // appear, with no error on either side.
+    //
+    // This shipped once: the fragment said `weekly_payroll`, the registry said
+    // `weekly-payroll`, every test passed, and the note's only way into the
+    // Focus was absent. Found by walking the page.
+    const fs = await import("node:fs")
+    const path = await import("node:path")
+    const src = fs.readFileSync(
+      path.resolve(
+        process.cwd(),
+        "../backend/app/services/fragments/platform_defaults.py",
+      ),
+      "utf8",
+    )
+    const m = src.match(/fragment_id=WEEKLY_DUES[\s\S]*?target_key="([^"]+)"/)
+    expect(m, "could not find weekly_dues' target_key in the backend").toBeTruthy()
+    const targetKey = m![1]
+
+    const { getFocusConfig } = await import("@/contexts/focus-registry")
+    await import("@/contexts/focus-registry")
+    expect(
+      getFocusConfig(targetKey),
+      `the note declares target_key "${targetKey}" and no Focus is registered under it — the "Open" link will not render`,
+    ).toBeTruthy()
   })
 })

@@ -6430,6 +6430,8 @@ the other.
 
 ## Active deferred items
 
+- 2026-11-16 — **Payroll 5a panes are LOCAL to the weekly payroll Focus, to be replaced by EdgePanel placements when panes generalise.** Ruled by James 2026-11-16: keep them local for now rather than put pane generalisation on Susan's critical path. `EdgePanel` as shipped is a SINGLE right-rail panel driven by a tenant composition of widget placements — no entity scope, one at a time, not draggable — so an entity-scoped draggable pane cannot be expressed through it without first registering payroll widgets in the visual editor. The `peek` layer does open from a name and was ruled against for this content on 2026-09-09. Component: `frontend/src/components/payroll/panes/PayrollPaneStack.tsx`, which says the same at its head and is what an EdgePanel version would replace.
+
 > ⚠️ **THIS HEADING SPANS A DATE RANGE AND DATES NOTHING.** Entries below were
 > added at different times over many months and are not in date order. **Do not
 > infer any entry's date from this heading, from the section's position, or

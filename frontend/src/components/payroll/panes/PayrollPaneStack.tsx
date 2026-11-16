@@ -19,9 +19,11 @@
  * recorded in `app/services/note/types.py`.
  *
  * So the panes are local to the payroll Focus: several at once, dragged by the
- * title bar, closed with the button or Escape. Nothing tenant-wide is invented
- * — if these should become EdgePanel placements, that is a deliberate step and
- * this component is what it would replace.
+ * title bar, closed with the button or Escape. Nothing tenant-wide is invented.
+ *
+ * ⚠️ TO BE REPLACED BY EdgePanel PLACEMENTS WHEN PANES GENERALISE — ruled by
+ * James 2026-11-16, keeping pane generalisation off Susan's critical path.
+ * Recorded in STATE.md under "Active deferred items" with the same date.
  */
 
 import {
@@ -51,6 +53,9 @@ interface Placed {
 }
 
 
+const clamp = (v: number, lo: number, hi: number) =>
+  Math.min(Math.max(v, lo), Math.max(lo, hi))
+
 const STEP = 26
 const WIDTH = 380
 
@@ -64,6 +69,13 @@ export function PayrollPaneStack({
 }) {
   const [placed, setPlaced] = useState<Placed[]>([])
   const drag = useRef<{ key: string; dx: number; dy: number } | null>(null)
+  // ⚠️ **MEASURED FROM THE CONTAINER, NOT FROM `window`.**
+  // The Focus dialog is a TRANSFORMED ancestor, so `position: fixed` resolves
+  // against it rather than against the viewport. Coordinates computed from
+  // `window.innerWidth` put the panes off the right-hand edge — visible in the
+  // walkthrough screenshot and in nothing else.
+  const host = useRef<HTMLDivElement | null>(null)
+  const box = () => host.current?.getBoundingClientRect()
 
   // Cascade a newly opened pane rather than covering the last one exactly.
   useEffect(() => {
@@ -74,7 +86,15 @@ export function PayrollPaneStack({
         // ⚠️ Keep the POSITION and take the new body: a pane whose data
         // refreshed must not jump back to its opening coordinates.
         if (existing) return { ...existing, spec }
-        return { spec, x: 24 + i * STEP, y: 24 + i * STEP }
+        // Opened top-right and cascaded: the Focus's own content runs down the
+        // left, so a pane starting at 24,24 covered the week heading.
+        const r = box()
+        const right = r ? r.width : WIDTH + 96
+        return {
+          spec,
+          x: Math.max(8, right - WIDTH - 24 - i * STEP),
+          y: 24 + i * STEP,
+        }
       })
     })
   }, [panes])
@@ -83,7 +103,12 @@ export function PayrollPaneStack({
     (e: ReactPointerEvent<HTMLElement>, key: string) => {
       const p = placed.find((q) => q.spec.key === key)
       if (!p) return
-      drag.current = { key, dx: e.clientX - p.x, dy: e.clientY - p.y }
+      const r = box()
+      drag.current = {
+        key,
+        dx: e.clientX - (r?.left ?? 0) - p.x,
+        dy: e.clientY - (r?.top ?? 0) - p.y,
+      }
       ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
     },
     [placed],
@@ -95,9 +120,16 @@ export function PayrollPaneStack({
     setPlaced((prev) =>
       prev.map((p) =>
         p.spec.key === d.key
-          ? // Clamped at 0 so a pane cannot be dragged off the top or left,
-            // where it would be unreachable and look like it had vanished.
-            { ...p, x: Math.max(0, e.clientX - d.dx), y: Math.max(0, e.clientY - d.dy) }
+          ? // Clamped on all four sides so a pane cannot be dragged somewhere
+            // it cannot be dragged back from. The right/bottom clamps keep a
+            // grabbable strip of the title bar on screen.
+            {
+              ...p,
+              x: clamp(e.clientX - (box()?.left ?? 0) - d.dx, 0,
+                       (box()?.width ?? WIDTH) - 80),
+              y: clamp(e.clientY - (box()?.top ?? 0) - d.dy, 0,
+                       (box()?.height ?? 200) - 40),
+            }
           : p,
       ),
     )
@@ -127,7 +159,16 @@ export function PayrollPaneStack({
   if (placed.length === 0) return null
 
   return (
-    <div data-slot="payroll-pane-stack" className="pointer-events-none absolute inset-0">
+    // ⚠️ `fixed`, NOT `absolute`. Absolutely positioned inside the Focus's
+    // scrolling column, a pane SCROLLED WITH THE CONTENT and clipped off the
+    // top of the screen — opened from a name near the bottom of the week
+    // table, it was already half out of view. A pane is a viewport object, so
+    // it is positioned against the viewport.
+    <div
+      ref={host}
+      data-slot="payroll-pane-stack"
+      className="pointer-events-none absolute inset-0 z-50 overflow-hidden"
+    >
       {placed.map((p, i) => (
         <section
           key={p.spec.key}

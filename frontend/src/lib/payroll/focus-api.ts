@@ -166,11 +166,22 @@ export async function getTimecardPane(weekId: string, employeeId: string) {
 }
 
 /**
- * ⚠️ FORM-ENCODED, not JSON. The backend declares these with `Form(...)`,
- * matching the upload endpoints beside them. Posting JSON gets a 422 whose
- * message is about missing form fields, which reads as a client bug rather
- * than an encoding mismatch — so this is stated here once.
+ * ⚠️ **FORM-ENCODED, AND THE HEADER MUST BE SET EXPLICITLY.**
+ *
+ * The backend declares these with `Form(...)`. `apiClient` sets a default
+ * `Content-Type: application/json`, which WINS over the one axios would infer
+ * from a `URLSearchParams` body — so the bytes go out correctly form-encoded
+ * under a JSON content type and FastAPI reports EVERY FIELD MISSING while the
+ * request body plainly contains them.
+ *
+ * That 422 reads as a client bug and is an encoding mismatch. It shipped once:
+ * the same request succeeded under curl and failed from the page, which is the
+ * only reason it was found.
  */
+const FORM_HEADERS = {
+  "Content-Type": "application/x-www-form-urlencoded",
+} as const
+
 function form(fields: Record<string, string>) {
   const body = new URLSearchParams()
   for (const [k, v] of Object.entries(fields)) body.append(k, v)
@@ -199,6 +210,7 @@ export async function postHourCorrection(
       hours: input.hours,
       reason: input.reason,
     }),
+    { headers: FORM_HEADERS },
   )
   return r.data
 }
@@ -212,6 +224,7 @@ export async function postWeekDecision(
   const r = await apiClient.post(
     `${BASE}/weeks/${weekId}/decisions`,
     form({ finding_key: findingKey, outcome, note }),
+    { headers: FORM_HEADERS },
   )
   return r.data
 }

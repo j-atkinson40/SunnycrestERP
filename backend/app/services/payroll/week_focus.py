@@ -35,6 +35,7 @@ from app.models.payroll_report import (
     PayrollWeekLine,
 )
 from app.services.payroll import service as payroll_service
+from app.services.payroll.validation import reconcile_roster
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,9 @@ ZERO = Decimal("0.0000")
 
 #: The payroll week runs Sunday to Saturday; `week_end_date` is the Saturday.
 _WEEK_SPAN = timedelta(days=6)
+
+#: One week. Mirrors `ck_payroll_hour_correction_plausible`; see the model.
+_MAX_CORRECTION_HOURS = Decimal("168")
 
 
 def _now() -> datetime:
@@ -330,6 +334,43 @@ def week_focus(db: Session, week: PayrollWeek) -> dict:
     findings: list[dict] = []
     try:
         recomputed = payroll_service.calculate_week(db, week, persist=False)
+        flags = list(recomputed.flags or ())
+
+        # ⚠️ **THE ROSTER MISMATCH IS NOT IN `calculate_week`, AND IT IS THE
+        # FINDING THAT MATTERS MOST.**
+        #
+        # `calculate_week` flags things about LINES it can see — zero hours with
+        # pay, an odd OT rate, a missing rate. A union member who is absent from
+        # the hours export has no line, so nothing in that pass can notice them.
+        # The flag is raised at IMPORT, by comparing the export's file numbers
+        # against the configured roster, and then it is gone: the week Susan
+        # opens on Tuesday would have shown her nothing about Stevenson.
+        #
+        # That is exactly how he went unpaid. So the comparison is re-run here
+        # from stored rows — the file numbers WITH a line this week against the
+        # active union members — through `reconcile_roster`, the same function
+        # the import uses, rather than a second implementation of "who is
+        # missing".
+        configured = {
+            e.payentry_file_number: e
+            for e in db.execute(
+                select(PayrollReportEmployee)
+                .where(PayrollReportEmployee.tenant_id == week.tenant_id)
+            ).scalars().all()
+            if e.payentry_file_number
+        }
+        with_lines = {
+            configured_fn
+            for configured_fn, emp in configured.items()
+            if db.execute(
+                select(PayrollWeekLine.id)
+                .where(PayrollWeekLine.week_id == week.id)
+                .where(PayrollWeekLine.employee_id == emp.id)
+                .limit(1)
+            ).first() is not None
+        }
+        flags.extend(reconcile_roster(with_lines, configured))
+
         findings = [
             {
                 "key": finding_key(f.code, emp_id=f.file_number or None),
@@ -340,7 +381,7 @@ def week_focus(db: Session, week: PayrollWeek) -> dict:
                 "employee_id": f.employee_id,
                 "detail": f.detail,
             }
-            for f in (recomputed.flags or ())
+            for f in flags
         ]
     except Exception:
         # A week that cannot be recalculated still has a Focus: its dues and
@@ -421,6 +462,16 @@ def record_correction(db: Session, week: PayrollWeek, *, emp_id: str,
         raise FocusWriteError(
             f"{work_date} is outside the week ending {week.week_end_date} "
             f"({span_start} to {week.week_end_date})"
+        )
+    # ⚠️ VALIDATED HERE SO THE DATABASE IS A BACKSTOP, NOT THE ERROR SURFACE.
+    # The CHECK constraint is the same bound; reaching it produces an
+    # IntegrityError and a 500, which tells the person at the screen nothing.
+    # This produces a 422 that names the number and the bound.
+    if not (-_MAX_CORRECTION_HOURS <= hours <= _MAX_CORRECTION_HOURS):
+        raise FocusWriteError(
+            f"{hours} hours is outside what a week's correction can describe "
+            f"(±{_MAX_CORRECTION_HOURS}). If that is really the figure, it "
+            "belongs on more than one week."
         )
     if week.status == "approved":
         raise FocusWriteError(

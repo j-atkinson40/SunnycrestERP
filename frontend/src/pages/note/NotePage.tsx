@@ -146,7 +146,11 @@ function focusTarget(f: ProseFragment): string | null {
   if (!f.subject_id) return null;
   const param =
     f.subject_kind === "payroll_week" ? "week_id" : `${f.subject_kind}_id`;
-  return `/?focus=${encodeURIComponent(f.target_key)}&${param}=${encodeURIComponent(
+  // ⚠️ `/home`, NOT `/`. The root route is a role-based redirect, and
+  // redirecting DROPS THE QUERY STRING — the Focus opened with no scope and
+  // showed "No week chosen". Linking straight at the landing route keeps the
+  // params, which is what carries the week.
+  return `/home?focus=${encodeURIComponent(f.target_key)}&${param}=${encodeURIComponent(
     f.subject_id,
   )}`;
 }

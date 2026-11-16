@@ -852,10 +852,21 @@ class PayrollHourCorrection(Base):
         Index("ix_payroll_hour_corrections_week",
               "tenant_id", "week_end_date", "emp_id"),
         # ⚠️ A SIGNED CHECK, NOT A POSITIVE ONE. A correction removing hours
-        # someone did not work is as legitimate as one adding hours, and the
-        # bound exists only to catch a decimal-place slip: no single day's
-        # correction is plausibly more than a day.
-        CheckConstraint("hours >= -24 AND hours <= 24",
+        # someone did not work is as legitimate as one adding hours.
+        #
+        # ⚠️ **±168, NOT ±24, AND THE FIRST VERSION WAS ±24.** The reasoning was
+        # "no single day's correction is plausibly more than a day" — true of a
+        # day and false of the job. The commonest real correction is a WEEK of
+        # hours that never reached Payentry at all, entered against one date;
+        # Stevenson's is 40 REG. At ±24 that insert raised a CheckViolation and
+        # surfaced as a 500. Found by walking the screen, not by any test —
+        # every test entered small numbers, because I wrote them against the
+        # constraint I had just written.
+        #
+        # 168 is one week, which is the largest span a single week's correction
+        # can legitimately describe. It still catches a decimal-place slip,
+        # which is all a bound at this level can honestly claim to do.
+        CheckConstraint("hours >= -168 AND hours <= 168",
                         name="ck_payroll_hour_correction_plausible"),
     )
 

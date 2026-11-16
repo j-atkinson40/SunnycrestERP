@@ -53,8 +53,11 @@ def upgrade() -> None:
                   sa.ForeignKey("payroll_hour_corrections.id", ondelete="SET NULL"),
                   nullable=True),
         # Signed: removing hours someone did not work is as legitimate as
-        # adding them. The bound catches a decimal-place slip, nothing more.
-        sa.CheckConstraint("hours >= -24 AND hours <= 24",
+        # adding them. ±168 is one week — the largest span a single week's
+        # correction can legitimately describe. A tighter per-day bound was
+        # tried and rejected: the commonest real correction is a whole week
+        # that never reached Payentry, entered against one date.
+        sa.CheckConstraint("hours >= -168 AND hours <= 168",
                            name="ck_payroll_hour_correction_plausible"),
     )
     op.create_index("ix_payroll_hour_corrections_tenant_id",

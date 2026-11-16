@@ -152,20 +152,39 @@ def _anomaly_watchlist_condition(
         if critical
         else f"{total} unresolved anomal{'y' if total == 1 else 'ies'}"
     )
-    first = refs[0].label if refs else None
-    text = f"{lead} to watch." if not first else f"{lead} to watch. Most urgent: {first}."
+    first = refs[0] if refs else None
+
+    # ⚠️ **FIXED — THIS FRAGMENT RENDERED AS AN EMPTY PARAGRAPH ON THE NOTE.**
+    #
+    # It set `synthesized_text` and left `spans` empty. `NotePage` draws
+    # `<Spans spans={f.spans} />` and nothing else, so the sentence came back
+    # over the API and the reader saw a blank line. Pre-existing, not Payroll
+    # 5a's — found by walking the note as a real user while verifying 5a, and
+    # fixed here because the membership test added alongside it would
+    # otherwise have to be weakened to let it pass.
+    #
+    # The count is MEASURED and the most-urgent anomaly keeps its reference, so
+    # the provenance mark lands on the thing it is about rather than on the
+    # whole sentence.
+    spans = [
+        measured(
+            lead,
+            ReferencedItem(kind="company", entity_id=user.company_id,
+                           label="unresolved anomalies"),
+        ),
+        plain(" to watch."),
+    ]
+    if first is not None:
+        spans.append(plain(" Most urgent: "))
+        spans.append(measured(first.label, first))
+        spans.append(plain("."))
 
     return [
         FragmentInstance(
             # (5) IDENTITY: one watchlist per tenant. Stable across every
             # sweep for as long as the tenant has unresolved anomalies.
             subject_id=user.company_id,
-            payload=FragmentPayload(
-                title="Today's watch list",
-                synthesized_text=text,
-                referenced_items=refs,
-                priority=95,
-            ),
+            payload=compose(spans, title="Today's watch list", priority=95),
             # (3) SCOPE — carried into the peek. The old item opened nothing.
             # (3) PREDICATE — what the entrance MEANS, and all a URL carries.
             predicate={
@@ -604,12 +623,38 @@ def _weekly_dues_condition(
     paying = sum(1 for r in rows if Decimal(r.get("dues") or "0.00") > 0)
 
     approved = week.status == "approved"
-    text = (
-        f"Week {week.week_number} dues come to ${total:,.2f} — "
-        f"{paying} member{'' if paying == 1 else 's'} paying, "
-        f"worked out from what Payentry will pay. "
-        + ("Approved." if approved else "Not approved yet.")
-    )
+
+    # ⚠️ **SPANS, NOT A BARE STRING — THE NOTE RENDERS SPANS AND NOTHING ELSE.**
+    #
+    # A first version set `synthesized_text` and left `spans` empty. The API
+    # returned the sentence, every test passed, and the line rendered as an
+    # EMPTY PARAGRAPH: `NotePage` draws `<Spans spans={f.spans} />`, so a
+    # payload with no spans is a line with no text. Present in the DOM, zero
+    # height, invisible on the one screen it exists for. Found by the
+    # walkthrough, not by any assertion.
+    #
+    # `compose` derives `synthesized_text` from the spans, so the two cannot
+    # drift — the thing read by a client that ignores spans is exactly what the
+    # spans say.
+    #
+    # The total is MEASURED: it is a figure the system computed and can point
+    # at. The rest is connective tissue and is plain.
+    spans = [
+        plain(f"Week {week.week_number} dues come to "),
+        measured(
+            f"${total:,.2f}",
+            ReferencedItem(
+                kind="payroll_week",
+                entity_id=week.id,
+                label=f"week {week.week_number} dues",
+            ),
+        ),
+        plain(
+            f" — {paying} member{'' if paying == 1 else 's'} paying, worked out "
+            f"from what Payentry will pay. "
+            + ("Approved." if approved else "Not approved yet.")
+        ),
+    ]
 
     return [
         FragmentInstance(
@@ -617,12 +662,7 @@ def _weekly_dues_condition(
             # Two people opening the note see the same subject, and tomorrow's
             # view of the same week is the same fragment rather than a new one.
             subject_id=week.id,
-            payload=FragmentPayload(
-                title="Union dues",
-                synthesized_text=text,
-                referenced_items=(),
-                priority=80,
-            ),
+            payload=compose(spans, title="Union dues", priority=80),
             predicate={"week_status_in": ["calculated", "approved"]},
             expansion={"week_id": week.id},
             condition_inputs={
@@ -743,7 +783,15 @@ def seed() -> None:
             area="payroll",
             condition=_weekly_dues_condition,
             target_surface="focus",
-            target_key="weekly_payroll",
+            # ⚠️ **HYPHENS. THIS STRING IS A FRONTEND FOCUS ID.**
+            # Registered ids are kebab-case (`funeral-scheduling`,
+            # `cash-receipts`). This read `weekly_payroll` and the note's
+            # "Open" link silently did not render — `focusTarget` returns null
+            # when the key names no registered Focus, which is the correct
+            # fail-closed behaviour and therefore produced no error anywhere.
+            # Found by walking the page. `test_fragment_target_keys_are_registered_focus_ids`
+            # in the frontend now reads this literal and fails if it drifts.
+            target_key="weekly-payroll",
             subject_kind="payroll_week",
         )
     )

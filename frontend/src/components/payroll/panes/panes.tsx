@@ -72,7 +72,24 @@ function Row({
 }
 
 const money = (v: string | null) => (v == null ? "—" : `$${v}`)
-const hours = (v: string | null) => (v == null ? "—" : v)
+
+/** ⚠️ Hours and rates arrive at 4 decimals because the columns are
+ *  `Numeric(10,4)`. Rendered raw they read "40.0000 reg · 0.0000 personal",
+ *  which is noise on a screen whose whole job is being read quickly. Display
+ *  only — nothing posted back is trimmed. */
+const num = (v: string | null) => {
+  if (v == null) return "—"
+  return /^-?\d+(\.\d+)?$/.test(v) ? String(Number(v)) : v
+}
+const hours = num
+
+/** The binding component in words. `binds` is "a", "b" or "c"; "a binds" reads
+ *  as a sentence fragment to anyone who has not read the engine. */
+const BINDS: Record<string, string> = {
+  a: "the percentage binds",
+  b: "the cap binds",
+  c: "the per-hour amount binds",
+}
 
 
 export function UnionDuesPaneBody({ weekId }: { weekId: string }) {
@@ -153,7 +170,7 @@ export function UnionMemberPaneBody({
       <Row
         label="Hours"
         value={hours(d.hours.dues_hours)}
-        note={`${hours(d.hours.reg)} reg · ${hours(d.hours.personal)} personal · ${hours(d.hours.ot)} OT`}
+        note={`${num(d.hours.reg)} reg · ${num(d.hours.personal)} personal · ${num(d.hours.ot)} OT`}
       />
       <Row
         label="Dues wage"
@@ -164,7 +181,7 @@ export function UnionMemberPaneBody({
               // investigation turned on this: the workbook's typed OT rates
               // were stale, and the difference was invisible until the rate
               // used was shown next to the figure it produced.
-              `OT at ${d.ot_rate_used}${d.ot_rate_derived ? " (1.5× today's rate)" : " (rate on file)"}`
+              `OT at $${num(d.ot_rate_used)}${d.ot_rate_derived ? " (1.5× today's rate)" : " (rate on file)"}`
             : undefined
         }
       />
@@ -173,7 +190,7 @@ export function UnionMemberPaneBody({
         value={money(d.dues)}
         note={
           d.working.component_a
-            ? `lower of ${money(d.working.component_a)} and ${money(d.working.component_b)} (cap), plus ${money(d.working.component_c)}${d.working.binds ? ` · ${d.working.binds} binds` : ""}`
+            ? `lower of ${money(d.working.component_a)} and ${money(d.working.component_b)} (cap), plus ${money(d.working.component_c)}${d.working.binds && BINDS[d.working.binds] ? ` · ${BINDS[d.working.binds]}` : ""}`
             : "no hours, no dues"
         }
       />

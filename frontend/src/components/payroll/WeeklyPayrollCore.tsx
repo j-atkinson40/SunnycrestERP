@@ -57,20 +57,45 @@ interface Answer {
 }
 
 const ANSWERS: Record<string, Answer[]> = {
-  no_hours: [
+  // ⚠️ **KEYED ON THE SERVER'S REAL FLAG CODES.** A first draft used
+  // `no_hours`, `missing_lunch` and `probation` — the words from the brief —
+  // and NONE of them exists. Every real finding would have fallen through to
+  // the generic three, and "Enter hours" would never have appeared. The
+  // component test did not catch it because it fed a fabricated code, so the
+  // test was green against a fiction. The codes below are read from
+  // `app/services/payroll/validation.py`.
+  //
+  // A union member who is configured and active but absent from the hours
+  // export: Stevenson's case, and the one that must not wait.
+  configured_member_missing_from_export: [
     { label: "Enter hours", opensCorrection: true },
     { label: "He didn't work", outcome: "not_an_issue" },
     { label: "Leave for now", outcome: "asked" },
   ],
-  missing_lunch: [
-    { label: "Take 30 minutes off", opensCorrection: true },
-    { label: "He worked through", outcome: "not_an_issue" },
+  // Paid something with no hours behind it.
+  zero_hours_with_pay: [
+    { label: "Enter the hours", opensCorrection: true },
+    { label: "The pay is right as it stands", outcome: "settled" },
+    { label: "Ask HR One", outcome: "asked" },
   ],
-  probation: [
-    { label: "Set the end date", outcome: "asked" },
+  // In the export but not on the roster — nobody can be paid dues until
+  // somebody says who this is.
+  in_export_not_configured: [
+    { label: "Ask HR One who this is", outcome: "asked" },
     { label: "Not a union job", outcome: "not_an_issue" },
   ],
+  missing_rate: [
+    { label: "Ask HR One for the rate", outcome: "asked" },
+    { label: "Not a union job", outcome: "not_an_issue" },
+  ],
+  ot_rate_not_one_and_a_half: [
+    { label: "The rate on file is right", outcome: "settled" },
+    { label: "Ask HR One", outcome: "asked" },
+  ],
 }
+
+/** Exported for the test that checks every key is a code the server sends. */
+export const __ANSWER_CODES__ = Object.keys(ANSWERS)
 
 const GENERIC: Answer[] = [
   { label: "Looked at, correct as it stands", outcome: "settled" },
@@ -81,14 +106,25 @@ const GENERIC: Answer[] = [
 /** Why the finding is being asked, in one short line. Keyed on code so the
  *  wording is not buried in the server's message. */
 const WHY: Record<string, string> = {
-  no_hours:
-    "Somebody with no hours is usually a missed punch, not a week off — and an unpaid week is the one mistake that cannot wait.",
-  missing_lunch:
-    "Payentry deducts lunch automatically; a day without it is either a worked lunch or a punch that did not land.",
-  probation:
-    "Dues start when probation ends, so the date decides whether this week has dues at all.",
+  configured_member_missing_from_export:
+    "A union member with no hours is usually a missed punch, not a week off — and an unpaid week is the one mistake that cannot wait.",
+  zero_hours_with_pay:
+    "Pay with no hours behind it means the hours did not land, so the dues calculated from them are wrong too.",
+  in_export_not_configured:
+    "Somebody is on the hours file who is not on the roster, so nothing can be worked out for them until you say who they are.",
+  missing_rate:
+    "Without a rate there is no dues wage, so this person's dues cannot be calculated at all.",
+  ot_rate_not_one_and_a_half:
+    "The overtime rate on file is not 1.5x the regular one. That is allowed, but it changes the dues wage, so it is worth a look.",
   findings_unavailable:
     "The stored dues below are unaffected — only the re-run failed.",
+}
+
+/** `40.0000` -> `40`, `7.5000` -> `7.5`. Display only; the stored value and
+ *  everything posted back keep every decimal the column carries. */
+function trimHours(v: string): string {
+  if (!/^-?\d+(\.\d+)?$/.test(v)) return v
+  return String(Number(v))
 }
 
 const PAY_TYPES = ["REG", "OT1", "PTO", "Sick"] as const
@@ -103,10 +139,22 @@ export function WeeklyPayrollCore({
   readOnly: boolean
   scope: Record<string, unknown>
 }) {
-  // The Focus is opened scoped to a week — from the home note's dues line, or
-  // from a URL. Without one there is nothing to show, and saying so beats an
-  // empty shell.
-  const weekId = typeof scope.week_id === "string" ? scope.week_id : null
+  // ⚠️ **SCOPE FIRST, THEN THE URL, AND THE FALLBACK IS LOAD-BEARING.**
+  //
+  // A Focus normally carries its scope in a focus SESSION. A payroll-limited
+  // user cannot create one: `/focus` is an unbuilt composed surface, so the
+  // area guard refuses `openFocusSession` with a 403 and the context falls
+  // back to the registry default — which has no params. The console says
+  // "continuing with registry default" and the Focus opens scoped to nothing.
+  //
+  // So the week is read from the URL when the session could not supply it.
+  // Without this the one user the Focus exists for always sees "No week
+  // chosen". Found by walking the page as her.
+  const weekId = useMemo(() => {
+    if (typeof scope.week_id === "string" && scope.week_id) return scope.week_id
+    if (typeof window === "undefined") return null
+    return new URLSearchParams(window.location.search).get("week_id")
+  }, [scope.week_id])
 
   const [focus, setFocus] = useState<WeekFocus | null | false>(null)
   const [dues, setDues] = useState<UnionDuesPane | null | false>(null)
@@ -358,8 +406,14 @@ export function WeeklyPayrollCore({
         <RegisterSection readOnly={readOnly} busy={busy} setBusy={setBusy}
                          onError={setError} />
 
-        <PayrollPaneStack panes={panes} onClose={closePane} />
       </div>
+
+      {/* ⚠️ OUTSIDE THE SCROLLING COLUMN. Inside it, a pane was positioned
+          against the scroller and scrolled away with the content — opened from
+          a name near the bottom of the week table it was already half off the
+          top. The Focus frame does not scroll, so the panes stay where they
+          were put. */}
+      <PayrollPaneStack panes={panes} onClose={closePane} />
     </Shell>
   )
 }
@@ -369,7 +423,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div
       data-slot="weekly-payroll-core"
-      className="flex h-full flex-col px-6 py-5 [font-variant-numeric:tabular-nums]"
+      className="relative flex h-full flex-col px-6 py-5 [font-variant-numeric:tabular-nums]"
     >
       {children}
     </div>
@@ -995,8 +1049,13 @@ function ApproveSection({
                     <span className="text-content-strong">
                       {c.emp_id} · {c.work_date} · {c.pay_type}
                     </span>
-                    <span>
-                      {c.hours} <span className="text-content-muted">({c.reason})</span>
+                    <span className="text-right">
+                      {/* ⚠️ Trimmed. The server sends HOURS at 4 decimals
+                          because the column is Numeric(10,4); rendering it raw
+                          put "40.0000" on the one list Susan retypes into
+                          Payentry. */}
+                      {trimHours(c.hours)}{" "}
+                      <span className="text-content-muted">({c.reason})</span>
                     </span>
                   </li>
                 ))}

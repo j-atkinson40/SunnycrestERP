@@ -55,3 +55,8 @@ templates/standard/*.tiff
 # Sunnycrest COA CSV used for the LEDGER-1 A-1 re-import (real business data).
 GL_ChartOfAccounts*.csv
 *ChartOfAccounts*.csv
+
+# Payroll 5a local walkthrough: Playwright run artifacts (traces, videos,
+# failure shots). The curated step screenshots under tests/local/shots/ ARE
+# committed — they are the walkthrough's evidence.
+frontend/tests/local/output/
