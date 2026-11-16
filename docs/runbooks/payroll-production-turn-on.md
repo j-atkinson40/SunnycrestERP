@@ -48,10 +48,59 @@ db.close()
 EOF
 ```
 
-**Expect:** `['r232_payroll_vacation_bonus_tiers']`, all four tenants
-`switch=False setting_present=False`, and **every table 0 rows**.
+**Expect:** a SINGLE alembic head, equal to `main`'s head; all four tenants
+`switch=False setting_present=False`; and **every table 0 rows**.
 
-**Stop if** the revision is not r232, or any switch is already on, or any
+⚠️ **THE HEAD IS READ AT RUN TIME, NEVER WRITTEN DOWN HERE.** This step used to
+say "expect `['r232_payroll_vacation_bonus_tiers']`". Four PRs merged after it
+was written, production moved to `r236_payroll_focus_writes`, and the runbook
+then told its reader to stop on a correct database. A migration id hardcoded in
+a document is stale from the next merge onwards, and the failure is the
+dangerous direction: it halts a good deploy and invites someone to override the
+check rather than read it.
+
+So compare the two rather than either against a literal:
+
+```bash
+# What main says the head should be — read from the repo, not from memory.
+cd /Users/Jimmy1/Projects/SunnycrestERP-p4/backend
+git fetch -q origin && git checkout -q origin/main -- alembic/versions 2>/dev/null || true
+EXPECTED=$(python3 - <<'PYEOF'
+import ast, pathlib, collections
+revs = {}
+for f in pathlib.Path("alembic/versions").glob("*.py"):
+    tree = ast.parse(f.read_text())
+    rev = down = None
+    for node in tree.body:
+        tgt = None
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            tgt = node.targets[0].id
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            tgt = node.target.id
+        if tgt in ("revision", "down_revision") and node.value is not None:
+            vals = [n.value for n in ast.walk(node.value)
+                    if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+            if tgt == "revision" and vals:
+                rev = vals[0]
+            elif tgt == "down_revision":
+                down = vals
+    if rev:
+        revs[rev] = down or []
+kids = collections.Counter(p for ds in revs.values() for p in ds)
+heads = [r for r in revs if kids[r] == 0]
+print(",".join(sorted(heads)))
+PYEOF
+)
+echo "main expects head(s): $EXPECTED"
+```
+
+⚠️ `down_revision` is often a MULTI-LINE tuple in merge migrations, so this
+parses with `ast` rather than a regex. A one-line regex reports six heads on a
+tree that has one — measured.
+
+**Stop if** `$EXPECTED` contains a comma (main has more than one head — a
+merge migration is owed before any deploy), or the production
+`alembic_version` above does not equal it, or any switch is already on, or any
 payroll table is non-empty.
 
 ---
