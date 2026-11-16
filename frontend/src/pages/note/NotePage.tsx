@@ -28,6 +28,7 @@
 import { useEffect, useState } from "react";
 
 import apiClient from "@/lib/api-client";
+import { getFocusConfig } from "@/contexts/focus-registry";
 
 interface StandingEntry {
   entry_id: string;
@@ -99,6 +100,16 @@ interface ProseFragment {
   spans: ProseSpan[];
   target_surface: string;
   target_key: string;
+  /** ⚠️ WHAT THE LINE IS ABOUT, so the target opens SCOPED. Payroll 5a:
+   *  "week 44 dues come to $193.93" must open week 44's Focus, not the Focus
+   *  in general. Read from these fields rather than parsed out of
+   *  `instance_key`, whose format is the server's business. */
+  subject_kind: string;
+  subject_id: string;
+  /** ⚠️ The SERVER never says a target can be opened — it cannot see the
+   *  frontend's Focus registry. Openability is decided below by looking
+   *  `target_key` up in that registry, which is the only place that knows
+   *  which Focus ids exist. */
   openable: boolean;
   gate: string;
   /** Prompts defer; non-prompts dismiss. Sent explicitly rather than inferred
@@ -124,6 +135,23 @@ const DEFER_PRESETS: { preset: string; label: string }[] = [
  * would show up as a deferred record whose measured spans stopped being links —
  * provenance quietly lost on exactly the copy someone reads a week later.
  */
+/** The URL that opens this line's target Focus, scoped to its subject — or
+ *  `null` when the frontend has no Focus registered under `target_key`.
+ *
+ *  ⚠️ The subject is passed as the SCOPE PARAMETER the payroll Focus reads
+ *  (`week_id`). Keyed on `subject_kind` so a fragment about something else
+ *  cannot silently arrive as a week id. */
+function focusTarget(f: ProseFragment): string | null {
+  if (!getFocusConfig(f.target_key)) return null;
+  if (!f.subject_id) return null;
+  const param =
+    f.subject_kind === "payroll_week" ? "week_id" : `${f.subject_kind}_id`;
+  return `/?focus=${encodeURIComponent(f.target_key)}&${param}=${encodeURIComponent(
+    f.subject_id,
+  )}`;
+}
+
+
 function Spans({ spans }: { spans: ProseSpan[] }) {
   return (
     <>
@@ -345,6 +373,27 @@ export default function NotePage() {
           >
             <Spans spans={f.spans} />
           </p>
+
+          {/* ⚠️ PAYROLL 5a — THE LINE OPENS ITS TARGET, SCOPED, AND NO
+              DECISION IS OFFERED HERE. The note says what changed; deciding
+              anything about the week happens in the Focus, where the working
+              is visible. A decision on the note would be a judgement made
+              without the figures behind it.
+
+              Openability is decided HERE, not by the server: `openable` is
+              always false from the API because that process cannot see this
+              registry. A line whose `target_key` names no registered Focus
+              renders as prose with no link, rather than as a link that does
+              nothing. */}
+          {f.target_surface === "focus" && focusTarget(f) ? (
+            <a
+              data-testid={`prose-open-${f.fragment_id}`}
+              href={focusTarget(f) as string}
+              className="text-caption text-steel underline-offset-2 hover:underline"
+            >
+              Open {getFocusConfig(f.target_key)?.displayName ?? "the Focus"}
+            </a>
+          ) : null}
 
           {/* ⚠️ PROMPTS DEFER. NON-PROMPTS DISMISS, and that path is not here.
               A prompt has no "make this go away" — it leaves by its end

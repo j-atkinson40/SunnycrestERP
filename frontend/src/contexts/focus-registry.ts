@@ -1,3 +1,4 @@
+
 /**
  * Focus registry — Phase A Session 2.
  *
@@ -29,6 +30,8 @@
 
 /** Core rendering mode for a Focus. Open for extension: append new
  *  entries here + add a MODE_RENDERERS row in mode-dispatcher.tsx. */
+import { WeeklyPayrollCore } from "@/components/payroll/WeeklyPayrollCore"
+
 export type CoreMode =
   | "kanban"
   | "singleRecord"
@@ -509,4 +512,26 @@ registerFocus({
   id: "test-matrix",
   mode: "matrix",
   displayName: "Matrix stub",
+})
+
+// ── Payroll 5a: the weekly payroll Focus ────────────────────────────────────
+//
+// ⚠️ `editPermission: "payroll.approve"` is what makes a look-only payroll user
+// see the week and not change it. The dispatcher computes `readOnly` from it
+// once and hands the same answer to the core, so the core cannot opt out — and
+// the server gates the same two writes on the same key, so the UI and the API
+// agree by construction rather than by two lists being kept in step.
+//
+// ⚠️ `singleRecord` because this Focus IS one week. The mode-generic renderer
+// is never used: `coreComponent` takes precedence in `ModeDispatcher`.
+//
+// Opened scoped — `?focus=weekly-payroll&week_id=<id>` — from the dues line on
+// the home note. Without a `week_id` the core says so rather than rendering an
+// empty week.
+registerFocus({
+  id: "weekly-payroll",
+  mode: "singleRecord",
+  displayName: "Weekly payroll",
+  editPermission: "payroll.approve",
+  coreComponent: WeeklyPayrollCore,
 })

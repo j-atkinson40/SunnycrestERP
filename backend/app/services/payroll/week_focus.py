@@ -314,6 +314,50 @@ def week_focus(db: Session, week: PayrollWeek) -> dict:
     }
     corrections = live_corrections(db, tenant_id=week.tenant_id,
                                    week_end_date=week.week_end_date)
+
+    # ⚠️ **FINDINGS ARE RECOMPUTED READ-ONLY, THROUGH THE ONE IMPLEMENTATION.**
+    #
+    # `calculate_week(..., persist=False)` is what the calculate endpoint runs,
+    # minus the writing. Reusing it means the findings Susan answers in the
+    # Focus are the same findings the import reported — a second set computed
+    # here for display would be a second opinion, and the two would diverge the
+    # first time either changed.
+    #
+    # It costs the calculation on every open. Accepted deliberately: the
+    # alternative is storing flags, and a stored flag outlives the condition
+    # that produced it — an answered finding would keep reappearing, or a new
+    # one would never show until somebody re-imported.
+    findings: list[dict] = []
+    try:
+        recomputed = payroll_service.calculate_week(db, week, persist=False)
+        findings = [
+            {
+                "key": finding_key(f.code, emp_id=f.file_number or None),
+                "code": f.code,
+                "severity": f.severity,
+                "message": f.message,
+                "file_number": f.file_number,
+                "employee_id": f.employee_id,
+                "detail": f.detail,
+            }
+            for f in (recomputed.flags or ())
+        ]
+    except Exception:
+        # A week that cannot be recalculated still has a Focus: its dues and
+        # decisions are stored and readable. Reported as a flag of its own
+        # rather than as an empty list, because "no findings" and "the findings
+        # could not be computed" must not render identically.
+        logger.exception("findings recompute failed for week %s", week.id)
+        findings = [{
+            "key": finding_key("findings_unavailable"),
+            "code": "findings_unavailable",
+            "severity": "error",
+            "message": ("This week's checks could not be re-run, so what Opas "
+                        "flagged is not shown. The dues below are the stored "
+                        "figures and are unaffected."),
+            "file_number": None, "employee_id": None, "detail": {},
+        }]
+
     return {
         "week_id": week.id,
         "week_number": week.week_number,
@@ -346,6 +390,7 @@ def week_focus(db: Session, week: PayrollWeek) -> dict:
             }
             for c in corrections
         ],
+        "findings": findings,
         "decision_outcomes": DECISION_OUTCOMES,
     }
 

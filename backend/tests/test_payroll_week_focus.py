@@ -615,3 +615,47 @@ def test_the_permission_gate_answers_before_the_switch_for_a_view_only_user(
     finally:
         _switch(db, True)
         db.close()
+
+
+# ── findings on the Focus ───────────────────────────────────────────────────
+
+
+def test_the_focus_serves_findings_recomputed_read_only(client, seeded, switch_on):
+    """⚠️ READ-ONLY. The Focus runs `calculate_week(persist=False)` so the
+    findings Susan answers are the ones the import reported, not a second set
+    computed for display. A GET that wrote results would also silently
+    re-approve arithmetic nobody asked it to re-run.
+    """
+    from app.database import SessionLocal
+
+    w = seeded["week_id"]
+    db = SessionLocal()
+    try:
+        before = db.execute(text(
+            "SELECT count(*), max(id) FROM payroll_week_results WHERE week_id=:w"),
+            {"w": w}).first()
+        status_before = db.execute(text(
+            "SELECT status FROM payroll_weeks WHERE id=:w"), {"w": w}).scalar()
+    finally:
+        db.close()
+
+    r = client.get(f"{BASE}/weeks/{w}/focus", headers=H(seeded["tokens"]["view"]))
+    assert r.status_code == 200, r.text[:300]
+    assert isinstance(r.json()["findings"], list)
+    # Every finding carries a key the decision endpoint will accept, or the
+    # answer cannot be recorded against it.
+    for f in r.json()["findings"]:
+        assert f["key"], f
+        assert f["code"], f
+
+    db = SessionLocal()
+    try:
+        after = db.execute(text(
+            "SELECT count(*), max(id) FROM payroll_week_results WHERE week_id=:w"),
+            {"w": w}).first()
+        status_after = db.execute(text(
+            "SELECT status FROM payroll_weeks WHERE id=:w"), {"w": w}).scalar()
+    finally:
+        db.close()
+    assert after == before, f"the Focus GET wrote results: {before} -> {after}"
+    assert status_after == status_before, "the Focus GET changed the week status"

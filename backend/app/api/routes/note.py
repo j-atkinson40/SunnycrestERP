@@ -135,8 +135,27 @@ def get_today_note(
                 "spans": _spans(d.fragment),
                 "target_surface": d.fragment.declaration.target_surface,
                 "target_key": d.fragment.declaration.target_key,
-                # Session 3 wires opening; declared, not wired, exactly as the
-                # standing set's targets are.
+                # ⚠️ WHAT THE LINE IS ABOUT, so a client can open the target
+                # SCOPED. Payroll 5a is the first surface to need it: "week 44
+                # dues come to $193.93" has to open week 44's Focus, not the
+                # Focus in general.
+                #
+                # These are served rather than parsed back out of
+                # `instance_key`. The key is a derived string whose format is
+                # emission's business, and a client splitting it on colons
+                # would break silently the day a subject_id contained one.
+                "subject_kind": d.fragment.declaration.subject_kind,
+                "subject_id": d.fragment.instance.subject_id,
+                # ⚠️ STILL THE SERVER SAYING NOTHING ABOUT OPENABILITY, AND
+                # DELIBERATELY SO. Whether a target can be opened depends on
+                # the FRONTEND's Focus registry, which this process cannot see.
+                # Payroll 5a wires opening in the client, which decides by
+                # looking `target_key` up in its own registry — the only place
+                # that knows which Focus ids exist.
+                #
+                # Reporting `True` from here would be the server asserting
+                # something it cannot check, and a line that claims to open and
+                # does nothing is worse than one that never offered.
                 "openable": False,
                 # Why this is here. Carried so an operator review can ask "why
                 # is this not showing?" and get an answer from the surface

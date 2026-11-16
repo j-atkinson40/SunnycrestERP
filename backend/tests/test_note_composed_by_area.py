@@ -401,3 +401,42 @@ def test_an_accounting_fragment_she_would_otherwise_see_is_withheld(
     assert PROBE_FRAGMENT not in _ids(payroll), (
         "an accounting fragment reached a payroll-limited user's note"
     )
+
+
+# ── what a line is about ────────────────────────────────────────────────────
+
+
+def test_a_prose_line_says_what_it_is_about_so_a_client_can_open_it_scoped(
+        client, actors, leaky_probe):
+    """⚠️ Payroll 5a. "Week 44 dues come to $193.93" has to open week 44's
+    Focus, not the Focus in general.
+
+    Served rather than parsed back out of `instance_key`: that key is a derived
+    string whose format belongs to emission, and a client splitting it on
+    colons would break silently the day a subject_id contained one. The probe's
+    subject IS the user id here, which is exactly the point — the client reads
+    the field instead of guessing the shape.
+    """
+    r = client.get(TODAY, headers=H(actors["admin"]))
+    assert r.status_code == 200, r.text[:200]
+    probe = next(p for p in r.json()["prose"]
+                 if p["fragment_id"] == PROBE_FRAGMENT)
+    assert probe["subject_kind"] == "user"
+    assert probe["subject_id"], probe
+    # And the key is still derived from the two, so neither can drift from it.
+    assert probe["instance_key"] == (
+        f'{PROBE_FRAGMENT}:{probe["subject_kind"]}:{probe["subject_id"]}'
+    )
+
+
+def test_openable_is_still_false_from_the_server(client, actors, leaky_probe):
+    """⚠️ The server must NOT claim a target can be opened.
+
+    Openability depends on the frontend's Focus registry, which this process
+    cannot see. A line that claims to open and does nothing is worse than one
+    that never offered, so the client decides by looking `target_key` up in its
+    own registry.
+    """
+    r = client.get(TODAY, headers=H(actors["admin"]))
+    for p in r.json()["prose"]:
+        assert p["openable"] is False, p["fragment_id"]
