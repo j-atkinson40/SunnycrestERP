@@ -4117,3 +4117,71 @@ landed without taking. A copy is not a shortcut here; it is the defect.
 with a note: *"An unsupported case asserted as unsupported is the honest version of a
 boundary — and if James wants it, this is the line to change."* He wants it. Both
 orderings now open the pane.
+
+---
+
+## 2026-11-17 — A walk-through never mocks the write it walks through
+
+James's ruling, after the payroll register upload answered **422 in 41 ms on production
+having received 1,156 bytes of a 1,708,810-byte file**. Nothing crashed; `apiClient`'s
+instance-level `Content-Type: application/json` made axios JSON-stringify every FormData
+body, so a `File` serialised to `{}` and the PDF left the browser as about thirteen bytes.
+The register upload had never worked from a browser, and neither had Susan's weekly hours
+upload or the onboarding import.
+
+The 5a walk-through could not have caught it, and that is the decision's whole substance:
+it exercised the correction and the approval against a real server, but covered the
+uploads only in vitest, against `vi.fn()`. A fixture modelled on the implementation
+(CLAUDE.md §11) inherits the implementation's mistake and then certifies it — green
+throughout, nine screenshots, and an upload that could not send a byte.
+
+So a walk-through sends the real artifact through the real input over the real wire, and
+**reads the result back from the server rather than from the screen**. The screen renders
+whatever it is given, which is precisely how this stayed invisible: the page said "the
+week is unchanged" on every failure regardless of what the server held, and would have
+said "loaded" on any 200. Where the artifact is a real payroll export it is read IN PLACE
+from outside the repository, never committed, and the test skips with a stated reason when
+the path is absent — a skip that names its condition is honest; a mock in its place is not.
+
+Corollary, and the reason this is filed rather than merely fixed: a walk-through's value is
+that somebody looks. A step that fakes the one request the walk exists to prove is worse
+than no step, because it converts an untested path into a reported-tested one.
+
+---
+
+## 2026-11-17 — No reply means unknown, never "nothing changed"
+
+James's ruling. The payroll setup page told him *"The request did not go through. Nothing
+has been changed."* Both halves were false: the request went through, the server replied
+422, and whether anything changed is not knowable from an error object.
+
+Two different failures were being collapsed into one sentence, and only one of them is
+knowable:
+
+    response PRESENT   the server answered. Its words are the answer, and a generic
+                       line hides them. FastAPI's 422 `detail` is a LIST, so reading
+                       only a string or `detail.message` discards the real refusal.
+
+    response ABSENT    no reply reached the browser. A CORS rejection, a client timeout,
+                       a connection reset or a response-parse failure all look identical
+                       from here — and every one of them can occur AFTER the server
+                       committed. The outcome is unknown.
+
+A claim of "nothing changed" on the second branch is the same defect as a check reporting
+success without looking, and it is worse than silence: it sends a person to retry a write
+that may already have landed. Where the write is not idempotent that is a duplicate; where
+it is idempotent — as the register import is, on (check number, check date, employee id) —
+it is merely wasted work and a false account of the system.
+
+So on a no-reply the surface says the outcome is unknown and then **asks the server what it
+holds**, which required `GET /payroll-reports/register/imports` to exist at all: nothing
+could previously answer "did my import land?". Three outcomes, not two — *landed*, *did not
+land*, and *the check itself failed, so still unknown; do not retry* — because collapsing
+the third is how the original claim returns by a side door.
+
+Applied to four writes in the weekly Focus and one on the setup page. The ruling named
+three; the hours upload was a fourth, found by asking the file rather than the bug report
+(CLAUDE.md §11: ask "where else does this pattern appear" of the FILE before closing).
+
+⚠️ "Nothing has been changed" remains correct, and is deliberately kept, on READ failures —
+a read that fails changes nothing, and saying so is reassurance rather than a guess.

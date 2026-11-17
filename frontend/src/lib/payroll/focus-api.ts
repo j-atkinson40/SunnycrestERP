@@ -139,6 +139,21 @@ export interface WeekFocus {
   decision_outcomes: Record<string, string>
 }
 
+export interface WeekRow {
+  id: string
+  week_number: number
+  week_end_date: string
+  check_date: string
+  status: string
+}
+
+/** Every payroll week this tenant has. Typed here because the Focus needs it
+ *  to answer "did my hours upload land?" when no reply came back. */
+export async function listWeeks() {
+  const r = await apiClient.get<{ weeks: WeekRow[] }>(`${BASE}/weeks`)
+  return r.data
+}
+
 export async function getWeekFocus(weekId: string) {
   const r = await apiClient.get<WeekFocus>(`${BASE}/weeks/${weekId}/focus`)
   return r.data

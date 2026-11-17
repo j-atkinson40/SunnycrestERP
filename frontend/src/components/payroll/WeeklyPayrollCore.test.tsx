@@ -94,7 +94,11 @@ const api = vi.hoisted(() => ({
   approveWeek: vi.fn(),
   uploadWeekHours: vi.fn(),
   uploadRegister: vi.fn(),
+  listWeeks: vi.fn(),
 }))
+
+const setupApi = vi.hoisted(() => ({ listRegisterImports: vi.fn() }))
+vi.mock("@/lib/payroll/setup-api", () => setupApi)
 
 vi.mock("@/lib/payroll/focus-api", () => ({
   ...api,
@@ -118,6 +122,8 @@ beforeEach(() => {
   api.getWeekFocus.mockResolvedValue(FOCUS)
   api.getUnionDuesPane.mockResolvedValue(DUES)
   api.postWeekDecision.mockResolvedValue({})
+  api.listWeeks.mockResolvedValue({ weeks: [] })
+  setupApi.listRegisterImports.mockResolvedValue({ imports: [], count: 0 })
   api.postHourCorrection.mockResolvedValue({})
 })
 
@@ -412,5 +418,136 @@ describe("the fragment's target_key names a Focus this app registers", () => {
       getFocusConfig(targetKey),
       `the note declares target_key "${targetKey}" and no Focus is registered under it — the "Open" link will not render`,
     ).toBeTruthy()
+  })
+})
+
+// ── no reply means UNKNOWN, never "nothing changed" (2026-11-17) ────────────
+//
+// ⚠️ All four writes in this Focus used to assert an outcome they could not
+// know. Three were named in the ruling; the hours upload was a FOURTH, found
+// by asking the file rather than the bug report. Each now splits on whether a
+// reply arrived, and on a no-reply asks the SERVER what it holds.
+
+const NO_REPLY = new Error("Network Error")
+const REFUSED = {
+  response: { status: 409, data: { detail: "the week is already approved" } },
+}
+
+describe("a write whose reply never arrived", () => {
+  async function openAnswers(user: ReturnType<typeof userEvent.setup>) {
+    renderCore()
+    await screen.findByTestId("finding-configured_member_missing_from_export")
+    return user
+  }
+
+  it("⚠️ the week answer: no reply + it DID land is reported as landed", async () => {
+    // Telling Susan "that answer was not recorded" here makes her answer again,
+    // superseding a decision the server already holds.
+    const user = userEvent.setup()
+    api.postWeekDecision.mockRejectedValue(NO_REPLY)
+    // ⚠️ ORDER MATTERS: the FIRST load is the page opening and must show the
+    // finding unanswered, or it never renders and there is nothing to click.
+    // Only the follow-up check sees the decision on the server.
+    api.getWeekFocus.mockResolvedValueOnce(FOCUS).mockResolvedValue({
+      ...FOCUS,
+      decisions: [{
+        finding_key: "configured_member_missing_from_export:12008:",
+        outcome: "not_an_issue", note: "", decided_at: "2026-11-17T15:00:00Z",
+      }],
+    })
+    await openAnswers(user)
+    await user.click(screen.getByTestId("answer-2"))
+    expect(await screen.findByTestId("focus-error")).toHaveTextContent(
+      /the answer WAS recorded/i,
+    )
+  })
+
+  it("the week answer: no reply + it did NOT land says answer again", async () => {
+    const user = userEvent.setup()
+    api.postWeekDecision.mockRejectedValue(NO_REPLY)
+    api.getWeekFocus.mockResolvedValue({ ...FOCUS, decisions: [] })
+    await openAnswers(user)
+    await user.click(screen.getByTestId("answer-2"))
+    expect(await screen.findByTestId("focus-error")).toHaveTextContent(
+      /not on the server — answer it again/i,
+    )
+  })
+
+  it("⚠️ the week answer: the CHECK failing says unknown, not 'nothing changed'", async () => {
+    const user = userEvent.setup()
+    api.postWeekDecision.mockRejectedValue(NO_REPLY)
+    // First load succeeds (the page must render); the follow-up check fails.
+    api.getWeekFocus.mockResolvedValueOnce(FOCUS).mockRejectedValue(NO_REPLY)
+    renderCore()
+    await screen.findByTestId("finding-configured_member_missing_from_export")
+    await user.click(screen.getByTestId("answer-2"))
+    const err = await screen.findByTestId("focus-error")
+    expect(err).toHaveTextContent(/unknown/i)
+    expect(err.textContent?.toLowerCase()).not.toContain("nothing has been changed")
+  })
+
+  it("a REFUSED answer shows the server's own words", async () => {
+    const user = userEvent.setup()
+    api.postWeekDecision.mockRejectedValue(REFUSED)
+    await openAnswers(user)
+    await user.click(screen.getByTestId("answer-2"))
+    expect(await screen.findByTestId("focus-error")).toHaveTextContent(
+      "the week is already approved",
+    )
+    // The server answered, so there is nothing to go and check.
+    expect(api.listWeeks).not.toHaveBeenCalled()
+  })
+
+  it("⚠️ the HOURS upload: the fourth site, not named in the ruling", async () => {
+    const user = userEvent.setup()
+    // The upload card appears when the week has NO people on it — the same
+    // setup the working upload tests above use.
+    api.getUnionDuesPane.mockResolvedValue({ ...DUES, members: [], members_total: 0 })
+    api.uploadWeekHours.mockRejectedValue(NO_REPLY)
+    api.listWeeks.mockResolvedValue({
+      weeks: [{ id: "w44", week_number: 44, week_end_date: "2026-10-31",
+                check_date: "2026-11-05", status: "calculated" }],
+    })
+    renderCore()
+    const card = await screen.findByTestId("upload-card")
+    await user.upload(
+      card.querySelector('[data-testid="hours-file"]') as HTMLInputElement,
+      new File(["%PDF"], "hours.pdf", { type: "application/pdf" }),
+    )
+    await user.click(screen.getByTestId("upload-hours"))
+    expect(await screen.findByText(/IS on the server/i)).toBeInTheDocument()
+  })
+
+  it("the REGISTER upload: no reply + it did not land says retry is safe", async () => {
+    const user = userEvent.setup()
+    api.uploadRegister.mockRejectedValue(NO_REPLY)
+    setupApi.listRegisterImports.mockResolvedValue({ imports: [], count: 0 })
+    renderCore()
+    const sec = await screen.findByTestId("register-section")
+    await user.upload(
+      sec.querySelector('[data-testid="register-file"]') as HTMLInputElement,
+      new File(["%PDF"], "register.pdf", { type: "application/pdf" }),
+    )
+    await user.click(screen.getByTestId("upload-register"))
+    expect(await screen.findByText(/safe to try again/i)).toBeInTheDocument()
+  })
+
+  it("⚠️ the REGISTER upload: no reply + it DID land says do not re-upload", async () => {
+    const user = userEvent.setup()
+    api.uploadRegister.mockRejectedValue(NO_REPLY)
+    setupApi.listRegisterImports.mockResolvedValue({
+      count: 1,
+      imports: [{ import_id: "i1", filename: "register.pdf", pages: 262,
+                  checks_parsed: 1275, checks_inserted: 1275, checks_duplicate: 0,
+                  checks_failed: 0, created_at: null, report: {} }],
+    })
+    renderCore()
+    const sec = await screen.findByTestId("register-section")
+    await user.upload(
+      sec.querySelector('[data-testid="register-file"]') as HTMLInputElement,
+      new File(["%PDF"], "register.pdf", { type: "application/pdf" }),
+    )
+    await user.click(screen.getByTestId("upload-register"))
+    expect(await screen.findByText(/DID load the register/i)).toBeInTheDocument()
   })
 })

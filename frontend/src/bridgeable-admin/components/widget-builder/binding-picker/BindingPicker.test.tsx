@@ -143,7 +143,18 @@ describe("BindingPicker", () => {
       expect(screen.getByTestId("binding-picker")).toBeInTheDocument(),
     )
     fireEvent.click(screen.getByTestId("binding-picker-saved-view"))
-    fireEvent.click(screen.getByTestId("binding-picker-saved-view-option-v1"))
+    // ⚠️ **AWAITED, NOT BARE — THE THIRD AND SECOND OF THE THREE SITES.**
+    // CLAUDE.md §11 records that this file's bare-query race was fixed at ONE
+    // of three sites, with the comment describing the class sitting directly
+    // above the single one that got it. The other two stayed bare and this
+    // suite went red under full-suite parallel load on 2026-11-17 — it passes
+    // 3/3 alone, which is what made it look like somebody else's problem.
+    //
+    // The option list renders after the picker opens, so a synchronous
+    // `getByTestId` races the render rather than waiting for it.
+    fireEvent.click(
+      await screen.findByTestId("binding-picker-saved-view-option-v1"),
+    )
     expect(onChange).toHaveBeenCalledTimes(1)
     const next = onChange.mock.calls[0][0]
     expect(next.binding_id).toBe("b-test")
@@ -297,7 +308,10 @@ describe("BindingPicker", () => {
       expect(screen.getByTestId("binding-picker")).toBeInTheDocument(),
     )
     fireEvent.click(screen.getByTestId("binding-picker-saved-view"))
-    fireEvent.click(screen.getByTestId("binding-picker-saved-view-option-v2"))
+    // Awaited for the same reason as above — this is the site that went red.
+    fireEvent.click(
+      await screen.findByTestId("binding-picker-saved-view-option-v2"),
+    )
     expect(onChange).toHaveBeenCalledTimes(1)
     const next = onChange.mock.calls[0][0]
     expect(next.field_path).toBe("total") // preserved

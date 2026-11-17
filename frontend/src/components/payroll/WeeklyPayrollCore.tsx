@@ -20,7 +20,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import {
+  didWriteLand,
+  failureText,
+  gotNoReply,
+} from "@/lib/payroll/failure"
+import { listRegisterImports } from "@/lib/payroll/setup-api"
+import {
   approveWeek,
+  listWeeks,
   getUnionDuesPane,
   postHourCorrection,
   postWeekDecision,
@@ -539,8 +546,26 @@ function UploadCard({
                         r.summary?.people ?? r.summary?.rows_stored ?? "—"
                       } people, ${r.summary?.hours ?? "—"} hours.`,
                 )
-              } catch {
-                onDone("The upload was refused. The week is unchanged.")
+              } catch (err) {
+                // ⚠️ **A FOURTH INSTANCE OF THE SAME DEFECT, FOUND BY ASKING
+                // THE FILE RATHER THAN THE BUG REPORT.** The ruling named
+                // three writes; "The week is unchanged" is the same unknowable
+                // claim, on the upload Susan runs every Monday.
+                if (!gotNoReply(err)) {
+                  onDone(failureText(err))
+                } else {
+                  const verdict = await didWriteLand(
+                    () => listWeeks(),
+                    (w) => w.weeks.some((x) => x.week_number === weekNumber),
+                  )
+                  if (verdict === "landed") {
+                    onDone(`No reply reached this page, but week ${weekNumber} IS on the server. Reload to see it; do not upload again.`)
+                  } else if (verdict === "did-not-land") {
+                    onDone(`No reply reached this page, and week ${weekNumber} is not on the server — it is safe to upload again.`)
+                  } else {
+                    onDone("No reply from the server, and the follow-up check could not reach it either. Whether the week loaded is unknown; do not upload again until it responds.")
+                  }
+                }
               } finally {
                 setBusy(false)
               }
@@ -589,8 +614,28 @@ function FindingCard({
         await postWeekDecision(weekId, finding.key, a.outcome, a.label)
         onError(null)
         await onAnswered()
-      } catch {
-        onError("That answer was not recorded. Nothing has been changed.")
+      } catch (err) {
+        if (!gotNoReply(err)) {
+          // The server answered. Its words beat any sentence written here.
+          onError(failureText(err))
+          return
+        }
+        // ⚠️ NO REPLY, SO WHETHER THE ANSWER WAS RECORDED IS UNKNOWN AND WE
+        // ASK THE SERVER. This used to say "Nothing has been changed", which
+        // it could not know — and a re-answer on a false "nothing happened"
+        // supersedes a decision that was already stored.
+        const verdict = await didWriteLand(
+          () => getWeekFocus(weekId),
+          (f) => f.decisions.some((d) => d.finding_key === finding.key),
+        )
+        if (verdict === "landed") {
+          onError("No reply reached this page, but the answer WAS recorded. Nothing to redo.")
+          await onAnswered()
+        } else if (verdict === "did-not-land") {
+          onError("No reply reached this page, and the answer is not on the server — answer it again.")
+        } else {
+          onError("No reply from the server, and the follow-up check could not reach it either. Whether the answer was recorded is unknown; do not answer again until it responds.")
+        }
       }
     },
     [readOnly, weekId, finding.key, onAnswered, onError],
@@ -658,10 +703,13 @@ function FindingCard({
           weekId={weekId}
           empId={empId}
           onCancel={() => setCorrecting(false)}
-          onDone={async (ok) => {
+          onDone={async (ok, failure) => {
             setCorrecting(false)
             if (!ok) {
-              onError("The correction was refused. Nothing has been changed.")
+              // ⚠️ The form now says WHICH of the three happened. The fallback
+              // is only reached if a future caller forgets to pass one, and it
+              // still does not claim nothing changed.
+              onError(failure ?? "The correction did not complete. Check the week before entering it again.")
               return
             }
             // ⚠️ The correction and the ANSWER are two writes, and the answer
@@ -716,7 +764,17 @@ function CorrectionForm({
   weekId: string
   empId: string
   onCancel: () => void
-  onDone: (ok: boolean) => void
+  /**
+   * `ok` is "the correction is ON THE SERVER", not "the request returned".
+   *
+   * ⚠️ **`failure` EXISTS BECAUSE A BOOLEAN CANNOT CARRY THE DIFFERENCE THAT
+   * MATTERS.** This form used to catch its own error and report `false`, so a
+   * server refusal and a lost reply arrived at the parent identically — and the
+   * parent then said "Nothing has been changed", which is true of the first and
+   * unknowable for the second. The form keeps the check because the form is
+   * where the correction's identity (day, pay type) lives.
+   */
+  onDone: (ok: boolean, failure?: string) => void
 }) {
   const [day, setDay] = useState("")
   const [payType, setPayType] = useState<string>("REG")
@@ -792,8 +850,39 @@ function CorrectionForm({
                 reason,
               })
               onDone(true)
-            } catch {
-              onDone(false)
+            } catch (err) {
+              if (!gotNoReply(err)) {
+                // The server answered. Pass its words up verbatim.
+                onDone(false, failureText(err))
+              } else {
+                // ⚠️ No reply: ask the server whether this correction is there.
+                // Matched on (employee, date, pay type) — the natural key of
+                // what was just sent.
+                const verdict = await didWriteLand(
+                  () => getWeekFocus(weekId),
+                  (f) =>
+                    f.corrections.some(
+                      (c) =>
+                        c.emp_id === empId &&
+                        c.work_date === day &&
+                        c.pay_type === payType,
+                    ),
+                )
+                if (verdict === "landed") {
+                  // It IS saved, so the week may proceed to the answer.
+                  onDone(true)
+                } else if (verdict === "did-not-land") {
+                  onDone(
+                    false,
+                    "No reply reached this page, and the correction is not on the server — enter it again.",
+                  )
+                } else {
+                  onDone(
+                    false,
+                    "No reply from the server, and the follow-up check could not reach it either. Whether the correction saved is unknown; do not enter it again until it responds.",
+                  )
+                }
+              }
             } finally {
               setSaving(false)
             }
@@ -1118,8 +1207,25 @@ function RegisterSection({
               try {
                 await uploadRegister(f)
                 onError("Register loaded. Opas is comparing it line by line.")
-              } catch {
-                onError("The register was refused. Nothing has been changed.")
+              } catch (err) {
+                if (!gotNoReply(err)) {
+                  onError(failureText(err))
+                } else {
+                  // ⚠️ Same reasoning as the answer above, and here a blind
+                  // retry is only harmless because the import is idempotent on
+                  // (check number, check date, employee id).
+                  const verdict = await didWriteLand(
+                    () => listRegisterImports(3),
+                    (log) => log.imports.some((i) => i.filename === f.name),
+                  )
+                  if (verdict === "landed") {
+                    onError("No reply reached this page, but the server DID load the register. Nothing to re-upload.")
+                  } else if (verdict === "did-not-land") {
+                    onError("No reply reached this page, and the register is not in the server's import log — it is safe to try again.")
+                  } else {
+                    onError("No reply from the server, and the follow-up check could not reach it either. Whether the register loaded is unknown; do not re-upload until it responds.")
+                  }
+                }
               } finally {
                 setBusy(false)
               }

@@ -207,3 +207,76 @@ test("week 44, start to finish, as the payroll user", async ({ page }) => {
   console.log(`[walk] deduction rows: ${rows}`)
   console.log(`[walk] failed requests (all expected): ${failed.join(", ") || "none"}`)
 })
+
+/**
+ * ⚠️ **A WALK-THROUGH NEVER MOCKS THE WRITE IT WALKS THROUGH.**
+ *
+ * Added 2026-11-17, and it is the test whose absence let a never-working
+ * upload ship green through an entire arc. The 5a walk above exercises the
+ * correction and the approval against a real server — but the UPLOADS were
+ * covered only by vitest, against `vi.fn()`. So `apiClient`'s JSON
+ * content-type turned every FormData body into about thirteen bytes of
+ * `{"file":{}}`, the register upload answered 422 in 41 ms on production
+ * having received 1,156 bytes of a 1.7 MB file, and nothing anywhere had ever
+ * sent a real one.
+ *
+ * This sends the real Payentry Employee Hours PDF through the Focus's own file
+ * input and then READS THE SERVER BACK. Not the UI — the UI renders whatever
+ * it is given, and that is precisely how the defect stayed invisible.
+ *
+ * ⚠️ **THE FILE IS READ IN PLACE AND IS NEVER COPIED INTO THE REPOSITORY.**
+ * It is a real payroll export: real names, real rates. `PW_HOURS_PDF` points
+ * at it outside the tree, the way the register is handled.
+ */
+const HOURS_PDF = process.env.PW_HOURS_PDF ?? ""
+
+test("the hours upload sends a REAL file, and the server confirms it", async ({
+  page,
+  request,
+}) => {
+  test.skip(
+    HOURS_PDF === "",
+    "PW_HOURS_PDF must point at a real Payentry Employee Hours PDF, outside the repo. " +
+      "Skipped rather than faked: a mocked upload is what this test exists to replace.",
+  )
+
+  await asSusan(page)
+  await page.goto(`/home?focus=weekly-payroll&week_id=${WEEK_ID}`)
+
+  // ⚠️ A STATED PRECONDITION, FAILED LOUDLY RATHER THAN SKIPPED. The upload
+  // card renders only while the week has nobody on it. A week that already
+  // has hours cannot exercise the upload, and quietly passing here would be
+  // the same false green this test replaces.
+  const card = page.getByTestId("upload-card")
+  await expect(
+    card,
+    "the seeded week already has hours, so the upload card is absent — " +
+      "seed a week with no hours for this test",
+  ).toBeVisible({ timeout: 20_000 })
+
+  // The real file, through the real input, over real multipart.
+  await page.getByTestId("hours-file").setInputFiles(HOURS_PDF)
+  await page.getByTestId("upload-hours").click()
+
+  // ⚠️ READ BACK FROM THE SERVER, NOT FROM THE SCREEN. The screen would say
+  // "loaded" on any 200 and said "the week is unchanged" on every failure
+  // regardless of what the server held.
+  await expect(async () => {
+    const r = await request.get(
+      `${process.env.PW_API ?? "http://localhost:8000"}/api/v1/payroll-reports/weeks`,
+      { headers: { Authorization: `Bearer ${TOKEN}`, "X-Company-Slug": SLUG } },
+    )
+    expect(r.status(), await r.text()).toBe(200)
+    const weeks = (await r.json()).weeks as { id: string; status: string }[]
+    const mine = weeks.find((w) => w.id === WEEK_ID)
+    expect(mine, `week ${WEEK_ID} is not on the server`).toBeTruthy()
+    // `awaiting_hours` is the pre-upload state. Anything past it means the
+    // file arrived, was parsed, and rows were written.
+    expect(mine!.status).not.toBe("awaiting_hours")
+  }).toPass({ timeout: 60_000 })
+
+  await shot(page, "10-real-hours-upload")
+
+  // And the Focus now shows people, which it cannot do from a 13-byte body.
+  await expect(page.getByTestId("week-table")).toBeVisible({ timeout: 20_000 })
+})

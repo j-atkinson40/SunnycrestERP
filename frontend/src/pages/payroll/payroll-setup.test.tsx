@@ -19,7 +19,9 @@ import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-import PayrollSetup, { failureText, gotNoReply } from "./payroll-setup"
+import { failureText, gotNoReply } from "@/lib/payroll/failure"
+
+import PayrollSetup from "./payroll-setup"
 
 const setupApi = vi.hoisted(() => ({
   getDataEnabled: vi.fn(),
