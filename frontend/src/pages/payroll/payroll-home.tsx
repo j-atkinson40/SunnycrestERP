@@ -26,7 +26,12 @@ import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 
 import apiClient from "@/lib/api-client"
-import { getWeekFocus, type WeekFocus } from "@/lib/payroll/focus-api"
+import {
+  getCurrentWeek,
+  getWeekFocus,
+  type CurrentWeek,
+  type WeekFocus,
+} from "@/lib/payroll/focus-api"
 
 interface WeekRow {
   id: string
@@ -45,12 +50,25 @@ function focusHref(weekId: string) {
   return `/home?focus=weekly-payroll&week_id=${encodeURIComponent(weekId)}`
 }
 
+/** ⚠️ **BY WEEK END, FOR A WEEK THAT MAY HAVE NO ROW.** The id form above
+ *  cannot address the week Susan is about to upload, because the row is
+ *  created by that upload. */
+function pendingHref(weekEnd: string) {
+  return `/home?focus=weekly-payroll&week_end=${encodeURIComponent(weekEnd)}`
+}
+
 export default function PayrollHome() {
   const [weeks, setWeeks] = useState<Loaded<WeekRow[]>>(null)
   const [current, setCurrent] = useState<Loaded<WeekFocus>>(null)
+  /** The week being worked today, row or no row. Fetched unconditionally —
+   *  it is the one read that answers before the first upload. */
+  const [thisWeek, setThisWeek] = useState<Loaded<CurrentWeek>>(null)
 
   useEffect(() => {
     let live = true
+    getCurrentWeek()
+      .then((w) => live && setThisWeek(w))
+      .catch(() => live && setThisWeek(false))
     apiClient
       .get<{ weeks: WeekRow[] }>("/payroll-reports/weeks")
       .then((r) => {
@@ -101,16 +119,44 @@ export default function PayrollHome() {
             switched on for this company yet.
           </p>
         ) : weeks.length === 0 ? (
-          // ⚠️ A WRITTEN EMPTY STATE, and it does NOT invent a week number.
-          // There is no week, so there is no Focus to open and no link is
-          // offered — a link that opened nothing would be worse than none.
-          <>
-            <h2 className="text-h4 text-content-strong">No payroll weeks yet</h2>
-            <p className="mt-2 text-body text-content-muted">
-              The first week appears here once its hours have been loaded.
-              Until then there is nothing to review, which is not an error.
-            </p>
-          </>
+          // ⚠️ **THIS USED TO BE A DEAD END, AND IT WAS THE WHOLE BLOCKER.**
+          // The old copy said "no week, so no Focus to open and no link is
+          // offered — a link that opened nothing would be worse than none."
+          // That reasoning was right about an id-addressed Focus and wrong
+          // about the situation: the link now carries the week END, which the
+          // calendar knows before any row exists, and the Focus it opens
+          // carries the upload card that creates the row.
+          thisWeek === null ? (
+            <p className="text-body text-content-muted">Working out this week…</p>
+          ) : thisWeek === false ? (
+            <>
+              <h2 className="text-h4 text-content-strong">No payroll weeks yet</h2>
+              <p className="mt-2 text-body text-content-muted">
+                This week could not be read from the server, so no link is
+                offered rather than one that might open the wrong week.
+              </p>
+            </>
+          ) : (
+            <>
+              <h2 className="text-h4 text-content-strong">
+                Week {thisWeek.week_number}
+              </h2>
+              <p className="mt-1 text-caption text-content-muted">
+                {thisWeek.week_start_date} to {thisWeek.week_end_date} · checks
+                dated {thisWeek.check_date}
+              </p>
+              <p className="mt-3 text-body text-content-base">
+                No hours yet.
+              </p>
+              <Link
+                data-testid="upload-this-week"
+                to={pendingHref(thisWeek.week_end_date)}
+                className="mt-3 inline-block text-body-sm text-steel underline-offset-2 hover:underline"
+              >
+                Upload Employee Hours
+              </Link>
+            </>
+          )
         ) : (
           <>
             <h2 className="text-h4 text-content-strong">

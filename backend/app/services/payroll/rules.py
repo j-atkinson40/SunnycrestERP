@@ -13,7 +13,7 @@ docs/specs/payroll-reports.md §7.2, §7.3.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, time
 from decimal import Decimal
 
 from app.services.payroll.money import to_decimal
@@ -47,6 +47,26 @@ class PayrollRules:
         {"through_day": 15, "per_day": Decimal("6.00")},
     )
     stonebucks_per_ton: Decimal = Decimal("11.00")
+
+    #: ⚠️ **WHEN PAYENTRY MUST HAVE THE WEEK. Wednesday 17:00, and NOBODY HAS
+    #: CONFIRMED IT** — James, 2026-11-17, who asked for it as a
+    #: "default_unconfirmed" rule. There is no such status: `RULE_STATUSES`
+    #: offers `assumed`, defined as "reproduces the accountant's workbook and
+    #: nobody has confirmed it", which is the same thing under the name this
+    #: codebase already validates against. Widening a validated enum for one
+    #: key would have been the worse trade.
+    #:
+    #: ⚠️ **DELIBERATELY NOT IN `RULE_FIELDS`, SO NOT A COLUMN AND NO
+    #: MIGRATION.** `rules_from_row` builds only from `RULE_FIELDS`, so these
+    #: two take their dataclass default for every rule set that exists. That is
+    #: the honest shape for a value nobody has confirmed: it is a code default,
+    #: it says so, and it earns a column on the day somebody settles it — at
+    #: which point per-tenant and per-date variation becomes expressible, which
+    #: it is not today and should not pretend to be.
+    #:
+    #: Weekday is Python's: Monday=0, so 2 is Wednesday.
+    payentry_cutoff_weekday: int = 2
+    payentry_cutoff_time: time = time(17, 0)
 
     # Under review — see module docstring. Defaults reproduce the workbook.
     sick_in_dues_wage: bool = False
@@ -178,3 +198,19 @@ def rule_provenance(status: str, source: str) -> dict[str, str]:
 #: Measured: every vacation entitlement in the year is a whole number of
 #: 8-hour days (40, 48, 80, 120, 160 hours -> 5, 6, 10, 15, 20 days).
 VACATION_HOURS_PER_DAY = Decimal("8")
+
+
+#: Provenance for rules that live as CODE DEFAULTS rather than columns.
+#:
+#: ⚠️ `rule_provenance` on a `PayrollRuleSet` row answers "who said so" for the
+#: stored values. A value with no column has no row to carry its provenance, and
+#: an unconfirmed default with no provenance at all is exactly the confusion
+#: that column exists to remove — so it is declared here and merged into what
+#: `GET /rules` serves.
+DEFAULT_RULE_PROVENANCE: dict[str, dict[str, str]] = {
+    "payentry_cutoff": rule_provenance(
+        "assumed",
+        "James, 2026-11-17: Payentry cutoff is Wednesday 17:00. Stated, not "
+        "yet checked against Payentry's own schedule or a missed deadline.",
+    ),
+}

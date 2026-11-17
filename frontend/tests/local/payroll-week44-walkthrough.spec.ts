@@ -280,3 +280,75 @@ test("the hours upload sends a REAL file, and the server confirms it", async ({
   // And the Focus now shows people, which it cannot do from a 13-byte body.
   await expect(page.getByTestId("week-table")).toBeVisible({ timeout: 20_000 })
 })
+
+
+/**
+ * ⚠️ **FROM SIGN-IN WITH ZERO WEEKS — the state Susan was actually in.**
+ *
+ * The other specs here start from a seeded week. This one starts from nothing,
+ * because "nothing" is where the blocker lived: with the data switch on, a
+ * register imported and a roster reconciled, there was still no path to the
+ * first upload. The upload card lives in the weekly Focus; the Focus opened
+ * only on a `week_id`; that row is created BY the upload.
+ *
+ * Sends a REAL Employee Hours PDF, unmocked, and reads the week back FROM THE
+ * SERVER — not from the screen, which renders whatever it is given and is
+ * exactly how a never-working upload shipped green for an arc.
+ *
+ * ⚠️ The file is read IN PLACE from outside the repository and never
+ * committed; it is a real payroll export.
+ */
+test("zero weeks → upload a real file → the week exists on the server", async ({
+  page,
+  request,
+}) => {
+  test.skip(
+    HOURS_PDF === "",
+    "PW_HOURS_PDF must point at a real Payentry Employee Hours PDF outside the " +
+      "repo. Skipped rather than faked — a mocked upload is what this replaces.",
+  )
+
+  const api = process.env.PW_API ?? "http://localhost:8000"
+  const auth = { Authorization: `Bearer ${TOKEN}`, "X-Company-Slug": SLUG }
+
+  // ⚠️ PRECONDITION, FAILED LOUDLY. The whole point is the zero-week state; a
+  // tenant that already has this week cannot exercise it, and passing over
+  // that would be the false green this spec exists to replace.
+  const before = await request.get(`${api}/api/v1/payroll-reports/weeks/current`,
+    { headers: auth })
+  expect(before.status(), await before.text()).toBe(200)
+  const cur = await before.json()
+  expect(
+    cur.exists,
+    `week ${cur.week_number} already has a row — seed a tenant with no hours ` +
+      `for this week to exercise the zero-week path`,
+  ).toBe(false)
+
+  // She signs in and lands on the note; the Payroll page offers the upload.
+  await asSusan(page)
+  await page.goto("/payroll")
+  await expect(page.getByTestId("upload-this-week")).toBeVisible({ timeout: 20_000 })
+  await shot(page, "11-zero-weeks-payroll-page")
+
+  // That link carries the week END, which exists before any row does.
+  await page.getByTestId("upload-this-week").click()
+  await expect(page.getByTestId("pending-week")).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByTestId("upload-card")).toBeVisible()
+  await shot(page, "12-upload-card-is-step-1")
+
+  await page.getByTestId("hours-file").setInputFiles(HOURS_PDF)
+  await page.getByTestId("upload-hours").click()
+
+  // ⚠️ READ BACK FROM THE SERVER. The screen would say "loaded" on any 200.
+  await expect(async () => {
+    const r = await request.get(`${api}/api/v1/payroll-reports/weeks/current`,
+      { headers: auth })
+    expect(r.status(), await r.text()).toBe(200)
+    const after = await r.json()
+    expect(after.week_end_date).toBe(cur.week_end_date)
+    expect(after.exists, "the week still has no row on the server").toBe(true)
+    expect(after.week_id).toBeTruthy()
+  }).toPass({ timeout: 90_000 })
+
+  await shot(page, "13-week-created-by-the-upload")
+})

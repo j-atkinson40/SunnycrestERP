@@ -27,6 +27,7 @@ import {
 import { listRegisterImports } from "@/lib/payroll/setup-api"
 import {
   approveWeek,
+  getCurrentWeek,
   listWeeks,
   getUnionDuesPane,
   postHourCorrection,
@@ -34,6 +35,7 @@ import {
   uploadRegister,
   uploadWeekHours,
   type UnionDuesPane,
+  type CurrentWeek,
   type WeekFinding,
   type WeekFocus,
   getWeekFocus,
@@ -157,11 +159,34 @@ export function WeeklyPayrollCore({
   // So the week is read from the URL when the session could not supply it.
   // Without this the one user the Focus exists for always sees "No week
   // chosen". Found by walking the page as her.
+  /**
+   * ⚠️ **A WEEK DESCRIPTOR, NOT ONLY AN ID.** The Focus used to open on a
+   * `week_id` alone — and that row is created BY the upload whose card lives
+   * in this Focus. So a tenant with nothing uploaded could not reach the one
+   * screen that would let them upload.
+   *
+   * `week_end` is the alternative key: a date the calendar can produce before
+   * any row exists. When it is supplied and no row is found, the Focus opens
+   * on the DESCRIPTOR with the upload card as step 1, and the upload creates
+   * the row.
+   */
+  /** The descriptor for a week with no row yet. `false` = could not be read. */
+  const [pending, setPending] = useState<CurrentWeek | null | false>(null)
+  /** Set once the upload creates the row, so the Focus switches to the real
+   *  week without a reload. */
+  const [resolvedId, setResolvedId] = useState<string | null>(null)
+
+  const weekEnd = useMemo(() => {
+    if (typeof scope.week_end === "string" && scope.week_end) return scope.week_end
+    return new URLSearchParams(window.location.search).get("week_end")
+  }, [scope.week_end])
+
   const weekId = useMemo(() => {
+    if (resolvedId) return resolvedId
     if (typeof scope.week_id === "string" && scope.week_id) return scope.week_id
     if (typeof window === "undefined") return null
     return new URLSearchParams(window.location.search).get("week_id")
-  }, [scope.week_id])
+  }, [scope.week_id, resolvedId])
 
   const [focus, setFocus] = useState<WeekFocus | null | false>(null)
   const [dues, setDues] = useState<UnionDuesPane | null | false>(null)
@@ -170,7 +195,20 @@ export function WeeklyPayrollCore({
   const [error, setError] = useState<string | null>(null)
 
   const reload = useCallback(async () => {
-    if (!weekId) return
+    // ⚠️ NO ID BUT A WEEK END: ask the server which week that is and whether
+    // it has a row yet. `exists === false` is the pre-upload state and is not
+    // an error — it is the state the upload card exists for.
+    if (!weekId) {
+      if (!weekEnd) return
+      try {
+        const cur = await getCurrentWeek()
+        setPending(cur)
+        if (cur.week_id) setResolvedId(cur.week_id)
+      } catch {
+        setPending(false)
+      }
+      return
+    }
     try {
       const [f, d] = await Promise.all([
         getWeekFocus(weekId),
@@ -181,7 +219,7 @@ export function WeeklyPayrollCore({
     } catch {
       setFocus(false)
     }
-  }, [weekId])
+  }, [weekId, weekEnd])
 
   useEffect(() => {
     void reload()
@@ -194,6 +232,82 @@ export function WeeklyPayrollCore({
   const openPane = useCallback((spec: PayrollPaneSpec) => {
     setPanes((p) => (p.some((q) => q.key === spec.key) ? p : [...p, spec]))
   }, [])
+
+  // ⚠️ **A WEEK WITH NO ROW YET — STEP 1 IS THE UPLOAD, AND IT CREATES THE
+  // ROW.** This branch is the path that did not exist on 2026-11-17: with the
+  // switch on, a register loaded and a roster reconciled, Susan still could
+  // not upload hours, because the card was inside a Focus that needed the row
+  // the upload makes.
+  if (!weekId && weekEnd) {
+    if (pending === null) {
+      return <Shell><p className="text-body-sm text-content-muted">Working out which week this is…</p></Shell>
+    }
+    if (pending === false) {
+      return (
+        <Shell>
+          <p className="text-body-sm text-status-error" data-testid="week-unresolved">
+            This week could not be read from the server, so nothing is shown
+            rather than a week that might be the wrong one. Nothing has been
+            changed by opening this.
+          </p>
+        </Shell>
+      )
+    }
+    return (
+      <Shell>
+        <div data-testid="pending-week" className="space-y-4">
+          <div>
+            <h2 className="text-h4 text-content-strong">
+              Week {pending.week_number}
+            </h2>
+            <p className="mt-1 text-caption text-content-muted">
+              {pending.week_start_date} to {pending.week_end_date} · checks
+              dated {pending.check_date} · Payentry needs it by{" "}
+              {new Date(pending.cutoff_at).toLocaleString(undefined, {
+                weekday: "long", hour: "numeric", minute: "2-digit",
+              })}
+            </p>
+            {/* The deadline is an ASSUMED rule. A screen that states one
+                should be able to say who said so. */}
+            <p className="mt-1 text-caption text-content-subtle">
+              Cutoff is {pending.cutoff_provenance.status}, not confirmed.
+            </p>
+          </div>
+          <p className="text-body text-content-base">
+            No hours for week {pending.week_number} yet. Upload the Employee
+            Hours export and the week is created from it.
+          </p>
+          <UploadCard
+            weekNumber={pending.week_number}
+            weekEndDate={pending.week_end_date}
+            readOnly={readOnly}
+            busy={busy}
+            setBusy={setBusy}
+            onDone={async (msg) => {
+              setError(msg)
+              // The upload created the row; pick it up without a reload.
+              try {
+                const cur = await getCurrentWeek()
+                if (cur.week_id) setResolvedId(cur.week_id)
+                else setPending(cur)
+              } catch {
+                /* the message above already says what happened */
+              }
+            }}
+          />
+          {/* ⚠️ The upload's own words render HERE too. `setError` is read at
+              the bottom of the main branch, which this state never reaches —
+              so without this the upload would report into a message nobody
+              could see, including a refusal. */}
+          {error ? (
+            <p data-testid="focus-error" className="text-body-sm text-content-base">
+              {error}
+            </p>
+          ) : null}
+        </div>
+      </Shell>
+    )
+  }
 
   if (!weekId) {
     return (

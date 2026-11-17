@@ -21,7 +21,10 @@ import PayrollHome from "./payroll-home"
 const api = vi.hoisted(() => ({ get: vi.fn() }))
 vi.mock("@/lib/api-client", () => ({ default: api }))
 
-const focusApi = vi.hoisted(() => ({ getWeekFocus: vi.fn() }))
+const focusApi = vi.hoisted(() => ({
+  getWeekFocus: vi.fn(),
+  getCurrentWeek: vi.fn(),
+}))
 vi.mock("@/lib/payroll/focus-api", () => focusApi)
 
 const WEEK = {
@@ -30,6 +33,20 @@ const WEEK = {
   week_end_date: "2026-10-31",
   check_date: "2026-11-05",
   status: "calculated",
+}
+
+/** The week being worked today, row or no row — the read that answers before
+ *  the first upload. */
+const CURRENT_WEEK = {
+  week_number: 46,
+  week_start_date: "2026-11-08",
+  week_end_date: "2026-11-14",
+  check_date: "2026-11-19",
+  cutoff_at: "2026-11-18T17:00:00",
+  exists: false,
+  week_id: null,
+  status: "no_hours_yet",
+  cutoff_provenance: { status: "assumed", source: "James, 2026-11-17" },
 }
 
 const FOCUS = {
@@ -49,6 +66,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   api.get.mockResolvedValue({ data: { weeks: [WEEK] } })
   focusApi.getWeekFocus.mockResolvedValue(FOCUS)
+  focusApi.getCurrentWeek.mockResolvedValue(CURRENT_WEEK)
 })
 
 
@@ -87,13 +105,36 @@ describe("the week she lands on", () => {
 
 
 describe("empty and failed states are different, and both are written", () => {
-  it("⚠️ with no weeks it says so and offers NO link", async () => {
+  it("⚠️ with no weeks it offers the UPLOAD — this used to be a dead end", async () => {
+    // ⚠️ **THIS ASSERTION IS REVERSED ON PURPOSE, 2026-11-17.** It read:
+    // "with no weeks it says so and offers NO link … a link needs a week to
+    // scope to, and one that opened nothing would be worse than its absence."
+    //
+    // That was correct about an ID-addressed Focus and wrong about Susan's
+    // situation. Measured on production with the switch on, a register loaded
+    // and a roster reconciled: she had NO path to upload hours at all, because
+    // the upload card lives in the Focus and the Focus needed the row the
+    // upload creates. The link now carries the week END, which the calendar
+    // knows before any row exists.
     api.get.mockResolvedValue({ data: { weeks: [] } })
     renderPage()
-    expect(await screen.findByText(/No payroll weeks yet/)).toBeInTheDocument()
-    // A link needs a week to scope to. One that opened nothing would be
-    // worse than its absence.
+    expect(await screen.findByText(/Week 46/)).toBeInTheDocument()
+    expect(screen.getByText(/No hours yet/i)).toBeInTheDocument()
+    const link = screen.getByTestId("upload-this-week")
+    expect(link).toHaveAttribute(
+      "href", "/home?focus=weekly-payroll&week_end=2026-11-14")
+    // Still no ID-scoped link, because there is still no id.
     expect(screen.queryByTestId("open-weekly-payroll")).not.toBeInTheDocument()
+  })
+
+  it("⚠️ an unreadable current week offers NO link rather than a guessed one", async () => {
+    // The old reasoning survives exactly here: a link that might open the
+    // wrong week is worse than none.
+    api.get.mockResolvedValue({ data: { weeks: [] } })
+    focusApi.getCurrentWeek.mockRejectedValue(new Error("boom"))
+    renderPage()
+    expect(await screen.findByText(/No payroll weeks yet/)).toBeInTheDocument()
+    expect(screen.queryByTestId("upload-this-week")).not.toBeInTheDocument()
   })
 
   it("⚠️ a failure does NOT render as 'nothing here'", async () => {

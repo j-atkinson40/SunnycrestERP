@@ -38,6 +38,8 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_db, require_admin, require_permission
 from app.models.company import Company
 from app.services import audit_service
+from app.services.payroll.rules import DEFAULT_RULES, DEFAULT_RULE_PROVENANCE
+from app.services.payroll.week_calendar import current_payroll_week
 from app.services.payroll.data_gate import (
     PAYROLL_DATA_ENABLED,
     assert_payroll_data_enabled,
@@ -187,6 +189,58 @@ def list_weeks(
         .order_by(PayrollWeek.week_end_date.desc())
     ).scalars().all()
     return {"weeks": [_week_payload(w) for w in weeks], "count": len(weeks)}
+
+
+@router.get("/weeks/current")
+def current_week(
+    current_user: User = Depends(require_permission(PAYROLL_READ)),
+    db: Session = Depends(get_db),
+):
+    """The week Susan is working today, whether or not it exists as a row.
+
+    ⚠️ **THE POINT IS THAT IT ANSWERS BEFORE ANY UPLOAD.** Every other payroll
+    read needs a `week_id`, and that row is created BY the upload — so with
+    nothing uploaded the note had nothing to say, the Payroll page offered no
+    link, and the Focus (which carries the upload card) could not open. The
+    upload card lived inside the surface the upload had to create.
+
+    `exists` is the whole distinction. When false, the descriptor is derived
+    from the calendar and the caller may still open the Focus on it; the row
+    appears when the hours are uploaded.
+    """
+    rules = payroll_service.rules_from_row(
+        payroll_service.resolve_rule_set(db, current_user.company_id, date.today())
+    ) if _has_rule_set(db, current_user.company_id) else DEFAULT_RULES
+
+    desc = current_payroll_week(
+        date.today(),
+        cutoff_weekday=rules.payentry_cutoff_weekday,
+        cutoff_time=rules.payentry_cutoff_time,
+    )
+    row = (
+        db.query(PayrollWeek)
+        .filter(PayrollWeek.tenant_id == current_user.company_id,
+                PayrollWeek.week_end_date == desc.week_end_date)
+        .first()
+    )
+    payload = desc.as_dict()
+    payload["exists"] = row is not None
+    payload["week_id"] = row.id if row else None
+    payload["status"] = row.status if row else "no_hours_yet"
+    # The provenance of the cutoff travels with it: it is an ASSUMED default,
+    # and a screen that states a deadline should be able to say who said so.
+    payload["cutoff_provenance"] = DEFAULT_RULE_PROVENANCE["payentry_cutoff"]
+    return payload
+
+
+def _has_rule_set(db: Session, tenant_id: str) -> bool:
+    """⚠️ `resolve_rule_set` RAISES when no set covers the date — deliberately,
+    so a dues figure can always name its rules. This endpoint states a
+    DEADLINE, not a dues figure, and must still answer for a tenant that has
+    not been given a rulebook yet. So the absence is checked rather than
+    caught: catching would also swallow a real resolution failure."""
+    return db.query(PayrollRuleSet).filter(
+        PayrollRuleSet.tenant_id == tenant_id).first() is not None
 
 
 @router.post("/weeks/upload", status_code=201)

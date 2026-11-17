@@ -149,6 +149,33 @@ export interface WeekRow {
 
 /** Every payroll week this tenant has. Typed here because the Focus needs it
  *  to answer "did my hours upload land?" when no reply came back. */
+/**
+ * The week being worked today, whether or not it has a row yet.
+ *
+ * ⚠️ **THE ONLY PAYROLL READ THAT DOES NOT NEED A `week_id`**, which is the
+ * whole reason it exists: every other one does, and that row is created BY the
+ * upload. Before this, a tenant with nothing uploaded had no way to reach the
+ * upload card, because the card lives inside the Focus and the Focus opens on
+ * an id that does not exist yet.
+ */
+export interface CurrentWeek {
+  week_number: number
+  week_start_date: string
+  week_end_date: string
+  check_date: string
+  /** Wednesday 17:00 before the checks. An `assumed` rule — see provenance. */
+  cutoff_at: string
+  exists: boolean
+  week_id: string | null
+  status: string
+  cutoff_provenance: { status: string; source: string }
+}
+
+export async function getCurrentWeek() {
+  const r = await apiClient.get<CurrentWeek>(`${BASE}/weeks/current`)
+  return r.data
+}
+
 export async function listWeeks() {
   const r = await apiClient.get<{ weeks: WeekRow[] }>(`${BASE}/weeks`)
   return r.data

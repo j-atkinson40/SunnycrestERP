@@ -84,6 +84,18 @@ const DUES = {
   },
 }
 
+const PENDING_WEEK = {
+  week_number: 46,
+  week_start_date: "2026-11-08",
+  week_end_date: "2026-11-14",
+  check_date: "2026-11-19",
+  cutoff_at: "2026-11-18T17:00:00",
+  exists: false,
+  week_id: null,
+  status: "no_hours_yet",
+  cutoff_provenance: { status: "assumed", source: "James, 2026-11-17" },
+}
+
 const api = vi.hoisted(() => ({
   getWeekFocus: vi.fn(),
   getUnionDuesPane: vi.fn(),
@@ -95,6 +107,7 @@ const api = vi.hoisted(() => ({
   uploadWeekHours: vi.fn(),
   uploadRegister: vi.fn(),
   listWeeks: vi.fn(),
+  getCurrentWeek: vi.fn(),
 }))
 
 const setupApi = vi.hoisted(() => ({ listRegisterImports: vi.fn() }))
@@ -123,6 +136,7 @@ beforeEach(() => {
   api.getUnionDuesPane.mockResolvedValue(DUES)
   api.postWeekDecision.mockResolvedValue({})
   api.listWeeks.mockResolvedValue({ weeks: [] })
+  api.getCurrentWeek.mockResolvedValue(PENDING_WEEK)
   setupApi.listRegisterImports.mockResolvedValue({ imports: [], count: 0 })
   api.postHourCorrection.mockResolvedValue({})
 })
@@ -549,5 +563,105 @@ describe("a write whose reply never arrived", () => {
     )
     await user.click(screen.getByTestId("upload-register"))
     expect(await screen.findByText(/DID load the register/i)).toBeInTheDocument()
+  })
+})
+
+
+// ── a week with no row yet: the path that did not exist ────────────────────
+
+describe("opening the Focus on a week END rather than an id", () => {
+  function renderPending(over: Record<string, unknown> = {}) {
+    return render(
+      <WeeklyPayrollCore
+        focusId="weekly-payroll"
+        config={{}}
+        readOnly={false}
+        scope={{ week_end: "2026-11-14", ...over }}
+      />,
+    )
+  }
+
+  it("⚠️ shows the upload card as step 1 — the blocker this closes", async () => {
+    // Measured on production 2026-11-17: switch on, register loaded, roster
+    // reconciled, and STILL no way to upload hours, because the card lives in
+    // a Focus that opened only on the row the upload creates.
+    renderPending()
+    const card = await screen.findByTestId("pending-week")
+    expect(card).toHaveTextContent("Week 46")
+    expect(card).toHaveTextContent("2026-11-08")
+    expect(card).toHaveTextContent("2026-11-14")
+    expect(screen.getByTestId("upload-card")).toBeInTheDocument()
+    expect(screen.getByTestId("hours-file")).toBeInTheDocument()
+  })
+
+  it("states the check date and the Payentry deadline", async () => {
+    renderPending()
+    const card = await screen.findByTestId("pending-week")
+    expect(card).toHaveTextContent("2026-11-19")
+    expect(card).toHaveTextContent(/Wednesday/i)
+  })
+
+  it("⚠️ says the cutoff is ASSUMED — a stated deadline names its provenance", async () => {
+    renderPending()
+    expect(await screen.findByTestId("pending-week")).toHaveTextContent(
+      /assumed, not confirmed/i,
+    )
+  })
+
+  it("⚠️ an unreadable week shows nothing rather than a guessed one", async () => {
+    api.getCurrentWeek.mockRejectedValue(new Error("boom"))
+    renderPending()
+    expect(await screen.findByTestId("week-unresolved")).toHaveTextContent(
+      /could not be read/i,
+    )
+    expect(screen.queryByTestId("upload-card")).not.toBeInTheDocument()
+  })
+
+  it("⚠️ the upload's own words are visible in THIS branch", async () => {
+    // `setError` is read at the bottom of the main branch, which this state
+    // never reaches — so without its own render the upload would report into
+    // a message nobody could see, a refusal included.
+    const user = userEvent.setup()
+    api.uploadWeekHours.mockResolvedValue({
+      week: { id: "w46", week_number: 46, status: "imported" },
+      import: {}, summary: { people: 24, hours: 980 }, flags: [],
+    })
+    renderPending()
+    await screen.findByTestId("upload-card")
+    await user.upload(
+      screen.getByTestId("hours-file"),
+      new File(["%PDF"], "hours.pdf", { type: "application/pdf" }),
+    )
+    await user.click(screen.getByTestId("upload-hours"))
+    expect(await screen.findByTestId("focus-error")).toHaveTextContent(/24 people/)
+  })
+
+  it("⚠️ after the upload it switches to the REAL week without a reload", async () => {
+    const user = userEvent.setup()
+    api.uploadWeekHours.mockResolvedValue({
+      week: { id: "w46", week_number: 46, status: "imported" },
+      import: {}, summary: { people: 24, hours: 980 }, flags: [],
+    })
+    // The row now exists, so the next read returns its id.
+    api.getCurrentWeek
+      .mockResolvedValueOnce(PENDING_WEEK)
+      .mockResolvedValue({ ...PENDING_WEEK, exists: true, week_id: WEEK_ID })
+    renderPending()
+    await screen.findByTestId("upload-card")
+    await user.upload(
+      screen.getByTestId("hours-file"),
+      new File(["%PDF"], "hours.pdf", { type: "application/pdf" }),
+    )
+    await user.click(screen.getByTestId("upload-hours"))
+    // The real Focus, read by id.
+    expect(await screen.findByTestId("the-week")).toBeInTheDocument()
+    expect(api.getWeekFocus).toHaveBeenCalledWith(WEEK_ID)
+  })
+
+  it("an id still wins over a week end, so existing links are unchanged", async () => {
+    renderPending({ week_id: WEEK_ID })
+    expect(await screen.findByTestId("the-week")).toBeInTheDocument()
+    expect(screen.queryByTestId("pending-week")).not.toBeInTheDocument()
+    expect(api.getCurrentWeek).not.toHaveBeenCalled()
   })
 })
