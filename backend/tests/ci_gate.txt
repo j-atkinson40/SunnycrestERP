@@ -791,3 +791,7 @@ tests/test_payroll_hours_followup.py
 tests/test_payroll_upload_permission.py
 tests/test_note_composed_by_area.py
 tests/test_payroll_week_focus.py
+# PR B (2026-11-17). The payroll week computed from TODAY, and the endpoint
+# that describes it before any row exists — the path to the first upload.
+# Sunday-Saturday and check_date +5 are cross-checked against live week 44.
+tests/test_payroll_week_calendar.py
