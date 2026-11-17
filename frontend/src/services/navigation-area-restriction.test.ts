@@ -15,6 +15,9 @@
  * nothing passes the first and fails the second, and a filter that returns
  * everything passes the second and fails the first.
  */
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
+
 import { describe, expect, it } from "vitest"
 
 import {
@@ -39,6 +42,14 @@ const OFFICE_PERMS = new Set([
 
 function nav(perms: Set<string>, areas: Set<string>): NavigationConfig {
   return getNavigation("manufacturing", MODULES, perms, {}, areas, false, EXTENSIONS)
+}
+
+/** The same, as an admin. `isAdmin` is the sixth argument and the one that
+ *  decides every `adminOnly` item, so it gets its own builder rather than a
+ *  boolean threaded through the one above — a test that passed `true` by
+ *  position would be the next person's puzzle. */
+function adminNav(perms: Set<string>, areas: Set<string>): NavigationConfig {
+  return getNavigation("manufacturing", MODULES, perms, {}, areas, true, EXTENSIONS)
 }
 
 /** Every label in the config, flattened, as a set. */
@@ -148,5 +159,67 @@ describe("untagged items are denied, mirroring the server", () => {
       .toContain("Payroll")
     expect(labels(restrictNavToAreas(nav(PAYROLL_PERMS, new Set()), ["mfa_enroll"])))
       .not.toContain("Payroll")
+  })
+})
+
+
+describe("Payroll setup — admin-only AND area-tagged", () => {
+  // Both gates are load-bearing and they are enforced by DIFFERENT functions,
+  // which is why this needs four cases rather than one. `adminOnly` is checked
+  // by `filterByPermission`; `area` is checked by `restrictNavToAreas`. Drop
+  // either and one of these four flips.
+
+  it("Susan does NOT see it — she is payroll-limited and not an admin", () => {
+    // Two of the three endpoints behind the page are `require_admin`, so she
+    // would arrive at three cards that all 403.
+    const got = labels(restrictNavToAreas(nav(PAYROLL_PERMS, new Set()), ["payroll"]))
+    expect(got.has("Payroll setup")).toBe(false)
+    expect(got.has("Payroll")).toBe(true)
+  })
+
+  it("⚠️ a payroll-limited ADMIN DOES see it — this is what the area tag buys", () => {
+    // The case the `area: "payroll"` tag exists for. Without the tag,
+    // `restrictNavToAreas` denies it as untagged and an admin who happens to
+    // be area-limited to payroll loses the page that turns payroll on.
+    const got = labels(
+      restrictNavToAreas(adminNav(PAYROLL_PERMS, new Set()), ["payroll"]),
+    )
+    expect(got.has("Payroll setup")).toBe(true)
+    expect(got.has("Payroll")).toBe(true)
+  })
+
+  it("an unlimited admin sees it", () => {
+    expect(labels(adminNav(OFFICE_PERMS, new Set())).has("Payroll setup")).toBe(true)
+  })
+
+  it("an unlimited NON-admin does not", () => {
+    // The permission half, measured away from the area machinery entirely.
+    expect(labels(nav(OFFICE_PERMS, new Set())).has("Payroll setup")).toBe(false)
+  })
+
+  it("⚠️ its href resolves to a route that EXISTS in App.tsx", () => {
+    // ⚠️ CHECKED AGAINST THE ROUTER, NOT AGAINST ITSELF. An href asserted only
+    // against a literal in this same file is CLAUDE.md §11 shape 9: 55 green
+    // assertions pinned `/dispatch` as four widgets' target for four and a
+    // half months, and `/dispatch` was never a route in any revision. The
+    // expected value has to come from outside the check, so App.tsx is read.
+    const flat: { label: string; href: string }[] = []
+    adminNav(OFFICE_PERMS, new Set()).sections.forEach((sec) =>
+      sec.items.forEach((i) => flat.push({ label: i.label, href: i.href })),
+    )
+    const href = flat.find((i) => i.label === "Payroll setup")?.href
+    expect(href).toBeDefined()
+
+    const appTsx = readFileSync(resolve(process.cwd(), "src/App.tsx"), "utf8")
+    // ⚠️ A POSITIVE CONTROL ON THE READ, BEFORE THE RESULT IT VOUCHES FOR.
+    // An unreadable or empty App.tsx would make the `toContain` below fail for
+    // a reason that has nothing to do with the route — and an empty string
+    // containing nothing looks exactly like a missing route.
+    expect(appTsx.length).toBeGreaterThan(10_000)
+    expect(appTsx).toContain('path="payroll"')
+    // Routes are declared relative to the tenant root, so an href of
+    // `/payroll/setup` is `path="payroll/setup"` in the tree.
+    const relative = href!.replace(/^\//, "")
+    expect(appTsx).toContain(`path="${relative}"`)
   })
 })

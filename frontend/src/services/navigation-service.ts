@@ -282,6 +282,26 @@ function getManufacturingNav(
       area: "payroll",
       aliases: ["payroll", "dues", "union dues"],
     },
+    // Payroll setup — the three turn-on controls (switch, register, roster).
+    //
+    // ADMIN ONLY, so Susan on the area-limited `payroll` role does not see it;
+    // `filterByPermission` drops it on `adminOnly` before the area is
+    // consulted. Tagged `area: "payroll"` anyway, and that is not redundant:
+    // an admin who is ALSO area-limited to payroll would otherwise lose it to
+    // `restrictNavToAreas`, which denies every untagged item.
+    //
+    // interim-entrance: remove when Opas can open this page. Opas stays
+    // admin-only for now (James, 2026-11-03) — which happens to match this
+    // page exactly, so it is the first page here whose Opas entrance will not
+    // need a permission question answered first.
+    {
+      label: "Payroll setup",
+      href: "/payroll/setup",
+      icon: "Settings",
+      adminOnly: true,
+      area: "payroll",
+      aliases: ["payroll setup", "payroll data", "load register", "turn on payroll"],
+    },
   ];
   sections.push({
     title: "",

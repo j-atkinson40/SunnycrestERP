@@ -258,6 +258,38 @@ def test_uploading_the_same_register_twice_inserts_nothing_the_second_time(
         db.close()
 
 
+def test_the_report_counts_DISTINCT_PEOPLE_not_checks(client, token,
+                                                      register_bytes, switch):
+    """The figure the payroll setup page reports as "N checks for M people".
+
+    ⚠️ **IT IS NOT A SECOND NAME FOR THE CHECK COUNT, AND THE FIXTURE CANNOT
+    PROVE THAT ON ITS OWN.** Five checks for five people here, so `employees`
+    and `checks_inserted` are the same number and an implementation returning
+    either would pass this assertion alone. The duplicate test below is the
+    discriminator: on a re-upload `checks_inserted` falls to 0 while the file
+    still accounts for the same five people.
+    """
+    body = _upload(client, token, register_bytes).json()
+    assert body["report"]["employees"] == len(register_fixture.EXPECTED_PEOPLE)
+
+
+def test_the_people_count_survives_a_re_upload_that_inserts_nothing(
+        client, token, register_bytes, switch):
+    """⚠️ THE ONE THAT MAKES THE FIGURE ABOVE MEAN ANYTHING.
+
+    An administrator re-running step 2 of the setup page must not be told the
+    register covers "0 people" — it covers the whole roster whether or not it
+    wrote a row. Counting only the inserted side would say zero, and zero would
+    read as "this file was empty".
+    """
+    _upload(client, token, register_bytes)
+    second = _upload(client, token, register_bytes).json()
+
+    assert second["checks_inserted"] == 0
+    assert second["checks_duplicate"] == register_fixture.EXPECTED_CHECKS
+    assert second["report"]["employees"] == len(register_fixture.EXPECTED_PEOPLE)
+
+
 def test_the_duplicate_count_is_not_simply_always_zero(client, token,
                                                        register_bytes, switch):
     """⚠️ A positive control on the test above.

@@ -205,6 +205,7 @@ import DeliveryDetailPage from "@/pages/delivery/delivery-detail";
 import RouteDetailPage from "@/pages/delivery/route-detail";
 import CarriersPage from "@/pages/delivery/carriers";
 import PayrollHome from "@/pages/payroll/payroll-home";
+import PayrollSetup from "@/pages/payroll/payroll-setup";
 import SchedulingBoardPage from "@/pages/delivery/scheduling-board";
 import BOMListPage from "@/pages/bom/bom-list";
 import BOMDetailPage from "@/pages/bom/bom-detail";
@@ -645,6 +646,21 @@ export function renderTenantSlugRoutes(
                     }
                   >
                     <Route path="payroll" element={<PayrollHome />} />
+                  </Route>
+
+                  {/* Payroll setup — the three turn-on controls.
+                      ADMIN ONLY, and separately gated rather than nested
+                      inside the payroll.view block above: two of its three
+                      endpoints are `require_admin` on the server, so a
+                      payroll.view-only user reaching this page would see three
+                      cards that all 403. The server is still the real gate —
+                      this stops her arriving somewhere useless.
+
+                      Not `anyRole`: this is administering the tenant's payroll
+                      data, which is the admin role's own job, not a
+                      responsibility held alongside it. */}
+                  <Route element={<ProtectedRoute adminOnly />}>
+                    <Route path="payroll/setup" element={<PayrollSetup />} />
                   </Route>
 
                   {/* THE FRONT DOOR (note arc session 5, 2026-09-10).

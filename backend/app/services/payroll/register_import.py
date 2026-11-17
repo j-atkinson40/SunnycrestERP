@@ -88,6 +88,19 @@ def _report(result, inserted_keys, duplicate_keys) -> dict:
             for n, d, e in duplicate_keys
         ],
         "inserted": len(inserted_keys),
+        # DISTINCT PEOPLE, NOT A COUNT OF CHECKS. The payroll setup page
+        # reports "N checks for M people" after an import, and M is the only
+        # figure there an administrator can check against a headcount they
+        # already know -- 11 checks for 11 people is a week; 11 checks for 4
+        # people is a range, or a mistake.
+        #
+        # Counts everyone the file accounts for, INSERTED AND DUPLICATE
+        # together: re-uploading an overlapping range covers the same people
+        # whether or not it wrote a row, and reporting only the inserted side
+        # would say "0 people" for a repeat upload that in fact covers the
+        # whole roster.
+        "employees": len({k[2] for k in inserted_keys}
+                         | {k[2] for k in duplicate_keys}),
     }
 
 

@@ -281,9 +281,53 @@ export async function approveWeek(weekId: string) {
   return r.data
 }
 
+/**
+ * What an import reports back. Typed here, next to the call, because the
+ * payroll setup page renders these figures rather than discarding them.
+ *
+ * `report` is also STORED on the import row — a finding that lived only in a
+ * response body would be a finding nobody could audit later — so the shape is
+ * the server's, not this page's.
+ */
+export interface RegisterImportResult {
+  import_id: string
+  pages: number
+  checks_parsed: number
+  checks_inserted: number
+  checks_duplicate: number
+  checks_failed: number
+  summary_blocks_skipped: number
+  report: {
+    /** Distinct people the file accounts for, inserted and duplicate together. */
+    employees?: number
+    inserted?: number
+    unknown_codes?: Record<string, number>
+    ambiguous_names?: Record<string, string[]>
+    union_salary_anomalies?: {
+      emp_id: string
+      check_number: string | null
+      check_date: string | null
+    }[]
+    failed_checks?: {
+      emp_id: string | null
+      check_number: string | null
+      page: number | null
+      why: string
+    }[]
+    duplicate_checks?: {
+      check_number: string | null
+      check_date: string | null
+      emp_id: string | null
+    }[]
+  }
+}
+
 export async function uploadRegister(file: File) {
   const fd = new FormData()
   fd.append("file", file)
-  const r = await apiClient.post(`${BASE}/register/upload`, fd)
+  const r = await apiClient.post<RegisterImportResult>(
+    `${BASE}/register/upload`,
+    fd,
+  )
   return r.data
 }
