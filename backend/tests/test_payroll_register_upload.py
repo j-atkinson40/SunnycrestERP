@@ -31,7 +31,12 @@ from app.models.company import Company
 from app.models.payroll_report import PayrollCheck, PayrollCheckLine, PayrollRegisterImport
 from app.models.user import User
 from app.services.payroll.data_gate import PAYROLL_DATA_ENABLED
-from tests._tenant import TESTCO_ID, make_canonical_tenant_fixture
+from tests._tenant import (
+    TESTCO_ID,
+    drop_company,
+    ensure_company,
+    make_canonical_tenant_fixture,
+)
 from tests._two_step import tenant_token
 from tests.fixtures.payroll import register_fixture
 
@@ -40,6 +45,12 @@ _canonical_tenant = make_canonical_tenant_fixture()
 HEADERS = {"X-Company-Slug": "testco"}
 ADMIN_UID = "register-admin"
 UPLOAD = "/api/v1/payroll-reports/register/upload"
+IMPORTS = "/api/v1/payroll-reports/register/imports"
+
+
+def H(token):
+    """Auth + tenant headers, as `_upload` builds them inline."""
+    return {"Authorization": f"Bearer {token}", **HEADERS}
 
 
 @pytest.fixture(scope="module")
@@ -288,6 +299,109 @@ def test_the_people_count_survives_a_re_upload_that_inserts_nothing(
     assert second["checks_inserted"] == 0
     assert second["checks_duplicate"] == register_fixture.EXPECTED_CHECKS
     assert second["report"]["employees"] == len(register_fixture.EXPECTED_PEOPLE)
+
+
+# ── the import log: so a client that lost the response can CHECK ────────────
+#
+# ⚠️ ADDED 2026-11-17 BECAUSE A PAGE WAS GUESSING. The payroll setup page told
+# an administrator "nothing has been changed" after an upload whose response it
+# never received — a claim it could not make. There was no endpoint that could
+# answer "did my import land?", so there was nothing for it to ask.
+
+
+def test_the_import_log_is_empty_before_anything_is_uploaded(client, token):
+    """⚠️ A POSITIVE CONTROL ON THE EMPTY CASE, and it is the case that matters.
+
+    The page uses an ABSENCE from this log to tell James "nothing was saved, it
+    is safe to try again". If this endpoint answered emptily for some unrelated
+    reason — wrong tenant filter, a 403 swallowed by a client — that advice
+    would be wrong in the dangerous direction.
+    """
+    r = client.get(IMPORTS, headers=H(token))
+    assert r.status_code == 200, r.text[:200]
+    assert r.json() == {"imports": [], "count": 0}
+
+
+def test_an_upload_appears_in_the_log_with_its_counts(client, token,
+                                                     register_bytes, switch):
+    posted = _upload(client, token, register_bytes).json()
+    r = client.get(IMPORTS, headers=H(token))
+    assert r.status_code == 200
+    body = r.json()
+    assert body["count"] == 1
+    row = body["imports"][0]
+    assert row["import_id"] == posted["import_id"]
+    assert row["filename"] == "register.pdf"
+    assert row["checks_inserted"] == register_fixture.EXPECTED_CHECKS
+    assert row["pages"] == posted["pages"]
+    # The stored report travels too, so a client that lost the upload response
+    # can still show the findings rather than only the counts.
+    assert row["report"]["employees"] == len(register_fixture.EXPECTED_PEOPLE)
+
+
+def test_the_log_is_newest_first(client, token, register_bytes, switch):
+    _upload(client, token, register_bytes, filename="first.pdf")
+    _upload(client, token, register_bytes, filename="second.pdf")
+    names = [i["filename"] for i in client.get(IMPORTS, headers=H(token)).json()["imports"]]
+    assert names[:2] == ["second.pdf", "first.pdf"], names
+
+
+def test_the_log_requires_the_payroll_read_permission(client, register_bytes):
+    """Unauthenticated is refused. The log names files and counts, and an
+    unauthenticated reader has no business with either."""
+    r = client.get(IMPORTS, headers=HEADERS)
+    assert r.status_code in (401, 403), r.status_code
+
+
+def test_the_log_NEVER_shows_another_tenant_s_imports(client, token):
+    """⚠️ **THE CROSS-TENANT GUARD, AND IT WAS MISSING UNTIL BREAK-TESTED.**
+
+    When this endpoint was first written the three tests above all passed with
+    the `tenant_id` filter DELETED — so there was no guard at all on a read
+    that names payroll files and their check counts. The ordering test fired on
+    its break; this one had no break to fire on, because the local database's
+    other tenants hold no imports.
+
+    A second tenant with a register import of its own is therefore CREATED
+    here, which is the only way the assertion can discriminate. Without it the
+    test would be the shape CLAUDE.md §11 names: green, in contact with
+    nothing.
+    """
+    from app.database import SessionLocal
+
+    other_id = "register-isolation-co"
+    created = False
+    db = SessionLocal()
+    try:
+        created = ensure_company(db, company_id=other_id,
+                                 slug="register-isolation-co",
+                                 name="Register Isolation Co")
+        if not created:
+            pytest.skip("could not create an isolated second tenant")
+        db.add(PayrollRegisterImport(
+            tenant_id=other_id, uploaded_by_user_id=None,
+            filename="SOMEBODY_ELSES_REGISTER.pdf", pages=1,
+            checks_parsed=1, checks_inserted=1, checks_failed=0,
+            summary_blocks_skipped=0, report={}))
+        db.commit()
+
+        # POSITIVE CONTROL: the row really is there, so an empty answer below
+        # cannot be an empty table masquerading as isolation.
+        assert db.query(PayrollRegisterImport).filter(
+            PayrollRegisterImport.tenant_id == other_id).count() == 1
+
+        body = client.get(IMPORTS, headers=H(token)).json()
+        names = [i["filename"] for i in body["imports"]]
+        assert "SOMEBODY_ELSES_REGISTER.pdf" not in names, names
+        assert body["count"] == 0, body
+    finally:
+        if created:
+            db.query(PayrollRegisterImport).filter(
+                PayrollRegisterImport.tenant_id == other_id).delete()
+            db.commit()
+            drop_company(db, company_id=other_id,
+                         child_tables=("payroll_register_imports",))
+        db.close()
 
 
 def test_the_duplicate_count_is_not_simply_always_zero(client, token,

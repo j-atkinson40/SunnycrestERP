@@ -272,7 +272,20 @@ export async function uploadWeekHours(args: {
   fd.append("week_end_date", args.weekEndDate)
   fd.append("file", args.hoursFile)
   if (args.punchFile) fd.append("punch_file", args.punchFile)
-  const r = await apiClient.post<WeekUploadResult>(`${BASE}/weeks/upload`, fd)
+  // ⚠️ `multipart/form-data` IS PASSED DELIBERATELY AND IS NEVER SENT.
+  // Its only job is to stop `apiClient`'s instance-level JSON content-type
+  // from reaching axios's `transformRequest`, which JSON-stringifies a
+  // FormData body when the content type says JSON — a `File` becomes `{}`.
+  // Axios then clears this header so the browser supplies the real one with
+  // its boundary. 21 of the 22 FormData callers in this app pass it; these two
+  // payroll uploads did not, and could never upload anything.
+  //
+  // `api-client.ts` now strips the JSON type for any FormData body, which is
+  // the load-bearing fix. This stays for consistency with the other 21 callers
+  // and so a revert there cannot silently re-break payroll.
+  const r = await apiClient.post<WeekUploadResult>(`${BASE}/weeks/upload`, fd, {
+    headers: { "Content-Type": "multipart/form-data" },
+  })
   return r.data
 }
 
@@ -325,9 +338,13 @@ export interface RegisterImportResult {
 export async function uploadRegister(file: File) {
   const fd = new FormData()
   fd.append("file", file)
+  // See the note on `uploadWeekHours` — same reason, same header, and this is
+  // the call that answered 422 in 41 ms on production having delivered 1,156
+  // bytes of a 1,708,810-byte register.
   const r = await apiClient.post<RegisterImportResult>(
     `${BASE}/register/upload`,
     fd,
+    { headers: { "Content-Type": "multipart/form-data" } },
   )
   return r.data
 }

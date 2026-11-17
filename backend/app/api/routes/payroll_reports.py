@@ -46,6 +46,7 @@ from app.services.payroll.data_gate import (
 from app.models.payroll_report import (
     R115_STATUSES,
     PayrollCheck,
+    PayrollRegisterImport,
     PayrollReportEmployee,
     PayrollRuleSet,
     PayrollUnionFormR115,
@@ -624,6 +625,62 @@ async def upload_register(
         "checks_failed": result.checks_failed,
         "summary_blocks_skipped": result.summary_blocks_skipped,
         "report": result.report,
+    }
+
+
+@router.get("/register/imports")
+def list_register_imports(
+    limit: int = 20,
+    current_user: User = Depends(require_permission(PAYROLL_READ)),
+    db: Session = Depends(get_db),
+):
+    """Recent register imports, newest first.
+
+    ⚠️ **THIS EXISTS SO A PAGE CAN STOP GUESSING WHETHER AN UPLOAD LANDED.**
+    Added 2026-11-17. Until now nothing could answer "did my import go
+    through?" from outside the upload's own response — so a client that got no
+    response had no way to find out, and the payroll setup page said "nothing
+    has been changed", which it could not know.
+
+    A failed request is the case this is for, and it is the one where the
+    client's own account is worth least: a CORS rejection, a timeout or a reset
+    on the RETURN leg produces a client-side error for work the server may have
+    completed. The only trustworthy account of whether a request arrived comes
+    from the thing it arrived at.
+
+    ⚠️ **NOT GATED ON THE DATA SWITCH, matching every other read on this
+    router.** The switch gates WRITES — `assert_payroll_data_enabled` is called
+    on the uploads and the reconcile, not on the reads. That asymmetry is
+    deliberate and documented in `data_gate.py`; this endpoint follows it
+    rather than introducing a third rule. It returns counts and filenames, not
+    pay data.
+    """
+    limit = max(1, min(limit, 100))
+    rows = (
+        db.query(PayrollRegisterImport)
+        .filter(PayrollRegisterImport.tenant_id == current_user.company_id)
+        .order_by(PayrollRegisterImport.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return {
+        "imports": [
+            {
+                "import_id": r.id,
+                "filename": r.filename,
+                "pages": r.pages,
+                "checks_parsed": r.checks_parsed,
+                "checks_inserted": r.checks_inserted,
+                "checks_duplicate": r.checks_duplicate,
+                "checks_failed": r.checks_failed,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                # The stored report, so a client that lost the upload response
+                # can still show the findings rather than only the counts.
+                "report": r.report or {},
+            }
+            for r in rows
+        ],
+        "count": len(rows),
     }
 
 

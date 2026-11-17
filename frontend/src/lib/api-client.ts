@@ -72,6 +72,49 @@ apiClient.interceptors.request.use((config) => {
     config.headers["X-Company-Slug"] = slug;
   }
 
+  // ⚠️ **A FormData PAYLOAD MUST NOT CARRY THE JSON CONTENT-TYPE ABOVE, AND
+  // THIS IS NOT COSMETIC — IT DECIDES WHETHER THE FILE IS SENT AT ALL.**
+  //
+  // axios 1.13.6, `transformRequest` (dist/.../axios.cjs:1714):
+  //
+  //     const isFormData = utils.isFormData(data);
+  //     if (isFormData) {
+  //       return hasJSONContentType ? JSON.stringify(formDataToJSON(data)) : data;
+  //     }
+  //
+  // With the instance default `Content-Type: application/json` set above,
+  // `hasJSONContentType` is true for EVERY request through this client — so a
+  // FormData body is JSON-stringified, and a `File` serialises to `{}`. A
+  // 1.7 MB PDF leaves the browser as about thirteen bytes of `{"file":{}}`.
+  // Axios would have cleared the header later (axios.cjs:4067) so the browser
+  // could set `multipart/form-data; boundary=...`, but by then `data` is a
+  // string and `isFormData(data)` is false, so the JSON type stands.
+  //
+  // Measured on production 2026-11-17: the payroll register upload answered
+  // **422 in 41 ms having received 1,156 bytes** of a 1,708,810-byte file. The
+  // page reported "the request did not go through"; the request went through
+  // perfectly and carried nothing.
+  //
+  // ⚠️ **21 of the 22 FormData callers in this app pass
+  // `headers: {"Content-Type": "multipart/form-data"}` and that is WHY they
+  // work — but not for the reason it looks like.** That header is never sent.
+  // Its entire function is to make `hasJSONContentType` false so the branch
+  // above is skipped. The two callers that did not pass it — `payroll/focus-api`
+  // and `onboarding/unified-import` — could never upload anything.
+  //
+  // So the fix belongs HERE rather than in a 23rd caller remembering a magic
+  // header: with the default removed for FormData, a caller can no longer get
+  // this wrong. CLAUDE.md §11 "removal before recognition".
+  if (typeof FormData !== "undefined" && config.data instanceof FormData) {
+    const h = config.headers as unknown as {
+      delete?: (name: string) => void;
+      "Content-Type"?: unknown;
+    };
+    // AxiosHeaders in an interceptor; fall back to a plain-object delete.
+    if (typeof h.delete === "function") h.delete("Content-Type");
+    else delete h["Content-Type"];
+  }
+
   return config;
 });
 

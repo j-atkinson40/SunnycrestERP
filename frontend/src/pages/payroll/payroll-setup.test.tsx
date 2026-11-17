@@ -19,12 +19,13 @@ import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-import PayrollSetup from "./payroll-setup"
+import PayrollSetup, { failureText, gotNoReply } from "./payroll-setup"
 
 const setupApi = vi.hoisted(() => ({
   getDataEnabled: vi.fn(),
   setDataEnabled: vi.fn(),
   reconcileRegisterPeople: vi.fn(),
+  listRegisterImports: vi.fn(),
 }))
 vi.mock("@/lib/payroll/setup-api", () => setupApi)
 
@@ -79,6 +80,7 @@ beforeEach(() => {
   })
   setupApi.reconcileRegisterPeople.mockResolvedValue(RECONCILE_DRY)
   focusApi.uploadRegister.mockResolvedValue(IMPORT_CLEAN)
+  setupApi.listRegisterImports.mockResolvedValue({ imports: [], count: 0 })
 })
 
 // ── the switch's state is the one fact this page exists to show ──────────────
@@ -425,5 +427,147 @@ describe("creating the employee list", () => {
     expect(await screen.findByTestId("roster-said")).toHaveTextContent(
       /no rule set effective/i,
     )
+  })
+})
+
+
+// ── the 2026-11-17 production failure, and the copy that lied about it ───────
+
+describe("failureText — what the page is allowed to claim", () => {
+  it("⚠️ never says 'nothing has been changed' — it cannot know that", () => {
+    // THE DEFECT, exactly. On 2026-11-17 the register upload answered 422 in
+    // 41 ms and the page printed "The request did not go through. Nothing has
+    // been changed." The request went through, the server replied, and whether
+    // anything changed is not in the error object.
+    for (const err of [
+      {},
+      new Error("boom"),
+      { response: { status: 500, data: {} } },
+      { response: { status: 422, data: { detail: [{ loc: ["body", "file"], msg: "Field required" }] } } },
+    ]) {
+      expect(failureText(err).toLowerCase()).not.toContain("nothing has been changed")
+    }
+  })
+
+  it("⚠️ surfaces FastAPI's 422 list, naming the field — the shape that was swallowed", () => {
+    // `detail` is a LIST here. The old code read only a string or
+    // `detail.message`, so this fell through to the generic sentence and the
+    // server's own account of the refusal was discarded.
+    const said = failureText({
+      response: {
+        status: 422,
+        data: { detail: [{ loc: ["body", "file"], msg: "Field required", type: "missing" }] },
+      },
+    })
+    expect(said).toContain("422")
+    expect(said).toContain("file")
+    expect(said).toContain("Field required")
+  })
+
+  it("renders a stated string refusal verbatim", () => {
+    expect(
+      failureText({ response: { status: 409, data: { detail: "no rule set effective on 2026-10-01" } } }),
+    ).toBe("no rule set effective on 2026-10-01")
+  })
+
+  it("renders a structured refusal's message verbatim", () => {
+    expect(
+      failureText({
+        response: {
+          status: 403,
+          data: { detail: { code: "payroll_data_disabled", message: "Payroll data loading is turned off." } },
+        },
+      }),
+    ).toBe("Payroll data loading is turned off.")
+  })
+
+  it("with NO response, says the state is unknown and that it will check", () => {
+    const said = failureText(new Error("Network Error"))
+    expect(said).toContain("No reply from the server")
+    expect(said).toContain("may still be working")
+    expect(gotNoReply(new Error("Network Error"))).toBe(true)
+    expect(gotNoReply({ response: { status: 500, data: {} } })).toBe(false)
+  })
+})
+
+describe("after a no-reply, the page CHECKS the server instead of guessing", () => {
+  async function switchedOn() {
+    setupApi.getDataEnabled.mockResolvedValue({
+      setting: "payroll_data_enabled",
+      enabled: true,
+    })
+    render(<PayrollSetup />)
+    await screen.findByTestId("switch-state")
+  }
+
+  async function attempt(user: ReturnType<typeof userEvent.setup>) {
+    await user.upload(
+      screen.getByTestId("register-file"),
+      new File(["%PDF"], "register.pdf", { type: "application/pdf" }),
+    )
+    await user.click(screen.getByTestId("register-upload"))
+    await user.click(screen.getByTestId("register-upload-yes"))
+  }
+
+  it("⚠️ a no-reply whose work DID land is reported as landed, not as a failure", async () => {
+    // CLAUDE.md §11: a client-side error can be evidence the server already
+    // did the thing. Telling James "nothing has been changed" here would send
+    // him to re-upload a register that is already in.
+    const user = userEvent.setup()
+    focusApi.uploadRegister.mockRejectedValue(new Error("Network Error"))
+    setupApi.listRegisterImports.mockResolvedValue({
+      count: 1,
+      imports: [{
+        import_id: "imp-9", filename: "register.pdf", pages: 262,
+        checks_parsed: 1275, checks_inserted: 1275, checks_duplicate: 0,
+        checks_failed: 0, created_at: "2026-11-17T15:14:25Z", report: {},
+      }],
+    })
+    await switchedOn()
+    await attempt(user)
+
+    const said = await screen.findByTestId("register-said")
+    expect(said).toHaveTextContent(/server DID save the import/i)
+    expect(said).toHaveTextContent("1275")
+    expect(said).toHaveTextContent(/Nothing needs re-uploading/i)
+  })
+
+  it("a no-reply whose work did NOT land says so, and that a retry is safe", async () => {
+    const user = userEvent.setup()
+    focusApi.uploadRegister.mockRejectedValue(new Error("Network Error"))
+    setupApi.listRegisterImports.mockResolvedValue({ imports: [], count: 0 })
+    await switchedOn()
+    await attempt(user)
+
+    const said = await screen.findByTestId("register-said")
+    expect(said).toHaveTextContent(/is NOT there, so nothing was saved/i)
+    expect(said).toHaveTextContent(/safe\s+to try again/i)
+  })
+
+  it("⚠️ when the CHECK ITSELF fails, it says the state is still unknown", async () => {
+    // The honest third branch. Falling back to "nothing has been changed"
+    // here would be the original defect returning by a side door.
+    const user = userEvent.setup()
+    focusApi.uploadRegister.mockRejectedValue(new Error("Network Error"))
+    setupApi.listRegisterImports.mockRejectedValue(new Error("Network Error"))
+    await switchedOn()
+    await attempt(user)
+
+    const said = await screen.findByTestId("register-said")
+    expect(said).toHaveTextContent(/still unknown/i)
+    expect(said).toHaveTextContent(/Do not re-upload/i)
+    expect(said.textContent?.toLowerCase()).not.toContain("nothing has been changed")
+  })
+
+  it("a server REFUSAL is not followed by a check — the server already answered", async () => {
+    const user = userEvent.setup()
+    focusApi.uploadRegister.mockRejectedValue({
+      response: { status: 422, data: { detail: [{ loc: ["body", "file"], msg: "Field required" }] } },
+    })
+    await switchedOn()
+    await attempt(user)
+
+    expect(await screen.findByTestId("register-said")).toHaveTextContent("Field required")
+    expect(setupApi.listRegisterImports).not.toHaveBeenCalled()
   })
 })

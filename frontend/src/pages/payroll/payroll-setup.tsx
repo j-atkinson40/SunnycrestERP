@@ -39,6 +39,7 @@ import { uploadRegister } from "@/lib/payroll/focus-api"
 import type { RegisterImportResult } from "@/lib/payroll/focus-api"
 import {
   getDataEnabled,
+  listRegisterImports,
   reconcileRegisterPeople,
   setDataEnabled,
   type DataSwitchState,
@@ -57,19 +58,74 @@ const BUTTON =
 const QUIET =
   "rounded-lg px-3 py-1.5 text-body-sm text-content-muted hover:text-content-strong"
 
-/** What a request said when it failed. Rendered verbatim where the server sent
- *  a stated refusal — "payroll data is turned off", "this tenant has no
- *  rulebook" — because a generic "something went wrong" would send an
- *  administrator looking in the wrong place. */
-function failureText(err: unknown): string {
-  const detail = (err as { response?: { data?: { detail?: unknown } } })
-    ?.response?.data?.detail
+/**
+ * What a request said when it failed.
+ *
+ * ⚠️ **"NOTHING HAS BEEN CHANGED" USED TO BE THE FALLBACK HERE, AND IT WAS A
+ * CLAIM THIS FUNCTION CANNOT MAKE.** Measured on production 2026-11-17: the
+ * register upload answered **422 in 41 ms**, and this function printed "The
+ * request did not go through. Nothing has been changed." Both halves were
+ * wrong. The request went through; the server replied; and whether anything
+ * changed is not knowable from an error object.
+ *
+ * Two failures were being collapsed into one sentence:
+ *
+ *   `err.response` PRESENT   the server answered. Its words are the answer,
+ *                            and a generic line hides them.
+ *   `err.response` ABSENT    no reply reached the browser. The work may have
+ *                            completed anyway — a CORS rejection, a timeout or
+ *                            a reset on the RETURN leg all look like this — so
+ *                            the only honest line says the state is unknown
+ *                            and goes and looks.
+ *
+ * ⚠️ **AND FastAPI's 422 DETAIL IS A LIST**, not a string and not an object
+ * with `message`. The old code read only those two shapes, so every validation
+ * refusal — including the one that actually happened — fell through to the
+ * generic sentence and the server's own account was discarded.
+ */
+export function failureText(err: unknown): string {
+  const response = (err as { response?: { status?: number; data?: unknown } })
+    ?.response
+
+  if (!response) {
+    // No reply at all. Says what is NOT known, and the caller follows it with
+    // a real check against the server's record.
+    return "No reply from the server. It may still be working; this page will check what was saved."
+  }
+
+  const data = response.data as { detail?: unknown } | undefined
+  const detail = data?.detail
+
   if (typeof detail === "string") return detail
+  if (Array.isArray(detail)) {
+    // FastAPI validation errors: [{loc, msg, type}, ...]. Rendered with the
+    // field, because "field required" without saying WHICH field is the same
+    // uselessness as the generic sentence this replaced.
+    const parts = detail
+      .map((d) => {
+        const e = d as { loc?: unknown[]; msg?: unknown }
+        const where = Array.isArray(e.loc)
+          ? e.loc.filter((x) => x !== "body").join(".")
+          : ""
+        const msg = typeof e.msg === "string" ? e.msg : "invalid"
+        return where ? `${where}: ${msg}` : msg
+      })
+      .filter(Boolean)
+    if (parts.length > 0) {
+      return `The server rejected the request (${response.status}): ${parts.join("; ")}`
+    }
+  }
   if (detail && typeof detail === "object") {
     const msg = (detail as { message?: unknown }).message
     if (typeof msg === "string") return msg
   }
-  return "The request did not go through. Nothing has been changed."
+  return `The server refused the request (${response.status}).`
+}
+
+/** True when no reply reached the browser, so the server's state is unknown
+ *  and must be read rather than assumed. */
+export function gotNoReply(err: unknown): boolean {
+  return !(err as { response?: unknown })?.response
 }
 
 /**
@@ -303,7 +359,43 @@ function RegisterCard({ enabled }: { enabled: boolean | null }) {
     try {
       setResult(await uploadRegister(chosen))
     } catch (err) {
-      setFailed(failureText(err))
+      const said = failureText(err)
+      if (!gotNoReply(err)) {
+        // The server answered. Its words are the answer.
+        setFailed(said)
+        return
+      }
+      // ⚠️ **NO REPLY REACHED US, SO WHETHER ANYTHING WAS SAVED IS UNKNOWN AND
+      // WE GO AND LOOK.** A CORS rejection, a timeout or a reset on the RETURN
+      // leg all produce this, and in every one of them the server may have
+      // finished the work. Asserting "nothing has been changed" here was the
+      // original defect; a retry on a false "nothing happened" is a second
+      // write (safe here only because the import is idempotent).
+      setFailed(said)
+      try {
+        const log = await listRegisterImports(3)
+        const mine = log.imports.find((i) => i.filename === chosen.name)
+        if (mine) {
+          setFailed(
+            `No reply reached this page, but the server DID save the import: ` +
+              `${mine.checks_inserted ?? 0} checks from ${mine.filename}. ` +
+              `Nothing needs re-uploading.`,
+          )
+        } else {
+          setFailed(
+            `No reply reached this page. Checked the server's import log and ` +
+              `${chosen.name} is NOT there, so nothing was saved — it is safe ` +
+              `to try again.`,
+          )
+        }
+      } catch {
+        // The check itself failed. Say that, rather than silently falling back
+        // to the sentence that started all this.
+        setFailed(
+          `${said} The follow-up check could not reach the server either, so ` +
+            `what was saved is still unknown. Do not re-upload until it answers.`,
+        )
+      }
     } finally {
       setBusy(false)
     }

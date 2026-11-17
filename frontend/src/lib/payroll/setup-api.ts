@@ -103,4 +103,35 @@ export async function reconcileRegisterPeople(apply: boolean) {
   return r.data
 }
 
+// ── the import log — so a page can CHECK rather than guess ───────────────────
+
+export interface RegisterImportRow {
+  import_id: string
+  filename: string | null
+  pages: number | null
+  checks_parsed: number | null
+  checks_inserted: number | null
+  checks_duplicate: number | null
+  checks_failed: number | null
+  created_at: string | null
+  report: RegisterImportResult["report"]
+}
+
+/**
+ * Recent register imports, newest first.
+ *
+ * ⚠️ **FOR THE CASE WHERE THE CLIENT'S OWN ACCOUNT IS WORTH LEAST.** A CORS
+ * rejection, a timeout or a reset on the RETURN leg gives the browser an error
+ * for work the server may already have committed. The server's record is the
+ * only trustworthy account of whether a request arrived, so when no response
+ * comes back the page asks this instead of asserting that nothing changed.
+ */
+export async function listRegisterImports(limit = 5) {
+  const r = await apiClient.get<{ imports: RegisterImportRow[]; count: number }>(
+    `${BASE}/register/imports`,
+    { params: { limit } },
+  )
+  return r.data
+}
+
 export type { RegisterImportResult }
