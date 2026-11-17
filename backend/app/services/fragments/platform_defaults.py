@@ -96,6 +96,7 @@ ANOMALY_WATCHLIST = "anomaly_watchlist"
 COMPLIANCE_FLAGS = "compliance_flags"
 TASKS_DUE_TODAY = "tasks_due_today"
 WEEKLY_DUES = "weekly_dues"
+PAYROLL_WEEK_OPEN = "payroll_week_open"
 
 
 # ── (2) CONDITIONS ───────────────────────────────────────────────────
@@ -567,6 +568,122 @@ def _expense_posting_map_condition(db: Session, *, user: User) -> Sequence[Fragm
 # ── Payroll 5a ───────────────────────────────────────────────────────────
 
 
+def _payroll_week_open_condition(
+    db: Session, *, user: User
+) -> Sequence[FragmentInstance]:
+    """The week being worked, when it has no hours yet.
+
+    ⚠️ **THIS IS THE NOTE HALF OF THE 2026-11-17 BLOCKER, AND IT WAS MISSED.**
+    James asked for the current-week line in BOTH places — the note and the
+    Payroll page. PR B shipped the Payroll page and reported only that, so a
+    payroll user still landed on "Nothing needs saying today" with no way in.
+    The note is the first screen after sign-in and the one she lands on.
+
+    ⚠️ **A PROMPT, NOT A NON-PROMPT, AND THE DISTINCTION DECIDES WHETHER SHE
+    SEES IT.** Non-prompts render only on CHANGE against the previous note's
+    digest for the same subject — correct for an observation, fatal here: the
+    line would appear the first morning and vanish on every reload and every
+    day after, while the hours were still missing. This carries a bounded
+    decision (upload the week) and a declared ending (the week gains hours),
+    which is exactly what makes it a prompt, and prompts render whenever their
+    condition holds.
+
+    ⚠️ **AND IT STOPS THE MOMENT THE WEEK HAS HOURS**, so it is not a standing
+    line wearing a prompt's clothes. Once uploaded, `weekly_dues` takes over
+    with the figures.
+
+    The switch is checked first, as `_weekly_dues_condition` does: a tenant
+    holding no payroll data must not be invited to load some from its note.
+    """
+    from app.models.company import Company
+    from app.models.payroll_report import PayrollWeek
+    from app.services.payroll.data_gate import is_payroll_data_enabled
+    from app.services.payroll.rules import DEFAULT_RULES
+    from app.services.payroll.week_calendar import current_payroll_week
+
+    company = db.query(Company).filter(Company.id == user.company_id).first()
+    if company is None or not is_payroll_data_enabled(company):
+        return []
+
+    week = current_payroll_week(
+        date.today(),
+        cutoff_weekday=DEFAULT_RULES.payentry_cutoff_weekday,
+        cutoff_time=DEFAULT_RULES.payentry_cutoff_time,
+    )
+    row = (
+        db.query(PayrollWeek)
+        .filter(PayrollWeek.tenant_id == user.company_id,
+                PayrollWeek.week_end_date == week.week_end_date)
+        .first()
+    )
+    # ⚠️ A ROW WITH NO LINES IS STILL "NO HOURS". An upload that parsed nothing
+    # creates the week; treating its mere existence as done would withdraw the
+    # line while the hours were still missing.
+    if row is not None and row.status not in ("awaiting_hours", "created"):
+        return []
+
+    # ⚠️ NO `%-d` OR `%-I`. Those are glibc extensions; the platform this runs
+    # on is not guaranteed to be the one it was written on, and a strftime that
+    # raises inside a condition is SWALLOWED by emission ("fragment condition
+    # failed, skipping") — a silent empty note, which is the very failure this
+    # fragment exists to fix. Day and hour are formatted from the integers.
+    def _md(d) -> str:
+        return f"{d:%b} {d.day}"
+
+    hour = week.cutoff_at.hour % 12 or 12
+    ampm = "am" if week.cutoff_at.hour < 12 else "pm"
+    cutoff_words = (
+        f"{week.cutoff_at:%A} {hour}:{week.cutoff_at:%M}{ampm}"
+    )
+    # ⚠️ A PLAIN LIST, THEN ONE `compose`. Every other fragment here does the
+    # same; the first version composed twice, and the inner call returned a
+    # payload where a span list was expected. It raised, emission swallowed it,
+    # and the note rendered empty — passing its 200 and saying nothing.
+    # ⚠️ **EVERY SPAN IS `plain`, AND THAT IS A SUBSTANTIVE CLAIM, NOT A
+    # WORKAROUND.** The first version marked the week number and the cutoff as
+    # `measured` with no reference, and `compose` refused it: "the link IS the
+    # provenance mark; a measured span without one is a claim wearing a
+    # provenance mark it has not earned." The guard is right twice over.
+    #
+    # Neither value is MEASURED in the sense that mark carries:
+    #   • the week number is DERIVED from today's date — there is no record to
+    #     link to, because the week has no row yet, which is the entire reason
+    #     this fragment exists;
+    #   • the cutoff is an `assumed` rule nobody has confirmed. Dressing an
+    #     assumption as a measurement is exactly the confusion `rule_provenance`
+    #     was built to remove.
+    #
+    # When the hours land, `weekly_dues` takes over and ITS total is genuinely
+    # measured — it links to the report that produced it.
+    spans = [
+        plain(
+            f"Week {week.week_number} "
+            f"({_md(week.week_start_date)}–{_md(week.week_end_date)}) "
+            f"has no hours yet. Payentry needs it by {cutoff_words}."
+        ),
+    ]
+    return [
+        FragmentInstance(
+            # (5) IDENTITY: the WEEK, by its end date — which exists before any
+            # row does, and is the only stable name this subject has.
+            subject_id=week.week_end_date.isoformat(),
+            payload=compose(spans, title="This week", priority=90),
+            # (3) PREDICATE — carried into the Focus. `week_end`, not
+            # `week_id`: the row does not exist yet, and addressing it by id
+            # is precisely what made the upload unreachable.
+            predicate={"week_end": week.week_end_date.isoformat()},
+            # (2) The enumerable inputs this decision was made from. The
+            # field is `condition_inputs`, not `snapshot` — the first version
+            # guessed the name from a sibling comment and `FragmentInstance`
+            # raised `unexpected keyword argument 'snapshot'`, which emission
+            # then SWALLOWED into "condition failed, skipping" and an empty
+            # note. A dataclass is the authority on its own field names.
+            condition_inputs={"week_number": week.week_number,
+                              "row_exists": row is not None},
+        )
+    ]
+
+
 def _weekly_dues_condition(
     db: Session, *, user: User
 ) -> Sequence[FragmentInstance]:
@@ -766,6 +883,47 @@ def seed() -> None:
                             "{actor} acknowledged {count} task{plural} due today"),
                     Outcome("dismissed",
                             "{actor} dismissed {count} task{plural} due today"),
+                ),
+            ),
+        )
+    )
+
+    register_fragment(
+        FragmentDeclaration(
+            fragment_id=PAYROLL_WEEK_OPEN,
+            label="This week",
+            # (1) AUDIENCE — the same permission the Focus and the page use.
+            audience=Audience(required_permission="payroll.view"),
+            # (6) AREA — payroll, so an area-limited payroll user sees it and
+            # nobody else's note acquires a payroll line.
+            area="payroll",
+            kind="prompt",
+            condition=_payroll_week_open_condition,
+            # (3) TARGET — the weekly Focus, scoped to a week that may have no
+            # row. Kebab-case, like every registered Focus id.
+            target_surface="focus",
+            target_key="weekly-payroll",
+            # ⚠️ **`payroll_week_end`, NOT `payroll_week`, AND THE DIFFERENCE
+            # IS A WORKING LINK VERSUS A BROKEN ONE.** The frontend's
+            # `focusTarget` maps subject kinds to query parameters, and
+            # `payroll_week` means `week_id=<subject_id>`. This subject has no
+            # row, so its id is a DATE — and `week_id=2026-11-14` would open
+            # the Focus on a week that cannot be fetched, landing on "could
+            # not be loaded" from a line that exists to offer the upload.
+            #
+            # A week addressed by its end date is genuinely a different kind
+            # of subject from a week addressed by its row, so it gets its own
+            # kind rather than a shape-sniffing special case on the id.
+            subject_kind="payroll_week_end",
+            # (4) END TRANSITION — it ends when the hours arrive, which is the
+            # one thing it is asking for. One outcome, because there is one way
+            # out: a week with hours.
+            end_transition=EndTransition(
+                entity_kind="payroll_week",
+                resolved_when="payroll_week_has_hours",
+                outcomes=(
+                    Outcome("imported",
+                            "{actor} uploaded week {count}'s hours"),
                 ),
             ),
         )
