@@ -265,6 +265,28 @@ PLANNED_ROLE_AREAS: dict[str, tuple[str, ...]] = {
 COMPOSED_SURFACES: tuple[tuple[str, str], ...] = (
     ("note",        "The daily note. First thing after sign-in — the payroll "
                     "user's error page IS this surface refusing."),
+    # ⚠️ **[SUPERSEDED 2026-11-17 — NOT NEEDED, AND THE ROUTE IS ALREADY
+    # DENIED.]** The original wording is kept below because its reasoning is
+    # sound and was overtaken by a product ruling rather than shown wrong.
+    #
+    # TWO CORRECTIONS. First, `POST /command-bar/query` is NOT and never was in
+    # `COMMON_ROUTES` — a Phase 0 report claimed it was, having read the
+    # `command-bar` entries in `READ_ONLY_WRITE_VERBS` (which POSTs are reads)
+    # and attributed them to this file's other tuple by line position. The
+    # guard denies it as untagged today: a payroll-limited caller gets 403
+    # `area_restricted`, pinned by four tests in `test_area_limited_roles.py`.
+    #
+    # Second, James's ruling 2 of 2026-11-17: Susan gets Opas's own command
+    # line and NEVER the platform command bar, so no area-limited role has a
+    # reachable caller for this route. Per-RESULT filtering inside
+    # `services/command_bar/` is therefore not built — and `services/command_bar/`
+    # does contain no area predicate at all, which was the true half of that
+    # report.
+    #
+    # ⚠️ **IT BECOMES NECESSARY THE DAY A LIMITED ROLE IS GIVEN THE PLATFORM
+    # BAR.** One response mixes eight entity types, so the filter would belong
+    # on each ROW and cannot be a router tag — which is what the sentence below
+    # already says, and why it is kept rather than deleted.
     ("command-bar", "Opas. The stated primary entrance; Sue's Opas should know "
                     "payroll and nothing else. Must resolve per RESULT."),
     ("core",        "The legacy command/search endpoints Opas still calls."),

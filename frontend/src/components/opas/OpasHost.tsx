@@ -18,6 +18,16 @@
  * binds Cmd+K to the command bar, and taking it would change existing command-bar
  * behaviour. The sphere click is the entrance. Logged in STATE as James's call after the walk.
  *
+ * ⚠️ **[SUPERSEDED 2026-11-17 by James's ruling 1.]** The paragraph above is kept as
+ * written because its reasoning holds for the shell it was written about. The ruling:
+ * in the NEW shell there is no platform command bar, so ⌘K opens Opas and there is
+ * nothing to take. The admin shell keeps today's behaviour until it moves to the new
+ * shell, at which point Opas replaces the platform command bar everywhere.
+ *
+ * So the binding is conditional on the shell, not refused outright. Not implemented
+ * here — it belongs to the new-shell PR, with the sphere brought up to
+ * `docs/prototypes/2026-11-17-opas-sphere.html`.
+ *
  * ⚠️ ADMIN-ONLY, via the EXISTING role check (`useAuth().isAdmin`). No new flag mechanism.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"

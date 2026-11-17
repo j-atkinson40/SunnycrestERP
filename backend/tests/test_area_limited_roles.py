@@ -876,3 +876,87 @@ def test_the_planned_role_lists_are_well_formed_and_not_yet_enforced():
             assert not r.get("limited_to_areas"), (
                 f"{r['slug']} has a seeded area limit — that is Phase B's job"
             )
+
+
+# ── the platform command bar, pinned as OUT of reach ────────────────────────
+#
+# ⚠️ **PINNING, NOT CLOSING — AND THE DIFFERENCE IS THE WHOLE REASON THIS
+# BLOCK EXISTS.** A Phase 0 report on 2026-11-17 named `POST
+# /command-bar/query` as a live area hole: "in COMMON_ROUTES, so the guard
+# steps aside, and the resolver filters nothing". The second half is true. The
+# first half was FALSE — the `command-bar` hits in `areas.py` sit in
+# `READ_ONLY_WRITE_VERBS` (which POSTs are reads), not in `COMMON_ROUTES`
+# (which routes skip the area check), and they were attributed to the wrong
+# tuple by their line position. `is_common("POST", "/command-bar/query")` is
+# False and `COMMON_ROUTES` holds no command entry at all.
+#
+# So nothing was closed here. What was missing was any test SAYING so, which is
+# why a misreading could stand for a day and be escalated to a security fix.
+# These assertions make the absence permanent: adding the route to
+# COMMON_ROUTES "for convenience" reddens them.
+#
+# ⚠️ Per-RESULT filtering in `services/command_bar/` is deliberately NOT built.
+# James's ruling 2 of 2026-11-17: Susan gets Opas's own command line and never
+# the platform bar, so a limited role has no reachable caller for it. It
+# becomes necessary only if a limited role is ever given the platform bar —
+# recorded in `COMPOSED_SURFACES` beside the `command-bar` entry.
+
+COMMAND_BAR = "/api/v1/command-bar/query"
+
+
+def test_a_payroll_limited_user_is_refused_the_platform_command_bar(client, actors):
+    r = client.post(COMMAND_BAR, json={"query": "invoice"},
+                    headers={"Authorization": f"Bearer {actors['limited']}",
+                             **HEADERS_SLUG})
+    assert r.status_code == 403, f"{r.status_code}: {r.text[:200]}"
+    assert r.json()["detail"]["code"] == "area_restricted"
+
+
+def test_the_refusal_is_the_AREA_guard_and_not_a_bad_request(client, actors):
+    """⚠️ A 403 could be the permission gate, a 422 a malformed body. The point
+    is that the AREA check refuses her, so the reason is asserted rather than
+    the number alone — and the body names the areas she does have."""
+    r = client.post(COMMAND_BAR, json={"query": "invoice"},
+                    headers={"Authorization": f"Bearer {actors['limited']}",
+                             **HEADERS_SLUG})
+    detail = r.json()["detail"]
+    assert detail["allowed_areas"] == ["payroll"], detail
+    assert "not part of any area" in detail["message"], detail
+
+
+def test_an_unlimited_user_is_NOT_refused_it(client, actors):
+    """⚠️ THE POSITIVE CONTROL. Without it, a guard that refused EVERYONE would
+    satisfy the two assertions above and look like area isolation."""
+    r = client.post(COMMAND_BAR, json={"query": "invoice"},
+                    headers={"Authorization": f"Bearer {actors['unlimited']}",
+                             **HEADERS_SLUG})
+    assert r.status_code != 403, f"the unlimited user was refused: {r.text[:200]}"
+
+
+def test_a_role_limited_to_NOTHING_is_also_refused(client, actors):
+    """`limited_to_areas = []` is "limited to nothing", a real and deliberate
+    state distinct from NULL. It must not fall through to unrestricted."""
+    # ⚠️ THROUGH THE ORM, BECAUSE `limited_to_areas` IS **jsonb**, NOT text[].
+    # The first version of this test wrote `'{}'` and restored a Python list,
+    # and psycopg2 refused both: "column is of type jsonb but expression is of
+    # type text[]". It errored in setup and teardown, so the assertion below
+    # never executed — an erroring test asserts nothing (CLAUDE.md §11).
+    from app.database import SessionLocal
+    from app.models.role import Role
+
+    db = SessionLocal()
+    try:
+        role = db.query(Role).filter(Role.id == LIMITED_ROLE_ID).one()
+        before = role.limited_to_areas
+        role.limited_to_areas = []
+        db.commit()
+        r = client.post(COMMAND_BAR, json={"query": "invoice"},
+                        headers={"Authorization": f"Bearer {actors['limited']}",
+                                 **HEADERS_SLUG})
+        assert r.status_code == 403, f"{r.status_code}: {r.text[:200]}"
+        assert r.json()["detail"]["allowed_areas"] == [], r.json()["detail"]
+    finally:
+        role = db.query(Role).filter(Role.id == LIMITED_ROLE_ID).one()
+        role.limited_to_areas = before
+        db.commit()
+        db.close()
