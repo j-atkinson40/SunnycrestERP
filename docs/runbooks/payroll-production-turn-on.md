@@ -417,7 +417,18 @@ checks = db.query(PayrollCheck).filter(PayrollCheck.tenant_id == co.id).all()
 print(f"checks            {len(checks)}        expect 1275")
 print(f"distinct emp ids  {len({c.emp_id for c in checks})}        expect 30")
 print(f"distinct names    {len({c.person for c in checks})}        expect 30")
-print(f"checks with lines {sum(1 for c in checks if c.lines)}        expect 1275")
+# ⚠️ 1274, NOT 1275, AND THE ONE WITHOUT LINES IS NOT A DEFECT. Measured on
+# production 2026-11-17: emp 25, check 4369, 2026-09-10, page 256 — net 0.00,
+# earnings 0.00, hours 0.0000, deductions 0.00. A genuine zero-dollar check with
+# nothing to itemise, internally consistent, and that employee carries no dues
+# line on any check so it cannot touch the union figures.
+#
+# ⚠️ THIS LINE HAD NO ASSERTION BEHIND IT AND PRINTED `1274 expect 1275` WHILE
+# THE STEP REPORTED "ALL CHECKS PASSED". A printed expectation with nothing
+# enforcing it is a figure nobody has to satisfy — exactly the shape the
+# positive control below exists to prevent, one line higher up.
+with_lines = sum(1 for c in checks if c.lines)
+print(f"checks with lines {with_lines}        expect 1274 (one all-zero check)")
 
 union = [c for c in checks if actual_dues(c)]
 match = 0
@@ -442,6 +453,11 @@ print(f"                  expect 2026-10-01/08/15/22/29")
 assert checks, "NO CHECKS IMPORTED — every figure above is meaningless"
 assert len(checks) == 1275, f"expected 1275 checks, got {len(checks)}"
 assert len({c.emp_id for c in checks}) == 30
+assert with_lines == 1274, (
+    f"expected 1274 checks to carry lines, got {with_lines} — a CHANGE here is "
+    "a finding either way: a new lineless check, or the zero-dollar one gaining "
+    "lines"
+)
 assert len(union) == 629, f"expected 629 union checks, got {len(union)}"
 assert match == 553, f"expected 553 dues matches, got {match}"
 assert t.totals["row_count"] == 13

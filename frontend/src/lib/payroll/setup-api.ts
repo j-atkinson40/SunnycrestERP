@@ -134,4 +134,28 @@ export async function listRegisterImports(limit = 5) {
   return r.data
 }
 
+// ── the roster, cheaply ──────────────────────────────────────────────────────
+
+export interface RosterStatus {
+  employees: number
+  with_display_name: number
+  union_members: number
+  /** From the AUDIT LOG, because the audit row is written only on apply. */
+  last_reconciled_at: string | null
+}
+
+/**
+ * Four counts and a timestamp.
+ *
+ * ⚠️ **THIS IS NOT A DRY RUN, AND THE DIFFERENCE IS THE WHOLE POINT.** The
+ * obvious follow-up check after a lost reply was "re-run the reconcile with
+ * `apply=false` and see whether any `fill` proposals remain" — which is the
+ * same call that timed out: a dry run measured **153 s** against production.
+ * A check that costs what the thing it checks cost is not a check.
+ */
+export async function getRosterStatus() {
+  const r = await apiClient.get<RosterStatus>(`${BASE}/register/people/status`)
+  return r.data
+}
+
 export type { RegisterImportResult }

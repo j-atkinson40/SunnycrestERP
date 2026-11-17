@@ -46,6 +46,7 @@ HEADERS = {"X-Company-Slug": "testco"}
 ADMIN_UID = "register-admin"
 UPLOAD = "/api/v1/payroll-reports/register/upload"
 IMPORTS = "/api/v1/payroll-reports/register/imports"
+PEOPLE_STATUS = "/api/v1/payroll-reports/register/people/status"
 
 
 def H(token):
@@ -402,6 +403,109 @@ def test_the_log_NEVER_shows_another_tenant_s_imports(client, token):
             drop_company(db, company_id=other_id,
                          child_tables=("payroll_register_imports",))
         db.close()
+
+
+# ── the roster status: a check that costs less than what it checks ──────────
+#
+# ⚠️ ADDED 2026-11-17. The reconcile answered **499 after 125 s** in a browser
+# and committed 19 s later; the page promised to check what was saved and had
+# nothing cheap enough to ask. The first fix proposed was "re-run the dry run
+# and see whether `fill` proposals remain" — the SAME call, measured at 153 s.
+
+
+def test_the_roster_status_is_four_counts_and_a_timestamp(client, token):
+    r = client.get(PEOPLE_STATUS, headers=H(token))
+    assert r.status_code == 200, r.text[:200]
+    body = r.json()
+    assert set(body) == {"employees", "with_display_name", "union_members",
+                         "last_reconciled_at"}
+    # Shapes, not values — the counts depend on whatever this tenant holds.
+    assert isinstance(body["employees"], int)
+    assert isinstance(body["with_display_name"], int)
+    assert isinstance(body["union_members"], int)
+
+
+def test_the_roster_status_requires_a_signed_in_caller(client):
+    r = client.get(PEOPLE_STATUS, headers=HEADERS)
+    assert r.status_code in (401, 403), r.status_code
+
+
+def test_the_roster_status_is_cheap(client, token):
+    """⚠️ **THE POINT OF THE ENDPOINT, ASSERTED AS A QUERY COUNT.**
+
+    It exists only because the obvious check was the thing that timed out. An
+    implementation that grew a per-check loop would be useless for its one job
+    and would look fine in every other test, so the cost is pinned here.
+
+    Four counts and one audit lookup. The ceiling is deliberately loose — this
+    guards against an N+1, not against one extra index scan.
+    """
+    from app.database import engine
+    from sqlalchemy import event
+
+    seen = []
+
+    def before(conn, cur, stmt, params, ctx, many):
+        seen.append(stmt)
+
+    event.listen(engine, "before_cursor_execute", before)
+    try:
+        r = client.get(PEOPLE_STATUS, headers=H(token))
+    finally:
+        event.remove(engine, "before_cursor_execute", before)
+    assert r.status_code == 200
+    # POSITIVE CONTROL: the instrument saw something, so a low count below is
+    # not an instrument that never fired.
+    assert len(seen) > 0, "the query counter captured nothing"
+    assert len(seen) <= 12, f"{len(seen)} statements for four counts:\n" + "\n".join(
+        s.split(chr(10))[0][:80] for s in seen)
+
+
+def test_the_reconcile_does_not_load_lines_one_check_at_a_time(client, token,
+                                                               register_bytes,
+                                                               switch):
+    """⚠️ **THE N+1 THAT MADE THE RECONCILE TAKE TWO MINUTES.**
+
+    Measured against production 2026-11-17, instrumented at the cursor:
+    1,275 `payroll_check_lines` SELECTs — one per check — accounting for
+    105 s of a 111 s run. Every fact the reconcile derives comes from a
+    check's lines, so a lazy relationship means a round trip per check.
+
+    `selectinload` makes it a fixed handful. Asserted as a count rather than a
+    duration, because a duration on this hardware would be a flake.
+    """
+    from sqlalchemy import event
+
+    from app.database import SessionLocal, engine
+    from app.services.payroll.register_people import reconcile
+    from tests.test_payroll_register_people import DEFAULT_RULES
+
+    _upload(client, token, register_bytes)
+
+    line_queries = []
+
+    def before(conn, cur, stmt, params, ctx, many):
+        if "payroll_check_lines" in stmt:
+            line_queries.append(stmt)
+
+    db = SessionLocal()
+    event.listen(engine, "before_cursor_execute", before)
+    try:
+        proposals, facts = reconcile(
+            db, tenant_id=TESTCO_ID, rules_for_date=lambda when: DEFAULT_RULES)
+    finally:
+        event.remove(engine, "before_cursor_execute", before)
+        db.close()
+
+    # POSITIVE CONTROL FIRST: the reconcile really did read the lines, so a low
+    # count is eager loading rather than a reconcile that read nothing.
+    assert facts, "the reconcile saw no employees — the count below proves nothing"
+    assert len(line_queries) >= 1, "no line query at all; the instrument is blind"
+    # One eager load, not one per check.
+    assert len(line_queries) <= 3, (
+        f"{len(line_queries)} line queries for "
+        f"{register_fixture.EXPECTED_CHECKS} checks — the N+1 is back"
+    )
 
 
 def test_the_duplicate_count_is_not_simply_always_zero(client, token,

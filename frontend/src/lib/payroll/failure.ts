@@ -41,9 +41,17 @@ export function failureText(err: unknown): string {
     ?.response
 
   if (!response) {
-    // No reply at all. Says what is NOT known, and the caller follows it with
-    // a real check against the server's record.
-    return "No reply from the server. It may still be working; this page will check what was saved."
+    // ⚠️ **THIS SENTENCE NO LONGER PROMISES A CHECK, AND THAT IS THE FIX.**
+    // It used to end "…this page will check what was saved" — a promise made
+    // by a SHARED helper and kept by only one of its callers. On 2026-11-17 the
+    // roster card showed exactly that sentence and then went silent, because
+    // `RosterCard` had no follow-up at all.
+    //
+    // A shared message cannot promise per-caller behaviour. So this states only
+    // what is true everywhere — the outcome is unknown — and a caller that
+    // really does look appends `CHECKING_SUFFIX` itself. The promise is now
+    // only expressible by code in a position to keep it.
+    return "No reply from the server, so whether it completed is unknown."
   }
 
   const data = response.data as { detail?: unknown } | undefined
@@ -109,3 +117,9 @@ export async function didWriteLand<T>(
     return "unknown"
   }
 }
+
+/**
+ * Appended by a caller that is ABOUT TO perform the check — never by
+ * `failureText`, which cannot know whether its caller will.
+ */
+export const CHECKING_SUFFIX = " Checking what was saved…"

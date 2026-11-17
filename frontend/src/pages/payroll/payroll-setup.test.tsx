@@ -19,7 +19,11 @@ import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-import { failureText, gotNoReply } from "@/lib/payroll/failure"
+import {
+  CHECKING_SUFFIX,
+  failureText,
+  gotNoReply,
+} from "@/lib/payroll/failure"
 
 import PayrollSetup from "./payroll-setup"
 
@@ -28,6 +32,7 @@ const setupApi = vi.hoisted(() => ({
   setDataEnabled: vi.fn(),
   reconcileRegisterPeople: vi.fn(),
   listRegisterImports: vi.fn(),
+  getRosterStatus: vi.fn(),
 }))
 vi.mock("@/lib/payroll/setup-api", () => setupApi)
 
@@ -83,6 +88,10 @@ beforeEach(() => {
   setupApi.reconcileRegisterPeople.mockResolvedValue(RECONCILE_DRY)
   focusApi.uploadRegister.mockResolvedValue(IMPORT_CLEAN)
   setupApi.listRegisterImports.mockResolvedValue({ imports: [], count: 0 })
+  setupApi.getRosterStatus.mockResolvedValue({
+    employees: 0, with_display_name: 0, union_members: 0,
+    last_reconciled_at: null,
+  })
 })
 
 // ── the switch's state is the one fact this page exists to show ──────────────
@@ -483,12 +492,25 @@ describe("failureText — what the page is allowed to claim", () => {
     ).toBe("Payroll data loading is turned off.")
   })
 
-  it("with NO response, says the state is unknown and that it will check", () => {
+  it("⚠️ with NO response, says unknown and does NOT promise a check", () => {
+    // THE 2026-11-17 ROSTER DEFECT, pinned. This sentence used to end
+    // "…this page will check what was saved" — a promise made by a SHARED
+    // helper and kept by only one of its callers. The roster card printed it
+    // and then went silent.
     const said = failureText(new Error("Network Error"))
     expect(said).toContain("No reply from the server")
-    expect(said).toContain("may still be working")
+    expect(said).toContain("unknown")
+    // The promise is no longer expressible from here.
+    expect(said).not.toContain("will check")
+    expect(said).not.toContain("may still be working")
     expect(gotNoReply(new Error("Network Error"))).toBe(true)
     expect(gotNoReply({ response: { status: 500, data: {} } })).toBe(false)
+  })
+
+  it("the promise is a SEPARATE suffix, appended only by a caller that checks", () => {
+    expect(CHECKING_SUFFIX).toContain("Checking what was saved")
+    // And it is not baked into the shared sentence.
+    expect(failureText(new Error("x"))).not.toContain(CHECKING_SUFFIX.trim())
   })
 })
 
@@ -571,5 +593,100 @@ describe("after a no-reply, the page CHECKS the server instead of guessing", () 
 
     expect(await screen.findByTestId("register-said")).toHaveTextContent("Field required")
     expect(setupApi.listRegisterImports).not.toHaveBeenCalled()
+  })
+})
+
+
+// ── card 3's lost reply — the 2026-11-17 production failure ─────────────────
+
+describe("the roster apply, when no reply arrives", () => {
+  const NO_REPLY = new Error("Network Error")
+
+  async function previewThenApply(user: ReturnType<typeof userEvent.setup>) {
+    setupApi.getDataEnabled.mockResolvedValue({
+      setting: "payroll_data_enabled", enabled: true,
+    })
+    render(<PayrollSetup />)
+    await screen.findByTestId("switch-state")
+    await user.click(screen.getByTestId("roster-preview"))
+    await user.click(await screen.findByTestId("roster-apply"))
+    await user.click(screen.getByTestId("roster-apply-yes"))
+  }
+
+  it("⚠️ an apply that DID land is reported as landed, with the counts", async () => {
+    // Production, 16:22:25Z: 499 after 125 s, and the server committed 19 s
+    // later. The page said it would check and then showed nothing.
+    const user = userEvent.setup()
+    setupApi.getRosterStatus
+      .mockResolvedValueOnce({ employees: 0, with_display_name: 0, union_members: 0, last_reconciled_at: null })
+      .mockResolvedValue({ employees: 30, with_display_name: 30, union_members: 18, last_reconciled_at: "2026-11-17T16:24:49Z" })
+    setupApi.reconcileRegisterPeople
+      .mockResolvedValueOnce(RECONCILE_DRY)   // the preview
+      .mockRejectedValue(NO_REPLY)            // the apply
+    await previewThenApply(user)
+
+    const said = await screen.findByTestId("roster-said")
+    expect(said).toHaveTextContent(/server DID create the list/i)
+    expect(said).toHaveTextContent("30")
+    expect(said).toHaveTextContent("18")
+    expect(said).toHaveTextContent(/Nothing to redo/i)
+  })
+
+  it("an apply that did NOT land says pressing again is safe", async () => {
+    const user = userEvent.setup()
+    setupApi.reconcileRegisterPeople
+      .mockResolvedValueOnce(RECONCILE_DRY)
+      .mockRejectedValue(NO_REPLY)
+    // Timestamp unchanged and no new people: nothing committed.
+    setupApi.getRosterStatus.mockResolvedValue({
+      employees: 0, with_display_name: 0, union_members: 0, last_reconciled_at: null,
+    })
+    await previewThenApply(user)
+    const said = await screen.findByTestId("roster-said")
+    expect(said).toHaveTextContent(/no new reconcile/i)
+    expect(said).toHaveTextContent(/safe to press it again/i)
+    expect(said).toHaveTextContent(/only ever\s+fills blanks/i)
+  })
+
+  it("⚠️ the CHECK failing says unknown, and do not press again", async () => {
+    const user = userEvent.setup()
+    setupApi.reconcileRegisterPeople
+      .mockResolvedValueOnce(RECONCILE_DRY)
+      .mockRejectedValue(NO_REPLY)
+    setupApi.getRosterStatus
+      .mockResolvedValueOnce({ employees: 0, with_display_name: 0, union_members: 0, last_reconciled_at: null })
+      .mockRejectedValue(NO_REPLY)
+    await previewThenApply(user)
+    const said = await screen.findByTestId("roster-said")
+    expect(said).toHaveTextContent(/unknown/i)
+    expect(said).toHaveTextContent(/Do not press it again/i)
+  })
+
+  it("⚠️ a failed PREVIEW does not claim to check — it writes nothing", async () => {
+    // The unkept promise in the other direction: a dry run has no side effect,
+    // so offering to go and look at what it saved would be theatre.
+    const user = userEvent.setup()
+    setupApi.getDataEnabled.mockResolvedValue({
+      setting: "payroll_data_enabled", enabled: true,
+    })
+    setupApi.reconcileRegisterPeople.mockRejectedValue(NO_REPLY)
+    render(<PayrollSetup />)
+    await screen.findByTestId("switch-state")
+    await user.click(screen.getByTestId("roster-preview"))
+    const said = await screen.findByTestId("roster-said")
+    expect(said).toHaveTextContent(/unknown/i)
+    expect(said.textContent).not.toContain("Checking what was saved")
+    expect(setupApi.getRosterStatus).not.toHaveBeenCalled()
+  })
+
+  it("a REFUSED apply shows the server's words and checks nothing", async () => {
+    const user = userEvent.setup()
+    setupApi.reconcileRegisterPeople
+      .mockResolvedValueOnce(RECONCILE_DRY)
+      .mockRejectedValue({ response: { status: 409, data: { detail: "no rule set effective on 2026-10-01" } } })
+    await previewThenApply(user)
+    expect(await screen.findByTestId("roster-said")).toHaveTextContent(
+      "no rule set effective on 2026-10-01",
+    )
   })
 })

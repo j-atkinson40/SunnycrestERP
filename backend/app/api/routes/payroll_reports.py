@@ -32,7 +32,7 @@ from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, require_admin, require_permission
@@ -738,6 +738,62 @@ def get_rule_sets(
     return {"rule_sets": out, "statuses": list(RULE_STATUSES)}
 
 
+@router.get("/register/people/status")
+def register_people_status(
+    current_user: User = Depends(require_permission(PAYROLL_READ)),
+    db: Session = Depends(get_db),
+):
+    """What the payroll roster holds, and when it was last reconciled.
+
+    ⚠️ **THIS EXISTS BECAUSE THE OBVIOUS FOLLOW-UP CHECK WAS THE THING THAT
+    TIMED OUT.** Measured on production 2026-11-17: the reconcile answered
+    **499 after 125 s** — the browser hung up and the server committed 19 s
+    later. The first fix proposed for that was "re-run the dry run and see
+    whether any `fill` proposals remain", which is the SAME call: a dry run
+    took 153 s against the same data. A check that costs what the thing it
+    checks cost is not a check.
+
+    So this is four counts and a timestamp — O(1) queries, no rule
+    resolution, no per-check arithmetic.
+
+    ⚠️ `last_reconciled_at` COMES FROM THE AUDIT LOG, not from a column on the
+    roster, because the audit row is written only on the APPLY path. A roster
+    row can be created by other means; "somebody ran the reconcile and it
+    committed" is a fact only the audit trail holds.
+
+    Not gated on the data switch, matching every other read on this router.
+    """
+    tid = current_user.company_id
+    total = (
+        db.query(PayrollReportEmployee)
+        .filter(PayrollReportEmployee.tenant_id == tid)
+        .count()
+    )
+    named = (
+        db.query(PayrollReportEmployee)
+        .filter(PayrollReportEmployee.tenant_id == tid,
+                PayrollReportEmployee.display_name.isnot(None))
+        .count()
+    )
+    members = (
+        db.query(PayrollReportEmployee)
+        .filter(PayrollReportEmployee.tenant_id == tid,
+                PayrollReportEmployee.is_union_member.is_(True))
+        .count()
+    )
+    last = db.execute(text(
+        "SELECT created_at FROM audit_logs "
+        "WHERE company_id = :c AND action = 'payroll_register_people_reconciled' "
+        "ORDER BY created_at DESC LIMIT 1"
+    ), {"c": tid}).scalar()
+    return {
+        "employees": total,
+        "with_display_name": named,
+        "union_members": members,
+        "last_reconciled_at": last.isoformat() if last else None,
+    }
+
+
 @router.post("/register/people/reconcile")
 def reconcile_register_people(
     apply: bool = Form(False),
@@ -769,9 +825,43 @@ def reconcile_register_people(
     # effective on a date, because a dues figure computed from code defaults is
     # a figure that cannot say which rules produced it. A register spans a year,
     # so the rules are resolved per check rather than once.
+    # ⚠️ **MEMOISED PER CHECK DATE, AND THE COMMENT BELOW USED TO EXPLAIN WHY
+    # IT WAS NOT.** "A register spans a year, so the rules are resolved per
+    # check rather than once" is correct about the REQUIREMENT and was being
+    # satisfied by re-querying for every check.
+    #
+    # Measured on production 2026-11-17: `resolve_rule_set` was called **629
+    # times across 52 distinct check dates**. The rule set in force on a given
+    # date cannot change between two checks that share that date, so 577 of
+    # those 629 calls asked a question already answered.
+    #
+    # ⚠️ **AND THIS IS A CANDIDATE, NOT A DIAGNOSIS.** The reconcile took ~145 s
+    # in production and 153 s in a local dry run, and the phase split was never
+    # attributed. A 12× cut in rule resolution is worth having on its own; it is
+    # NOT a claim that the request now fits inside a browser's patience. The
+    # status endpoint above is what makes a slow run survivable, and the two
+    # fixes are deliberately independent.
+    _rules_by_date: dict = {}
+
     def rules_for_date(when):
-        row = payroll_service.resolve_rule_set(db, current_user.company_id, when)
-        return payroll_service.rules_from_row(row)
+        if when not in _rules_by_date:
+            row = payroll_service.resolve_rule_set(db, current_user.company_id, when)
+            # Resolution RAISES for a date no rule set covers — deliberately,
+            # so a dues figure can always name the rules that produced it.
+            #
+            # ⚠️ **CACHING AFTER THE CALL IS DEFENSIVE, NOT LOAD-BEARING, AND
+            # THE FIRST VERSION OF THIS COMMENT CLAIMED OTHERWISE.** It said a
+            # refusal "is never memoised as an answer", which reads as a
+            # protection. Break-tested by caching BEFORE resolution: every test
+            # stayed green, because this memo is per-REQUEST and the raise
+            # aborts that request — so a poisoned entry has no second reader.
+            # The protection comes from the memo's lifetime, not from this
+            # ordering. Kept anyway: it survives someone later lifting the memo
+            # to a wider scope, which is exactly when it would start to matter.
+            # CLAUDE.md §11, "a guard whose protection is supplied by a layer
+            # beneath it".
+            _rules_by_date[when] = payroll_service.rules_from_row(row)
+        return _rules_by_date[when]
 
     try:
         proposals, facts = reconcile(

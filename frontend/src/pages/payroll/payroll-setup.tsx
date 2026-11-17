@@ -38,18 +38,21 @@ import { useEffect, useRef, useState } from "react"
 import { uploadRegister } from "@/lib/payroll/focus-api"
 import type { RegisterImportResult } from "@/lib/payroll/focus-api"
 import {
+  CHECKING_SUFFIX,
   didWriteLand,
   failureText,
   gotNoReply,
 } from "@/lib/payroll/failure"
 import {
   getDataEnabled,
+  getRosterStatus,
   listRegisterImports,
   reconcileRegisterPeople,
   setDataEnabled,
   type DataSwitchState,
   type ReconcileResult,
   type RegisterImportRow,
+  type RosterStatus,
 } from "@/lib/payroll/setup-api"
 
 /** `null` = loading, `false` = could not load. Three states, never two — a
@@ -308,7 +311,7 @@ function RegisterCard({ enabled }: { enabled: boolean | null }) {
       // finished the work. Asserting "nothing has been changed" here was the
       // original defect; a retry on a false "nothing happened" is a second
       // write (safe here only because the import is idempotent).
-      setFailed(said)
+      setFailed(said + CHECKING_SUFFIX)
       let landed: RegisterImportRow | undefined
       const verdict = await didWriteLand(
         () => listRegisterImports(3),
@@ -488,6 +491,10 @@ function RosterCard({ enabled }: { enabled: boolean | null }) {
   const [preview, setPreview] = useState<ReconcileResult | null>(null)
   const [applied, setApplied] = useState<ReconcileResult | null>(null)
   const [failed, setFailed] = useState<string | null>(null)
+  /** The roster as it stood BEFORE apply was pressed, so a lost reply can be
+   *  settled by comparison rather than by guessing. Captured when the preview
+   *  runs, which is always before an apply. */
+  const [before, setBefore] = useState<RosterStatus | null>(null)
 
   async function run(apply: boolean) {
     setBusy(true)
@@ -498,9 +505,59 @@ function RosterCard({ enabled }: { enabled: boolean | null }) {
       else {
         setPreview(r)
         setApplied(null)
+        // Cheap, and the only chance to read "before" while nothing is wrong.
+        getRosterStatus()
+          .then(setBefore)
+          .catch(() => setBefore(null))
       }
     } catch (err) {
-      setFailed(failureText(err))
+      const said = failureText(err)
+      if (!gotNoReply(err) || !apply) {
+        // A refusal shows the server's words. A failed PREVIEW writes nothing,
+        // so there is nothing to go and check — saying otherwise would be the
+        // unkept promise again, in the other direction.
+        setFailed(said)
+        return
+      }
+      // ⚠️ **AN APPLY WHOSE REPLY NEVER ARRIVED, WHICH IS WHAT HAPPENED ON
+      // 2026-11-17: 499 after 125 s, and the server committed 19 s later.**
+      // The page showed "this page will check what was saved" and then did
+      // nothing, because this branch did not exist.
+      setFailed(said + CHECKING_SUFFIX)
+      let after: RosterStatus | undefined
+      const verdict = await didWriteLand(
+        () => getRosterStatus(),
+        (now) => {
+          after = now
+          // The audit row is written only on apply, so a timestamp that moved
+          // is proof this apply committed. Falling back to the row count
+          // covers the case where no "before" was captured.
+          if (before?.last_reconciled_at && now.last_reconciled_at) {
+            return now.last_reconciled_at !== before.last_reconciled_at
+          }
+          if (now.last_reconciled_at) return true
+          return before !== null && now.employees > before.employees
+        },
+      )
+      if (verdict === "landed") {
+        setFailed(
+          `No reply reached this page, but the server DID create the list: ` +
+            `${after?.employees ?? 0} people, ${after?.union_members ?? 0} union ` +
+            `members. Nothing to redo.`,
+        )
+      } else if (verdict === "did-not-land") {
+        setFailed(
+          `No reply reached this page, and the roster shows no new reconcile — ` +
+            `nothing was written, so it is safe to press it again. It only ever ` +
+            `fills blanks.`,
+        )
+      } else {
+        setFailed(
+          `${said} The follow-up check could not reach the server either, so ` +
+            `whether the list was created is unknown. Do not press it again ` +
+            `until it responds.`,
+        )
+      }
     } finally {
       setBusy(false)
     }

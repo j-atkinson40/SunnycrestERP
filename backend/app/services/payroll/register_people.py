@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Callable
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.models.payroll_report import PayrollCheck, PayrollReportEmployee
 from app.services.payroll.register_dues import actual_dues, dues_for_check
@@ -121,8 +121,30 @@ def reconcile(
     rules_for_date: Callable[[date], PayrollRules],
 ) -> tuple[list[Proposal], dict[str, dict]]:
     """Compare the register's facts with the roster. Writes nothing."""
+    # ⚠️ **`selectinload` IS LOAD-BEARING, NOT AN OPTIMISATION.** Every fact
+    # this function derives comes from a check's LINES — `actual_dues` and
+    # `dues_for_check` both walk them — so a lazy relationship means one
+    # additional SELECT per check.
+    #
+    # Measured against production 2026-11-17, instrumented at the cursor:
+    #
+    #     wall clock       111.1 s
+    #     SQL statements     1330
+    #     time inside SQL  109.8 s   (99% of wall clock)
+    #       1275 queries   105.0 s   payroll_check_lines   <- one per check
+    #         52 queries     4.1 s   payroll_rule_sets
+    #
+    # 1,275 round trips where one would do. The reconcile answered **499 after
+    # 125 s** in a browser on that date, having committed anyway 19 s later.
+    #
+    # ⚠️ The measurement was taken through `railway run`, which executes
+    # LOCALLY against the production database — so each round trip paid
+    # internet latency and the 105 s is not production's own figure. The N+1 is
+    # a defect at any latency: it is 1,275 queries for data one query returns,
+    # and removing it removes the thing that makes latency matter.
     checks = (
         db.query(PayrollCheck)
+        .options(selectinload(PayrollCheck.lines))
         .filter(PayrollCheck.tenant_id == tenant_id)
         .all()
     )
