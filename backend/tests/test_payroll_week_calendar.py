@@ -177,3 +177,122 @@ def test_the_cutoff_travels_with_its_PROVENANCE(client, token):
 
 def test_an_unauthenticated_caller_is_refused(client):
     assert client.get(CURRENT, headers=HEADERS).status_code in (401, 403)
+
+
+# ── the NOTE half, which PR B shipped without ───────────────────────────────
+#
+# ⚠️ **JAMES ASKED FOR THE CURRENT-WEEK LINE IN BOTH PLACES AND PR B DELIVERED
+# ONE.** The Payroll page got it; the note did not, and the note is the first
+# screen after sign-in and the one a payroll user LANDS on. She would have
+# reached "Nothing needs saying today" and had no way in from there.
+
+
+@pytest.fixture
+def switch_on():
+    """Payroll data on for the test, and back to absent afterwards."""
+    import json
+    from app.database import SessionLocal
+    from app.models.company import Company
+    from app.services.payroll.data_gate import PAYROLL_DATA_ENABLED
+
+    def put(value):
+        db = SessionLocal()
+        try:
+            co = db.query(Company).filter(Company.id == TESTCO_ID).first()
+            if value is None:
+                settings = co.settings
+                settings.pop(PAYROLL_DATA_ENABLED, None)
+                co.settings_json = json.dumps(settings)
+            else:
+                co.set_setting(PAYROLL_DATA_ENABLED, value)
+            db.commit()
+        finally:
+            db.close()
+
+    put(True)
+    yield
+    put(None)
+
+
+def _note(client, token):
+    r = client.get("/api/v1/note/today",
+                   headers={"Authorization": f"Bearer {token}", **HEADERS})
+    assert r.status_code == 200, r.text[:300]
+    return r.json()
+
+
+def _all_text(payload) -> str:
+    """Every rendered string in the note, flattened.
+
+    ⚠️ Reads the SPANS. The note renders typed spans rather than a
+    `synthesized_text` field, and a test that read the latter would assert
+    against something the surface does not display.
+    """
+    import json
+    return json.dumps(payload)
+
+
+def test_the_note_carries_the_CURRENT_WEEK_when_there_are_no_hours(
+        client, token, switch_on):
+    """⚠️ CONTENT, NOT STATUS. A 200 with an empty note is the exact failure
+    being fixed — "Nothing needs saying today" on the screen she lands on."""
+    from app.database import SessionLocal
+    from app.models.payroll_report import PayrollWeek
+
+    db = SessionLocal()
+    try:
+        current_end = _desc(date.today()).week_end_date
+        has_row = db.query(PayrollWeek).filter(
+            PayrollWeek.tenant_id == TESTCO_ID,
+            PayrollWeek.week_end_date == current_end).count()
+    finally:
+        db.close()
+    if has_row:
+        pytest.skip("testco already holds the current week; this asserts the "
+                    "no-hours state")
+
+    text = _all_text(_note(client, token))
+    want = str(_desc(date.today()).week_number)
+    assert f"Week " in text, text[:400]
+    assert want in text, f"week {want} not in the note: {text[:400]}"
+    assert "no hours yet" in text.lower(), text[:400]
+
+
+def test_the_note_line_addresses_the_week_by_its_END_not_by_a_row_id(
+        client, token, switch_on):
+    """⚠️ **ASSERTED ON THE ITEM'S OWN FIELDS, NOT ON THE WHOLE JSON.**
+
+    The first version of this test searched the serialised note for the
+    week-end string and passed — because that string also appears in
+    `subject_id` and `condition_inputs`. A break test that changed the
+    addressing left it GREEN, which is CLAUDE.md §11 shape 6: passing for a
+    reason unrelated to what it claims.
+
+    `subject_kind` is what the frontend's `focusTarget` switches on to build
+    the query parameter, so that is the field pinned here. `payroll_week`
+    would mean `week_id=<a date>`, which opens a Focus that cannot load.
+    """
+    import json
+
+    payload = _note(client, token)
+    # ⚠️ `prose`, not `items`. Read off the real payload rather than guessed:
+    # the note serialises its composed fragments under `prose`, alongside
+    # `standing_set`. A guessed key gave an empty list and an assertion that
+    # read as "the line is absent" while the line was right there.
+    items = [i for i in (payload.get("prose") or [])
+             if "no hours yet" in json.dumps(i)]
+    assert items, f"the open-week line is absent: {_all_text(payload)[:400]}"
+    item = items[0]
+    assert item["subject_kind"] == "payroll_week_end", item
+    assert item["subject_id"] == _desc(date.today()).week_end_date.isoformat()
+    assert item["target_key"] == "weekly-payroll", item
+    assert item["kind"] == "prompt", item
+
+
+def test_the_note_says_NOTHING_about_payroll_while_the_switch_is_off(
+        client, token):
+    """⚠️ THE POSITIVE CONTROL IN THE OTHER DIRECTION. Without it, a fragment
+    that rendered unconditionally would satisfy both tests above — and would
+    invite a tenant holding no payroll data to go and load some."""
+    text = _all_text(_note(client, token))
+    assert "no hours yet" not in text.lower(), text[:400]

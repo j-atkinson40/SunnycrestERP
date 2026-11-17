@@ -141,11 +141,24 @@ const DEFER_PRESETS: { preset: string; label: string }[] = [
  *  ⚠️ The subject is passed as the SCOPE PARAMETER the payroll Focus reads
  *  (`week_id`). Keyed on `subject_kind` so a fragment about something else
  *  cannot silently arrive as a week id. */
-function focusTarget(f: ProseFragment): string | null {
+/** Exported for test. A pure function, and the thing that decides whether a
+ *  note line opens the right surface with the right scope — which is worth
+ *  asserting on behaviour rather than on the shape of this file's text. */
+export function focusTarget(f: ProseFragment): string | null {
   if (!getFocusConfig(f.target_key)) return null;
   if (!f.subject_id) return null;
+  // ⚠️ **`payroll_week_end` CARRIES A DATE, NOT A ROW ID.** Added 2026-11-17
+  // with the note's open-week prompt: that week has no row — the row is
+  // created by the upload the line is asking for — so its subject id is the
+  // week end date. Sending it as `week_id` would open the Focus on a week
+  // that cannot be fetched, which is "could not be loaded" from the one line
+  // whose job is to offer the upload.
   const param =
-    f.subject_kind === "payroll_week" ? "week_id" : `${f.subject_kind}_id`;
+    f.subject_kind === "payroll_week"
+      ? "week_id"
+      : f.subject_kind === "payroll_week_end"
+        ? "week_end"
+        : `${f.subject_kind}_id`;
   // ⚠️ `/home`, NOT `/`. The root route is a role-based redirect, and
   // redirecting DROPS THE QUERY STRING — the Focus opened with no scope and
   // showed "No week chosen". Linking straight at the landing route keeps the
