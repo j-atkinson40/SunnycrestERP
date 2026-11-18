@@ -15,7 +15,6 @@ makes the rest of this change safe.
 from __future__ import annotations
 
 import io
-import json
 from datetime import date
 
 import pytest
@@ -30,7 +29,7 @@ from app.core.permissions import (
 from app.main import app
 from app.models.company import Company
 from app.models.user import User
-from app.services.payroll.data_gate import PAYROLL_DATA_ENABLED
+from tests._payroll_switch import payroll_switch
 from tests._tenant import TESTCO_ID, make_canonical_tenant_fixture
 from tests._two_step import tenant_token
 from tests.fixtures.payroll import register_fixture
@@ -82,23 +81,12 @@ def switch_on():
     """Payroll data on for the test, and off again afterwards."""
     from app.database import SessionLocal
 
-    def put(value):
-        db = SessionLocal()
-        try:
-            co = db.query(Company).filter(Company.id == TESTCO_ID).first()
-            if value is None:
-                s = co.settings
-                s.pop(PAYROLL_DATA_ENABLED, None)
-                co.settings_json = json.dumps(s)
-            else:
-                co.set_setting(PAYROLL_DATA_ENABLED, value)
-            db.commit()
-        finally:
-            db.close()
-
-    put(True)
-    yield
-    put(None)
+    # ⚠️ ON FOR THE BODY, AS FOUND AFTERWARDS. This used to REMOVE the key on
+    # the way out whatever the tenant held, which left every tenant's switch
+    # off and blanked a live note mid-walk-through. See
+    # `tests/_payroll_switch.py`.
+    with payroll_switch(TESTCO_ID, True):
+        yield
 
 
 @pytest.fixture(autouse=True)

@@ -37,6 +37,7 @@ from app.models.payroll_report import (
 )
 from app.models.user import User
 from app.services.payroll.data_gate import PAYROLL_DATA_ENABLED
+from tests._payroll_switch import read_switch, write_switch
 from tests._tenant import TESTCO_ID, make_canonical_tenant_fixture
 from tests._two_step import tenant_token
 
@@ -119,6 +120,10 @@ def seeded():
 
     try:
         wipe()
+        # ⚠️ CAPTURED BEFORE THE WRITE. The teardown below used to write
+        # `False`, which turns the switch off for a tenant that had it on —
+        # see `tests/_payroll_switch.py`.
+        _switch_as_found = read_switch(TESTCO_ID)
         _switch(db, True)
 
         db.add(PayrollRuleSet(id=str(uuid.uuid4()), tenant_id=TESTCO_ID,
@@ -217,7 +222,12 @@ def seeded():
         }
     finally:
         wipe()
-        _switch(db, False)   # a test that leaves a safety switch ON disarms the next run
+        # ⚠️ **AS FOUND, WHICH IS NOT THE SAME AS "OFF".** This read "a test
+        # that leaves a safety switch ON disarms the next run" — right about
+        # the DEFAULT, wrong about the TENANT. Writing `False` over a tenant
+        # that had payroll on is this suite deciding what a shared database
+        # holds, and it blanked a live note mid-walk-through on 2026-11-17.
+        write_switch(TESTCO_ID, _switch_as_found)
         db.close()
 
 

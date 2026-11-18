@@ -96,6 +96,44 @@ def resolve_preset(preset: str, *, today: date, explicit: date | None = None) ->
     return _add_months(today, 1)
 
 
+#: The affordances offered as named buttons, in the order the note shows them.
+#: ⚠️ `date` is excluded: it is the picker, and it resolves to whatever the
+#: reader types rather than to anything derivable from today.
+_OFFERABLE: tuple[str, ...] = ("tomorrow", "next_week", "next_month")
+
+
+def allowed_presets(*, today: date, not_after: date | None) -> tuple[str, ...]:
+    """Which affordances do not put the reader past `not_after`.
+
+    ⚠️ **THIS LIVES HERE, BESIDE `resolve_preset`, SO THE ARITHMETIC HAS ONE
+    IMPLEMENTATION.** The obvious shape was to serve the deadline and let the
+    client decide which of its three buttons land after it — and that would
+    have put `_add_months` in TypeScript, where "next month on the 31st" is
+    free to disagree with the Python the deferral is actually recorded by. A
+    reader would then be offered a button that the endpoint refuses, or worse,
+    one that silently lands a day earlier than the label promised.
+
+    There is no latency argument for duplicating it: the note payload already
+    comes from this process. (Opas's phrase matcher IS duplicated across the
+    two languages, with shared cases, because typing has to resolve without a
+    round trip. This does not.)
+
+    `date` is included when the deadline is still ahead — the picker is honest
+    exactly when some future date on or before the deadline exists, and the
+    client caps its input at the deadline.
+
+    An empty result means **no deferral is honest at all**, which is the state
+    on and after the deadline. The note shows no "See again" row then, rather
+    than a row of disabled buttons explaining themselves.
+    """
+    if not_after is None:
+        return _OFFERABLE + ("date",)
+    allowed = tuple(
+        p for p in _OFFERABLE if resolve_preset(p, today=today) <= not_after
+    )
+    return allowed + (("date",) if not_after > today else ())
+
+
 @dataclass(frozen=True)
 class ActiveDeferral:
     """The deferral currently suppressing an identity, if any."""

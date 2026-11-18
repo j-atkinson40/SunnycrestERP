@@ -26,6 +26,7 @@ from app.services.payroll.data_gate import (
     PAYROLL_DATA_ENABLED,
     is_payroll_data_enabled,
 )
+from tests._payroll_switch import ABSENT, payroll_switch
 from tests._tenant import TESTCO_ID, make_canonical_tenant_fixture
 
 _canonical_tenant = make_canonical_tenant_fixture()
@@ -75,27 +76,27 @@ def tokens():
 
 @pytest.fixture(autouse=True)
 def _switch_off():
-    """Every test starts from the default-off state and restores it."""
-    from app.database import SessionLocal
+    """Every test starts from the ABSENT state and the tenant gets its own back.
 
-    def put(value):
-        db = SessionLocal()
-        try:
-            co = db.query(Company).filter(Company.id == TESTCO_ID).first()
-            if value is None:
-                s = co.settings
-                s.pop(PAYROLL_DATA_ENABLED, None)
-                import json
-                co.settings_json = json.dumps(s)
-            else:
-                co.set_setting(PAYROLL_DATA_ENABLED, value)
-            db.commit()
-        finally:
-            db.close()
+    ⚠️ **THIS FIXTURE USED TO REMOVE THE KEY ON THE WAY OUT, WHICHEVER WAY IT
+    FOUND IT, AND THAT BLANKED A LIVE NOTE.** The walk-through of 2026-11-17 was
+    run against a tenant whose switch had been deliberately turned on; this
+    suite ran against the same database and left the key gone, so the payroll
+    note went empty mid-walk and was photographed that way. Two other
+    explanations were tested and falsified before the suite was identified
+    (4/4 runs).
 
-    put(None)
-    yield put
-    put(None)
+    ⚠️ The setup state is ABSENT rather than `False`, because
+    `test_absent_setting_means_disabled` asserts the key is not present — and
+    absent, `False` and `True` are three states here, two of them falsey.
+
+    Restoring the PRIOR state keeps the property the old teardown was reaching
+    for (this suite cannot leave a switch armed that was off) without its
+    converse (it can no longer disarm one that was on). See
+    `tests/_payroll_switch.py`.
+    """
+    with payroll_switch(TESTCO_ID, ABSENT) as put:
+        yield put
 
 
 @pytest.fixture(scope="module")

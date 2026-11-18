@@ -803,3 +803,16 @@ tests/test_payroll_week_focus.py
 # that describes it before any row exists — the path to the first upload.
 # Sunday-Saturday and check_date +5 are cross-checked against live week 44.
 tests/test_payroll_week_calendar.py
+# Week-line copy + switch teardown (2026-11-18). The wording across all seven
+# days the line can render — the past-tense cutoff branch was wrong and was the
+# one unreachable without moving the clock — and which deferral affordances stay
+# honest against a deadline.
+tests/test_payroll_week_line_copy.py
+# ⚠️ AND THE SUITE THAT RUNS ANOTHER SUITE. `test_payroll_switch_teardown.py`
+# invokes `test_payroll_data_switch.py` as a subprocess, twice, for each of the
+# three states the switch can be in, and asserts the tenant got its own value
+# back. It costs ~75s, which is most of this gate's runtime, and it is here
+# because the defect it pins was invisible to every passing test in the suite it
+# runs: what was wrong was what that suite LEFT BEHIND, and it blanked a live
+# payroll note mid-walk-through on 2026-11-17.
+tests/test_payroll_switch_teardown.py

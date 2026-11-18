@@ -189,29 +189,15 @@ def test_an_unauthenticated_caller_is_refused(client):
 
 @pytest.fixture
 def switch_on():
-    """Payroll data on for the test, and back to absent afterwards."""
-    import json
-    from app.database import SessionLocal
-    from app.models.company import Company
-    from app.services.payroll.data_gate import PAYROLL_DATA_ENABLED
+    """Payroll data on for the test, and back to whatever it was afterwards.
 
-    def put(value):
-        db = SessionLocal()
-        try:
-            co = db.query(Company).filter(Company.id == TESTCO_ID).first()
-            if value is None:
-                settings = co.settings
-                settings.pop(PAYROLL_DATA_ENABLED, None)
-                co.settings_json = json.dumps(settings)
-            else:
-                co.set_setting(PAYROLL_DATA_ENABLED, value)
-            db.commit()
-        finally:
-            db.close()
+    ⚠️ The docstring said "back to absent", and it did exactly that — to a
+    tenant whose switch was ON. See `tests/_payroll_switch.py`.
+    """
+    from tests._payroll_switch import payroll_switch
 
-    put(True)
-    yield
-    put(None)
+    with payroll_switch(TESTCO_ID, True):
+        yield
 
 
 def _note(client, token):
@@ -296,3 +282,74 @@ def test_the_note_says_NOTHING_about_payroll_while_the_switch_is_off(
     invite a tenant holding no payroll data to go and load some."""
     text = _all_text(_note(client, token))
     assert "no hours yet" not in text.lower(), text[:400]
+
+
+# ── The copy fixes, as served (2026-11-18) ───────────────────────────────
+#
+# ⚠️ **THE PURE PHRASING IS TESTED IN `test_payroll_week_line_copy.py` ACROSS
+# ALL SEVEN DAYS; THESE TWO ASSERT IT ARRIVES.** A correct sentence that the
+# endpoint does not carry, and a deadline the payload drops, are both invisible
+# to a test of the function that produced them.
+
+
+def test_the_served_line_carries_TODAYS_wording_and_its_deadline(
+        client, token, switch_on):
+    """⚠️ Compared against the phrasing functions rather than a transcript, so
+    this fails when the payload stops matching them rather than only on the one
+    day of the week whose wording someone typed in."""
+    import json
+    from app.services.fragments.platform_defaults import (
+        cutoff_words,
+        week_range_words,
+    )
+
+    payload = _note(client, token)
+    items = [i for i in (payload.get("prose") or [])
+             if "no hours yet" in json.dumps(i)]
+    if not items:
+        pytest.skip("testco already holds the current week; this asserts the "
+                    "no-hours state")
+    item = items[0]
+    w = _desc(date.today())
+
+    assert week_range_words(w.week_start_date, w.week_end_date) in item["text"]
+    assert cutoff_words(w.cutoff_at, date.today()) in item["text"]
+    # ⚠️ "Nov 8–Nov 14" must be GONE, not merely joined by the new form.
+    assert f"{w.week_start_date:%b} {w.week_start_date.day}–{w.week_end_date:%b}" \
+        not in item["text"], item["text"]
+
+    # The link names the act, and the deadline travels with the prompt.
+    assert item["action_label"] == "Upload hours", item
+    assert item["defer_not_after"] == w.cutoff_at.date().isoformat(), item
+
+
+def test_the_served_line_offers_NO_deferral_once_the_cutoff_is_here(
+        client, token, switch_on):
+    """⚠️ **ASSERTED AGAINST TODAY'S TRUE STATE, NOT A FIXED EXPECTATION.** The
+    honest set depends on which day the suite runs: ahead of the cutoff some
+    presets stand, and on or after it none do. Pinning one of those would make
+    the test pass on four days a week and fail on three, so it states the rule
+    and checks the payload against it.
+    """
+    import json
+    from app.services.note.deferral import allowed_presets
+
+    payload = _note(client, token)
+    items = [i for i in (payload.get("prose") or [])
+             if "no hours yet" in json.dumps(i)]
+    if not items:
+        pytest.skip("testco already holds the current week; this asserts the "
+                    "no-hours state")
+    item = items[0]
+    cutoff_day = _desc(date.today()).cutoff_at.date()
+
+    assert item["defer_presets"] == list(
+        allowed_presets(today=date.today(), not_after=cutoff_day)
+    ), item
+    if cutoff_day <= date.today():
+        assert item["defer_presets"] == [], (
+            "the note offered a deferral on or after the cutoff day", item)
+    else:
+        assert "tomorrow" in item["defer_presets"], item
+        assert "next_month" not in item["defer_presets"], (
+            "next month is four weeks past a Wednesday cutoff", item)

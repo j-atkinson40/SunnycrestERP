@@ -58,6 +58,7 @@ the contract cannot ship to a person in this state.
 
 from __future__ import annotations
 
+from datetime import date
 from dataclasses import dataclass, field
 from typing import Any, Callable, Literal, Mapping, Sequence
 
@@ -115,6 +116,23 @@ class FragmentPayload:
     #: spans when they are present so the two cannot drift.
     #: See `fragments/synthesis.py`.
     spans: tuple[Any, ...] = ()
+
+    #: ⚠️ WHAT THE LINK SAYS, WHEN "Open <Focus name>" IS THE WRONG WORDS.
+    #: The note's link has always read `Open {displayName}` — "Open Weekly
+    #: payroll" — which names the SURFACE rather than the act. A line asking
+    #: for this week's hours should offer "Upload hours", and the line about a
+    #: week already loaded should offer "Review week 46"; the same Focus, two
+    #: different requests. The fragment knows which it is making and nothing
+    #: downstream can, so it says so here. `None` keeps the old wording.
+    action_label: str | None = None
+
+    #: ⚠️ THE LAST DAY IT IS HONEST TO DEFER TO, AND WHY A DEADLINE IS NOT A
+    #: PRESENTATION DETAIL. The note offers "See again — Tomorrow · Next week ·
+    #: Next month". For a prompt with a deadline, two of those push the reader
+    #: PAST it, and the surface offering them is implying the choice is free.
+    #: A fragment that has a deadline declares it; the client offers no option
+    #: that lands after it. `None` means no deadline and every option stands.
+    defer_not_after: date | None = None
 
 
 @dataclass(frozen=True)
