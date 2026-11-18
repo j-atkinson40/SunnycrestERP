@@ -134,13 +134,31 @@ def _upload(client, token, content, filename="register.pdf"):
 
 # ── the switch refuses first ─────────────────────────────────────────────────
 
-def test_upload_is_refused_while_the_data_switch_is_off(client, token, register_bytes):
+@pytest.fixture
+def switch_off():
+    """The switch explicitly OFF for a test that asserts the refusal.
+
+    ⚠️ **THESE TESTS USED TO INHERIT THE OFF STATE RATHER THAN SET IT, AND THAT
+    IS WHY THEY WERE GREEN.** Six suites leaked the switch off (see
+    `tests/_payroll_switch.py`); fixing the leaks removed the accidental
+    guarantee and these assertions failed immediately — against a tenant whose
+    switch was ON, a test named "refused while the switch is off" was measuring
+    whatever the previous suite happened to leave. A test asserting the behaviour
+    of a state now establishes that state.
+    """
+    with payroll_switch(TESTCO_ID, False):
+        yield
+
+
+def test_upload_is_refused_while_the_data_switch_is_off(
+        client, token, register_bytes, switch_off):
     r = _upload(client, token, register_bytes)
     assert r.status_code == 403, f"{r.status_code}: {r.text[:300]}"
     assert r.json()["detail"]["code"] == "payroll_data_disabled"
 
 
-def test_nothing_is_stored_when_the_switch_refuses(client, token, register_bytes):
+def test_nothing_is_stored_when_the_switch_refuses(
+        client, token, register_bytes, switch_off):
     """⚠️ The refusal is before the bytes are interpreted, not after."""
     from app.database import SessionLocal
 

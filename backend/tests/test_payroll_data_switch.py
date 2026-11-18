@@ -104,11 +104,15 @@ def client():
     return TestClient(app)
 
 
-#: ⚠️ UPLOADS GO AS AN **ADMIN**, SINCE THE 2026-11-03 SPLIT. `POST /weeks/upload`
-#: is admin-only now, so uploading as the accountant would be refused by the ADMIN
-#: gate and this file would be asserting the wrong refusal — green for a reason
-#: unrelated to the switch it exists to test. The accountant's own refusal is
-#: asserted once, below, precisely so the two are told apart.
+#: ⚠️ **UPLOADS GO AS AN ADMIN SO THE PERMISSION GATE IS SATISFIED AND THE
+#: SWITCH IS THE ONLY THING LEFT TO REFUSE.** This comment read "`POST
+#: /weeks/upload` is admin-only now, since the 2026-11-03 split" — which was
+#: superseded on 2026-11-13: the route requires `payroll.upload`, which the
+#: payroll role holds. The reason for using an admin is unchanged and still
+#: right (an actor lacking the permission would be refused by the PERMISSION
+#: gate, leaving this file green for a reason unrelated to the switch), but the
+#: rule it cited stopped being true five days later. The accountant's own
+#: refusal is asserted once, below, precisely so the two are told apart.
 def _upload(client, token):
     return client.post(UPLOAD, headers={"Authorization": f"Bearer {token}", **HEADERS},
                        files={"file": ("w.csv", _csv(), "text/csv")},

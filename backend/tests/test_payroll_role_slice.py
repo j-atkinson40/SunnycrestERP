@@ -488,13 +488,74 @@ def test_the_payroll_role_user_is_unchanged_by_the_split(client, tokens):
     r = client.post("/api/v1/payroll-reports/weeks/no-such-week/approve",
                     headers=_auth(tokens["payroll"]))
     assert r.status_code != 403, f"she lost approve: {r.text[:200]}"
-    # upload is admin-only, so she is refused — by design.
-    up = client.post("/api/v1/payroll-reports/weeks/upload",
-                     headers=_auth(tokens["payroll"]),
-                     files={"file": ("w.csv", b"file_number\nE01\n", "text/csv")},
-                     data={"week_number": 44, "week_end_date": "2026-10-31",
-                           "format_key": "bridgeable_csv"})
-    assert up.status_code == 403, "upload must be admin-only even for the payroll role"
+    # ⚠️ **THIS ASSERTED "upload must be admin-only even for the payroll role"
+    # AND WAS WRONG FROM 2026-11-13, GREEN ONLY BECAUSE THE DATA SWITCH WAS
+    # OFF.** The route requires `payroll.upload`, which her role holds
+    # (`PAYROLL_DEFAULT_PERMISSIONS`, changed the same day) — so the 403 this
+    # test observed came from the SWITCH, not from an admin gate, and the test
+    # read a refusal it had not caused as proof of a rule that no longer
+    # existed. With the switch on she gets 201, which is the intended shape:
+    # the Monday pull is designed and not built, so she runs her own week.
+    #
+    # ⚠️ **AND THE CORRECTION HAD ALREADY BEEN MADE IN THIS FILE.**
+    # `test_view_only_is_refused_upload_because_it_lacks_payroll_upload`, 60
+    # lines up, was rewritten on 2026-11-13 for exactly this change and its
+    # docstring explains it. The sibling kept the superseded claim, because the
+    # question "where else does this appear" was asked of the codebase and not
+    # of the file.
+    #
+    # Both gates are now exercised separately, which is what makes them
+    # distinguishable: the permission admits her, and the switch still refuses.
+    from tests._payroll_switch import payroll_switch
+
+    def _try_upload():
+        return client.post("/api/v1/payroll-reports/weeks/upload",
+                           headers=_auth(tokens["payroll"]),
+                           files={"file": ("w.csv", b"file_number\nE01\n",
+                                           "text/csv")},
+                           data={"week_number": 44,
+                                 "week_end_date": "2026-10-31",
+                                 "format_key": "bridgeable_csv"})
+
+    with payroll_switch(TESTCO_ID, False):
+        off = _try_upload()
+    assert off.status_code == 403, f"{off.status_code}: {off.text[:200]}"
+    assert off.json()["detail"]["code"] == "payroll_data_disabled", (
+        "the refusal must come from the SWITCH; a refusal for any other reason "
+        "would mean this test is measuring a gate it did not intend to")
+
+    with payroll_switch(TESTCO_ID, True):
+        on = _try_upload()
+    try:
+        assert on.status_code == 201, (
+            "she holds payroll.upload and the tenant allows payroll data, so "
+            f"the upload must be accepted: {on.status_code} {on.text[:200]}")
+    finally:
+        # ⚠️ **THIS SUITE NOW WRITES ROWS, WHERE EVERY UPLOAD IN IT USED TO BE
+        # REFUSED.** It had no cleanup because it had never created anything.
+        # The week it leaves behind would be found by
+        # `test_payroll_data_switch.py::test_no_week_was_created_by_the_refused_upload`,
+        # which counts weeks for this tenant rather than weeks the refused
+        # upload created — so the litter would surface as a failure attributed
+        # to the wrong suite. Removed in a `finally`, because a failing
+        # assertion is exactly when litter is left.
+        week_id = (on.json().get("week") or {}).get("id") if on.content else None
+        if week_id:
+            from app.database import SessionLocal
+            from sqlalchemy import text as _sql
+            db = SessionLocal()
+            try:
+                for table in ("payroll_week_results", "payroll_week_lines",
+                              "payroll_weeks"):
+                    db.execute(
+                        _sql(f"DELETE FROM {table} WHERE "
+                             + ("id = :w" if table == "payroll_weeks"
+                                else "week_id = :w")),
+                        {"w": week_id},
+                    )
+                db.commit()
+            finally:
+                db.close()
 
 
 def test_accountant_and_accounting_differ_by_exactly_payroll():

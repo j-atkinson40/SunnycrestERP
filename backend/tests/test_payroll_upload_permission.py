@@ -222,7 +222,23 @@ def test_the_payroll_user_is_refused_the_admin_controls(client, tokens, path, ve
 
 # ── ⚠️ the gate that makes the whole change safe ─────────────────────────────
 
-def test_no_upload_works_while_the_switch_is_off(client, tokens):
+@pytest.fixture
+def switch_off():
+    """The switch explicitly OFF for a test that asserts the refusal.
+
+    ⚠️ **THESE TESTS USED TO INHERIT THE OFF STATE RATHER THAN SET IT, AND THAT
+    IS WHY THEY WERE GREEN.** Six suites leaked the switch off (see
+    `tests/_payroll_switch.py`); fixing the leaks removed the accidental
+    guarantee and these assertions failed immediately — against a tenant whose
+    switch was ON, a test named "refused while the switch is off" was measuring
+    whatever the previous suite happened to leave. A test asserting the behaviour
+    of a state now establishes that state.
+    """
+    with payroll_switch(TESTCO_ID, False):
+        yield
+
+
+def test_no_upload_works_while_the_switch_is_off(client, tokens, switch_off):
     """⚠️ THE LOAD-BEARING TEST.
 
     The data switch is now the control carrying "may this tenant hold payroll

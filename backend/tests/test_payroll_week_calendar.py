@@ -275,8 +275,20 @@ def test_the_note_line_addresses_the_week_by_its_END_not_by_a_row_id(
     assert item["kind"] == "prompt", item
 
 
+@pytest.fixture
+def switch_off():
+    """⚠️ EXPLICITLY OFF. This test used to INHERIT the off state from other
+    suites' leaky teardowns — so on a tenant whose switch was on it asserted
+    nothing, and it is the positive control for every other test in this file.
+    See `tests/_payroll_switch.py`."""
+    from tests._payroll_switch import payroll_switch
+
+    with payroll_switch(TESTCO_ID, False):
+        yield
+
+
 def test_the_note_says_NOTHING_about_payroll_while_the_switch_is_off(
-        client, token):
+        client, token, switch_off):
     """⚠️ THE POSITIVE CONTROL IN THE OTHER DIRECTION. Without it, a fragment
     that rendered unconditionally would satisfy both tests above — and would
     invite a tenant holding no payroll data to go and load some."""
