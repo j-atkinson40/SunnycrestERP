@@ -25,6 +25,7 @@ from app.services.note.spans import serialise_spans
 from app.services.note.deferral import (
     PRESETS,
     DeferralError,
+    allowed_presets,
     defer,
     deferral_count,
     until_label,
@@ -166,6 +167,36 @@ def get_today_note(
                 # inferring which from `kind` and getting it wrong the day a
                 # third kind exists.
                 "deferrable": d.fragment.declaration.kind == "prompt",
+                # ⚠️ WHAT THE LINK SHOULD SAY. The client's fallback is
+                # "Open <Focus display name>", which names the surface rather
+                # than the request: "Open Weekly payroll" where the sentence
+                # asked for this week's hours. A fragment that knows which
+                # request it is making says so; `null` keeps the fallback.
+                "action_label": d.fragment.instance.payload.action_label,
+                # ⚠️ THE LAST DAY IT IS HONEST TO DEFER TO. Served as an ISO
+                # date, `null` when the prompt carries no deadline. The client
+                # offers no deferral option that lands after it — see the
+                # field's docstring on `FragmentPayload`. The DATE is served
+                # rather than a pre-filtered list of presets, because which
+                # presets exist is the client's business and the deadline is
+                # the server's.
+                "defer_not_after": (
+                    d.fragment.instance.payload.defer_not_after.isoformat()
+                    if d.fragment.instance.payload.defer_not_after
+                    else None
+                ),
+                # ⚠️ WHICH AFFORDANCES ARE STILL HONEST — resolved HERE, where
+                # `resolve_preset` lives, rather than served as a deadline for
+                # the client to apply its own month arithmetic to. See
+                # `deferral.allowed_presets`. An EMPTY list means no deferral is
+                # honest and the row is not drawn; the deadline above is still
+                # served so the picker can cap its input.
+                "defer_presets": list(
+                    allowed_presets(
+                        today=date.today(),
+                        not_after=d.fragment.instance.payload.defer_not_after,
+                    )
+                ),
                 # How many times this reader has deferred THIS prompt, ever —
                 # including deferrals that lapsed or were woken. Stated
                 # plainly. Someone pushing the same thing repeatedly is usually

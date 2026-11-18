@@ -118,6 +118,19 @@ interface ProseFragment {
   /** Every deferral of this prompt by this reader, ever — including ones that
    *  lapsed or were woken. Stated plainly, never escalated. */
   deferred_count: number;
+  /** ⚠️ WHAT THE LINK SHOULD SAY, when "Open <Focus name>" names the surface
+   *  instead of the request. `null` keeps that fallback. */
+  action_label: string | null;
+  /** ⚠️ THE LAST DAY A DEFERRAL IS HONEST, ISO, or `null` for no deadline.
+   *  Used only to cap the date picker — which PRESETS are still honest is
+   *  `defer_presets`, resolved by the server so the month arithmetic has one
+   *  implementation. */
+  defer_not_after: string | null;
+  /** ⚠️ THE AFFORDANCES STILL HONEST FOR THIS PROMPT, server-resolved against
+   *  `defer_not_after`. `date` present means the picker is offered. EMPTY means
+   *  no deferral is honest — past a deadline — and no "See again" row is
+   *  drawn. */
+  defer_presets: string[];
 }
 
 /** The affordances the server accepts. `date` opens the picker. */
@@ -408,20 +421,35 @@ export default function NotePage() {
               href={focusTarget(f) as string}
               className="text-caption text-steel underline-offset-2 hover:underline"
             >
-              Open {getFocusConfig(f.target_key)?.displayName ?? "the Focus"}
+              {/* ⚠️ THE FRAGMENT NAMES THE ACT; THE REGISTRY NAMES THE
+                  SURFACE. "Open Weekly payroll" told the reader where the
+                  link goes, which they could already see from the sentence —
+                  "Upload hours" tells them what it is for. The old wording
+                  stays as the fallback for every fragment that has not said,
+                  so this is additive rather than a reshape. */}
+              {f.action_label ??
+                `Open ${getFocusConfig(f.target_key)?.displayName ?? "the Focus"}`}
             </a>
           ) : null}
 
           {/* ⚠️ PROMPTS DEFER. NON-PROMPTS DISMISS, and that path is not here.
               A prompt has no "make this go away" — it leaves by its end
               transition occurring or by the reader naming a date. */}
-          {f.deferrable && (
+          {/* ⚠️ AND A DEADLINE CLOSES THE ROW. `defer_presets` is the server's
+              answer to which affordances still land on or before this prompt's
+              deadline; empty means none do, and the row is not drawn at all.
+              A row of three buttons that push the reader past a cutoff implies
+              the choice is free, and the one past the cutoff implies there is
+              still a choice. */}
+          {f.deferrable && f.defer_presets.length > 0 && (
             <div
               data-testid={`defer-${f.fragment_id}`}
               className="flex flex-wrap items-baseline gap-2 text-body-sm text-content-muted"
             >
               <span>See again</span>
-              {DEFER_PRESETS.map((p) => (
+              {DEFER_PRESETS.filter((p) =>
+                f.defer_presets.includes(p.preset),
+              ).map((p) => (
                 <button
                   key={p.preset}
                   type="button"
@@ -439,13 +467,18 @@ export default function NotePage() {
                   on the surface whose function was not apparent from its
                   appearance. It is revealed by a labelled control instead, so
                   the row is three presets and one obvious "or pick a date". */}
-              {picking === f.instance_key ? (
+              {!f.defer_presets.includes("date") ? null : picking ===
+                f.instance_key ? (
                 <input
                   type="date"
                   autoFocus
                   aria-label="Defer to a specific date"
                   data-testid={`defer-${f.fragment_id}-date`}
                   disabled={deferring === f.instance_key}
+                  /* ⚠️ THE DEADLINE CAPS THE PICKER. Suppressing the presets
+                     that overshoot and leaving the picker free would move the
+                     same dishonest choice one control to the right. */
+                  max={f.defer_not_after ?? undefined}
                   onBlur={() => setPicking(null)}
                   onChange={(e) =>
                     e.target.value && onDefer(f, "date", e.target.value)

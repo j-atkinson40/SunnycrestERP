@@ -34,6 +34,7 @@ from app.models.payroll_report import (
     PayrollWeek,
 )
 from app.models.user import User
+from tests._payroll_switch import read_switch, write_switch
 from tests._tenant import TESTCO_ID, make_canonical_tenant_fixture
 
 PAYROLL_CHILD_TABLES = (
@@ -173,6 +174,9 @@ def seeded():
         from app.services.payroll.data_gate import PAYROLL_DATA_ENABLED as _KEY
 
         _co = db.query(_Company).filter(_Company.id == TESTCO_ID).first()
+        # ⚠️ CAPTURED BEFORE THE WRITE, so the teardown restores what the
+        # tenant held rather than what this fixture decided it should hold.
+        _switch_as_found = read_switch(TESTCO_ID)
         _co.set_setting(_KEY, True)
         db.commit()
 
@@ -206,13 +210,15 @@ def seeded():
 
         _reset_tenant_payroll(db, TESTCO_ID)
         db.execute(text("DELETE FROM users WHERE id = :i"), {"i": APPROVER_ID})
-        # Return the tenant to the default-off state. A test that leaves a
-        # safety switch ON is a test that disarms the next run.
-        from app.models.company import Company as _Company2
-        from app.services.payroll.data_gate import PAYROLL_DATA_ENABLED as _KEY2
-        _co2 = db.query(_Company2).filter(_Company2.id == TESTCO_ID).first()
-        if _co2 is not None:
-            _co2.set_setting(_KEY2, False)
+        # ⚠️ **PUT BACK AS FOUND, WHICH IS NOT THE SAME AS "OFF".** This read
+        # "return the tenant to the default-off state. A test that leaves a
+        # safety switch ON is a test that disarms the next run." The first
+        # clause is right about the DEFAULT and wrong about the TENANT: writing
+        # `False` over a tenant that had it on is itself a suite deciding what a
+        # shared database should hold, and it blanked a live note mid-walk.
+        # Restoring the prior state keeps the property that sentence was
+        # protecting without its converse. See `tests/_payroll_switch.py`.
+        write_switch(TESTCO_ID, _switch_as_found)
         db.commit()
     finally:
         db.close()

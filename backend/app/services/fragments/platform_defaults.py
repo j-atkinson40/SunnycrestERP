@@ -69,7 +69,7 @@ from __future__ import annotations
 
 import logging
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Sequence
 
@@ -568,6 +568,60 @@ def _expense_posting_map_condition(db: Session, *, user: User) -> Sequence[Fragm
 # ── Payroll 5a ───────────────────────────────────────────────────────────
 
 
+def week_range_words(start: date, end: date) -> str:
+    """"Nov 8–14", or "Oct 25–Nov 1" when the week crosses a month.
+
+    ⚠️ ONE MONTH NAME WHEN THE WEEK DOES NOT CROSS ONE. "Nov 8–Nov 14" says
+    November twice to tell the reader something they read in the first word.
+    James asked for "Nov 8–14" by name. A week that does cross needs both and
+    gets both; the year is compared too, so the Dec–Jan week is not collapsed
+    on the month number alone.
+    """
+    if (start.year, start.month) == (end.year, end.month):
+        return f"{start:%b} {start.day}–{end.day}"
+    return f"{start:%b} {start.day}–{end:%b} {end.day}"
+
+
+def cutoff_words(cutoff_at: datetime, today: date) -> str:
+    """The deadline sentence, in whichever of three tenses is true today.
+
+    ⚠️ **THREE TENSES, BECAUSE ALL THREE OCCUR AND ONLY ONE WAS WRITTEN.** The
+    week being worked ended on the last Saturday and the cutoff is the
+    Wednesday after it — so over the seven days this line can render, the
+    deadline is AHEAD on four, TODAY on one, and BEHIND on two (Thursday and
+    Friday). The single "by {weekday} {clock}" form read, on a Friday, as a
+    deadline four days out when it had passed two days earlier.
+
+    "Today" is named rather than the weekday on the cutoff day — James asked
+    for it by name, and "by 5:00pm today" is what a person checks a clock
+    against, where "by Wednesday 5:00pm" on a Wednesday makes them work out
+    what day it is before they know whether they have hours or minutes.
+
+    The past form REPORTS rather than demands. "The cutoff has passed" is a
+    fact; the prompt's target is where acting happens, and `compose` refuses
+    prose that does a badge's work through language.
+
+    ⚠️ **PURE, AND AT MODULE LEVEL, SO ALL SEVEN DAYS ARE TESTABLE WITHOUT
+    MOVING THE CLOCK.** Inlined in the condition, the only way to reach the
+    past-tense branch was to monkeypatch `date.today` out from under a module
+    that reads it elsewhere — so the branch that was WRONG was the branch
+    hardest to test, which is how it shipped.
+
+    ⚠️ NO `%-I`. A glibc extension; the hour is formatted from the integer.
+    A strftime that raises inside a condition is SWALLOWED by emission
+    ("fragment condition failed, skipping") — a silent empty note, which is
+    the failure this fragment exists to fix.
+    """
+    hour = cutoff_at.hour % 12 or 12
+    clock = f"{hour}:{cutoff_at:%M}{'am' if cutoff_at.hour < 12 else 'pm'}"
+    day = cutoff_at.date()
+    if day == today:
+        return f"Payentry needs it by {clock} today."
+    if day < today:
+        return f"Payentry's {day:%A} {clock} cutoff has passed."
+    return f"Payentry needs it by {day:%A} {clock}."
+
+
 def _payroll_week_open_condition(
     db: Session, *, user: User
 ) -> Sequence[FragmentInstance]:
@@ -605,8 +659,12 @@ def _payroll_week_open_condition(
     if company is None or not is_payroll_data_enabled(company):
         return []
 
+    # ⚠️ ONE READ OF THE CLOCK, USED FOR BOTH THE WEEK AND THE DEADLINE'S
+    # TENSE. Calling `date.today()` twice would let a run that straddles
+    # midnight pick its week from one day and phrase its cutoff against another.
+    today = date.today()
     week = current_payroll_week(
-        date.today(),
+        today,
         cutoff_weekday=DEFAULT_RULES.payentry_cutoff_weekday,
         cutoff_time=DEFAULT_RULES.payentry_cutoff_time,
     )
@@ -622,19 +680,11 @@ def _payroll_week_open_condition(
     if row is not None and row.status not in ("awaiting_hours", "created"):
         return []
 
-    # ⚠️ NO `%-d` OR `%-I`. Those are glibc extensions; the platform this runs
-    # on is not guaranteed to be the one it was written on, and a strftime that
-    # raises inside a condition is SWALLOWED by emission ("fragment condition
-    # failed, skipping") — a silent empty note, which is the very failure this
-    # fragment exists to fix. Day and hour are formatted from the integers.
-    def _md(d) -> str:
-        return f"{d:%b} {d.day}"
-
-    hour = week.cutoff_at.hour % 12 or 12
-    ampm = "am" if week.cutoff_at.hour < 12 else "pm"
-    cutoff_words = (
-        f"{week.cutoff_at:%A} {hour}:{week.cutoff_at:%M}{ampm}"
-    )
+    # ⚠️ BOTH PHRASINGS ARE MODULE-LEVEL PURE FUNCTIONS — see their
+    # docstrings. They were inlined here, which made the past-tense cutoff
+    # branch reachable only by moving the clock.
+    cutoff_day = week.cutoff_at.date()
+    deadline = cutoff_words(week.cutoff_at, today)
     # ⚠️ A PLAIN LIST, THEN ONE `compose`. Every other fragment here does the
     # same; the first version composed twice, and the inner call returned a
     # payload where a span list was expected. It raised, emission swallowed it,
@@ -658,8 +708,8 @@ def _payroll_week_open_condition(
     spans = [
         plain(
             f"Week {week.week_number} "
-            f"({_md(week.week_start_date)}–{_md(week.week_end_date)}) "
-            f"has no hours yet. Payentry needs it by {cutoff_words}."
+            f"({week_range_words(week.week_start_date, week.week_end_date)}) "
+            f"has no hours yet. {deadline}"
         ),
     ]
     return [
@@ -667,7 +717,25 @@ def _payroll_week_open_condition(
             # (5) IDENTITY: the WEEK, by its end date — which exists before any
             # row does, and is the only stable name this subject has.
             subject_id=week.week_end_date.isoformat(),
-            payload=compose(spans, title="This week", priority=90),
+            payload=compose(
+                spans,
+                title="This week",
+                priority=90,
+                # ⚠️ THE LINK NAMES THE REQUEST, NOT THE SURFACE. The client's
+                # fallback reads "Open Weekly payroll", which is where the
+                # hours go rather than what this line is asking for. The
+                # sentence says the week has no hours; the link says
+                # "Upload hours".
+                action_label="Upload hours",
+                # ⚠️ NO DEFERRAL PAST THE CUTOFF, AND NONE AT ALL ONCE IT IS
+                # TODAY OR GONE. "See again — Tomorrow · Next week · Next
+                # month" against a Wednesday 5pm deadline offers two options
+                # that put the reader past it and one that is only honest while
+                # the cutoff is still ahead. The client suppresses every option
+                # landing after this date; on the cutoff day and after, that is
+                # all of them.
+                defer_not_after=cutoff_day,
+            ),
             # (3) PREDICATE — carried into the Focus. `week_end`, not
             # `week_id`: the row does not exist yet, and addressing it by id
             # is precisely what made the upload unreachable.
@@ -779,7 +847,15 @@ def _weekly_dues_condition(
             # Two people opening the note see the same subject, and tomorrow's
             # view of the same week is the same fragment rather than a new one.
             subject_id=week.id,
-            payload=compose(spans, title="Union dues", priority=80),
+            payload=compose(
+                spans,
+                title="Union dues",
+                priority=80,
+                # The week HAS hours here and its numbers are worked out, so
+                # the request is to check them rather than to load them. No
+                # deadline: nothing about reading a calculated week expires.
+                action_label=f"Review week {week.week_number}",
+            ),
             predicate={"week_status_in": ["calculated", "approved"]},
             expansion={"week_id": week.id},
             condition_inputs={

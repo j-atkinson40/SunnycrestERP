@@ -20,7 +20,6 @@ would be asserting the wrong refusal.
 """
 from __future__ import annotations
 
-import json
 
 import pytest
 from fastapi.testclient import TestClient
@@ -30,7 +29,7 @@ from app.main import app
 from app.models.company import Company
 from app.models.payroll_report import PayrollCheck, PayrollCheckLine, PayrollRegisterImport
 from app.models.user import User
-from app.services.payroll.data_gate import PAYROLL_DATA_ENABLED
+from tests._payroll_switch import payroll_switch
 from tests._tenant import (
     TESTCO_ID,
     drop_company,
@@ -107,23 +106,12 @@ def switch():
     """Turn the payroll data switch on for a test, and off again after."""
     from app.database import SessionLocal
 
-    def put(value):
-        db = SessionLocal()
-        try:
-            co = db.query(Company).filter(Company.id == TESTCO_ID).first()
-            if value is None:
-                s = co.settings
-                s.pop(PAYROLL_DATA_ENABLED, None)
-                co.settings_json = json.dumps(s)
-            else:
-                co.set_setting(PAYROLL_DATA_ENABLED, value)
-            db.commit()
-        finally:
-            db.close()
-
-    put(True)
-    yield
-    put(None)
+    # ⚠️ ON FOR THE BODY, AS FOUND AFTERWARDS. This used to REMOVE the key on
+    # the way out whatever the tenant held, which left every tenant's switch
+    # off and blanked a live note mid-walk-through. See
+    # `tests/_payroll_switch.py`.
+    with payroll_switch(TESTCO_ID, True):
+        yield
 
 
 @pytest.fixture(scope="module")
@@ -146,13 +134,31 @@ def _upload(client, token, content, filename="register.pdf"):
 
 # ── the switch refuses first ─────────────────────────────────────────────────
 
-def test_upload_is_refused_while_the_data_switch_is_off(client, token, register_bytes):
+@pytest.fixture
+def switch_off():
+    """The switch explicitly OFF for a test that asserts the refusal.
+
+    ⚠️ **THESE TESTS USED TO INHERIT THE OFF STATE RATHER THAN SET IT, AND THAT
+    IS WHY THEY WERE GREEN.** Six suites leaked the switch off (see
+    `tests/_payroll_switch.py`); fixing the leaks removed the accidental
+    guarantee and these assertions failed immediately — against a tenant whose
+    switch was ON, a test named "refused while the switch is off" was measuring
+    whatever the previous suite happened to leave. A test asserting the behaviour
+    of a state now establishes that state.
+    """
+    with payroll_switch(TESTCO_ID, False):
+        yield
+
+
+def test_upload_is_refused_while_the_data_switch_is_off(
+        client, token, register_bytes, switch_off):
     r = _upload(client, token, register_bytes)
     assert r.status_code == 403, f"{r.status_code}: {r.text[:300]}"
     assert r.json()["detail"]["code"] == "payroll_data_disabled"
 
 
-def test_nothing_is_stored_when_the_switch_refuses(client, token, register_bytes):
+def test_nothing_is_stored_when_the_switch_refuses(
+        client, token, register_bytes, switch_off):
     """⚠️ The refusal is before the bytes are interpreted, not after."""
     from app.database import SessionLocal
 

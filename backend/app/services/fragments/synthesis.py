@@ -40,6 +40,7 @@ wrong. Spans carry their own text, so there is nothing to search for.
 
 from __future__ import annotations
 
+from datetime import date
 from dataclasses import dataclass
 from typing import Literal, Sequence
 
@@ -100,7 +101,14 @@ def _assert_not_a_demand(text: str) -> None:
         )
 
 
-def compose(spans: Sequence[TextSpan], *, title: str, priority: int = 50) -> FragmentPayload:
+def compose(
+    spans: Sequence[TextSpan],
+    *,
+    title: str,
+    priority: int = 50,
+    action_label: str | None = None,
+    defer_not_after: date | None = None,
+) -> FragmentPayload:
     """Build a payload from typed spans.
 
     `synthesized_text` is the concatenation, so every existing consumer that
@@ -132,4 +140,10 @@ def compose(spans: Sequence[TextSpan], *, title: str, priority: int = 50) -> Fra
         ),
         priority=priority,
         spans=tuple(spans),
+        # Carried through untouched. `compose` derives `synthesized_text` from
+        # the spans so the two cannot drift; these two say what the LINK should
+        # read and how far it is honest to defer, which no amount of reading the
+        # prose can recover. See their docstrings on `FragmentPayload`.
+        action_label=action_label,
+        defer_not_after=defer_not_after,
     )

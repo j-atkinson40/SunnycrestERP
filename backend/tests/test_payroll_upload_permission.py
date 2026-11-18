@@ -15,7 +15,6 @@ makes the rest of this change safe.
 from __future__ import annotations
 
 import io
-import json
 from datetime import date
 
 import pytest
@@ -30,7 +29,7 @@ from app.core.permissions import (
 from app.main import app
 from app.models.company import Company
 from app.models.user import User
-from app.services.payroll.data_gate import PAYROLL_DATA_ENABLED
+from tests._payroll_switch import payroll_switch
 from tests._tenant import TESTCO_ID, make_canonical_tenant_fixture
 from tests._two_step import tenant_token
 from tests.fixtures.payroll import register_fixture
@@ -82,23 +81,12 @@ def switch_on():
     """Payroll data on for the test, and off again afterwards."""
     from app.database import SessionLocal
 
-    def put(value):
-        db = SessionLocal()
-        try:
-            co = db.query(Company).filter(Company.id == TESTCO_ID).first()
-            if value is None:
-                s = co.settings
-                s.pop(PAYROLL_DATA_ENABLED, None)
-                co.settings_json = json.dumps(s)
-            else:
-                co.set_setting(PAYROLL_DATA_ENABLED, value)
-            db.commit()
-        finally:
-            db.close()
-
-    put(True)
-    yield
-    put(None)
+    # ⚠️ ON FOR THE BODY, AS FOUND AFTERWARDS. This used to REMOVE the key on
+    # the way out whatever the tenant held, which left every tenant's switch
+    # off and blanked a live note mid-walk-through. See
+    # `tests/_payroll_switch.py`.
+    with payroll_switch(TESTCO_ID, True):
+        yield
 
 
 @pytest.fixture(autouse=True)
@@ -234,7 +222,23 @@ def test_the_payroll_user_is_refused_the_admin_controls(client, tokens, path, ve
 
 # ── ⚠️ the gate that makes the whole change safe ─────────────────────────────
 
-def test_no_upload_works_while_the_switch_is_off(client, tokens):
+@pytest.fixture
+def switch_off():
+    """The switch explicitly OFF for a test that asserts the refusal.
+
+    ⚠️ **THESE TESTS USED TO INHERIT THE OFF STATE RATHER THAN SET IT, AND THAT
+    IS WHY THEY WERE GREEN.** Six suites leaked the switch off (see
+    `tests/_payroll_switch.py`); fixing the leaks removed the accidental
+    guarantee and these assertions failed immediately — against a tenant whose
+    switch was ON, a test named "refused while the switch is off" was measuring
+    whatever the previous suite happened to leave. A test asserting the behaviour
+    of a state now establishes that state.
+    """
+    with payroll_switch(TESTCO_ID, False):
+        yield
+
+
+def test_no_upload_works_while_the_switch_is_off(client, tokens, switch_off):
     """⚠️ THE LOAD-BEARING TEST.
 
     The data switch is now the control carrying "may this tenant hold payroll
