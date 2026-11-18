@@ -97,9 +97,21 @@ def describe_week(week_end: date, *, cutoff_weekday: int, cutoff_time: time
     )
 
 
+def current_week_end(today: date) -> date:
+    """The END of the week being worked today — the last Saturday on or before.
+
+    ⚠️ **SPLIT OUT 2026-11-18 SO A CALLER CAN ASK WHICH WEEK WITHOUT INVENTING A
+    CUTOFF.** `current_payroll_week` needs the cutoff to describe the DEADLINE,
+    and the cutoff has no bearing on which week ended. Opas's capability list
+    needs only the date, and passing it a cutoff it does not use would be two
+    arguments whose irrelevance the next reader has to re-derive — or, worse,
+    would invite someone to pass the wrong ones and not notice.
+    """
+    return today - timedelta(days=(today.weekday() - WEEK_END_WEEKDAY) % 7)
+
+
 def current_payroll_week(today: date, *, cutoff_weekday: int, cutoff_time: time
                          ) -> PayrollWeekDescriptor:
     """The week Susan is working today — the one that ended most recently."""
-    back = (today.weekday() - WEEK_END_WEEKDAY) % 7
-    return describe_week(today - timedelta(days=back),
+    return describe_week(current_week_end(today),
                          cutoff_weekday=cutoff_weekday, cutoff_time=cutoff_time)

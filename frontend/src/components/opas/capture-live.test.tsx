@@ -115,6 +115,7 @@ import {
   setCaptureText,
   startCapture,
 } from "@/services/opas-capture-service"
+import { MemoryRouter } from "react-router-dom"
 
 function state(over: Record<string, unknown> = {}) {
   return {
@@ -208,9 +209,16 @@ function sleep(ms: number): Promise<void> {
 /** Open the overlay and get an order pane up. */
 async function openOrder() {
   render(
-    <OpasProvider>
-      <OpasHost />
-    </OpasProvider>,
+    /* MemoryRouter: OpasHost calls useNavigate (PR C — a capability opens the
+      surface it names), and useNavigate throws outside a Router. In the app
+      OpasHost is mounted inside BrowserRouter, so the wrapper makes this
+      render match production rather than adding anything. Same reason
+      capture-pane.test.tsx has had one since the approval crash. */
+    <MemoryRouter>
+      <OpasProvider>
+        <OpasHost />
+      </OpasProvider>
+    </MemoryRouter>,
   )
   await user.click(screen.getByTestId("opas-sphere"))
   await user.type(screen.getByTestId("opas-input"), "start an order")
@@ -508,9 +516,16 @@ describe("Opas's voice says what is happening and is never stale", () => {
     // own element now, so the typing is no longer load-bearing; it is kept because a
     // half-typed order is the realistic state.
     render(
-      <OpasProvider>
-        <OpasHost />
-      </OpasProvider>,
+      /* MemoryRouter: OpasHost calls useNavigate (PR C — a capability opens the
+      surface it names), and useNavigate throws outside a Router. In the app
+      OpasHost is mounted inside BrowserRouter, so the wrapper makes this
+      render match production rather than adding anything. Same reason
+      capture-pane.test.tsx has had one since the approval crash. */
+      <MemoryRouter>
+        <OpasProvider>
+          <OpasHost />
+        </OpasProvider>
+      </MemoryRouter>,
     )
     await user.click(screen.getByTestId("opas-sphere"))
     await user.type(screen.getByTestId("opas-input"), "order for hopkins")
@@ -558,9 +573,16 @@ describe("Opas's voice says what is happening and is never stale", () => {
       }) as never,
     )
     render(
-      <OpasProvider>
-        <OpasHost />
-      </OpasProvider>,
+      /* MemoryRouter: OpasHost calls useNavigate (PR C — a capability opens the
+      surface it names), and useNavigate throws outside a Router. In the app
+      OpasHost is mounted inside BrowserRouter, so the wrapper makes this
+      render match production rather than adding anything. Same reason
+      capture-pane.test.tsx has had one since the approval crash. */
+      <MemoryRouter>
+        <OpasProvider>
+          <OpasHost />
+        </OpasProvider>
+      </MemoryRouter>,
     )
     await user.click(screen.getByTestId("opas-sphere"))
     await user.type(screen.getByTestId("opas-input"), "order for hopkins")
@@ -581,9 +603,16 @@ describe("Opas's voice says what is happening and is never stale", () => {
     // never says "Nothing needed" at all, which would be a different bug.
     vi.mocked(startCapture).mockResolvedValue(state({ missing: [] }) as never)
     render(
-      <OpasProvider>
-        <OpasHost />
-      </OpasProvider>,
+      /* MemoryRouter: OpasHost calls useNavigate (PR C — a capability opens the
+      surface it names), and useNavigate throws outside a Router. In the app
+      OpasHost is mounted inside BrowserRouter, so the wrapper makes this
+      render match production rather than adding anything. Same reason
+      capture-pane.test.tsx has had one since the approval crash. */
+      <MemoryRouter>
+        <OpasProvider>
+          <OpasHost />
+        </OpasProvider>
+      </MemoryRouter>,
     )
     await user.click(screen.getByTestId("opas-sphere"))
     await user.type(screen.getByTestId("opas-input"), "order for hopkins")
@@ -917,78 +946,87 @@ describe("under StrictMode, as the app actually mounts", () => {
   async function typeOnlyStrict(phrase: string) {
     render(
       <StrictMode>
-        <OpasProvider>
-          <OpasHost />
-        </OpasProvider>
+        {/* MemoryRouter: OpasHost calls useNavigate (PR C), which throws
+            outside a Router. In the app OpasHost is mounted inside
+            BrowserRouter, so this matches production rather than adding
+            anything. StrictMode stays OUTSIDE the router: this helper exists
+            to double-render, and that is what it must keep doing. */}
+        <MemoryRouter>
+          <OpasProvider>
+            <OpasHost />
+          </OpasProvider>
+        </MemoryRouter>
       </StrictMode>,
     )
     await user.click(screen.getByTestId("opas-sphere"))
     await user.type(screen.getByTestId("opas-input"), phrase)
   }
 
-  it("THE SESSION STARTS — the pane does not sit on \"Starting the order…\"", async () => {
-    vi.mocked(setCaptureText).mockResolvedValue(withValue("Hopkins Funeral Home") as never)
-    await typeOnlyStrict("Order for hopkins")
+    it("THE SESSION STARTS — the pane does not sit on \"Starting the order…\"", async () => {
+      vi.mocked(setCaptureText).mockResolvedValue(withValue("Hopkins Funeral Home") as never)
+      await typeOnlyStrict("Order for hopkins")
 
-    // ⚠️ THE ROWS ARE THE ASSERTION. `capture-rows` renders only once `state` is
-    // non-null, which is exactly what the double-invoked effect prevented.
-    await waitFor(() =>
-      expect(screen.getByTestId("capture-rows")).toBeInTheDocument(),
-    )
-    expect(screen.queryByTestId("capture-loading")).not.toBeInTheDocument()
+      // ⚠️ THE ROWS ARE THE ASSERTION. `capture-rows` renders only once `state` is
+      // non-null, which is exactly what the double-invoked effect prevented.
+      await waitFor(() =>
+        expect(screen.getByTestId("capture-rows")).toBeInTheDocument(),
+      )
+      expect(screen.queryByTestId("capture-loading")).not.toBeInTheDocument()
+    })
+
+    it("starts exactly ONE session despite the double-invoked effect", async () => {
+      // ⚠️ THE OTHER HALF. The `started` ref exists so StrictMode's second mount does
+      // not open a second session and orphan the first — a half-typed order nobody can
+      // reach. Fixing the `mounted` ref must not cost that.
+      await typeOnlyStrict("Order for hopkins")
+      await waitFor(() =>
+        expect(screen.getByTestId("capture-rows")).toBeInTheDocument(),
+      )
+      expect(vi.mocked(startCapture).mock.calls.length).toBe(1)
+    })
+
+    it("still extracts the carried text under StrictMode", async () => {
+      await typeOnlyStrict("Order for hopkins")
+      await waitFor(() =>
+        expect(screen.getByTestId("capture-rows")).toBeInTheDocument(),
+      )
+      await settle()
+      expect(setCaptureText).toHaveBeenCalledWith(
+        "sess-1", "Order for hopkins", expect.any(Number), null,
+      )
+    })
   })
 
-  it("starts exactly ONE session despite the double-invoked effect", async () => {
-    // ⚠️ THE OTHER HALF. The `started` ref exists so StrictMode's second mount does
-    // not open a second session and orphan the first — a half-typed order nobody can
-    // reach. Fixing the `mounted` ref must not cost that.
-    await typeOnlyStrict("Order for hopkins")
-    await waitFor(() =>
-      expect(screen.getByTestId("capture-rows")).toBeInTheDocument(),
-    )
-    expect(vi.mocked(startCapture).mock.calls.length).toBe(1)
-  })
+  describe("an order pane opens from TYPING, with no Enter", () => {
+    /**
+     * ⚠️ THE DEFECT JAMES HIT ON PRODUCTION, 2026-10-12 13:54 ET. He typed
+     * "order for hopkins" in the bar and waited. No pane, no error. `openPane` for a
+     * capture pane was reachable from exactly two places — the reload-restore effect
+     * and `submit()` — and `submit()` ran only inside `if (e.key === "Enter")`. There
+     * was no path from typing to a pane, and his own walk instruction said to type it
+     * WITHOUT Enter.
+     *
+     * ⚠️ WHY NO TEST CAUGHT IT. Every frontend test pressed Enter. The helper in
+     * `capture-pane.test.tsx` is `user.type(input, `${text}{Enter}`)` — Enter is
+     * APPENDED to every phrase it is ever given — and `openOrder()` in this file sends
+     * an explicit `{Enter}`. The backend's `test_the_whole_sentence_James_walks` calls
+     * `session_service` directly and never touches the bar at all. So the one thing
+     * the walk instruction asked for was the one thing nothing exercised.
+     */
 
-  it("still extracts the carried text under StrictMode", async () => {
-    await typeOnlyStrict("Order for hopkins")
-    await waitFor(() =>
-      expect(screen.getByTestId("capture-rows")).toBeInTheDocument(),
-    )
-    await settle()
-    expect(setCaptureText).toHaveBeenCalledWith(
-      "sess-1", "Order for hopkins", expect.any(Number), null,
-    )
-  })
-})
-
-describe("an order pane opens from TYPING, with no Enter", () => {
-  /**
-   * ⚠️ THE DEFECT JAMES HIT ON PRODUCTION, 2026-10-12 13:54 ET. He typed
-   * "order for hopkins" in the bar and waited. No pane, no error. `openPane` for a
-   * capture pane was reachable from exactly two places — the reload-restore effect
-   * and `submit()` — and `submit()` ran only inside `if (e.key === "Enter")`. There
-   * was no path from typing to a pane, and his own walk instruction said to type it
-   * WITHOUT Enter.
-   *
-   * ⚠️ WHY NO TEST CAUGHT IT. Every frontend test pressed Enter. The helper in
-   * `capture-pane.test.tsx` is `user.type(input, `${text}{Enter}`)` — Enter is
-   * APPENDED to every phrase it is ever given — and `openOrder()` in this file sends
-   * an explicit `{Enter}`. The backend's `test_the_whole_sentence_James_walks` calls
-   * `session_service` directly and never touches the bar at all. So the one thing
-   * the walk instruction asked for was the one thing nothing exercised.
-   */
-
-  /** ⚠️ TYPES AND DOES NOT PRESS ENTER. That is the entire point of this block, so
-   *  it deliberately does not reuse `openOrder()`, which presses it. */
-  async function typeOnly(phrase: string) {
-    render(
-      <OpasProvider>
-        <OpasHost />
-      </OpasProvider>,
-    )
-    await user.click(screen.getByTestId("opas-sphere"))
-    await user.type(screen.getByTestId("opas-input"), phrase)
-  }
+    /** ⚠️ TYPES AND DOES NOT PRESS ENTER. That is the entire point of this block, so
+     *  it deliberately does not reuse `openOrder()`, which presses it. */
+    async function typeOnly(phrase: string) {
+      render(
+        <MemoryRouter>
+          <OpasProvider>
+            <OpasHost />
+          </OpasProvider>
+        </MemoryRouter>,
+      )
+      await user.click(screen.getByTestId("opas-sphere"))
+      await user.type(screen.getByTestId("opas-input"), phrase)
+    }
 
   it.each([
     "order for hopkins",
@@ -1086,9 +1124,16 @@ describe("an order pane opens from TYPING, with no Enter", () => {
 
   it("does NOT open while the bar is empty", async () => {
     render(
-      <OpasProvider>
-        <OpasHost />
-      </OpasProvider>,
+      /* MemoryRouter: OpasHost calls useNavigate (PR C — a capability opens the
+      surface it names), and useNavigate throws outside a Router. In the app
+      OpasHost is mounted inside BrowserRouter, so the wrapper makes this
+      render match production rather than adding anything. Same reason
+      capture-pane.test.tsx has had one since the approval crash. */
+      <MemoryRouter>
+        <OpasProvider>
+          <OpasHost />
+        </OpasProvider>
+      </MemoryRouter>,
     )
     await user.click(screen.getByTestId("opas-sphere"))
     await settle()
@@ -1177,9 +1222,16 @@ describe("an entry pane grows from the bar", () => {
 
   it("an INFO pane still cascades from the top right — the contrast is the claim", async () => {
     render(
-      <OpasProvider>
-        <OpasHost />
-      </OpasProvider>,
+      /* MemoryRouter: OpasHost calls useNavigate (PR C — a capability opens the
+      surface it names), and useNavigate throws outside a Router. In the app
+      OpasHost is mounted inside BrowserRouter, so the wrapper makes this
+      render match production rather than adding anything. Same reason
+      capture-pane.test.tsx has had one since the approval crash. */
+      <MemoryRouter>
+        <OpasProvider>
+          <OpasHost />
+        </OpasProvider>
+      </MemoryRouter>,
     )
     await user.click(screen.getByTestId("opas-sphere"))
     await user.type(screen.getByTestId("opas-input"), "the catalog")
@@ -1197,9 +1249,16 @@ describe("an entry pane grows from the bar", () => {
     // is still a request line, so Enter must still route a request — the thing the
     // entry-mode no-op suppresses.
     render(
-      <OpasProvider>
-        <OpasHost />
-      </OpasProvider>,
+      /* MemoryRouter: OpasHost calls useNavigate (PR C — a capability opens the
+      surface it names), and useNavigate throws outside a Router. In the app
+      OpasHost is mounted inside BrowserRouter, so the wrapper makes this
+      render match production rather than adding anything. Same reason
+      capture-pane.test.tsx has had one since the approval crash. */
+      <MemoryRouter>
+        <OpasProvider>
+          <OpasHost />
+        </OpasProvider>
+      </MemoryRouter>,
     )
     await user.click(screen.getByTestId("opas-sphere"))
     await user.type(screen.getByTestId("opas-input"), "the catalog")
@@ -1229,9 +1288,16 @@ describe("opening Opas never shows a capture pane", () => {
    */
   it("opens no pane on mount with NOTHING stored", async () => {
     render(
-      <OpasProvider>
-        <OpasHost />
-      </OpasProvider>,
+      /* MemoryRouter: OpasHost calls useNavigate (PR C — a capability opens the
+      surface it names), and useNavigate throws outside a Router. In the app
+      OpasHost is mounted inside BrowserRouter, so the wrapper makes this
+      render match production rather than adding anything. Same reason
+      capture-pane.test.tsx has had one since the approval crash. */
+      <MemoryRouter>
+        <OpasProvider>
+          <OpasHost />
+        </OpasProvider>
+      </MemoryRouter>,
     )
     await user.click(screen.getByTestId("opas-sphere"))
     await waitFor(() => expect(screen.getByTestId("opas-input")).toBeInTheDocument())
@@ -1246,9 +1312,16 @@ describe("opening Opas never shows a capture pane", () => {
     window.sessionStorage.setItem(CAPTURE_SESSION_KEY, "sess-1")
     vi.mocked(readCapture).mockResolvedValue(state() as never)
     render(
-      <OpasProvider>
-        <OpasHost />
-      </OpasProvider>,
+      /* MemoryRouter: OpasHost calls useNavigate (PR C — a capability opens the
+      surface it names), and useNavigate throws outside a Router. In the app
+      OpasHost is mounted inside BrowserRouter, so the wrapper makes this
+      render match production rather than adding anything. Same reason
+      capture-pane.test.tsx has had one since the approval crash. */
+      <MemoryRouter>
+        <OpasProvider>
+          <OpasHost />
+        </OpasProvider>
+      </MemoryRouter>,
     )
     await user.click(screen.getByTestId("opas-sphere"))
     await waitFor(() => expect(screen.getByTestId("opas-input")).toBeInTheDocument())
@@ -1263,9 +1336,16 @@ describe("opening Opas never shows a capture pane", () => {
     // the exact tab state that broke on production.
     window.sessionStorage.setItem(CAPTURE_SESSION_KEY, "sess-1")
     render(
-      <OpasProvider>
-        <OpasHost />
-      </OpasProvider>,
+      /* MemoryRouter: OpasHost calls useNavigate (PR C — a capability opens the
+      surface it names), and useNavigate throws outside a Router. In the app
+      OpasHost is mounted inside BrowserRouter, so the wrapper makes this
+      render match production rather than adding anything. Same reason
+      capture-pane.test.tsx has had one since the approval crash. */
+      <MemoryRouter>
+        <OpasProvider>
+          <OpasHost />
+        </OpasProvider>
+      </MemoryRouter>,
     )
     await user.click(screen.getByTestId("opas-sphere"))
     await user.type(screen.getByTestId("opas-input"), "order for hopkins")
@@ -1292,9 +1372,16 @@ describe("a reload restores NOTHING", () => {
       state({ full_text: "tent only, nameplate only" }) as never,
     )
     render(
-      <OpasProvider>
-        <OpasHost />
-      </OpasProvider>,
+      /* MemoryRouter: OpasHost calls useNavigate (PR C — a capability opens the
+      surface it names), and useNavigate throws outside a Router. In the app
+      OpasHost is mounted inside BrowserRouter, so the wrapper makes this
+      render match production rather than adding anything. Same reason
+      capture-pane.test.tsx has had one since the approval crash. */
+      <MemoryRouter>
+        <OpasProvider>
+          <OpasHost />
+        </OpasProvider>
+      </MemoryRouter>,
     )
     await user.click(screen.getByTestId("opas-sphere"))
     await waitFor(() => expect(screen.getByTestId("opas-input")).toBeInTheDocument())
@@ -1948,9 +2035,16 @@ describe("slice 2 — a failed request never blanks the order", () => {
      *  an empty pane would say "your order is safe" about nothing. */
     vi.mocked(startCapture).mockRejectedValue(new Error("500"))
     render(
-      <OpasProvider>
-        <OpasHost />
-      </OpasProvider>,
+      /* MemoryRouter: OpasHost calls useNavigate (PR C — a capability opens the
+      surface it names), and useNavigate throws outside a Router. In the app
+      OpasHost is mounted inside BrowserRouter, so the wrapper makes this
+      render match production rather than adding anything. Same reason
+      capture-pane.test.tsx has had one since the approval crash. */
+      <MemoryRouter>
+        <OpasProvider>
+          <OpasHost />
+        </OpasProvider>
+      </MemoryRouter>,
     )
     await user.click(screen.getByTestId("opas-sphere"))
     await user.type(screen.getByTestId("opas-input"), "start an order")
@@ -2043,9 +2137,16 @@ describe("the bar refuses the operating system's suggestions", () => {
   it.each(EXPECTED)("sets %s=%s on the bar", async (attr, value) => {
     vi.mocked(startCapture).mockResolvedValue(state() as never)
     render(
-      <OpasProvider>
-        <OpasHost />
-      </OpasProvider>,
+      /* MemoryRouter: OpasHost calls useNavigate (PR C — a capability opens the
+      surface it names), and useNavigate throws outside a Router. In the app
+      OpasHost is mounted inside BrowserRouter, so the wrapper makes this
+      render match production rather than adding anything. Same reason
+      capture-pane.test.tsx has had one since the approval crash. */
+      <MemoryRouter>
+        <OpasProvider>
+          <OpasHost />
+        </OpasProvider>
+      </MemoryRouter>,
     )
     await user.click(screen.getByTestId("opas-sphere"))
     const bar = screen.getByTestId("opas-input")
@@ -2058,9 +2159,16 @@ describe("the bar refuses the operating system's suggestions", () => {
      *  edit that drops one attribute fails here rather than in a director's hands. */
     vi.mocked(startCapture).mockResolvedValue(state() as never)
     render(
-      <OpasProvider>
-        <OpasHost />
-      </OpasProvider>,
+      /* MemoryRouter: OpasHost calls useNavigate (PR C — a capability opens the
+      surface it names), and useNavigate throws outside a Router. In the app
+      OpasHost is mounted inside BrowserRouter, so the wrapper makes this
+      render match production rather than adding anything. Same reason
+      capture-pane.test.tsx has had one since the approval crash. */
+      <MemoryRouter>
+        <OpasProvider>
+          <OpasHost />
+        </OpasProvider>
+      </MemoryRouter>,
     )
     await user.click(screen.getByTestId("opas-sphere"))
     const bar = screen.getByTestId("opas-input")

@@ -20,6 +20,7 @@ import {
   DONE_HINT, DONE_PILL_LABEL, DONE_QUESTION,
   IDLE_HINT, IDLE_PILL_LABEL, IDLE_QUESTION, QUOTES_THROUGH_CAPTURE,
 } from "./opas-prompts"
+import { MemoryRouter } from "react-router-dom"
 
 vi.mock("@/contexts/auth-context", () => ({ useAuth: () => ({ isAdmin: true }) }))
 vi.mock("@/core/CommandBarProvider", () => ({
@@ -116,9 +117,16 @@ async function mount() {
   const { OpasProvider } = await import("@/contexts/opas-context")
   const { OpasHost } = await import("./OpasHost")
   const out = render(
-    <OpasProvider>
-      <OpasHost />
-    </OpasProvider>,
+    /* MemoryRouter: OpasHost calls useNavigate (PR C — a capability opens the
+      surface it names), and useNavigate throws outside a Router. In the app
+      OpasHost is mounted inside BrowserRouter, so the wrapper makes this
+      render match production rather than adding anything. Same reason
+      capture-pane.test.tsx has had one since the approval crash. */
+    <MemoryRouter>
+      <OpasProvider>
+        <OpasHost />
+      </OpasProvider>
+    </MemoryRouter>,
   )
   await act(async () => {
     fireEvent.click(screen.getByTestId("opas-sphere"))

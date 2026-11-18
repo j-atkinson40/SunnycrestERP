@@ -62,7 +62,7 @@ import { AffinityVisitWatcher } from "@/components/spaces/AffinityVisitWatcher";
 import { PeekHost } from "@/components/peek/PeekHost";
 import { ProtectedRoute } from "@/components/protected-route";
 import { RootRedirect } from "@/components/root-redirect";
-import { AppLayout } from "@/components/layout/app-layout";
+import { TenantShell } from "@/components/layout/tenant-shell";
 import { Toaster } from "@/components/ui/sonner";
 import { ImpersonationBanner } from "@/components/platform/impersonation-banner";
 import { getCompanySlug } from "@/lib/tenant";
@@ -612,7 +612,12 @@ export function renderTenantSlugRoutes(
                     <PresetThemeProvider>
                       <SpaceProvider>
                         <PeekProvider>
-                          <AppLayout />
+                          {/* PR C — the shell is chosen by AREA LIMITATION,
+                              not by role: `limited_to_areas` not NULL gets the
+                              new shell (no sidebar, note as home, sphere as
+                              the entrance). James's ruling 3, 2026-11-17.
+                              Temporary; see `tenant-shell.tsx` for the exit. */}
+                          <TenantShell />
                           <PeekHost />
                           {/* Phase 8e.1 — fire-and-forget topical
                               affinity recorder. Watches route

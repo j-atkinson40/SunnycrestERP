@@ -16,6 +16,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ProductPane } from "./ProductPane"
 import { ProductListPane } from "./ProductListPane"
+import { MemoryRouter } from "react-router-dom"
 
 const listVariants = vi.fn()
 const getVariant = vi.fn()
@@ -176,9 +177,16 @@ describe("⚠️ through the REAL provider tree", () => {
     const { OpasProvider } = await import("@/contexts/opas-context")
     const { OpasHost } = await import("./OpasHost")
     return render(
-      <OpasProvider>
-        <OpasHost />
-      </OpasProvider>,
+      /* MemoryRouter: OpasHost calls useNavigate (PR C — a capability opens the
+      surface it names), and useNavigate throws outside a Router. In the app
+      OpasHost is mounted inside BrowserRouter, so the wrapper makes this
+      render match production rather than adding anything. Same reason
+      capture-pane.test.tsx has had one since the approval crash. */
+      <MemoryRouter>
+        <OpasProvider>
+          <OpasHost />
+        </OpasProvider>
+      </MemoryRouter>,
     )
   }
 
@@ -275,7 +283,13 @@ describe("⚠️ through the REAL provider tree", () => {
     // …and the pane is still mounted, marked tucked, and the sphere holds the session
     const pane = screen.getByTestId("opas-desk").firstElementChild
     expect(pane?.getAttribute("data-tucked")).toBe("true")
-    expect(screen.getByTestId("opas-sphere").getAttribute("data-session")).toBe("true")
+    /* ⚠️ `data-session` BECAME `data-state="working"` IN PR C, and this is the
+       only place that read it (checked by grep across ts/tsx/css before the
+       change). The fact asserted is unchanged — held panes are visible on the
+       sphere — but the sphere now carries one state attribute with four values
+       instead of a boolean, because the prototype's four states need naming and
+       a second attribute meaning nearly the same thing would drift. */
+    expect(screen.getByTestId("opas-sphere").getAttribute("data-state")).toBe("working")
   })
 })
 
@@ -287,9 +301,16 @@ describe("⚠️ drag, bring-to-front, and bounds", () => {
       { variant_template_id: "a", name: "Vault A", kind: "burial_vault" },
     ])
     render(
-      <OpasProvider>
-        <OpasHost />
-      </OpasProvider>,
+      /* MemoryRouter: OpasHost calls useNavigate (PR C — a capability opens the
+      surface it names), and useNavigate throws outside a Router. In the app
+      OpasHost is mounted inside BrowserRouter, so the wrapper makes this
+      render match production rather than adding anything. Same reason
+      capture-pane.test.tsx has had one since the approval crash. */
+      <MemoryRouter>
+        <OpasProvider>
+          <OpasHost />
+        </OpasProvider>
+      </MemoryRouter>,
     )
     fireEvent.click(screen.getByTestId("opas-sphere"))
     const input = screen.getByTestId("opas-input")
@@ -467,9 +488,16 @@ describe("⚠️ Cmd+K — Opas takes it, for sphere-users only", () => {
     const { OpasProvider } = await import("@/contexts/opas-context")
     const { OpasHost } = await import("./OpasHost")
     return render(
-      <OpasProvider>
-        <OpasHost />
-      </OpasProvider>,
+      /* MemoryRouter: OpasHost calls useNavigate (PR C — a capability opens the
+      surface it names), and useNavigate throws outside a Router. In the app
+      OpasHost is mounted inside BrowserRouter, so the wrapper makes this
+      render match production rather than adding anything. Same reason
+      capture-pane.test.tsx has had one since the approval crash. */
+      <MemoryRouter>
+        <OpasProvider>
+          <OpasHost />
+        </OpasProvider>
+      </MemoryRouter>,
     )
   }
 

@@ -742,6 +742,14 @@ tests/test_area_limited_roles.py
 tests/test_payroll_role_slice.py
 tests/test_role_writes_are_audited.py
 
+# PR C (2026-11-18). Opas's capability list, composed per area on the server.
+# In the gate because it is the test that makes the `GET /opas/capabilities`
+# entry in COMPOSED_ROUTES honest: that tuple's own warning is that the likely
+# failure is "a 200 full of somebody else's work", which only a content
+# assertion can see. Six breaks were applied and each reddens a named
+# assertion; one of them reddened nothing until the test's input was changed.
+tests/test_opas_capabilities.py
+
 tests/test_the_vault_resolution_may_be_absent.py
 tests/test_the_wrong_town_asks.py
 # Payroll 1 blocker fix (2026-11-03). The enforced payroll data switch, and
