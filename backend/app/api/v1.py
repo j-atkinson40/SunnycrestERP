@@ -192,6 +192,7 @@ from app.api.routes import (   # noqa: E402 — continuation of main import
     vault,
     completeness,
     two_step,
+    opas,
     payroll_reports,
     vault_accounting,
     vault_molds,
@@ -933,6 +934,15 @@ v1_router.include_router(
 
 # Weekly payroll dues reports (accountant/admin). Reporting only — does not run
 # payroll and does not touch the planned Check integration.
+# Opas's own capability list. ⚠️ NO `area:` TAG — it spans areas by
+# construction and filters itself instead; see the module docstring and the
+# `GET /opas/capabilities` entry in `COMPOSED_ROUTES`.
+v1_router.include_router(
+    opas.router,
+    prefix="/opas",
+    tags=["Opas"],
+)
+
 v1_router.include_router(
     payroll_reports.router,
     prefix="/payroll-reports",

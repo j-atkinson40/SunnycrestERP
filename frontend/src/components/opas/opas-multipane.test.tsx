@@ -15,6 +15,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { useOpas } from "@/contexts/opas-context"
 import type { OrderListSnapshot } from "@/services/order-list-service"
+import { MemoryRouter } from "react-router-dom"
 
 const askOrderList = vi.fn()
 const getSalesOrderSummary = vi.fn()
@@ -141,9 +142,16 @@ async function mount() {
   const { OpasProvider } = await import("@/contexts/opas-context")
   const { OpasHost } = await import("./OpasHost")
   const out = render(
-    <OpasProvider>
-      <OpasHost />
-    </OpasProvider>,
+    /* MemoryRouter: OpasHost calls useNavigate (PR C — a capability opens the
+      surface it names), and useNavigate throws outside a Router. In the app
+      OpasHost is mounted inside BrowserRouter, so the wrapper makes this
+      render match production rather than adding anything. Same reason
+      capture-pane.test.tsx has had one since the approval crash. */
+    <MemoryRouter>
+      <OpasProvider>
+        <OpasHost />
+      </OpasProvider>
+    </MemoryRouter>,
   )
   fireEvent.click(screen.getByTestId("opas-sphere"))
   return out
@@ -408,10 +416,17 @@ describe("the pane store survives two writes in one tick", () => {
     const { OpasProvider } = await import("@/contexts/opas-context")
     const { OpasHost } = await import("./OpasHost")
     render(
-      <OpasProvider>
-        <OpasHost />
-        <Probe />
-      </OpasProvider>,
+      /* MemoryRouter: OpasHost calls useNavigate (PR C — a capability opens the
+      surface it names), and useNavigate throws outside a Router. In the app
+      OpasHost is mounted inside BrowserRouter, so the wrapper makes this
+      render match production rather than adding anything. Same reason
+      capture-pane.test.tsx has had one since the approval crash. */
+      <MemoryRouter>
+        <OpasProvider>
+          <OpasHost />
+          <Probe />
+        </OpasProvider>
+      </MemoryRouter>,
     )
     fireEvent.click(screen.getByTestId("opas-sphere"))
     await ask("the catalog")

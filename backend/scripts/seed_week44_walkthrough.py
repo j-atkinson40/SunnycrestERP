@@ -5,10 +5,25 @@ the payroll data switch ON and creates a user. Both are correct for a throwaway
 local database and wrong everywhere else, so it is a script run by hand with an
 explicit database in the environment.
 
-⚠️ **NO REAL CREDENTIAL IS CREATED OR USED.** The test user's password hash is
-a literal that cannot be signed in with; the walk establishes its session by
-injecting a token minted with the app's own signing key, which is the local
-`SECRET_KEY`. Nothing here touches Payentry or a real identity.
+⚠️ **NO REAL CREDENTIAL IS CREATED OR USED.** Nothing here touches Payentry or
+a real identity.
+
+⚠️ **CHANGED 2026-11-18 (PR C): THE USER CAN NOW SIGN IN, WITH A PUBLISHED
+LOCAL-DEV PASSWORD.** The original wording is kept above because its intent is
+unchanged, and here is what moved and why. It read: "The test user's password
+hash is a literal that cannot be signed in with; the walk establishes its
+session by injecting a token minted with the app's own signing key."
+
+The PR C walk is *from sign-in* — the shell a user gets is chosen from the
+`/auth/me` payload, and a walk that injects a token proves the shell works for a
+session somebody else established. So this user now carries a hash of
+`WALKTHROUGH_PASSWORD` below.
+
+That constant is a LOCAL-DEV CONVENTION, not a secret: CLAUDE.md §7 already
+publishes `admin@testco.com / TestAdmin123!` for exactly this purpose, this
+script refuses to run with `ENVIRONMENT=production`, and the account exists only
+in a throwaway database on `.example.com`. Token injection still works and the
+older walk still uses it; this adds a door rather than removing one.
 
 The fixture is built to produce the finding the walk is about: a union member
 who is configured and active but absent from the hours export, which is
@@ -38,6 +53,15 @@ from app.models.payroll_report import (                                # noqa: E
 from app.models.role import Role                                       # noqa: E402
 from app.models.role_permission import RolePermission                  # noqa: E402
 from app.models.user import User                                       # noqa: E402
+from app.core.security import hash_password                        # noqa: E402
+
+#: ⚠️ A PUBLISHED LOCAL-DEV CREDENTIAL, in the same category as CLAUDE.md §7's
+#: `admin@testco.com / TestAdmin123!`. It is in the repository on purpose: the
+#: walk has to sign in, and a value generated at seed time would have to be
+#: carried to the test runner by hand — which is the shape the credentials rule
+#: exists to prevent. Guarded by this script's production refusal.
+WALKTHROUGH_EMAIL = "susan.walkthrough@testco.example.com"
+WALKTHROUGH_PASSWORD = "WalkThrough123!"
 from app.services.payroll import service as payroll_service            # noqa: E402
 from app.services.payroll.data_gate import PAYROLL_DATA_ENABLED        # noqa: E402
 from sqlalchemy import text                                            # noqa: E402
@@ -62,7 +86,23 @@ PEOPLE = [
 ]
 
 
+#: ⚠️ **ADDED 2026-11-18, BECAUSE A DOCSTRING I WROTE CLAIMED IT ALREADY
+#: EXISTED.** The PR C note above said "this script refuses to run with
+#: `ENVIRONMENT=production`" as part of the argument for publishing a dev
+#: password. It did not refuse anything — the claim was false when written, and
+#: it was load-bearing for the decision it was justifying. Caught by grepping
+#: for the guard the sentence named.
+def _refuse_production() -> None:
+    env = (os.environ.get("ENVIRONMENT") or "").strip().lower()
+    if env == "production":
+        raise SystemExit(
+            "seed_week44_walkthrough refuses to run with ENVIRONMENT=production: "
+            "it turns the payroll data switch on and creates a signable user."
+        )
+
+
 def main() -> int:
+    _refuse_production()
     db = SessionLocal()
     try:
         co = db.query(Company).filter(Company.id == TENANT).first()
@@ -102,8 +142,8 @@ def main() -> int:
         db.flush()
         for key in ("payroll.view", "payroll.approve", "payroll.upload"):
             db.add(RolePermission(role_id=ROLE_ID, permission_key=key))
-        db.add(User(id=USER_ID, email="susan.walkthrough@testco.example.com",
-                    hashed_password="not-a-credential-cannot-be-signed-in-with",
+        db.add(User(id=USER_ID, email=WALKTHROUGH_EMAIL,
+                    hashed_password=hash_password(WALKTHROUGH_PASSWORD),
                     first_name="Susan", last_name="Walkthrough",
                     role_id=ROLE_ID, company_id=TENANT))
 

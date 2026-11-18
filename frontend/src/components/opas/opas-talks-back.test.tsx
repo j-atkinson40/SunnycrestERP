@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { OrderListSnapshot } from "@/services/order-list-service"
 import { IDLE_PILL_LABEL, IDLE_QUESTION } from "./opas-prompts"
 import { REPLY_FADE_MS } from "./reply"
+import { MemoryRouter } from "react-router-dom"
 
 const askOrderList = vi.fn()
 const getSalesOrderSummary = vi.fn()
@@ -146,9 +147,16 @@ async function mount() {
   const { OpasProvider } = await import("@/contexts/opas-context")
   const { OpasHost } = await import("./OpasHost")
   const out = render(
-    <OpasProvider>
-      <OpasHost />
-    </OpasProvider>,
+    /* MemoryRouter: OpasHost calls useNavigate (PR C — a capability opens the
+      surface it names), and useNavigate throws outside a Router. In the app
+      OpasHost is mounted inside BrowserRouter, so the wrapper makes this
+      render match production rather than adding anything. Same reason
+      capture-pane.test.tsx has had one since the approval crash. */
+    <MemoryRouter>
+      <OpasProvider>
+        <OpasHost />
+      </OpasProvider>
+    </MemoryRouter>,
   )
   fireEvent.click(screen.getByTestId("opas-sphere"))
   return out

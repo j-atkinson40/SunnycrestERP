@@ -28,9 +28,15 @@
  * here — it belongs to the new-shell PR, with the sphere brought up to
  * `docs/prototypes/2026-11-17-opas-sphere.html`.
  *
- * ⚠️ ADMIN-ONLY, via the EXISTING role check (`useAuth().isAdmin`). No new flag mechanism.
+ * ⚠️ **ADMIN-ONLY UNTIL 2026-11-18, NOW ADMIN **OR** AREA-LIMITED.** The original line
+ * read "ADMIN-ONLY, via the EXISTING role check (`useAuth().isAdmin`). No new flag
+ * mechanism" — still true about the mechanism: the predicate is derived from the role's
+ * `limited_to_areas`, which the server already reports, and no flag was added. The gate
+ * is `mayUseOpas(isAdmin, limitedToAreas)`; see that module for why it tests `!= null`
+ * rather than truthiness.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useNavigate } from "react-router-dom"
 
 import { useAuth } from "@/contexts/auth-context"
 import { useOpas, type OpasPaneKind } from "@/contexts/opas-context"
@@ -60,6 +66,15 @@ import {
   startsCaptureWithParty,
 } from "./opas-routing"
 import { isEntryPane } from "./pane-mode"
+import { mayUseOpas } from "./may-use-opas"
+import { isAreaLimited } from "./may-use-opas"
+import {
+  fetchCapabilities,
+  hrefForTarget,
+  matchCapability,
+  type OpasCapability,
+} from "@/services/opas-capabilities-service"
+import { Sphere } from "./Sphere"
 import { anchoredSlots, RIGHT_ANCHOR, TOP_ANCHOR } from "./pane-placement"
 import { isCloseRequest } from "./close-request"
 import {
@@ -232,8 +247,35 @@ function useNarrowScreen(): boolean {
   return narrow
 }
 
+/** ⚠️ A PREFIX, NOT A BARE ID, so a capability act can never collide with the
+ *  two existing acts (`new_order`, `review`) however the registry grows. */
+const CAP_ACT_PREFIX = "cap:"
+
 export function OpasHost() {
-  const { isAdmin } = useAuth()
+  const { isAdmin, limitedToAreas } = useAuth()
+  /** ⚠️ WIDENED FROM `isAdmin` ON 2026-11-18 — see `may-use-opas.ts`.
+   *  An area-limited user has no sidebar and no platform command bar, so
+   *  the sphere is her only entrance. The three-outcome rule on
+   *  `limitedToAreas` lives in that module rather than at this call site. */
+  const mayOpas = mayUseOpas(isAdmin, limitedToAreas)
+  /** ⚠️ AREA-LIMITED USERS GET A SERVER-COMPOSED LIST; UNLIMITED ONES KEEP
+   *  TODAY'S OPAS UNCHANGED, AND THAT ASYMMETRY IS DELIBERATE.
+   *
+   *  The registry on the server holds payroll entries only (see its own
+   *  comment: other areas earn entries when their shell work lands). So
+   *  driving an unlimited user's Opas from it would REMOVE the "New order"
+   *  entrance that is the live product, and matching her typing against
+   *  payroll phrases would answer "reports" with the payroll page. Neither is
+   *  an improvement, and both change a working surface.
+   *
+   *  What ruling 2 actually requires is that Susan's Opas knows payroll and
+   *  nothing else. That is what this does. When the orders area gets its
+   *  entries, the hardcoded pills below are deleted in favour of the registry
+   *  and this branch disappears. */
+  const areaLimited = isAreaLimited(limitedToAreas)
+  const navigate = useNavigate()
+  /** `null` = not read yet or the read FAILED — never "nothing to offer". */
+  const [caps, setCaps] = useState<OpasCapability[] | null>(null)
   const opas = useOpas()
   // ⚠️ A TEXTAREA SINCE 2026-10-13, NOT AN INPUT. An `<input>` can only scroll, so a
   // long order ran off the left-hand edge and the director could not see the start of
@@ -582,7 +624,7 @@ export function OpasHost() {
    * already guaranteed.
    */
   useEffect(() => {
-    if (!isAdmin || !opas.canRender) return
+    if (!mayOpas || !opas.canRender) return
     function onKeyDown(e: KeyboardEvent) {
       if (e.key.toLowerCase() !== "k") return
       if (!(e.metaKey || e.ctrlKey)) return
@@ -597,7 +639,7 @@ export function OpasHost() {
     }
     document.addEventListener("keydown", onKeyDown, true)
     return () => document.removeEventListener("keydown", onKeyDown, true)
-  }, [isAdmin, opas])
+  }, [mayOpas, opas])
 
   /**
    * Drag, built the way the prototype's `wire(w)` does, with the differences named.
@@ -805,6 +847,42 @@ export function OpasHost() {
           cremation: null,
         }
       }
+      /** ⚠️ AN AREA-LIMITED USER'S OFFERINGS COME FROM THE SERVER, AND THE
+       *  "New order" PILL IS SUPPRESSED FOR HER.
+       *
+       *  That pill is an ORDERS-area offering that was never area-gated. For
+       *  Susan it offers a thing the server would refuse — and ruling 2 says
+       *  her Opas knows payroll and nothing else.
+       *
+       *  ⚠️ `caps === null` IS NOT AN EMPTY LIST. Null means the read has not
+       *  landed or it failed, so the hint says the list is still coming rather
+       *  than claiming there is nothing. An empty ARRAY is a real answer — a
+       *  user with no entries — and says so plainly. */
+      if (areaLimited) {
+        if (caps === null) {
+          return {
+            question: IDLE_QUESTION,
+            hint: "Reading what you can do here…",
+            fieldId: null,
+            pills: [],
+            cremation: null,
+          }
+        }
+        return {
+          question: IDLE_QUESTION,
+          hint: caps.length
+            ? "Pick one, or just type it."
+            : "There is nothing here for your role yet.",
+          fieldId: null,
+          pills: caps.map((c) => ({
+            value: `${CAP_ACT_PREFIX}${c.id}`,
+            label: c.label,
+            ...(c.hint ? { sub: c.hint } : {}),
+            act: `${CAP_ACT_PREFIX}${c.id}`,
+          })),
+          cremation: null,
+        }
+      }
       return {
         question: IDLE_QUESTION,
         hint: IDLE_HINT,
@@ -839,6 +917,17 @@ export function OpasHost() {
     status?.guidedFieldId,
     status?.guidedPills,
     status?.cremation,
+    // ⚠️ ADDED 2026-11-18, AND LEAVING THEM OUT COST AN HOUR. This list is
+    // hand-written under an `exhaustive-deps` suppression, so reading two new
+    // values inside the memo produced NO warning and NO error — the memo simply
+    // kept returning its first answer. The symptom was precise and misleading:
+    // the capability fetch demonstrably succeeded (the mock's call counter went
+    // up, and calling it directly returned the three entries) while the pane
+    // went on saying "Reading what you can do here…" forever, which reads as a
+    // failed read rather than a stale memo. Found by printing the DOM at three
+    // delays, not by reading the code.
+    areaLimited,
+    caps,
   ])
 
   /** ⚠️ KEYED BY THE FRONT ENTRY PANE, because that is whose question is on screen.
@@ -1360,12 +1449,80 @@ export function OpasHost() {
     focusBar()
   }, [opas, focusBar])
 
+  /** Read the capability list when Opas opens.
+   *
+   * ⚠️ GATED ON `opas.isOpen` LIKE THE OTHER TWO READS IN THIS FILE, which is
+   * what makes it post-login — and on `areaLimited`, so an unlimited user pays
+   * nothing for a list she is not shown.
+   *
+   * ⚠️ AND IT RETRIES, because `caps` stays null on a failed read. A plausible
+   * default here would be an empty list, which renders as "Opas can do nothing
+   * for you" — the exact failure `fetchCapturePreferences` was changed to stop
+   * producing. */
+  useEffect(() => {
+    if (!areaLimited || !opas.isOpen || caps !== null) return
+    let alive = true
+    void fetchCapabilities().then((list) => {
+      if (alive && list !== null) setCaps(list)
+    })
+    return () => { alive = false }
+  }, [areaLimited, opas.isOpen, caps])
+
+  /** ⌘K OPENS OPAS IN THE NEW SHELL — James's ruling 1 of 2026-11-17.
+   *
+   * ⚠️ **CAPTURE PHASE, AND `CommandBarProvider` IS NOT MODIFIED.** That
+   * provider binds ⌘K on `document` in the BUBBLE phase, and the Opas gate
+   * test's stated proof is that Opas is additive: "CommandBarProvider is not
+   * modified — Opas watches `commandBar.isOpen` and calls the bar's own
+   * exported close(), so every existing rule is intact." Editing its handler
+   * to know about areas would retire that claim for every shell at once.
+   *
+   * A capture-phase listener on `document` runs on the way DOWN, before the
+   * provider's bubble handler on the way up, so `stopPropagation()` here means
+   * the platform bar never sees the key — for an area-limited user only.
+   * Ruling 2: she gets Opas's command line, never the platform bar. The
+   * capture-phase pattern is already in use here for ⌥1..5.
+   *
+   * ⚠️ IT TOGGLES, because a key that opens but cannot close is a key people
+   * press twice and then reach for the mouse. */
+  useEffect(() => {
+    if (!areaLimited || !mayOpas) return
+    function onKey(e: KeyboardEvent) {
+      if (!(e.metaKey || e.ctrlKey) || e.key !== "k") return
+      e.preventDefault()
+      e.stopPropagation()
+      if (opas.isOpen) opas.close()
+      else opas.open()
+    }
+    document.addEventListener("keydown", onKey, true)
+    return () => document.removeEventListener("keydown", onKey, true)
+  }, [areaLimited, mayOpas, opas])
+
+  /** Open what a capability names, and close Opas behind it.
+   *
+   * ⚠️ OPAS CLOSES. The request has been answered by a surface opening; leaving
+   * the overlay up over the thing she asked for would mean a second dismissal
+   * for one request. */
+  const openCapability = useCallback((cap: OpasCapability) => {
+    setText("")
+    opas.close()
+    navigate(hrefForTarget(cap.target))
+  }, [opas, navigate])
+
   const actGuided = useCallback(
     (act: string) => {
       if (act === PILL_ACT_REVIEW) requestComplete()
       else if (act === PILL_ACT_NEW_ORDER) startBlankCapture()
+      else if (act.startsWith(CAP_ACT_PREFIX)) {
+        // ⚠️ RESOLVED AGAINST THE LIST THE SERVER GAVE, not against the act
+        // string. A pill cannot name an entry this caller was not given,
+        // because the pills are built from `caps` — but looking the id back up
+        // means a stale pill from a previous session cannot navigate either.
+        const cap = (caps ?? []).find((c) => c.id === act.slice(CAP_ACT_PREFIX.length))
+        if (cap) openCapability(cap)
+      }
     },
-    [requestComplete, startBlankCapture],
+    [requestComplete, startBlankCapture, caps, openCapability],
   )
 
   /**
@@ -1915,6 +2072,44 @@ export function OpasHost() {
         return
       }
 
+      /** ⚠️ CAPABILITY MATCHING, AND ONLY FOR AN AREA-LIMITED CALLER.
+       *
+       *  After "close" — which is about the overlay and must keep working —
+       *  and before the capture entrance, because for Susan there IS no
+       *  capture entrance: every route below this point leads to orders.
+       *
+       *  Not applied to unlimited callers deliberately. The registry holds
+       *  payroll phrases, so "reports" typed by an admin would open the
+       *  payroll page instead of whatever the existing router does with it —
+       *  a plausible wrong answer, which is the worst kind. When the orders
+       *  area has its own entries, this gate widens with them.
+       *
+       *  ⚠️ THE CANDIDATE SET IS `caps`, THE COMPOSED LIST. Matching the full
+       *  registry would let her type her way into an entry the area gate
+       *  removed from her list — the server's `match_phrase` carries the same
+       *  warning for the same reason. */
+      if (areaLimited) {
+        /** ⚠️ FOUND IN THE WALK-THROUGH, AND IT IS HERS TO HIT. Opening Opas
+         *  starts the capability read; typing immediately — which is what ⌘K
+         *  then type IS — submitted against `caps === null` and resolved
+         *  nothing, so Enter did nothing at all. No navigation, no message: the
+         *  pane said "Reading what you can do here…" and then swallowed the
+         *  request. A silent no-op is the worst of the three possible answers.
+         *
+         *  So the unread state SAYS SO and keeps the text, which is why the
+         *  three-state `caps` exists: `null` is "not read yet or the read
+         *  failed", and only an empty ARRAY means there is nothing to match. */
+        if (caps === null) {
+          say("miss", "Still reading what you can do here. Try that again in a moment.")
+          return
+        }
+        const cap = matchCapability(phrase, caps)
+        if (cap) {
+          openCapability(cap)
+          return
+        }
+      }
+
       // ⚠️ ALSO BEFORE THE CAPTURE ENTRANCE, AND FOR THE SAME REASON AS "close". "set
       // my shortcut to control" is a sentence about the keyboard, not about an order,
       // and it has to work while an entry pane holds the bar — which is precisely when
@@ -2236,7 +2431,7 @@ export function OpasHost() {
 
   // ⚠️ The sphere is admin-only for now. Not rendering is the whole gate: a hidden-but-
   // mounted sphere would still answer keyboard and pointer events.
-  if (!isAdmin || !opas.canRender) return null
+  if (!mayOpas || !opas.canRender) return null
 
   return (
     <>
@@ -2874,7 +3069,23 @@ export function OpasHost() {
               // question only when the text was NON-empty. Four of its nine possible
               // strings were therefore unreachable on screen, the server's
               // `next_question` among them. The question is in the reply line now.
-              placeholder={entryMode ? ENTRY_PLACEHOLDER : "orders · the catalog"}
+              /* ⚠️ "orders · the catalog" IS AN ORDERS-AREA PROMPT, AND SUSAN
+                 WAS BEING SHOWN IT. Found by looking at the walk-through
+                 screenshot rather than by any assertion: her Opas offered three
+                 payroll entries above a command line inviting her to type about
+                 orders and the catalog — two things her role cannot reach. The
+                 placeholder is an example of what to type, so it has to be an
+                 example SHE could follow. Hers names her own entries; everyone
+                 else's is unchanged. */
+              placeholder={
+                entryMode
+                  ? ENTRY_PLACEHOLDER
+                  : areaLimited
+                    ? (caps && caps.length
+                        ? caps.slice(0, 2).map((c) => c.label.toLowerCase()).join(" · ")
+                        : "")
+                    : "orders · the catalog"
+              }
               aria-label={entryMode ? "Say what the director said" : "Ask Opas"}
               style={{
                 // ⚠️ EVERY TYPOGRAPHIC PROPERTY COMES FROM `MIRROR_BOX` SINCE 2026-10-16, AND
@@ -3060,26 +3271,29 @@ export function OpasHost() {
         </div>
       )}
 
-      {/* SPHERE — 56px, right 24 bottom 24, the prototype's geometry. `session` shows a held
-          set of panes: orb.classList.toggle('session', wins.length > 0). */}
-      <button
-        type="button"
-        data-testid="opas-sphere"
-        data-session={opas.hasSession ? "true" : "false"}
-        aria-label="Open Opas"
-        onClick={() => opas.open()}
-        style={{
-          position: "fixed", right: 24, bottom: 24, width: 56, height: 56, border: 0, padding: 0,
-          borderRadius: "50%", background: "radial-gradient(circle at 36% 30%,#3c3c3c 0,#181818 42%,#060606 78%)",
-          boxShadow: opas.hasSession
-            ? "0 18px 36px rgba(0,0,0,.75), 0 0 18px 2px rgba(214,214,214,.30)"
-            : "0 18px 36px rgba(0,0,0,.75), 0 0 16px 2px rgba(138,164,189,.30)",
-          cursor: "pointer", zIndex: 45,
-          opacity: opas.isOpen ? 0 : 1,
-          transform: opas.isOpen ? "scale(.7)" : "none",
-          pointerEvents: opas.isOpen ? "none" : "auto",
-          transition: "opacity .2s cubic-bezier(0.2,0,0.1,1), transform .2s cubic-bezier(0.2,0,0.1,1)",
-        }}
+      {/* SPHERE — six layers, drag + edge snap, four states, and NO GLOW WHEN
+          IDLE. Replaced on 2026-11-18 (PR C): this was a single <button> with a
+          box-shadow, built from `2026-10-01-opas-overlay.html`, which glowed
+          steel whenever it was on screen. James, 2026-11-17: there is no glow
+          when idle, "it's canon", and it applies to admin's sphere too — so the
+          change lands here and not only in the new shell.
+
+          ⚠️ THE STATE MAPPING IS THE OLD TWO STATES, HONESTLY NARROWED. This
+          surface knows two things: whether panes are held (`hasSession`) and
+          whether Opas is open. It does not know whether anything NEEDS the
+          admin, because that lives in the note's fragments, which this shell
+          does not read. So `needs`, `suggest` and `done` are not reachable from
+          here and are not faked: held panes read as `working`, everything else
+          is `quiet`. The new shell, which does read the note, drives all four. */}
+      <Sphere
+        state={opas.hasSession ? "working" : "quiet"}
+        hidden={opas.isOpen}
+        onOpen={() => opas.open()}
+        /* ⚠️ SHOWN ONLY WHERE THE KEY ACTUALLY WORKS. ⌘K opens Opas in the new
+           shell (ruling 1); in the admin shell it still opens the platform
+           command bar, so advertising it on the sphere there would be a hint
+           that lies. */
+        shortcut={areaLimited ? "⌘K" : undefined}
       />
     </>
   )

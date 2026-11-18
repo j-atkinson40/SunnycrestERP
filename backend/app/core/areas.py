@@ -289,6 +289,20 @@ COMPOSED_SURFACES: tuple[tuple[str, str], ...] = (
     # already says, and why it is kept rather than deleted.
     ("command-bar", "Opas. The stated primary entrance; Sue's Opas should know "
                     "payroll and nothing else. Must resolve per RESULT."),
+    # ⚠️ **THE ONLY ENTRY ON THIS PLAN WHOSE FILTERING IS ACTUALLY BUILT, AND
+    # IT IS LISTED HERE BECAUSE THE ROUTER-LEVEL RATCHET REQUIRES IT.** The
+    # two tuples answer different questions and both have to be satisfied:
+    # this one declares that the ROUTER spans areas and is therefore allowed
+    # to carry no `area:` tag, which is what
+    # `test_every_tenant_route_carries_exactly_one_area_or_is_declared_composed`
+    # checks; `COMPOSED_ROUTES` below declares the exact method+path where the
+    # filtering exists, and is what the guard reads. Declaring only the second
+    # left the route untagged and undeclared at the router level, and that
+    # ratchet caught it — correctly.
+    ("opas",        "Opas's own capability list. Composed per area in "
+                    "`services/opas/capabilities.py`: each entry declares its "
+                    "area and the level it needs, so Susan's Opas offers "
+                    "payroll and nothing else. BUILT — see COMPOSED_ROUTES."),
     ("core",        "The legacy command/search endpoints Opas still calls."),
     ("briefings",   "Composed from orders, invoices, safety and cases."),
     ("widget-data", "28 pairs, one per widget, each reading a different area. "
@@ -574,6 +588,17 @@ COMPOSED_ROUTES: tuple[tuple[str, str, str], ...] = (
         "her payroll fragments and an otherwise empty note — which is the "
         "surface working, not failing. Before this she got a 403 on the first "
         "screen after sign-in.",
+    ),
+    (
+        "GET", "/opas/capabilities",
+        "PR C. Opas's own list of what she can do. Each entry declares its "
+        "AREA and the LEVEL it needs; `capabilities_for` drops the ones the "
+        "caller's grants do not admit, using the note's own "
+        "`area_admits_read`, and then drops the ones her permissions do not "
+        "admit. A payroll-limited user gets her three payroll entries and "
+        "nothing else — held by "
+        "`test_opas_capabilities.py::test_payroll_limited_gets_ONLY_payroll`, "
+        "which asserts the ids returned rather than the status code.",
     ),
 )
 

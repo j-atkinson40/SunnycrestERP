@@ -1,0 +1,38 @@
+{
+  "_comment": [
+    "Shared cases for Opas's phrase matcher, read by BOTH implementations'",
+    "tests: frontend/src/components/opas/opas-capability-match.test.ts and",
+    "backend/tests/test_opas_capabilities.py. One table, two readers — so a",
+    "change made to one matcher and not the other goes red instead of drifting.",
+    "",
+    "`entries` names the capability ids the caller was given. `expect` is the id",
+    "that must resolve, or null for nothing.",
+    "",
+    "⚠️ The phrases themselves are NOT duplicated here. They live in the server",
+    "registry and travel to the client in the payload; a copy here would be a",
+    "third place to keep in step."
+  ],
+  "cases": [
+    { "typed": "payroll", "entries": "all", "expect": "payroll_week_review" },
+    { "typed": "this week's payroll", "entries": "all", "expect": "payroll_week_review" },
+    { "typed": "this week’s payroll", "entries": "all", "expect": "payroll_week_review",
+      "why": "a curly apostrophe is what a Mac types; it must normalise to the straight one" },
+    { "typed": "  WEEKLY   payroll ", "entries": "all", "expect": "payroll_week_review",
+      "why": "case and runs of whitespace are normalised" },
+    { "typed": "upload hours", "entries": "all", "expect": "payroll_hours_upload" },
+    { "typed": "I need to upload hours for this week", "entries": "all", "expect": "payroll_hours_upload",
+      "why": "containment, when nothing matches exactly" },
+    { "typed": "dues report", "entries": "all", "expect": "payroll_dues_report",
+      "why": "⚠️ THE DISCRIMINATING CASE. Contains 'dues', which belongs to the week entry, so an exact-match pass must run before containment." },
+    { "typed": "monthly dues", "entries": "all", "expect": "payroll_dues_report" },
+    { "typed": "", "entries": "all", "expect": null },
+    { "typed": "   ", "entries": "all", "expect": null },
+    { "typed": "order for hopkins", "entries": "all", "expect": null,
+      "why": "nothing in the payroll registry answers an orders request" },
+    { "typed": "upload hours", "entries": "none", "expect": null,
+      "why": "⚠️ a caller given no entries resolves nothing, however exactly she types" },
+    { "typed": "upload hours", "entries": "view_only", "expect": null,
+      "why": "the upload is a change entry; a view-only caller was never given it" },
+    { "typed": "payroll", "entries": "view_only", "expect": "payroll_week_review" }
+  ]
+}

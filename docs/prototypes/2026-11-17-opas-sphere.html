@@ -1,0 +1,134 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Opas sphere — reference</title>
+<!--
+  THE OPAS SPHERE, EXTRACTED FOR BUILDING AGAINST. NO PAYROLL DATA.
+
+  Source: payroll-prototype-reference.html (132,110 bytes, md5
+  e98a51c61a4aa8ad7637f90c4854bc81), which is NOT in this repository and must
+  never be committed — it holds real employee names, hours and pay. Only the
+  sphere's markup, CSS and JS were copied here, per James's instruction of
+  2026-11-17. Everything that made this file a payroll prototype — the note,
+  the Focuses, the panes, the people, the dues figures — is absent.
+
+  What IS here, and is therefore what the React build must reproduce:
+    - 56px button, six layered spans: halo, ball, tint, inner, spec, rim
+    - initial position {side:"right", y:0.72} with a 16px gutter
+    - drag past a 5px threshold, then snap to the NEARER horizontal edge
+      keeping its y fraction
+    - four states, and ⚠️ QUIET HAS NO GLOW — halo opacity 0. James: "it's
+      canon", and it applies to admin's sphere too.
+    - specular highlight tracks the pointer and returns to 34%/28% after
+      2200ms, respecting prefers-reduced-motion
+
+  The state buttons below replace the prototype's payroll state machine. They
+  exist so each state can be SEEN; they are not part of the design.
+-->
+<style>
+/* Only the variables the sphere actually consumes, verbatim from the source. */
+:root{
+  --bg:#080808;--card-2:#171717;--fg:#ededed;--fg-2:#9d9d9d;--fg-3:#6a6a6a;
+  --rule-2:rgba(255,255,255,.14);
+  --sans:"IBM Plex Sans",ui-sans-serif,system-ui,-apple-system,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  --t1:150ms;--t2:240ms;--t3:360ms;--ease:cubic-bezier(.2,.8,.3,1);
+  color-scheme:dark}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);overflow:hidden;-webkit-font-smoothing:antialiased;line-height:1.5}
+button{font:inherit;color:inherit}
+:focus-visible{outline:1px solid var(--fg-2);outline-offset:3px}
+#stage{position:relative;width:100%;height:100%;overflow:hidden}
+
+/* ——— the sphere, verbatim ——— */
+.sphere{--glow:#d6d6d6;--lx:34%;--ly:28%;position:absolute;z-index:35;width:56px;height:56px;padding:0;border:0;border-radius:50%;background:none;cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;transition:transform var(--t1) var(--ease)}
+.sphere:hover{transform:scale(1.04)}
+.sphere.dragging{cursor:grabbing;transform:scale(1.08);transition:none}
+.sphere.settling{transition:left var(--t3) var(--ease),top var(--t3) var(--ease)}
+.sphere.hide{opacity:0;pointer-events:none}
+.sphere>span{position:absolute;inset:0;border-radius:50%;pointer-events:none}
+.sphere .halo{background:radial-gradient(circle,var(--glow) 0 38%,transparent 70%);filter:blur(12px);transform:scale(1.55);opacity:0;transition:opacity 900ms ease}
+.sphere .ball{background:radial-gradient(circle at 36% 30%,#3c3c3c 0,#181818 42%,#060606 78%);box-shadow:0 18px 36px rgba(0,0,0,.75),0 4px 10px rgba(0,0,0,.6)}
+.sphere .tint{background:radial-gradient(circle at 50% 112%,var(--glow) 0,transparent 58%);mix-blend-mode:screen;opacity:0;transition:opacity 900ms ease}
+.sphere .inner{overflow:hidden;opacity:0;transition:opacity var(--t2)}
+.sphere .inner::before,.sphere .inner::after{content:"";position:absolute;width:62%;height:62%;left:19%;top:19%;border-radius:50%;filter:blur(7px)}
+.sphere .inner::before{background:radial-gradient(circle,rgba(220,232,245,.5),transparent 70%)}
+.sphere .inner::after{background:radial-gradient(circle,rgba(214,214,214,.4),transparent 70%)}
+.sphere .spec{background:radial-gradient(circle at var(--lx) var(--ly),rgba(255,255,255,.95) 0,rgba(255,255,255,.35) 7%,rgba(255,255,255,0) 20%)}
+.sphere .rim{box-shadow:inset 0 0 0 1px rgba(255,255,255,.07),inset 0 -8px 14px rgba(0,0,0,.55)}
+.sphere[data-state="suggest"]{--glow:#8aa4bd}.sphere[data-state="working"]{--glow:#d6d6d6}.sphere[data-state="needs"]{--glow:#cc7452}.sphere[data-state="done"]{--glow:#86ad73}
+.sphere[data-state="suggest"] .halo{opacity:.5;animation:sbreathe 6s ease-in-out infinite}.sphere[data-state="suggest"] .tint{opacity:.35}
+.sphere[data-state="needs"] .halo{opacity:.7}.sphere[data-state="needs"] .tint{opacity:.45}
+.sphere[data-state="working"] .halo{opacity:.4}.sphere[data-state="working"] .tint{opacity:.18}.sphere[data-state="working"] .inner{opacity:.6}
+.sphere[data-state="working"] .inner::before{animation:driftA 4.2s ease-in-out infinite}.sphere[data-state="working"] .inner::after{animation:driftB 5.4s ease-in-out infinite}
+.sphere[data-state="done"] .halo{animation:bloom 2.4s ease forwards}.sphere[data-state="done"] .tint{animation:bloomt 2.4s ease forwards}
+@keyframes sbreathe{0%,100%{opacity:.3}50%{opacity:.62}}
+@keyframes driftA{0%,100%{transform:translate(-14%,-10%) scale(.8)}50%{transform:translate(16%,12%) scale(1.05)}}
+@keyframes driftB{0%,100%{transform:translate(14%,-12%) scale(1)}50%{transform:translate(-16%,14%) scale(.75)}}
+@keyframes bloom{0%{opacity:0;transform:scale(1.1)}20%{opacity:.85;transform:scale(1.6)}100%{opacity:0;transform:scale(2.1)}}
+@keyframes bloomt{0%{opacity:0}20%{opacity:.5}100%{opacity:0}}
+
+/* ——— the hover hint, verbatim ——— */
+.hint{position:absolute;z-index:36;display:flex;align-items:center;gap:10px;padding:6px 8px 6px 12px;border-radius:999px;background:var(--card-2);border:1px solid var(--rule-2);box-shadow:0 10px 30px rgba(0,0,0,.6);font-size:13px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity var(--t1)}
+.hint.show{opacity:1}
+.hint .st{color:var(--fg-2)}
+.hint kbd{font-family:var(--mono);font-size:11px;color:var(--fg-3);border:1px solid var(--rule-2);border-radius:5px;padding:1px 5px}
+
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+
+/* Not part of the design — the harness that lets each state be seen. */
+.harness{position:absolute;left:0;top:0;padding:16px;font-size:12px;color:var(--fg-3);display:flex;flex-direction:column;gap:10px;max-width:30rem}
+.harness .seg{display:flex;border:1px solid var(--rule-2);border-radius:8px;overflow:hidden;width:max-content}
+.harness .seg button{background:none;border:0;padding:6px 11px;font-size:12px;color:var(--fg-3);cursor:pointer;min-height:32px}
+.harness .seg button[aria-pressed="true"]{background:rgba(255,255,255,.1);color:var(--fg)}
+.harness p{line-height:1.45}
+</style>
+
+<div id="stage">
+  <div class="harness">
+    <div class="seg" id="segState">
+      <button type="button" data-s="quiet" aria-pressed="true">quiet</button><button type="button" data-s="suggest">suggest</button><button type="button" data-s="working">working</button><button type="button" data-s="needs">needs</button><button type="button" data-s="done">done</button>
+    </div>
+    <p>Drag the sphere: past 5px it follows the pointer, and on release it snaps to the nearer left/right edge keeping its vertical position. Move the pointer anywhere to see the specular highlight track it; leave it still for 2.2s and the highlight returns to rest. Hover the sphere for the hint.</p>
+    <p><b>quiet has no glow.</b> That is the state it sits in most of the day.</p>
+  </div>
+
+  <button type="button" class="sphere" id="sphere" aria-label="Open Opas" data-state="quiet"><span class="halo"></span><span class="ball"></span><span class="tint"></span><span class="inner"></span><span class="spec"></span><span class="rim"></span></button>
+  <div class="hint" id="hint" aria-hidden="true"><span>Opas</span><span class="st" id="hintState"></span><kbd>⌘K</kbd></div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+
+/* ——— position, drag and edge snap, verbatim ——— */
+const SP=$('#sphere'),HINT=$('#hint'),SZ=56,GT=16;let spos={side:'right',y:.72};
+const clampv=(v,a,b)=>Math.min(Math.max(v,a),Math.max(a,b));
+function placeSphere(anim){const st=$('#stage').getBoundingClientRect();const x=spos.side==='left'?GT:st.width-GT-SZ;const y=clampv(spos.y*st.height,GT,st.height-GT-SZ-8);
+  if(anim){SP.classList.add('settling');setTimeout(()=>SP.classList.remove('settling'),400)}SP.style.left=x+'px';SP.style.top=y+'px'}
+let sdrag=null;
+SP.addEventListener('pointerdown',e=>{if(e.button!==0)return;SP.setPointerCapture(e.pointerId);const r=SP.getBoundingClientRect();sdrag={sx:e.clientX,sy:e.clientY,ox:e.clientX-r.left,oy:e.clientY-r.top,moved:false};HINT.classList.remove('show')});
+SP.addEventListener('pointermove',e=>{if(!sdrag)return;if(!sdrag.moved&&Math.hypot(e.clientX-sdrag.sx,e.clientY-sdrag.sy)>5){sdrag.moved=true;SP.classList.add('dragging')}if(!sdrag.moved)return;const st=$('#stage').getBoundingClientRect();SP.style.left=clampv(e.clientX-st.left-sdrag.ox,0,st.width-SZ)+'px';SP.style.top=clampv(e.clientY-st.top-sdrag.oy,0,st.height-SZ)+'px'});
+function endS(e){if(!sdrag)return;const d=sdrag;sdrag=null;SP.classList.remove('dragging');if(d.moved){const st=$('#stage').getBoundingClientRect(),r=SP.getBoundingClientRect();spos={side:r.left-st.left+SZ/2<st.width/2?'left':'right',y:(r.top-st.top)/st.height};placeSphere(true)}else if(e.type==='pointerup')openBar()}
+SP.addEventListener('pointerup',endS);SP.addEventListener('pointercancel',endS);
+SP.addEventListener('click',e=>{if(e.detail===0)openBar()});
+
+/* ——— the hover hint, verbatim ——— */
+let ht;SP.addEventListener('pointerenter',e=>{if(e.pointerType!=='mouse'||sdrag)return;ht=setTimeout(()=>{const st=$('#stage').getBoundingClientRect(),r=SP.getBoundingClientRect();HINT.style.left='0px';const w=HINT.offsetWidth,h=HINT.offsetHeight;const x=spos.side==='right'?r.left-st.left-w-12:r.right-st.left+12;HINT.style.left=clampv(x,8,st.width-w-8)+'px';HINT.style.top=(r.top-st.top+SZ/2-h/2)+'px';HINT.classList.add('show')},350)});
+SP.addEventListener('pointerleave',()=>{clearTimeout(ht);HINT.classList.remove('show')});
+
+/* ——— the specular highlight, verbatim ——— */
+const RM=matchMedia('(prefers-reduced-motion: reduce)').matches;let lx=34,ly=28,tx=34,ty=28,lm=0;
+addEventListener('pointermove',e=>{const r=SP.getBoundingClientRect();const dx=e.clientX-(r.left+r.width/2),dy=e.clientY-(r.top+r.height/2);const d=Math.hypot(dx,dy)||1,k=Math.min(1,d/260);tx=50+dx/d*20*k;ty=46+dy/d*20*k;lm=performance.now()},{passive:true});
+(function tick(){if(performance.now()-lm>2200){tx=34;ty=28}if(RM){lx=tx;ly=ty}else{lx+=(tx-lx)*.08;ly+=(ty-ly)*.08}SP.style.setProperty('--lx',lx.toFixed(1)+'%');SP.style.setProperty('--ly',ly.toFixed(1)+'%');requestAnimationFrame(tick)})();
+addEventListener('resize',()=>placeSphere(false));placeSphere(false);
+
+/* Harness only — in the real build the state comes from the note's fragments
+   and opening the bar is Opas's own command line. */
+function openBar(){ $('#hintState').textContent='· (the command line opens here)'; HINT.classList.add('show'); setTimeout(()=>HINT.classList.remove('show'),1400) }
+$('#segState').addEventListener('click',e=>{const b=e.target.closest('[data-s]');if(!b)return;
+  [...$('#segState').children].forEach(x=>x.setAttribute('aria-pressed',x===b));
+  SP.dataset.state=b.dataset.s;
+  $('#hintState').textContent=b.dataset.s==='needs'?'· something needs you':'';
+  if(b.dataset.s==='done'){SP.dataset.state='';requestAnimationFrame(()=>SP.dataset.state='done')}});
+</script>

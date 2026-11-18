@@ -80,6 +80,7 @@ vi.mock("@/services/opas-capture-service", () => ({
 
 import { OpasProvider } from "@/contexts/opas-context"
 import { OpasHost } from "../OpasHost"
+import { MemoryRouter } from "react-router-dom"
 
 const MARY = "St. Mary's Cemetery"
 
@@ -146,7 +147,18 @@ function customer() {
 }
 
 function openOverlay() {
-  const out = render(<OpasProvider><OpasHost /></OpasProvider>)
+  const out = render(
+    /* MemoryRouter: OpasHost calls useNavigate (PR C — a capability opens the
+      surface it names), and useNavigate throws outside a Router. In the app
+      OpasHost is mounted inside BrowserRouter, so the wrapper makes this
+      render match production rather than adding anything. Same reason
+      capture-pane.test.tsx has had one since the approval crash. */
+    <MemoryRouter>
+      <OpasProvider>
+        <OpasHost />
+      </OpasProvider>
+    </MemoryRouter>,
+  )
   fireEvent.click(screen.getByTestId("opas-sphere"))
   return out
 }

@@ -1,0 +1,151 @@
+/* ============================================================
+ * The Opas sphere — PR C, 2026-11-18.
+ *
+ * ⚠️ MEASURED FROM `docs/prototypes/2026-11-17-opas-sphere.html`, which is the
+ * sanitised extract of `payroll-prototype-reference.html` (132,110 bytes, md5
+ * e98a51c61a4aa8ad7637f90c4854bc81 — NOT in this repository and never to be
+ * committed: it holds real names, hours and pay). Every declaration below is
+ * that file's, verbatim unless a deviation is marked.
+ *
+ * ⚠️ **WHAT SHIPPED BEFORE THIS WAS A PARTIAL BUILD OF A DIFFERENT PROTOTYPE.**
+ * `OpasHost.tsx` drew the sphere from `2026-10-01-opas-overlay.html`: the same
+ * ball and the same 56px, and then one `<button>` with a box-shadow for a
+ * glow — no layers, no drag, no snap, two glow states instead of four, and a
+ * steel glow that was ALWAYS ON. James, 2026-11-17: there is no glow when
+ * idle, "it's canon", and it applies to admin's sphere too. That is the one
+ * behavioural change this file makes to an existing surface.
+ *
+ * Six layers, in paint order, each a sibling span so none clips another:
+ *   halo   the glow, OUTSIDE the ball (blur 12px, scale 1.55) — opacity 0 when quiet
+ *   ball   the body
+ *   tint   the state colour washing up from below, screen-blended
+ *   inner  two drifting blobs, only while working
+ *   spec   the specular highlight, positioned by --lx/--ly from JS
+ *   rim    the inside edge and the shadow under it
+ *
+ * The sphere is deliberately NOT themed. It is the same object in light and
+ * dark mode, like a physical thing sitting on the screen rather than a surface
+ * belonging to the page — so these are literal colours, not DESIGN_LANGUAGE
+ * tokens, and that is a departure from the token rule stated on purpose.
+ * ============================================================ */
+
+.opas-sphere {
+  --glow: #d6d6d6;
+  --lx: 34%;
+  --ly: 28%;
+  position: fixed;
+  z-index: 45;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: transform 150ms cubic-bezier(.2, .8, .3, 1);
+}
+.opas-sphere:hover { transform: scale(1.04); }
+.opas-sphere[data-dragging="true"] { cursor: grabbing; transform: scale(1.08); transition: none; }
+.opas-sphere[data-settling="true"] { transition: left 360ms cubic-bezier(.2, .8, .3, 1), top 360ms cubic-bezier(.2, .8, .3, 1); }
+.opas-sphere[data-hidden="true"] { opacity: 0; pointer-events: none; }
+
+.opas-sphere > span { position: absolute; inset: 0; border-radius: 50%; pointer-events: none; }
+
+.opas-sphere .halo {
+  background: radial-gradient(circle, var(--glow) 0 38%, transparent 70%);
+  filter: blur(12px);
+  transform: scale(1.55);
+  opacity: 0;              /* ⚠️ QUIET HAS NO GLOW. This zero is the canon. */
+  transition: opacity 900ms ease;
+}
+.opas-sphere .ball {
+  background: radial-gradient(circle at 36% 30%, #3c3c3c 0, #181818 42%, #060606 78%);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, .75), 0 4px 10px rgba(0, 0, 0, .6);
+}
+.opas-sphere .tint {
+  background: radial-gradient(circle at 50% 112%, var(--glow) 0, transparent 58%);
+  mix-blend-mode: screen;
+  opacity: 0;
+  transition: opacity 900ms ease;
+}
+.opas-sphere .inner { overflow: hidden; opacity: 0; transition: opacity 240ms; }
+.opas-sphere .inner::before,
+.opas-sphere .inner::after {
+  content: "";
+  position: absolute;
+  width: 62%;
+  height: 62%;
+  left: 19%;
+  top: 19%;
+  border-radius: 50%;
+  filter: blur(7px);
+}
+.opas-sphere .inner::before { background: radial-gradient(circle, rgba(220, 232, 245, .5), transparent 70%); }
+.opas-sphere .inner::after  { background: radial-gradient(circle, rgba(214, 214, 214, .4), transparent 70%); }
+.opas-sphere .spec {
+  background: radial-gradient(circle at var(--lx) var(--ly),
+    rgba(255, 255, 255, .95) 0, rgba(255, 255, 255, .35) 7%, rgba(255, 255, 255, 0) 20%);
+}
+.opas-sphere .rim { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .07), inset 0 -8px 14px rgba(0, 0, 0, .55); }
+
+/* The four states. `quiet` appears nowhere below, which is how it has no glow:
+   it is the absence of every rule here, not a rule of its own. */
+.opas-sphere[data-state="suggest"] { --glow: #8aa4bd; }
+.opas-sphere[data-state="working"] { --glow: #d6d6d6; }
+.opas-sphere[data-state="needs"]   { --glow: #cc7452; }
+.opas-sphere[data-state="done"]    { --glow: #86ad73; }
+
+.opas-sphere[data-state="suggest"] .halo { opacity: .5; animation: opas-sbreathe 6s ease-in-out infinite; }
+.opas-sphere[data-state="suggest"] .tint { opacity: .35; }
+.opas-sphere[data-state="needs"] .halo { opacity: .7; }
+.opas-sphere[data-state="needs"] .tint { opacity: .45; }
+.opas-sphere[data-state="working"] .halo { opacity: .4; }
+.opas-sphere[data-state="working"] .tint { opacity: .18; }
+.opas-sphere[data-state="working"] .inner { opacity: .6; }
+.opas-sphere[data-state="working"] .inner::before { animation: opas-driftA 4.2s ease-in-out infinite; }
+.opas-sphere[data-state="working"] .inner::after  { animation: opas-driftB 5.4s ease-in-out infinite; }
+.opas-sphere[data-state="done"] .halo { animation: opas-bloom 2.4s ease forwards; }
+.opas-sphere[data-state="done"] .tint { animation: opas-bloomt 2.4s ease forwards; }
+
+@keyframes opas-sbreathe { 0%, 100% { opacity: .3 } 50% { opacity: .62 } }
+@keyframes opas-driftA { 0%, 100% { transform: translate(-14%, -10%) scale(.8) } 50% { transform: translate(16%, 12%) scale(1.05) } }
+@keyframes opas-driftB { 0%, 100% { transform: translate(14%, -12%) scale(1) } 50% { transform: translate(-16%, 14%) scale(.75) } }
+@keyframes opas-bloom { 0% { opacity: 0; transform: scale(1.1) } 20% { opacity: .85; transform: scale(1.6) } 100% { opacity: 0; transform: scale(2.1) } }
+@keyframes opas-bloomt { 0% { opacity: 0 } 20% { opacity: .5 } 100% { opacity: 0 } }
+
+/* The hover hint, verbatim from the prototype's `.hint`. */
+.opas-sphere-hint {
+  position: fixed;
+  z-index: 46;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 6px 12px;
+  border-radius: 999px;
+  background: rgba(23, 23, 23, .96);
+  border: 1px solid rgba(255, 255, 255, .14);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .6);
+  color: #ededed;
+  font-size: 13px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms cubic-bezier(.2, .8, .3, 1);
+}
+.opas-sphere-hint[data-show="true"] { opacity: 1; }
+.opas-sphere-hint .st { color: #9d9d9d; }
+.opas-sphere-hint kbd {
+  font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  color: #6a6a6a;
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+
+/* base.css already collapses animation and transition globally under
+   prefers-reduced-motion; the specular tracking is handled in JS, which reads
+   the same media query rather than relying on CSS to stop it. */
