@@ -74,12 +74,37 @@ def _tests_actually_ran(output: str) -> int:
     return int(m.group(1)) if m else 0
 
 
+#: ⚠️ **THE GATE RUNS ONE STATE; THE NIGHTLY RUNS ALL THREE.**
+#:
+#: Each prior state costs two full subprocess pytest runs, and each child
+#: re-imports the whole app — the three-state matrix took Backend CI from
+#: ~12-15 minutes to ~17-21. Measured across eight runs, not estimated.
+#:
+#: `on` is the state that actually broke something: a tenant whose payroll
+#: switch had been deliberately turned ON had it left off, and the walk-through
+#: photographed an empty note. That case runs on every PR. `off-but-present`
+#: and `absent` are the two collapses a wrong restore could make, and they move
+#: to a nightly rather than being deleted — a guard that only ever checks one
+#: of three branches is a guard with two untested branches, however cheap.
+#:
+#: ⚠️ The skips are VISIBLE and say what turns them on, because a quiet skip
+#: and a deleted test look identical in a summary. James's ruling, 2026-11-20.
+FULL_MATRIX = os.environ.get("PAYROLL_SWITCH_FULL_MATRIX") == "1"
+
+_OTHER_STATES = pytest.mark.skipif(
+    not FULL_MATRIX,
+    reason=("costs two subprocess pytest runs; set "
+            "PAYROLL_SWITCH_FULL_MATRIX=1 to run it. The nightly "
+            "payroll-switch-matrix workflow does, and it fails loudly."),
+)
+
+
 @pytest.mark.parametrize(
     "prior",
     [
         pytest.param(True, id="on-the-state-that-broke-the-walk"),
-        pytest.param(False, id="off-but-present"),
-        pytest.param(ABSENT, id="absent"),
+        pytest.param(False, id="off-but-present", marks=_OTHER_STATES),
+        pytest.param(ABSENT, id="absent", marks=_OTHER_STATES),
     ],
 )
 def test_the_switch_suite_leaves_the_switch_as_it_found_it(prior, _canonical_tenant):
