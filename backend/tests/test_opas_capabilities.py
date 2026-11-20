@@ -133,8 +133,13 @@ def test_payroll_limited_gets_ONLY_payroll(actors, client):
     assert r.status_code == 200, r.text[:300]
     caps = r.json()["capabilities"]
 
+    # ⚠️ THE EXACT LIST, IN ORDER — a ratchet, not a convenience. It caught
+    # `payroll_union_form` being added in Payroll 5b, which is what it is for:
+    # a new entry reaching an area-limited reader is a decision, and it should
+    # not be possible to make it by appending to a registry.
     assert [c["id"] for c in caps] == [
         "payroll_week_review", "payroll_hours_upload", "payroll_dues_report",
+        "payroll_union_form",
     ], [c["id"] for c in caps]
     assert {c["area"] for c in caps} == {"payroll"}, {c["area"] for c in caps}
     # And the control that makes the claim mean something: a non-empty answer.

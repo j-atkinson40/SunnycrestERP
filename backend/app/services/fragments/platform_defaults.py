@@ -97,6 +97,7 @@ COMPLIANCE_FLAGS = "compliance_flags"
 TASKS_DUE_TODAY = "tasks_due_today"
 WEEKLY_DUES = "weekly_dues"
 PAYROLL_WEEK_OPEN = "payroll_week_open"
+PAYROLL_UNION_FORM = "payroll_union_form_due"
 
 
 # ── (2) CONDITIONS ───────────────────────────────────────────────────
@@ -752,6 +753,92 @@ def _payroll_week_open_condition(
     ]
 
 
+def _payroll_union_form_condition(
+    db: Session, *, user: User
+) -> Sequence[FragmentInstance]:
+    """The month's union form, once its last check has been issued.
+
+    ⚠️ **A PROMPT, AND IT ENDS BY BEING SENT.** It carries a bounded decision
+    — approve this month's remittance and mark it sent — and a declared
+    ending, which is the form reaching `filed`. A non-prompt would render once
+    on the day the month closed and then go quiet while the form sat unsent,
+    which is the failure the week line was fixed for in PR #38.
+
+    ⚠️ **NOTHING IS SAID WHILE THE MONTH IS STILL FILLING.** A form built
+    before the month's final check is short by a week, and a line inviting
+    someone to approve it would be inviting a wrong filing. The condition
+    returns `[]` until the last check date has passed — the same calendar fact
+    the Focus shows as its stage.
+    """
+    from app.models.company import Company
+    from app.services.payroll.data_gate import is_payroll_data_enabled
+    from app.services.payroll import r115, r115_schedule
+
+    company = db.query(Company).filter(Company.id == user.company_id).first()
+    if company is None or not is_payroll_data_enabled(company):
+        return []
+
+    today = date.today()
+    year, month = r115_schedule.current_form_period(today)
+    form = r115.live_form(db, tenant_id=user.company_id, year=year, month=month)
+    stage = r115_schedule.stage_of(form, year=year, month=month, today=today)
+
+    # ⚠️ `sent` IS THE END TRANSITION, so the line withdraws itself. `filling`
+    # cannot occur here — `current_form_period` only ever returns a month whose
+    # last check has passed — but it is handled rather than assumed, because an
+    # assumption about another module's return is the kind of thing that stops
+    # being true quietly.
+    if stage in ("sent", "filling"):
+        return []
+
+    period = date(year, month, 1)
+    due = r115_schedule.due_date_for(company, year, month)
+    # ⚠️ The DUE DATE IS A SETTING AND MAY BE ABSENT, and the sentence says so
+    # rather than omitting the clause — "due Nov 15" and no mention of a date
+    # read the same to someone skimming, and only one of them is true.
+    if due is None:
+        tail = "No due date set."
+    elif due < today:
+        tail = f"It was due {due:%b} {due.day}."
+    else:
+        tail = f"Due {due:%b} {due.day}."
+
+    if stage == "approved":
+        opening = f"{period:%B}'s union form is approved and not yet sent."
+    elif form is None:
+        opening = f"{period:%B}'s union form has not been started."
+    else:
+        opening = f"{period:%B}'s union form is ready to approve."
+
+    spans = [plain(f"{opening} {tail}")]
+    return [
+        FragmentInstance(
+            # (5) IDENTITY: the PERIOD, not the form row — the form may not
+            # exist yet, and a correction supersedes it with a new row while
+            # remaining the same month's obligation.
+            subject_id=f"{year}-{month:02d}",
+            payload=compose(
+                spans,
+                title="Union form",
+                priority=85,
+                # The act, not the surface. "Approve October's form" names
+                # what the line is asking for; once approved it asks for the
+                # other act, so the label follows the stage.
+                action_label=("Mark it sent" if stage == "approved"
+                              else "Open the union form"),
+                defer_not_after=due,
+            ),
+            predicate={"period": f"{year}-{month:02d}"},
+            condition_inputs={
+                "period": f"{year}-{month:02d}",
+                "stage": stage,
+                "due_date": due.isoformat() if due else None,
+                "form_id": form.id if form is not None else None,
+            },
+        )
+    ]
+
+
 def _weekly_dues_condition(
     db: Session, *, user: User
 ) -> Sequence[FragmentInstance]:
@@ -1000,6 +1087,41 @@ def seed() -> None:
                 outcomes=(
                     Outcome("imported",
                             "{actor} uploaded week {count}'s hours"),
+                ),
+            ),
+        )
+    )
+
+    register_fragment(
+        FragmentDeclaration(
+            fragment_id=PAYROLL_UNION_FORM,
+            label="Union form",
+            # (1) AUDIENCE — the reviewer reads and approves it. Setting the
+            # DUE DATE is admin-only; being told the form is waiting is not.
+            audience=Audience(required_permission="payroll.view"),
+            # (6) AREA — payroll, so it reaches the payroll-limited reader and
+            # nobody else's note gains a union line.
+            area="payroll",
+            kind="prompt",
+            condition=_payroll_union_form_condition,
+            # (3) TARGET — the union-form Focus, scoped to the PERIOD.
+            target_surface="focus",
+            target_key="union-form",
+            # ⚠️ **`payroll_form_period`, FOR THE REASON `payroll_week_end`
+            # EXISTS.** The subject is a month, not a row: the form may not
+            # have been built yet, and a correction replaces the row while
+            # the month's obligation is unchanged. `focusTarget` switches on
+            # this kind to build `period=YYYY-MM`; a kind meaning "a form row"
+            # would send a row id where the Focus expects a month.
+            subject_kind="payroll_form_period",
+            # (4) END TRANSITION — it ends when the form is SENT. Approving is
+            # a step along the way, not the end: an approved form that nobody
+            # files is exactly the state this line should keep reporting.
+            end_transition=EndTransition(
+                entity_kind="payroll_union_form_r115",
+                resolved_when="payroll_union_form_sent",
+                outcomes=(
+                    Outcome("filed", "{actor} sent the union form"),
                 ),
             ),
         )

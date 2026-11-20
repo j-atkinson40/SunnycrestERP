@@ -30,6 +30,7 @@ from datetime import date
 from sqlalchemy.orm import Session
 
 from app.core.areas import CROSS_AREA, allowed_area_grants, area_admits_read
+from app.services.payroll.r115_schedule import current_form_period
 from app.services.payroll.week_calendar import current_week_end
 from app.services.permission_service import user_has_permission
 from app.models.user import User
@@ -148,6 +149,31 @@ CAPABILITIES: tuple[OpasCapability, ...] = (
         ),
         target="/payroll",
     ),
+    OpasCapability(
+        id="payroll_union_form",
+        label="Union form",
+        hint="The R-115 for the month being remitted",
+        area="payroll",
+        level=VIEW,
+        permission="payroll.view",
+        #: ⚠️ **"FORM" IS DELIBERATELY NOT HERE.** It is the first word a
+        #: person reaches for and it is ambiguous across the whole platform —
+        #: an intake form, a correction form, this. The phrases that resolve
+        #: are the ones that name the UNION or the R-115, and the matcher's
+        #: containment pass then catches "the union form" and "r115 form"
+        #: without "form" alone pulling this entry out of nowhere.
+        phrases=(
+            "union form",
+            "r115",
+            "r-115",
+            "the r115",
+            "union remittance",
+            "remittance",
+            "monthly union form",
+            "union dues form",
+        ),
+        target="focus:union-form?period={form_period}",
+    ),
 )
 
 
@@ -197,6 +223,15 @@ def capabilities_for(db: Session, user: User, *, limited_to_areas) -> list[OpasC
             continue
         if entry.permission and not user_has_permission(user, db, entry.permission):
             continue
+        if "{form_period}" in entry.target:
+            # ⚠️ FILLED BY THE SERVER, for the same reason `{week_end}` is: an
+            # unscoped `focus:union-form` opens a Focus that does not know
+            # which month it is about, and the walk-through of 2026-11-18
+            # caught exactly that shape on the week entry — a URL that claims
+            # a surface and renders nothing.
+            y, m = current_form_period(date.today())
+            entry = replace(entry, target=entry.target.format(
+                form_period=f"{y}-{m:02d}"))
         if "{week_end}" in entry.target:
             # ⚠️ REPLACED, NOT APPENDED. The entry is frozen, so this produces a
             # new one; the registry keeps its placeholder and stays declarative.
