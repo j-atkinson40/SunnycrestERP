@@ -2,6 +2,7 @@ from app.models.agent import AgentActivityLog, AgentAlert, AgentCollectionSequen
 from app.models.agent_anomaly import AgentAnomaly
 from app.models.agent_run_step import AgentRunStep
 from app.models.agent_schedule import AgentSchedule
+from app.models.outgoing_copy import OutgoingCopy
 from app.models.payroll_report import (
     PayrollRate,
     PayrollReportEmployee,
@@ -511,6 +512,7 @@ from app.models.triage import TriageSession, TriageSnooze
 from app.models.briefing import Briefing, BRIEFING_TYPES
 
 __all__ = [
+    "OutgoingCopy",
     "CaptureSession",
     "DailyNote",
     "NoteFragmentDeferral",
