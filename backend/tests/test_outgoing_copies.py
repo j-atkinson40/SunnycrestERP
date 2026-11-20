@@ -101,6 +101,21 @@ def a_month_with_dues():
             db.add(PayrollRuleSet(id=rule_id, tenant_id=TESTCO_ID,
                                   effective_date=date(2020, 1, 1)))
             db.flush()
+        # ⚠️ **THIS MONTH IS OWNED BY THIS FIXTURE, NOT INHERITED.** The
+        # walk-through seed writes register checks into the same tenant and
+        # the same derived month, so a total asserted here was silently the
+        # sum of both — 394.25 where the arithmetic said 180.00. A test that
+        # asserts on a month's figures must establish that month's contents.
+        # The walk re-seeds its own rows before it runs.
+        db.execute(text("DELETE FROM payroll_check_lines WHERE check_id IN "
+                        "(SELECT id FROM payroll_checks WHERE tenant_id=:t "
+                        " AND extract(year from check_date)=:y "
+                        " AND extract(month from check_date)=:m)"),
+                   {"t": TESTCO_ID, "y": YEAR, "m": MONTH})
+        db.execute(text("DELETE FROM payroll_checks WHERE tenant_id=:t "
+                        "AND extract(year from check_date)=:y "
+                        "AND extract(month from check_date)=:m"),
+                   {"t": TESTCO_ID, "y": YEAR, "m": MONTH})
         for emp in ("C1", "C2"):
             for i, when in enumerate(check_dates_in(YEAR, MONTH)):
                 cid = str(uuid.uuid4())

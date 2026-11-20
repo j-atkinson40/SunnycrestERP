@@ -75,6 +75,29 @@ def sunnycrest_shape():
                     kind="deduction", code="Union", amount=D(dues)))
 
     try:
+        # ⚠️ **THIS MONTH IS OWNED BY THIS FIXTURE, NOT INHERITED.** The
+        # walk-through seed writes register checks into the same tenant and
+        # the same derived month, so a total asserted here was silently the
+        # sum of both — 394.25 where the arithmetic said 180.00. A test that
+        # asserts on a month's figures must establish that month's contents.
+        # The walk re-seeds its own rows before it runs.
+        db.execute(text("DELETE FROM payroll_check_lines WHERE check_id IN "
+                        "(SELECT id FROM payroll_checks WHERE tenant_id=:t "
+                        " AND extract(year from check_date)=:y "
+                        " AND extract(month from check_date)=:m)"),
+                   {"t": TESTCO_ID, "y": YEAR, "m": MONTH})
+        db.execute(text("DELETE FROM payroll_checks WHERE tenant_id=:t "
+                        "AND extract(year from check_date)=:y "
+                        "AND extract(month from check_date)=:m"),
+                   {"t": TESTCO_ID, "y": YEAR, "m": MONTH})
+        # ⚠️ And the ROSTER, for the same reason: line 1 counts union
+        # members for the tenant, so the walk seed's four would be added to
+        # this fixture's eighteen.
+        db.execute(text("DELETE FROM payroll_rates WHERE employee_id IN "
+                        "(SELECT id FROM payroll_report_employees WHERE tenant_id=:t)"),
+                   {"t": TESTCO_ID})
+        db.execute(text("DELETE FROM payroll_report_employees WHERE tenant_id=:t"),
+                   {"t": TESTCO_ID})
         for n in range(1, 14):
             member(f"L1-{n:02d}", f"Member {n}")
             paid(f"L1-{n:02d}", OCTOBER)

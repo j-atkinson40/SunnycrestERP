@@ -290,7 +290,22 @@ export function UnionFormCore({
   const stale = data.copies.some((c) => c.differs_from_today === true)
 
   return (
-    <div data-testid="union-form-core" className="space-y-6 p-6">
+    /* ⚠️ **IT PAINTS ITS OWN SURFACE, AND THAT IS A BUG FIX.** The Focus
+       renders inside a dialog over a dimmed, blurred note. A core with no
+       background of its own sits directly on that dimming layer: measured off
+       this walk's own screenshot, the page behind the form was (106,106,107)
+       and even the darkest text reached 3.20:1 — below AA, on a form somebody
+       checks figures against a cheque with.
+
+       ⚠️ The same measurement on PR C's capture put the weekly payroll
+       Focus's header at 1.30:1, so this is not local to the union form. The
+       shared Focus shell is the right place to fix it for every core; doing
+       that here would change four other surfaces in a payroll PR, so it is
+       reported rather than done. */
+    <div
+      data-testid="union-form-core"
+      className="space-y-6 rounded-xl bg-surface-base p-6 text-content-base"
+    >
       <header className="space-y-1">
         <p className="text-caption uppercase tracking-wide text-content-subtle">
           Union remittance · R-115
@@ -403,10 +418,17 @@ export function UnionFormCore({
             data.percentage_dues_variance !== "0.00" && (
               <p data-testid="union-form-variance"
                  className="mt-3 text-body-sm text-content-muted">
+                {/* ⚠️ "a difference of -0.05" reads as a typo. The sign is
+                    real — the plug can sit either side of the rules' figure —
+                    so it is said in words and the magnitude printed without
+                    one. */}
                 Line 5 is the remainder, so the form adds up to what was
                 deducted. Worked out from the rules it would be{" "}
-                {data.percentage_dues_computed} — a difference of{" "}
-                {data.percentage_dues_variance}.
+                {data.percentage_dues_computed} —{" "}
+                {data.percentage_dues_variance.startsWith("-")
+                  ? `${data.percentage_dues_variance.slice(1)} lower here`
+                  : `${data.percentage_dues_variance} higher here`}
+                .
               </p>
             )}
         </section>
