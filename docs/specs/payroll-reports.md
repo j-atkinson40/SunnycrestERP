@@ -563,6 +563,134 @@ October 2026 local check (`scripts/check_r115_october.py`), by check date:
 five check dates — Oct 1, 8, 15, 22, 29, exactly as the ruling named — 61 check
 rows, 13 members, 2,731.14 hours, **979.73** dues.
 
+### 11.8a The R-115 field map — ADDED 2026-11-18
+
+⚠️ **THIS SECTION EXISTS BECAUSE THE MAP WAS NOT IN THE REPOSITORY AND A BUILD
+SESSION BUILT THE WRONG LINE WITHOUT IT.** On 2026-11-18 a session needed to
+fill "line 4", searched for `line 4`, found nothing, reported the map as absent
+and asked. It was told *line 4 is the total dues remitted* — a conflation of
+line 4 with Total Remittance — and built that. James corrected it the same day.
+
+Two separate failures, recorded because they have different fixes:
+
+- **The map genuinely was not in the repo.** Re-checked across the whole tree
+  for the form's own vocabulary: `bargaining`, `lump sum`, `Total Remittance`
+  and `percentage dues` returned **zero hits**; `14532` matched only a CSS
+  value and ZIP data. It lived in conversation. CLAUDE.md: *a dispatch may only
+  cite sources the executor can reach* — so it is written here now.
+- **The search that reported it absent was a constructed pattern.** `grep
+  "line 4"` cannot match a map written as "Total Earnings (excl. lump sum)".
+  The null was a FAILED LOOKUP reported as a FINDING (CLAUDE.md §11, false
+  absence from a constructed name). The enumeration that settled it searched
+  the form's vocabulary, which is what should have run first.
+
+#### Header
+
+| field | source |
+|---|---|
+| Company | `companies.name` |
+| Plant | setting `payroll_union_plant` |
+| Local | setting `payroll_union_local` — Sunnycrest's is `14532-17` |
+| Unit | blank for this licensee, carried explicitly as `null` |
+| Pay period begin / end | first and last CHECK DATE the month's form covers |
+| Dues for the month of | the period, e.g. "October 2026" |
+| Completed by | setting `payroll_form_completed_by` |
+
+⚠️ Plant, local and completed-by are **per-tenant settings with no default**.
+Defaulting them would print one licensee's union local on another licensee's
+filed form — the `is_manufactured` shape of §5 in CLAUDE.md, a plausible value
+nobody measured. Unset renders "Not set".
+
+#### Lines
+
+| # | line | value |
+|---|---|---|
+| 1 | Members in bargaining unit | union members **in the unit for that month** — see below |
+| 2 | Members paying dues | distinct members with dues > 0 in the month |
+| 3 | Hours included in earnings | Σ `dues_hours`, printed to 2dp |
+| 4 | **Total Earnings (excl. lump sum)** | Σ `dues_wage` — **not** the money remitted |
+| 5 | Percentage dues (rate 1.45) | Total Remittance − line 6 − line 7 |
+| 6 | Per-hour dues (rate .02) | Σ of each member's **weekly rounded** `c` |
+| 7 | Initiation fees | count of fees paid in the month × `initiation_fee` |
+| 8 | Lump sum | blank unless used |
+| 9 | Misc | blank unless used |
+| — | **Total Remittance** | Σ `Union` deductions — the money |
+
+Lines 8 and 9 print **blank, not `0.00`**: a zero asserts "none this month",
+a blank says the line does not apply, and no data path feeds either today.
+
+⚠️ **LINE 5 IS A PLUG, SO `5 + 6 + 7 = total` CANNOT FAIL.** Defining line 5 as
+the remainder makes the confirmation an identity — documentation, not a check
+(CLAUDE.md §11). The plug is kept because a form filed with the union must add
+up to the money actually sent; alongside it the implementation reports
+`percentage_dues_computed` (Σ `min(a, b)`, derived independently from the
+earning lines) and `percentage_dues_variance`. A non-zero variance is the
+rules-versus-register disagreement §11.8 measures at 76 of 629 checks, and it
+belongs on the screen rather than absorbed invisibly into line 5.
+
+⚠️ **LINE 1 IS NOT `count(is_union_member)` — CORRECTED TWICE ON 2026-11-18.**
+The reconcile sets that flag for anyone who had dues at any point in the year,
+so Sunnycrest's roster carries **18** where October's unit was **13**.
+
+**The rule: a member is outside the unit for a month only if their status
+(`left`, `workers_comp` or `leave`) BEGAN BEFORE the month started.** A status
+that began during the month keeps them in — dues were taken, so the union was
+paid for them. Plus one asymmetry: `left` with no date excludes ("we did not
+record when" cannot be read as "left during this month"), while `comp` or
+`leave` with no date does not, because the member is still a member and that
+is the direction which does not drop somebody the union was paid for.
+
+Two tiers: **by status** where any status is recorded; **by check in the
+month** otherwise, because `payroll_status` is nullable and NULL means "not
+established", never "working normally".
+
+⚠️ **THE FIRST RULING PUT `workers_comp` AND `leave` OUTSIDE THE UNIT
+OUTRIGHT. IT REACHED 13 AND WAS WRONG ABOUT THE REASON** — Staring was paid
+with dues taken on the October 8 check, so the union WAS paid for him that
+month, and nothing separated his case from a member who left mid-month (who
+was already kept in). Both numbers are pinned in
+`tests/test_payroll_r115_line_1.py` so neither ruling can be reversed in
+silence.
+
+#### Verified read-only against production, 2026-11-18
+
+October 2026, Sunnycrest, `default_transaction_read_only` enforced with a
+positive control before any figure was read:
+
+| line | value |
+|---|---|
+| 1 Members in bargaining unit | **13** |
+| 2 Members paying dues | 13 |
+| 3 Hours included in earnings | **2,731.14** |
+| 4 Total Earnings (excl. lump sum) | 68,901.40 |
+| 5 Percentage dues | 925.12 |
+| 6 Per-hour dues | 54.61 |
+| 7 Initiation fees | 0.00 |
+| Total Remittance | **979.73** |
+
+5 + 6 + 7 = 979.73. `percentage_dues_computed` = 924.52, **variance 0.60** —
+the rules-versus-register gap, visible rather than absorbed. Check dates
+Oct 1/8/15/22/29. Roster 18, basis `checks_in_month` (no statuses recorded),
+5 excluded with no October check: last paid 2025-12-31, 2026-01-29,
+2026-04-30, 2026-05-14 and 2026-06-25.
+
+⚠️ **SETTING STARING'S STATUS DATE BEFORE OCTOBER 1 WOULD MAKE LINE 1 TWELVE.**
+His only October check is **Oct 8** — 16.22 hours, $354.20, $5.46 dues — and a
+check dated the 8th covers the week ending the 3rd, so the hours were worked
+Sep 27–Oct 3 and his real last working day may fall in September. The date
+rule is a PROXY for "dues were taken"; on this one member the proxy and the
+reason can disagree. Until that is settled, set his `payroll_status_since` to
+2026-10-01 or later, or line 1 files as 12.
+
+Where line 2 exceeds line 1 the implementation warns rather than filing a form
+that contradicts itself.
+
+October 2026, live: line 1 = 13, line 3 = 2,731.14, Total Remittance = 979.73,
+check dates Oct 1/8/15/22/29.
+
+Implementation: `app/services/payroll/r115_form.py` (lines + header),
+`r115_settings.py` (the four settings), `r115_schedule.py` (stage + due date).
+
 ### 11.9 SETTLED 2026-11-09 — the bonus basis
 
 The dispatch's goldens were wrong and the register was right: *"Same tiers,

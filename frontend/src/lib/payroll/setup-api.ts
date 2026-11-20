@@ -63,6 +63,48 @@ export async function setDataEnabled(enabled: boolean) {
 
 // ── (3) the roster reconcile ─────────────────────────────────────────────────
 
+/** The R-115's four tenant settings. `null` means NOT SET, never a default.
+ *
+ *  ⚠️ A defaulted local number would print one licensee's union on another
+ *  licensee's filed form, and a defaulted deadline is a date nobody agreed
+ *  to. The screens say "Not set" and that is what gets somebody to set it. */
+export interface UnionFormSettings {
+  payroll_union_form_due_day: number | null
+  payroll_union_local: string | null
+  payroll_union_plant: string | null
+  payroll_form_completed_by: string | null
+}
+
+export async function getUnionFormSettings() {
+  const r = await apiClient.get<UnionFormSettings>(`${BASE}/settings/union-form`)
+  return r.data
+}
+
+/** ⚠️ **OMITTED MEANS UNCHANGED; EMPTY MEANS CLEAR.** A PUT that treated
+ *  every absent field as a clear would wipe the union local the moment
+ *  somebody saved only the due date. Only the keys present in `changes` are
+ *  sent, and an empty string among them clears that one. */
+export async function setUnionFormSettings(
+  changes: Partial<Record<keyof UnionFormSettings, string>>,
+) {
+  const body = new FormData()
+  const FIELD: Record<keyof UnionFormSettings, string> = {
+    payroll_union_form_due_day: "due_day",
+    payroll_union_local: "local",
+    payroll_union_plant: "plant",
+    payroll_form_completed_by: "completed_by",
+  }
+  for (const [key, value] of Object.entries(changes)) {
+    if (value === undefined) continue
+    body.append(FIELD[key as keyof UnionFormSettings], value)
+  }
+  const r = await apiClient.put<UnionFormSettings & { changed: boolean }>(
+    `${BASE}/settings/union-form`,
+    body,
+  )
+  return r.data
+}
+
 export interface ReconcileProposal {
   emp_id: string
   field: string
