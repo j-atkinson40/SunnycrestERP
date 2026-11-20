@@ -31,6 +31,67 @@ class R115Error(ValueError):
     """The form cannot be built or cannot move where it was asked to move."""
 
 
+#: ⚠️ **[CORRECTED 2026-11-18 — THE FIRST VERSION HAD LINE 4 WRONG, AND THE
+#: WAY IT GOT THERE IS THE POINT.]** This block read:
+#:
+#:     line 4 is the total dues remitted — the money being sent, which for
+#:     the live October 2026 month is $979.73
+#:
+#: **Line 4 is "Total Earnings (excl. lump sum)"** — the month's dues WAGE.
+#: The money remitted is its own un-numbered field at the foot of the form,
+#: **Total Remittance**, and $979.73 is that. The two were conflated.
+#:
+#: ⚠️ The session that built it searched for `"line 4"`, found nothing, and
+#: reported the field map as absent from the repository. That was a
+#: CONSTRUCTED PATTERN — the map is written in the form's own vocabulary
+#: ("Total Earnings", "bargaining unit", "lump sum"), which that grep cannot
+#: match. The absence was a failed lookup reported as a finding, and the
+#: answer given in its place was built without the map being read.
+#:
+#: The full line set now lives in `r115_form.py` and in
+#: `docs/specs/payroll-reports.md` §11.8a, so the next reader finds it instead
+#: of asking. This module keeps only the mapping the ENDPOINTS need.
+R115_LINES: dict[int, str] = {
+    1: "members_in_unit",
+    2: "members_paying_dues",
+    3: "hours_in_earnings",
+    4: "total_earnings",
+    5: "percentage_dues",
+    6: "per_hour_dues",
+    7: "initiation_fees",
+    8: "lump_sum",
+    9: "misc",
+}
+
+#: The un-numbered field at the foot. Named separately BECAUSE conflating it
+#: with a numbered line is the error this file records.
+TOTAL_REMITTANCE_KEY = "total_remittance"
+
+#: The report-table totals key holding the money actually deducted.
+#: `union_remittance_r115` names it `dues_deducted` — deducted, not implied,
+#: which is why this form exists beside `monthly_dues_remittance`.
+REMITTANCE_TOTALS_KEY = "dues_deducted"
+
+
+def total_remittance(totals: dict) -> str:
+    """The money remitted, as a string, from a report table's totals.
+
+    ⚠️ **THIS IS NOT LINE 4.** It is the Total Remittance field. The name says
+    so because the previous name (`line_4_amount`) said the opposite and was
+    believed.
+
+    Takes the TOTALS rather than the form so a preview and a stored form give
+    the same answer through the same code.
+    """
+    value = totals.get(REMITTANCE_TOTALS_KEY)
+    if value is None:
+        raise R115Error(
+            f"the report totals carry no {REMITTANCE_TOTALS_KEY!r}, so the "
+            f"remittance cannot be stated. Totals present: {sorted(totals)}"
+        )
+    return str(value)
+
+
 def rows_for_month(db: Session, *, tenant_id: str, year: int, month: int) -> list[R115Row]:
     """Every check in the month that carried a union deduction.
 
