@@ -86,10 +86,40 @@ panels; the stack is baked into the card-family primitives keyed by an
                                   DARK                        LIGHT
 --content-base    (text-primary)  oklch(0.95 0.003 260)       oklch(0.22 0.004 260)
 --content-muted   (text-secondary)oklch(0.63 0.010 255)       oklch(0.52 0.006 258)
---content-subtle  (text-muted)    oklch(0.52 0.008 255)       oklch(0.63 0.006 258)
+--content-subtle  (text-muted)    oklch(0.63 0.008 255)       oklch(0.51 0.006 258)
 (--content-strong = one step beyond text-primary, derived:
                                   oklch(0.97 0.003 260)       oklch(0.17 0.004 260))
 ```
+
+⚠️ **`--content-subtle` WAS RAISED TO MEET AA — 2026-11-21.** It was
+`oklch(0.52 … )` dark / `oklch(0.63 … )` light, which renders (135,137,141)
+in light mode and reaches only **2.94:1 on `--surface-base` and 2.77:1 on
+`--surface-sunken`** — against AA's 4.5:1 for body text. Every eyebrow,
+caption and hint on the platform was below the floor, not only inside a
+Focus. Measured from rendered screenshots, not inferred from the values;
+`frontend/tests/local/focus-contrast.spec.ts` is the harness.
+
+The new values are the nearest step that clears 4.5:1 against **all four
+surfaces** in each mode, `sunken` being the binding one:
+
+```
+            worst surface   before   after
+light       sunken           2.77     4.55
+dark        raised           2.90     4.55
+```
+
+⚠️ **AND IT NOW COLLAPSES INTO `--content-muted`, WHICH IS A REAL LOSS AND
+IS NOT RESOLVED HERE.** In dark mode the two are now identical (both
+`L 0.63`); in light mode subtle at `0.51` is a hair DARKER than muted at
+`0.52`, which inverts the prominence they encode. The hierarchy cannot
+survive both tokens meeting 4.5:1 while muted stays where it is.
+
+⚠️ **`--content-muted` ALSO FAILS AA IN LIGHT MODE: 4.36:1 on
+`--surface-sunken`.** Found in the same measurement and deliberately NOT
+changed — the ruling of 2026-11-21 authorised `--content-subtle` only. Until
+muted moves too, the sensible end state (muted darker, subtle a visible step
+above it, both clearing the floor) is unreachable. Recorded in STATE as open.
+
 
 ## 5. Chrome accent — INVERTS to ink in light mode
 

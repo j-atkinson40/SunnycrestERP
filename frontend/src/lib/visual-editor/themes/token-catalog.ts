@@ -208,9 +208,11 @@ export const TOKEN_CATALOG: TokenEntry[] = [
     displayName: "Content — Subtle",
     description: "Placeholder text, ghost states, fine-print (§4 --text-muted).",
     valueType: "oklch",
+    // ⚠️ RAISED 2026-11-21 to meet AA on every surface. See DESIGN_LANGUAGE §4
+    // and `docs/investigations/2026-11-21-focus-contrast.md`.
     defaults: {
-      light: "oklch(0.63 0.006 258)",
-      dark: "oklch(0.52 0.008 255)",
+      light: "oklch(0.51 0.006 258)",
+      dark: "oklch(0.63 0.008 255)",
     },
   },
   {

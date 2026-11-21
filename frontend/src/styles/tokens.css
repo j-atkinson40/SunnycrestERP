@@ -91,7 +91,14 @@
   --content-strong: oklch(0.17 0.004 260);
   --content-base: oklch(0.22 0.004 260);
   --content-muted: oklch(0.52 0.006 258);
-  --content-subtle: oklch(0.63 0.006 258);
+  /* ⚠️ RAISED 2026-11-21 from oklch(0.63 …), which rendered (135,137,141)
+     and reached 2.94:1 on --surface-base, 2.77:1 on --surface-sunken —
+     below AA's 4.5:1 for body text, on every screen using it. 0.51 is the
+     nearest step clearing 4.5 against all four surfaces (worst: sunken,
+     4.55). ⚠️ It now sits a hair darker than --content-muted (0.52), which
+     inverts their hierarchy — and muted itself is 4.36 on sunken. Both are
+     recorded in DESIGN_LANGUAGE §4 and STATE; only subtle was authorised. */
+  --content-subtle: oklch(0.51 0.006 258);
   /* on-chrome: light-mode chrome accent is ink (dark), so text on
      it is near-white. Couples to --accent by design. */
   --content-on-accent: oklch(0.98 0.002 250);
@@ -298,7 +305,10 @@
   --content-strong: oklch(0.97 0.003 260);
   --content-base: oklch(0.95 0.003 260);
   --content-muted: oklch(0.63 0.010 255);
-  --content-subtle: oklch(0.52 0.008 255);
+  /* ⚠️ RAISED 2026-11-21 from oklch(0.52 …) — 2.90:1 on --surface-raised.
+     0.63 clears 4.5 against all four (worst: raised, 4.55), and is now the
+     SAME value as dark --content-muted. See DESIGN_LANGUAGE §4. */
+  --content-subtle: oklch(0.63 0.008 255);
   /* on-chrome = substrate: dark text on the bright chrome fill. */
   --content-on-accent: oklch(0.13 0.004 255);
 
