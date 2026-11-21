@@ -1,0 +1,103 @@
+# The payroll switch teardown, across every prior state it can be in.
+#
+# ⚠️ **WHY THIS IS NOT IN THE GATE.** Each prior state costs two full
+# subprocess pytest runs, and each child re-imports the whole app. The
+# three-state matrix took Backend CI from ~12-15 minutes to ~17-21, measured
+# across eight runs. The gate keeps the state that actually broke something —
+# a tenant whose payroll switch had been deliberately turned ON had it left
+# off, and the walk-through photographed an empty note — and the other two
+# collapses a wrong restore could make run here.
+#
+# ⚠️ **AND IT FAILS LOUDLY RATHER THAN REPORTING INTO A CHANNEL NOBODY
+# READS.** A nightly that goes red quietly is the dark-channel shape CLAUDE.md
+# §11 names: the result is identical before and after a real regression. The
+# job's failure is the signal; nothing here swallows a non-zero exit, and the
+# run is kept dispatchable so a person investigating can reproduce it on
+# demand instead of waiting for midnight.
+name: Payroll switch matrix
+
+on:
+  schedule:
+    # 07:40 UTC — after the nightly agent jobs (23:00-23:35 ET) have finished
+    # and well before anyone is working, so a red result is waiting rather
+    # than arriving mid-session.
+    - cron: "40 7 * * *"
+  workflow_dispatch:
+
+jobs:
+  matrix:
+    name: Switch teardown, all prior states
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: bridgeable_ci
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bridgeable_ci
+      SECRET_KEY: ci-only-not-a-real-secret
+      ENVIRONMENT: dev
+      # ⚠️ THE WHOLE POINT OF THIS JOB. Without it the two extra states skip
+      # and this workflow becomes a slower copy of the gate.
+      PAYROLL_SWITCH_FULL_MATRIX: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Run Alembic migrations
+        run: alembic upgrade head
+
+      - name: Seed the canonical set
+        # The suite under test runs against a seeded tenant; an unseeded
+        # database would make it skip, and a skip here is indistinguishable
+        # from a pass.
+        run: bash scripts/run_canonical_seeds.sh > /tmp/seed.log 2>&1 || (tail -40 /tmp/seed.log && exit 1)
+
+      - name: Switch teardown, all three prior states
+        # ⚠️ **ONE RUN, AND THE COUNT IS CHECKED FROM ITS OWN OUTPUT.**
+        #
+        # The first version of this control used `--collect-only` and compared
+        # the number collected — which is 3 whether or not the flag is set,
+        # because `skipif` applies at RUNTIME, not at collection. It could not
+        # fail, which is the shape this repo keeps getting caught by and which
+        # I wrote into the guard against it.
+        #
+        # What distinguishes a real matrix run from the gate's single case is
+        # how many PASSED and whether anything SKIPPED. Both are read out of
+        # the run that just happened, so there is no second run to disagree
+        # with the first.
+        run: |
+          set -o pipefail
+          python -m pytest tests/test_payroll_switch_teardown.py -q -rs \
+            2>&1 | tee /tmp/matrix.log
+          tail -3 /tmp/matrix.log
+          if ! grep -qE "^3 passed" /tmp/matrix.log; then
+            echo "Expected '3 passed'. The matrix did not run in full." >&2
+            exit 1
+          fi
+          if grep -q "skipped" /tmp/matrix.log; then
+            echo "Something skipped — PAYROLL_SWITCH_FULL_MATRIX did not take effect, so this job is a slow copy of the gate." >&2
+            exit 1
+          fi

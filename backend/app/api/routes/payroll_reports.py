@@ -67,6 +67,9 @@ from app.services.payroll.hours_parser import HoursParseError
 from app.services.payroll.register_import import import_register
 from app.services.payroll.register_people import apply_fills, reconcile
 from app.services.payroll import r115 as r115_service
+from app.services.payroll import r115_form
+from app.services.payroll import r115_schedule
+from app.services.payroll import r115_settings
 from app.services.payroll.register_parser import RegisterParseError
 from app.services.payroll.reports import to_csv
 from app.services.payroll.rules import RULE_FIELDS, RULE_STATUSES
@@ -571,6 +574,130 @@ def set_data_enabled(
     return {"setting": PAYROLL_DATA_ENABLED, "enabled": bool(enabled), "changed": True}
 
 
+@router.get("/settings/union-form")
+def get_union_form_settings(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """The tenant's R-115 settings: the deadline and the header's own facts.
+
+    ⚠️ **ONE ENDPOINT FOR FOUR SETTINGS, NOT FOUR ENDPOINTS.** They are edited
+    together on one screen and read together by one form header; splitting
+    them would make a half-saved header possible and would make the admin
+    screen issue four requests to show one panel.
+    """
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    return r115_settings.all_settings(company)
+
+
+@router.put("/settings/union-form")
+def set_union_form_settings(
+    # ⚠️ **A STRING, NOT AN `int`, SO IT CAN BE CLEARED.** Declared
+    # `int | None` first, which made `due_day=""` a 422 — and that is the
+    # exact body a form sends when somebody empties the field, so the setting
+    # could be set and never unset. Parsed below: omitted is unchanged, empty
+    # clears, anything else must be a day. The three text fields already
+    # worked this way; the number was the odd one out.
+    due_day: str | None = Form(None),
+    local: str | None = Form(None),
+    plant: str | None = Form(None),
+    completed_by: str | None = Form(None),
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Set or clear the R-115 settings. Audited, and partial by omission.
+
+    ⚠️ **AN OMITTED FIELD IS UNCHANGED; AN EMPTY ONE IS CLEARED.** A PUT that
+    treated every absent field as a clear would wipe the local the moment
+    somebody saved only the due date. The distinction is carried by the form
+    body: a field not sent is absent, a field sent empty is `""`, and only the
+    second clears.
+
+    Clearing is a real operation — a tenant whose local changed its deadline,
+    or who got a new plant name, must be able to return to "we do not know"
+    rather than leave a stale value standing. The screens then say "Not set".
+    """
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    before = r115_settings.all_settings(company)
+    sent = {k: v for k, v in (
+        (r115_settings.R115_LOCAL, local),
+        (r115_settings.R115_PLANT, plant),
+        (r115_settings.R115_COMPLETED_BY, completed_by),
+    ) if v is not None}
+
+    parsed_day: int | None = None
+    clear_day = False
+    if due_day is not None:
+        if due_day.strip() == "":
+            clear_day = True
+        else:
+            try:
+                parsed_day = int(due_day)
+            except ValueError:
+                raise HTTPException(
+                    400,
+                    detail={
+                        "code": "due_day_not_a_number",
+                        "message": (
+                            f"{due_day!r} is not a day of the month. Send a "
+                            "number from 1 to 31, or an empty value to clear "
+                            "the deadline."
+                        ),
+                    },
+                ) from None
+
+    if parsed_day is not None and not (1 <= parsed_day <= 31):
+        raise HTTPException(
+            400,
+            detail={
+                "code": "due_day_out_of_range",
+                "message": (
+                    f"{parsed_day} is not a day of the month. The R-115 due day "
+                    "is 1 to 31; it is read in the month after the period, and "
+                    "a day past the end of that month falls back to its last "
+                    "day."
+                ),
+            },
+        )
+    for key, value in sent.items():
+        if len(value) > r115_settings.MAX_TEXT:
+            raise HTTPException(
+                400,
+                detail={
+                    "code": "setting_too_long",
+                    "message": (
+                        f"{key} is {len(value)} characters; the limit is "
+                        f"{r115_settings.MAX_TEXT}. These are header fields on "
+                        "a form, not a notes field."
+                    ),
+                },
+            )
+
+    if clear_day:
+        company.set_setting(r115_settings.R115_DUE_DAY, None)
+    elif parsed_day is not None:
+        company.set_setting(r115_settings.R115_DUE_DAY, parsed_day)
+    for key, value in sent.items():
+        # ⚠️ An empty string CLEARS rather than storing "". `_text` already
+        # reads "" back as unset, so storing it would leave a value the code
+        # believes is absent — two states that look the same and are not.
+        company.set_setting(key, value.strip() or None)
+
+    after = r115_settings.all_settings(company)
+    changed = {k: {"before": before[k], "after": after[k]}
+               for k in after if before[k] != after[k]}
+    if not changed:
+        return {**after, "changed": False}
+
+    audit_service.log_action(
+        db, current_user.company_id, "payroll_union_form_settings_changed",
+        "company", current_user.company_id, user_id=current_user.id,
+        changes=changed,
+    )
+    db.commit()
+    return {**after, "changed": True}
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Payroll 4 Phase 1 — the register upload.
 #
@@ -990,6 +1117,248 @@ def _form_shape(form: PayrollUnionFormR115) -> dict:
         "filed_at": form.filed_at.isoformat() if form.filed_at else None,
         "superseded_by_id": form.superseded_by_id,
         "table": form.rows,
+        # ⚠️ **THE REMITTANCE, AND IT IS NOT LINE 4.** This field was built
+        # as `line_4` on 2026-11-18 and corrected the same day: line 4 is
+        # Total Earnings, and the money is the un-numbered Total Remittance.
+        # Served rather than derived client-side so one mapping exists.
+        "total_remittance": r115_service.total_remittance(
+            (form.rows or {}).get("totals") or {"dues_deducted": str(form.total_dues)}
+        ),
+    }
+
+
+def _r115_subject(year: int, month: int) -> str:
+    """What an R-115 copy is ABOUT. One producer — the writer and every
+    reader derive the subject here, so a copy cannot be filed under
+    "2026-10" and looked up under "2026-10-01"."""
+    return f"{year}-{month:02d}"
+
+
+def _r115_copies(db: Session, user: User, *, year: int, month: int,
+                 current: dict | None) -> list[dict]:
+    """This month's copies, newest first, with names resolved."""
+    from app.core.areas import allowed_area_grants
+    from app.services.outgoing_copies import registry as copy_registry
+    from app.services.outgoing_copies import service as copy_service
+
+    grants = allowed_area_grants(_limited_to_areas(db, user))
+    if "r115" not in copy_registry.readable_kinds(grants):
+        return []
+
+    rows = copy_service.copies_for(db, tenant_id=user.company_id,
+                                   document_kind="r115",
+                                   subject=_r115_subject(year, month))
+    names: dict[str, str] = {}
+    ids = {r.made_by_user_id for r in rows if r.made_by_user_id}
+    if ids:
+        for u in db.query(User).filter(User.id.in_(ids)).all():
+            names[u.id] = f"{u.first_name} {u.last_name}".strip() or u.email
+    return [copy_service.shape(r, current=current, made_by_name=names.get(
+        r.made_by_user_id)) for r in rows]
+
+
+def _limited_to_areas(db: Session, user: User):
+    """The caller's role's area limit, read from the ROLE — never a request."""
+    from app.models.role import Role
+
+    role = db.query(Role).filter(Role.id == user.role_id).first()
+    return getattr(role, "limited_to_areas", None) if role else None
+
+
+@router.post("/r115/copies", status_code=201)
+def record_r115_copy(
+    year: int = Form(...),
+    month: int = Form(..., ge=1, le=12),
+    left_as: str = Form(...),
+    sent_how: str | None = Form(None),
+    current_user: User = Depends(require_permission("payroll.view")),
+    db: Session = Depends(get_db),
+):
+    """Freeze a copy of this month's R-115 as it leaves.
+
+    ⚠️ **THE SERVER REBUILDS THE FIGURES RATHER THAN TRUSTING THE PAGE.** A
+    client posting its own content could freeze anything, and a copy is
+    evidence. The cost is a window: if a register is imported between the
+    page rendering and the print being taken, the copy records the newer
+    figures. That window is small, and the drift it could hide is exactly
+    what `differs_from_today` surfaces on every later read.
+
+    ⚠️ **MARKING SENT NEEDS `payroll.approve`; PRINTING NEEDS ONLY `view`.**
+    Printing is reading. Saying a form was sent to the union is an assertion
+    about the outside world, and it is checked separately below rather than
+    by a second route — one place builds the copy, so one place freezes the
+    content.
+    """
+    from app.services.outgoing_copies import service as copy_service
+    from app.services.payroll.service import (
+        PayrollError,
+        resolve_rule_set,
+        rules_from_row,
+    )
+
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    assert_payroll_data_enabled(company)
+
+    if left_as == "marked_sent":
+        from app.services.permission_service import user_has_permission
+
+        if not user_has_permission(current_user, db, PAYROLL_WRITE):
+            raise HTTPException(
+                403,
+                detail={
+                    "code": "insufficient_permission",
+                    "message": (
+                        "Marking the union form sent is an assertion that it "
+                        f"left the building; it needs {PAYROLL_WRITE}. "
+                        "Printing it does not."
+                    ),
+                },
+            )
+
+    try:
+        rules = rules_from_row(resolve_rule_set(db, current_user.company_id,
+                                                date(year, month, 1)))
+        built = r115_form.build_lines(db, tenant_id=current_user.company_id,
+                                      year=year, month=month, rules=rules)
+    except PayrollError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+    content = {
+        "lines": built["lines"],
+        "header": r115_form.header_for(company, year=year, month=month,
+                                       check_dates=built["check_dates"]),
+        "check_dates": built["check_dates"],
+        "percentage_dues_computed": built["percentage_dues_computed"],
+        "percentage_dues_variance": built["percentage_dues_variance"],
+    }
+    try:
+        copy = copy_service.record_copy(
+            db, tenant_id=current_user.company_id, document_kind="r115",
+            subject=_r115_subject(year, month), content=content,
+            left_as=left_as, made_by_user_id=current_user.id,
+            sent_how=sent_how,
+        )
+    except copy_service.OutgoingCopyError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    audit_service.log_action(
+        db, current_user.company_id, "outgoing_copy_recorded",
+        "outgoing_copy", copy.id, user_id=current_user.id,
+        changes={"document_kind": "r115",
+                 "subject": _r115_subject(year, month),
+                 "left_as": left_as, "sent_how": sent_how},
+    )
+    db.commit()
+    return copy_service.shape(copy, current=built,
+                              made_by_name=f"{current_user.first_name} "
+                                           f"{current_user.last_name}".strip())
+
+
+@router.get("/r115")
+def get_r115(
+    year: int = Query(...),
+    month: int = Query(..., ge=1, le=12),
+    current_user: User = Depends(require_permission("payroll.view")),
+    db: Session = Depends(get_db),
+):
+    """One month's union form, its stage, and what it would say if built.
+
+    ⚠️ **ONE CALL, BECAUSE THE STAGE AND THE FIGURES MUST NOT BE FETCHED
+    SEPARATELY.** A screen that read the form from here and the stage from
+    somewhere else could render "Sent" above a table from a later rebuild. The
+    Focus asks one question — "where does October stand?" — and gets one
+    answer.
+
+    `form` is null for a month nobody has built yet; `preview` then carries
+    what it WOULD say, so the screen can show the figures beside the button
+    that creates it rather than an empty frame. For a month that HAS a form,
+    `preview` is null: the stored table is the record, and showing today's
+    recomputation beside it would invite reading the wrong one.
+    """
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    assert_payroll_data_enabled(company)
+    form = r115_service.live_form(
+        db, tenant_id=current_user.company_id, year=year, month=month)
+
+    preview = None
+    if form is None:
+        try:
+            table = r115_service.preview(
+                db, tenant_id=current_user.company_id, year=year, month=month)
+            preview = {
+                "columns": list(table.columns),
+                "rows": list(table.rows),
+                "totals": table.totals,
+                "meta": table.meta,
+                "total_remittance": r115_service.total_remittance(table.totals),
+            }
+        except r115_service.R115Error:
+            # ⚠️ NOT AN ERROR TO THE CALLER. "No register covers this month
+            # yet" is a true and useful answer to "where does October stand",
+            # and a 409 here would make the Focus unable to render the stage
+            # it was opened to show. The absence is reported as `preview:
+            # null` with the stage still present.
+            preview = None
+
+    # ⚠️ THE NUMBERED LINES ARE COMPUTED FOR EVERY MONTH, BUILT OR NOT. The
+    # print view lays out the whole form in order, and a month whose form has
+    # not been created yet still has to show what it would say — that is what
+    # the reader approves. `r115_form` reads the register either way, so the
+    # two paths cannot produce different lines.
+    from app.services.payroll.service import (
+        PayrollError,
+        resolve_rule_set,
+        rules_from_row,
+    )
+
+    # ⚠️ **NO RULE SET IS A REPORTED ABSENCE, NOT A 500 AND NOT A FALLBACK.**
+    # `resolve_rule_set` refuses to default on purpose — "seed a rule set
+    # rather than falling back to defaults, so the result records which rules
+    # produced it" — and lines 5, 6 and 7 are dues components that cannot be
+    # computed without one. But the STAGE can: a Focus opened on a tenant
+    # whose rules were never seeded must still say where the month stands and
+    # why its lines are missing, rather than failing to render at all.
+    lines = None
+    lines_unavailable = None
+    try:
+        rules = rules_from_row(resolve_rule_set(db, current_user.company_id,
+                                                date(year, month, 1)))
+        lines = r115_form.build_lines(db, tenant_id=current_user.company_id,
+                                      year=year, month=month, rules=rules)
+    except PayrollError as exc:
+        lines_unavailable = str(exc)
+
+    return {
+        "year": year,
+        "month": month,
+        "form": _form_shape(form) if form is not None else None,
+        "preview": preview,
+        "schedule": r115_schedule.schedule_for(
+            company, form=form, year=year, month=month, today=date.today()),
+        "lines": lines["lines"] if lines else None,
+        #: Why the lines are absent, in the words the service used. `null`
+        #: when they are present — the two are never both set, so a screen
+        #: cannot render a reason beside a table.
+        "lines_unavailable": lines_unavailable,
+        "warnings": lines["warnings"] if lines else [],
+        "adds_up": lines["adds_up"] if lines else None,
+        "percentage_dues_computed": (lines["percentage_dues_computed"]
+                                     if lines else None),
+        "percentage_dues_variance": (lines["percentage_dues_variance"]
+                                     if lines else None),
+        "initiation_fee_count": lines["initiation_fee_count"] if lines else None,
+        "header": r115_form.header_for(
+            company, year=year, month=month,
+            check_dates=lines["check_dates"] if lines else []),
+        # ⚠️ **AREA-FILTERED EVEN HERE, WHERE IT CANNOT CURRENTLY FAIL.**
+        # Reaching this route already means passing the payroll area guard,
+        # so `readable_kinds` can only say yes today. It is applied anyway
+        # because the rule is "copies are visible only to callers who can see
+        # that kind's area", and a rule enforced by the route it happens to
+        # sit behind is a rule that stops being enforced when the next route
+        # serves copies. `tests/test_outgoing_copies.py` holds it.
+        "copies": _r115_copies(db, current_user, year=year, month=month,
+                               current=lines),
     }
 
 

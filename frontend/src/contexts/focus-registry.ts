@@ -30,6 +30,7 @@
 
 /** Core rendering mode for a Focus. Open for extension: append new
  *  entries here + add a MODE_RENDERERS row in mode-dispatcher.tsx. */
+import { UnionFormCore } from "@/components/payroll/UnionFormCore"
 import { WeeklyPayrollCore } from "@/components/payroll/WeeklyPayrollCore"
 
 export type CoreMode =
@@ -528,6 +529,24 @@ registerFocus({
 // Opened scoped — `?focus=weekly-payroll&week_id=<id>` — from the dues line on
 // the home note. Without a `week_id` the core says so rather than rendering an
 // empty week.
+// ── Payroll 5b: the union remittance form (R-115) ──────────────────────────
+//
+// ⚠️ Scoped by PERIOD, not by a row id — `?focus=union-form&period=2026-10`.
+// The form may not have been built yet, and a correction supersedes the row
+// while the month's obligation is unchanged, so the month is the only stable
+// name this subject has. `focusTarget` maps `payroll_form_period` to it.
+//
+// ⚠️ `editPermission: "payroll.approve"` — a look-only reviewer reads the
+// form and prints it (printing is reading) but cannot approve it or mark it
+// sent. The server gates the same two acts on the same key.
+registerFocus({
+  id: "union-form",
+  mode: "singleRecord",
+  displayName: "Union form",
+  editPermission: "payroll.approve",
+  coreComponent: UnionFormCore,
+})
+
 registerFocus({
   id: "weekly-payroll",
   mode: "singleRecord",

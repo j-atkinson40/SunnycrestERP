@@ -166,12 +166,20 @@ export function focusTarget(f: ProseFragment): string | null {
   // week end date. Sending it as `week_id` would open the Focus on a week
   // that cannot be fetched, which is "could not be loaded" from the one line
   // whose job is to offer the upload.
+  // ⚠️ **`payroll_form_period` CARRIES A MONTH.** Added 2026-11-20 with the
+  // union form. Same shape as `payroll_week_end` and the same reason: the
+  // form's row may not exist — it is created when somebody starts the month —
+  // and a correction supersedes the row while the month's obligation is
+  // unchanged. `${subject_kind}_id` would send `payroll_form_period_id`,
+  // which no Focus reads.
   const param =
     f.subject_kind === "payroll_week"
       ? "week_id"
       : f.subject_kind === "payroll_week_end"
         ? "week_end"
-        : `${f.subject_kind}_id`;
+        : f.subject_kind === "payroll_form_period"
+          ? "period"
+          : `${f.subject_kind}_id`;
   // ⚠️ `/home`, NOT `/`. The root route is a role-based redirect, and
   // redirecting DROPS THE QUERY STRING — the Focus opened with no scope and
   // showed "No week chosen". Linking straight at the landing route keeps the

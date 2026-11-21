@@ -37,6 +37,7 @@ import { useEffect, useRef, useState } from "react"
 
 import { uploadRegister } from "@/lib/payroll/focus-api"
 import type { RegisterImportResult } from "@/lib/payroll/focus-api"
+import type { UnionFormSettings } from "@/lib/payroll/setup-api"
 import {
   CHECKING_SUFFIX,
   didWriteLand,
@@ -53,6 +54,8 @@ import {
   type ReconcileResult,
   type RegisterImportRow,
   type RosterStatus,
+  getUnionFormSettings,
+  setUnionFormSettings,
 } from "@/lib/payroll/setup-api"
 
 /** `null` = loading, `false` = could not load. Three states, never two — a
@@ -714,6 +717,127 @@ function RosterCard({ enabled }: { enabled: boolean | null }) {
 
 // ─── the page ────────────────────────────────────────────────────────────────
 
+
+// ─── (4) the union form's own settings ───────────────────────────────────────
+
+/** The four facts the R-115's header and deadline come from.
+ *
+ * ⚠️ **ALL FOUR ARE BLANK BY DEFAULT AND STAY BLANK UNTIL SOMEBODY SETS
+ * THEM.** A defaulted union local would print ONE licensee's local on ANOTHER
+ * licensee's filed form; a defaulted deadline is a date nobody agreed to.
+ * Both are the shape CLAUDE.md §5 names — a plausible value nobody measured,
+ * which reads as data. "Not set" is the honest state and is also what gets
+ * somebody to go and set it.
+ *
+ * ⚠️ **ONLY EDITED FIELDS ARE SENT.** The endpoint treats an omitted field as
+ * unchanged and an empty one as a clear, so saving the due date alone must
+ * not carry three empty strings along with it — that would wipe the local.
+ */
+function UnionFormCard({ enabled }: { enabled: boolean | null }) {
+  const [loaded, setLoaded] = useState<UnionFormSettings | null>(null)
+  const [draft, setDraft] = useState<Partial<Record<keyof UnionFormSettings, string>>>({})
+  const [busy, setBusy] = useState(false)
+  const [said, setSaid] = useState<{ ok: boolean; text: string } | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    getUnionFormSettings()
+      .then((v) => alive && setLoaded(v))
+      .catch(() => alive && setSaid({ ok: false, text: "The union form settings could not be read." }))
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  function value(key: keyof UnionFormSettings): string {
+    if (key in draft) return draft[key] ?? ""
+    const v = loaded?.[key]
+    return v === null || v === undefined ? "" : String(v)
+  }
+
+  async function save() {
+    if (Object.keys(draft).length === 0) return
+    setBusy(true)
+    setSaid(null)
+    try {
+      const next = await setUnionFormSettings(draft)
+      setLoaded(next)
+      setDraft({})
+      setSaid({
+        ok: true,
+        text: next.changed
+          ? "Saved. The union form's header reads from these."
+          : "No change — nothing was recorded.",
+      })
+    } catch (err) {
+      setSaid({ ok: false, text: failureText(err) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const FIELDS: { key: keyof UnionFormSettings; label: string; hint: string }[] = [
+    { key: "payroll_union_local", label: "Local", hint: "e.g. 14532-17" },
+    { key: "payroll_union_plant", label: "Plant", hint: "the plant named on the form" },
+    { key: "payroll_form_completed_by", label: "Completed by",
+      hint: "who signs it, with a phone number and email" },
+    { key: "payroll_union_form_due_day", label: "Due day",
+      hint: "day of the month AFTER the period; leave blank until the union says" },
+  ]
+
+  return (
+    <section aria-label="Union form settings" data-testid="setup-union-form" className={CARD}>
+      <h2 className="text-h4 text-content-strong">4 · The union form&rsquo;s header</h2>
+      <p className="mt-2 text-body-sm text-content-muted">
+        The R-115 prints these. They are blank until set, and a blank prints as
+        &ldquo;Not set&rdquo; rather than as another company&rsquo;s details.
+      </p>
+
+      {!enabled && (
+        <p className="mt-3 text-body text-content-base" data-testid="union-form-blocked">
+          Payroll data is off for this company, so there is no form to head.
+          Turn it on above first.
+        </p>
+      )}
+
+      {loaded === null ? (
+        <p className="mt-3 text-body text-content-muted">Reading the settings…</p>
+      ) : (
+        <div className="mt-4 space-y-3">
+          {FIELDS.map((f) => (
+            <label key={f.key} className="block" data-testid={`union-field-${f.key}`}>
+              <span className="text-body-sm text-content-base">{f.label}</span>
+              <input
+                value={value(f.key)}
+                disabled={busy}
+                placeholder="Not set"
+                aria-label={f.label}
+                onChange={(e) =>
+                  setDraft((d) => ({ ...d, [f.key]: e.target.value }))
+                }
+                className="mt-1 block w-full border-b border-border-base bg-transparent
+                           py-1 text-body text-content-strong"
+              />
+              <span className="text-caption text-content-subtle">{f.hint}</span>
+            </label>
+          ))}
+          <button
+            type="button"
+            disabled={busy || Object.keys(draft).length === 0}
+            data-testid="union-form-save"
+            onClick={save}
+            className="text-body-sm underline underline-offset-2 disabled:opacity-50"
+          >
+            Save
+          </button>
+        </div>
+      )}
+
+      {said && <Outcome ok={said.ok} testId="union-form-outcome">{said.text}</Outcome>}
+    </section>
+  )
+}
+
 export default function PayrollSetup() {
   const [sw, setSw] = useState<Loaded<DataSwitchState>>(null)
 
@@ -745,6 +869,7 @@ export default function PayrollSetup() {
       <DataSwitchCard state={sw} onChanged={setSw} />
       <RegisterCard enabled={enabled} />
       <RosterCard enabled={enabled} />
+      <UnionFormCard enabled={enabled} />
     </div>
   )
 }

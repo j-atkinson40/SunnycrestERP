@@ -1,0 +1,70 @@
+/**
+ * Printing the R-115 — Payroll 5b.
+ *
+ * ⚠️ **THE PRINTED PAGE IS THE FORM, NOT A SCREENSHOT OF THE APP.** The Focus
+ * renders inside a dialog over a blurred note; printing that gives a grey page
+ * with a dimmed note behind it. So print hides everything except the form and
+ * lets the form fill the sheet.
+ *
+ * ⚠️ **THIS IS A CLEAN PAGE OF OUR OWN, NOT A REPLICA OF THE UNION'S PAPER
+ * FORM.** James ruled that explicitly: a replica would need the real form's
+ * layout, which is not in this repository, and a layout invented from a
+ * description would read as authoritative and be wrong. The lines are laid
+ * out in the form's order so a person can transcribe down the column.
+ *
+ * ⚠️ The controls do not print. A sheet of paper carrying a disabled "Mark
+ * sent" button is a sheet that claims to be interactive.
+ */
+
+@media print {
+  /* Everything is hidden, then the form and its ancestors are shown. Hiding
+     by name — the shell, the sphere, the backdrop — would miss whatever is
+     added next; this cannot. */
+  body * {
+    visibility: hidden;
+  }
+
+  [data-testid="union-form-core"],
+  [data-testid="union-form-core"] * {
+    visibility: visible;
+  }
+
+  [data-testid="union-form-core"] {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    padding: 0;
+    /* Black on white. The screen's warm greys are legible on a lit display
+       and washed out on paper, and a remittance form is read by somebody
+       checking figures against a cheque. */
+    color: #000;
+    background: #fff;
+  }
+
+  /* Acts, and the staleness banner, belong to the screen. */
+  [data-testid="union-form-core"] button,
+  [data-testid="union-form-core"] input,
+  [data-testid="union-form-stale-banner"],
+  [data-testid="union-form-action-failed"],
+  [data-testid="union-form-copies"] a {
+    display: none !important;
+  }
+
+  /* ⚠️ THE COPIES LIST STAYS. A printed form that does not say it is the
+     third copy taken this month invites a second filing. */
+
+  /* A form is read down a column: rule the rows so the eye tracks. */
+  [data-testid="union-form-lines"] > dl > div {
+    border-bottom: 1px solid #ddd;
+    padding: 2pt 0;
+  }
+
+  [data-testid="value-total_remittance"] {
+    font-weight: 700;
+    border-top: 2px solid #000;
+  }
+
+  @page {
+    margin: 14mm;
+  }
+}

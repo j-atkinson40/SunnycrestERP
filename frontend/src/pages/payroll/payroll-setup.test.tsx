@@ -15,7 +15,7 @@
  * quiet, and that nothing is blank.
  */
 
-import { render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -33,6 +33,13 @@ const setupApi = vi.hoisted(() => ({
   reconcileRegisterPeople: vi.fn(),
   listRegisterImports: vi.fn(),
   getRosterStatus: vi.fn(),
+  // ⚠️ Added with the union-form card (5b). A mock that lists exports
+  // explicitly fails LOUDLY when the page grows a new call — 30 tests went
+  // red at once — which is the behaviour worth having: a mock returning
+  // undefined for an unknown export would have let the card silently render
+  // nothing in every one of them.
+  getUnionFormSettings: vi.fn(),
+  setUnionFormSettings: vi.fn(),
 }))
 vi.mock("@/lib/payroll/setup-api", () => setupApi)
 
@@ -75,6 +82,15 @@ function refused(code: string, message: string) {
 }
 
 beforeEach(() => {
+  // The union-form card reads its settings on mount in every test that
+  // renders the page; unresolved, it would warn about an un-awaited promise
+  // in all of them. All four unset is the real default state.
+  setupApi.getUnionFormSettings.mockResolvedValue({
+    payroll_union_form_due_day: null,
+    payroll_union_local: null,
+    payroll_union_plant: null,
+    payroll_form_completed_by: null,
+  })
   vi.clearAllMocks()
   setupApi.getDataEnabled.mockResolvedValue({
     setting: "payroll_data_enabled",
@@ -688,5 +704,82 @@ describe("the roster apply, when no reply arrives", () => {
     expect(await screen.findByTestId("roster-said")).toHaveTextContent(
       "no rule set effective on 2026-10-01",
     )
+  })
+})
+
+// ─── (4) the union form's header ─────────────────────────────────────────────
+
+describe("the union form's own settings", () => {
+  it("⚠️ shows NOT SET rather than inventing a local or a deadline", async () => {
+    /* A defaulted union local would print one licensee's local on another
+       licensee's filed form; a defaulted deadline is a date nobody agreed to.
+       Blank is the honest state and is what gets somebody to set it. */
+    setupApi.getDataEnabled.mockResolvedValue({ setting: "x", enabled: true })
+    render(<PayrollSetup />)
+    const card = await screen.findByTestId("setup-union-form")
+    for (const label of ["Local", "Plant", "Completed by", "Due day"]) {
+      const input = within(card).getByLabelText(label) as HTMLInputElement
+      expect(input.value).toBe("")
+      expect(input.placeholder).toBe("Not set")
+    }
+  })
+
+  it("renders what is already set", async () => {
+    setupApi.getDataEnabled.mockResolvedValue({ setting: "x", enabled: true })
+    setupApi.getUnionFormSettings.mockResolvedValue({
+      payroll_union_form_due_day: 15,
+      payroll_union_local: "14532-17",
+      payroll_union_plant: "58 Prospect St., Auburn, NY 13021",
+      payroll_form_completed_by: "Susan",
+    })
+    render(<PayrollSetup />)
+    const card = await screen.findByTestId("setup-union-form")
+    expect((within(card).getByLabelText("Local") as HTMLInputElement).value)
+      .toBe("14532-17")
+    expect((within(card).getByLabelText("Due day") as HTMLInputElement).value)
+      .toBe("15")
+  })
+
+  it("⚠️ sends ONLY the fields that were edited", async () => {
+    /* The endpoint treats an omitted field as unchanged and an empty one as a
+       clear, so saving the due date alone must not carry three empty strings
+       with it — that would wipe the local. */
+    setupApi.getDataEnabled.mockResolvedValue({ setting: "x", enabled: true })
+    setupApi.getUnionFormSettings.mockResolvedValue({
+      payroll_union_form_due_day: null,
+      payroll_union_local: "14532-17",
+      payroll_union_plant: null,
+      payroll_form_completed_by: null,
+    })
+    setupApi.setUnionFormSettings.mockResolvedValue({
+      payroll_union_form_due_day: 15,
+      payroll_union_local: "14532-17",
+      payroll_union_plant: null,
+      payroll_form_completed_by: null,
+      changed: true,
+    })
+    render(<PayrollSetup />)
+    const card = await screen.findByTestId("setup-union-form")
+    fireEvent.change(within(card).getByLabelText("Due day"), {
+      target: { value: "15" },
+    })
+    fireEvent.click(within(card).getByTestId("union-form-save"))
+    await waitFor(() => expect(setupApi.setUnionFormSettings).toHaveBeenCalled())
+    expect(setupApi.setUnionFormSettings).toHaveBeenCalledWith({
+      payroll_union_form_due_day: "15",
+    })
+  })
+
+  it("will not save when nothing was edited", async () => {
+    setupApi.getDataEnabled.mockResolvedValue({ setting: "x", enabled: true })
+    render(<PayrollSetup />)
+    const card = await screen.findByTestId("setup-union-form")
+    expect(within(card).getByTestId("union-form-save")).toBeDisabled()
+  })
+
+  it("says there is no form to head while payroll data is off", async () => {
+    setupApi.getDataEnabled.mockResolvedValue({ setting: "x", enabled: false })
+    render(<PayrollSetup />)
+    expect(await screen.findByTestId("union-form-blocked")).toBeTruthy()
   })
 })

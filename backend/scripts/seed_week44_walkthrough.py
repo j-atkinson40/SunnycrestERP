@@ -41,7 +41,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.database import SessionLocal                                  # noqa: E402
 from app.models.company import Company                                 # noqa: E402
-from app.models.payroll_report import (                                # noqa: E402
+from app.models.payroll_report import (
+    PayrollCheck,
+    PayrollCheckLine,                                # noqa: E402
     PayrollHoursImport,
     PayrollHoursLine,
     PayrollRate,
@@ -123,6 +125,10 @@ def main() -> int:
         db.execute(text("DELETE FROM payroll_rates WHERE employee_id IN "
                         "(SELECT id FROM payroll_report_employees WHERE tenant_id=:t)"), {"t": TENANT})
         db.execute(text("DELETE FROM payroll_report_employees WHERE tenant_id=:t"), {"t": TENANT})
+        db.execute(text("DELETE FROM outgoing_copies WHERE tenant_id=:t"), {"t": TENANT})
+        db.execute(text("DELETE FROM payroll_union_forms_r115 WHERE tenant_id=:t"), {"t": TENANT})
+        db.execute(text("DELETE FROM payroll_check_lines WHERE tenant_id=:t"), {"t": TENANT})
+        db.execute(text("DELETE FROM payroll_checks WHERE tenant_id=:t"), {"t": TENANT})
         db.execute(text("DELETE FROM payroll_rule_sets WHERE tenant_id=:t"), {"t": TENANT})
         db.execute(text("DELETE FROM note_fragment_renders WHERE user_id=:u"), {"u": USER_ID})
         db.execute(text("DELETE FROM daily_notes WHERE user_id=:u"), {"u": USER_ID})
@@ -163,6 +169,46 @@ def main() -> int:
             db.add(PayrollRate(id=str(uuid.uuid4()), employee_id=e.id,
                                reg_rate=D(rate), ot_rate=D(rate) * D("1.5"),
                                effective_date=date(2026, 1, 1)))
+
+        # ── Payroll 5b: a register month for the union form ─────────────
+        #
+        # ⚠️ **THE MONTH IS DERIVED FROM TODAY, NOT TYPED.** The note line and
+        # the Opas entry both open `current_form_period(today)` — the latest
+        # month whose last check has been issued. A fixed month would stop
+        # matching them the moment the calendar moved past it, and the walk
+        # would open a form with no data while every assertion still passed.
+        from app.services.payroll.r115_schedule import (
+            check_dates_in,
+            current_form_period,
+        )
+
+        form_year, form_month = current_form_period(date.today())
+        check_dates = check_dates_in(form_year, form_month)
+        # Three of the four are paid every check date with dues deducted;
+        # Stevenson is on the roster and not paid, so line 1 and line 2 differ
+        # and the walk can see a real unit count rather than two equal numbers.
+        for fn, _name, _reg, _ot, rate, in_export in PEOPLE:
+            if not in_export:
+                continue
+            for i, when in enumerate(check_dates):
+                cid = str(uuid.uuid4())
+                db.add(PayrollCheck(
+                    id=cid, tenant_id=TENANT, emp_id=fn,
+                    person=dict((p[0], p[1]) for p in PEOPLE)[fn],
+                    check_number=f"WALK-{fn}-{i}", check_date=when,
+                    source_page=0))
+                db.add(PayrollCheckLine(
+                    id=str(uuid.uuid4()), tenant_id=TENANT, check_id=cid,
+                    kind="earning", code="Reg", hours=D("40.00"),
+                    amount=D(rate) * D("40.00")))
+                # Dues as the rules would take them: min(a,b) + c.
+                wage = D(rate) * D("40.00")
+                a = (wage * D("0.0145")).quantize(D("0.01"))
+                b = ((wage / D("40.00")) * D("0.6461")).quantize(D("0.01"))
+                c = (D("40.00") * D("0.02")).quantize(D("0.01"))
+                db.add(PayrollCheckLine(
+                    id=str(uuid.uuid4()), tenant_id=TENANT, check_id=cid,
+                    kind="deduction", code="Union", amount=min(a, b) + c))
 
         hours_import = PayrollHoursImport(
             id=str(uuid.uuid4()), tenant_id=TENANT, source_kind="employee_hours",

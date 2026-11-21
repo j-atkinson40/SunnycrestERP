@@ -816,3 +816,16 @@ tests/test_payroll_week_line_copy.py
 # runs: what was wrong was what that suite LEFT BEHIND, and it blanked a live
 # payroll note mid-walk-through on 2026-11-17.
 tests/test_payroll_switch_teardown.py
+# The R-115 union form (Payroll 5b, 2026-11-20) — the form's numbered lines
+# and header, the derived stage and due date, line 1's two rulings, and the
+# endpoints the Focus reads. Line 4 is Total Earnings; the money is the
+# un-numbered Total Remittance, and a test pins the distinction because the
+# first build conflated them.
+tests/test_payroll_r115_schedule.py
+tests/test_payroll_r115_endpoints.py
+tests/test_payroll_r115_line_1.py
+# ⚠️ AND THE GENERAL RECORD OF WHAT LEFT THE BUILDING. `outgoing_copies` is
+# one table across every document kind, so its AREA rule is the part a later
+# kind will depend on and cannot discover for itself — that is what this
+# holds, as much as the payroll surface it is driven through.
+tests/test_outgoing_copies.py
