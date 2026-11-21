@@ -130,6 +130,68 @@ class PayrollReportEmployee(Base):
     )
 
 
+#: The statuses an employee can be put into. ⚠️ `active` is a STATUS somebody
+#: CHOSE; NULL is "nobody has said". The R-115's line-1 rule turns on exactly
+#: that distinction, so the two must stay tellable apart.
+PAYROLL_EMPLOYEE_STATUSES = ("active", "left", "workers_comp", "leave")
+
+
+class PayrollEmployeeStatusChange(Base):
+    """One recorded change to an employee's payroll status.
+
+    ⚠️ **A CHANGE IS A RECORD, NOT AN OVERWRITE** (James, 2026-11-21). The
+    status decides whether somebody counts on a form filed with a union, so
+    "who said they left, and when did they say it" must survive the next
+    edit. `payroll_report_employees.payroll_status` stays as the CURRENT
+    value every existing reader uses; this is the history behind it, and the
+    two are written in one transaction.
+
+    ⚠️ **`since` IS THE DAY THE STATUS BEGAN; `changed_at` IS WHEN SOMEBODY
+    TYPED IT.** They are routinely months apart — a leaver recorded in
+    November who left in June — and conflating them would put the wrong date
+    into the R-115's line-1 rule, which compares `since` against the month.
+    """
+
+    __tablename__ = "payroll_employee_status_changes"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('active', 'left', 'workers_comp', 'leave')",
+            name="ck_payroll_employee_status_change_status",
+        ),
+        CheckConstraint(
+            "length(btrim(reason)) > 0",
+            name="ck_payroll_employee_status_change_reason_not_blank",
+        ),
+        Index("ix_payroll_emp_status_change_employee",
+              "employee_id", "changed_at"),
+        Index("ix_payroll_emp_status_change_tenant", "tenant_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False)
+    employee_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("payroll_report_employees.id", ondelete="CASCADE"),
+        nullable=False)
+
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    since: Mapped[date] = mapped_column(Date, nullable=False)
+
+    #: What it replaced, stored rather than derived — see the migration.
+    previous_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    previous_since: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    #: Required. A status change nobody explained is one nobody can act on.
+    reason: Mapped[str] = mapped_column(String(300), nullable=False)
+
+    changed_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    changed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now)
+
+
 class PayrollRate(Base):
     """Effective-dated pay rates.
 
