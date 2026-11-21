@@ -4185,3 +4185,47 @@ three; the hours upload was a fourth, found by asking the file rather than the b
 
 ⚠️ "Nothing has been changed" remains correct, and is deliberately kept, on READ failures —
 a read that fails changes nothing, and saying so is reassurance rather than a guess.
+
+---
+
+## 2026-11-21 — A Focus may float, but its text must be readable
+
+James's ruling, after all 13 registered Focuses were measured and every one
+was found to carry text below AA. The floating treatment stays; the
+accessibility floor is not negotiable against it.
+
+**The rule: text rendered inside a Focus must meet WCAG AA — 4.5:1 for body
+text, 3:1 for large text — however it is drawn.** A Focus may float directly
+on the dimmed backdrop per Phase 4.4.2, may paint its own surface per the
+same phase's "each child element provides its own visual weight", or may
+darken the backdrop. It may not do none of those and leave the text at 1.5:1.
+
+**The at-bar calibration surfaces as currently built do not meet this, and
+are to be FIXED rather than cited.** `PLATFORM_QUALITY_BAR.md` §Calibration
+names the post-4.4.2 scheduling Focus core as at-bar. Measured 2026-11-21,
+its "Unassigned" lane header is **1.55:1**. The entry has been marked rather
+than deleted: the composition it describes is still the target, and what it
+got wrong is the contrast, so a reader comparing a new surface against it
+needs both facts. A calibration surface that fails the floor calibrates
+toward failing the floor.
+
+**Why the floor wins over the composition.** The two are not symmetric. The
+floating treatment is a judgement about how a mode should feel, and
+reasonable people differ; 4.5:1 is the threshold below which some readers
+cannot read the text at all. DESIGN_LANGUAGE already carries an
+accessibility floor, so this is canon resolving an internal conflict in
+favour of the part that was already stated as a floor — not a new
+constraint.
+
+⚠️ **AND THE MEASUREMENT IS PART OF THE RULING.** "Looks fine" is what thirteen
+Focuses looked like. A surface claiming to meet this states the ratio and the
+text it measured, from a real screenshot of the rendered page — not from the
+token values, which cannot know what a backdrop does to them. Two earlier
+attempts at that measurement returned believable wrong numbers; see
+`docs/investigations/2026-11-21-focus-contrast.md` for both and why.
+
+Scope: the two payroll cores are brought to the floor now, by painting their
+own surfaces. The other eleven are recorded in STATE as open, with their
+measurements, and will be fixed by a darker backdrop or by their own
+surfaces. `--content-subtle` fails AA on every surface the platform has and
+is a separate change to DESIGN_LANGUAGE.

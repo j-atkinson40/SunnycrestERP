@@ -540,11 +540,37 @@ export function WeeklyPayrollCore({
 }
 
 
+/** The core's own surface.
+ *
+ * ⚠️ **IT PAINTS ONE, AND THAT IS THE 4.4.2 RULE RATHER THAN A DEPARTURE
+ * FROM IT.** The Focus shell is transparent on purpose — "a Focus is a mode,
+ * not a modal" — and the same ruling says *each child element provides its
+ * own visual weight*. This core never did: it rendered bare text onto
+ * `Dialog.Backdrop`'s dimming layer.
+ *
+ * Measured from a real screenshot, 2026-11-21, before this surface existed:
+ *
+ *     1.94   "Cutoff is assumed, not confirmed."
+ *     3.20   "No hours for week 47 yet. Upload the Employee Hours export…"
+ *     3.55   "Week 47"
+ *
+ * against AA's 4.5:1. The three elements that passed in the same shot —
+ * 5.18, 18.05, 19.18 — are all INSIDE `UploadCard`, which paints
+ * `bg-surface-elevated`. The card was carrying the rule and the page around
+ * it was not, which is as clean a demonstration of the cause as the data
+ * offers.
+ *
+ * ⚠️ **THIS ALONE DOES NOT REACH AA.** "Cutoff is assumed, not confirmed."
+ * uses `--content-subtle`, which renders 2.94:1 on the lightest surface the
+ * platform has — it improves from 1.94 to 2.94 here and still fails. That
+ * token is a separate, approved change to DESIGN_LANGUAGE; the two together
+ * are what clear the floor. See DECISIONS 2026-11-21.
+ */
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div
       data-slot="weekly-payroll-core"
-      className="relative flex h-full flex-col px-6 py-5 [font-variant-numeric:tabular-nums]"
+      className="relative flex h-full flex-col rounded-xl bg-surface-base px-6 py-5 text-content-base [font-variant-numeric:tabular-nums]"
     >
       {children}
     </div>

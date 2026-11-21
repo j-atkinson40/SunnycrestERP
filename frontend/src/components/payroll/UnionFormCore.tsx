@@ -297,11 +297,17 @@ export function UnionFormCore({
        and even the darkest text reached 3.20:1 — below AA, on a form somebody
        checks figures against a cheque with.
 
-       ⚠️ The same measurement on PR C's capture put the weekly payroll
-       Focus's header at 1.30:1, so this is not local to the union form. The
-       shared Focus shell is the right place to fix it for every core; doing
-       that here would change four other surfaces in a payroll PR, so it is
-       reported rather than done. */
+       ⚠️ **AND THIS IS THE SANCTIONED ROUTE, NOT A WORKAROUND.** It read as
+       one when it was added — the shared shell looked like the right place —
+       but James ruled on 2026-11-21 that the shell stays transparent and each
+       core provides its own weight, which is what Phase 4.4.2 already
+       required of children. `WeeklyPayrollCore` now does the same. The other
+       eleven cores are recorded in STATE as open, with their measurements.
+
+       ⚠️ A SURFACE ALONE DOES NOT REACH AA HERE. With it, this core's worst
+       elements are its eyebrow and the two rate labels at 2.94:1 — all
+       `--content-subtle`, which cannot clear 4.5:1 against any surface the
+       platform has. That token is a separate approved change. */
     <div
       data-testid="union-form-core"
       className="space-y-6 rounded-xl bg-surface-base p-6 text-content-base"
