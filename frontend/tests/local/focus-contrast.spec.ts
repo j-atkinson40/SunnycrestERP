@@ -19,7 +19,8 @@ const SHOTS = "tests/local/shots/contrast"
 
 /** Every registered Focus id, with the credentials that can open it.
  *  ⚠️ Read off `focus-registry.ts`, not recalled. */
-const FOCUSES: { id: string; mode: string; as: "admin" | "payroll"; scope?: string }[] = [
+const ONLY = process.env.PW_FOCUS_ONLY?.split(",")
+const ALL: { id: string; mode: string; as: "admin" | "payroll"; scope?: string }[] = [
   { id: "weekly-payroll", mode: "singleRecord", as: "payroll", scope: "week_end" },
   { id: "union-form", mode: "singleRecord", as: "payroll", scope: "period" },
   { id: "funeral-scheduling", mode: "kanban", as: "admin" },
@@ -34,6 +35,7 @@ const FOCUSES: { id: string; mode: string; as: "admin" | "payroll"; scope?: stri
   { id: "test-triage-queue", mode: "triageQueue", as: "admin" },
   { id: "test-matrix", mode: "matrix", as: "admin" },
 ]
+const FOCUSES = ONLY ? ALL.filter((f) => ONLY.includes(f.id)) : ALL
 
 const WHO = {
   payroll: {
@@ -62,8 +64,19 @@ async function signIn(page: import("@playwright/test").Page, as: "admin" | "payr
   await page.waitForURL(/\/(home|note|dashboard)/, { timeout: 30_000 })
 }
 
-for (const f of FOCUSES) {
-  test(`contrast · ${f.id} (${f.mode})`, async ({ page }) => {
+// ⚠️ **BOTH MODES, BOOTED — NOT TOGGLED.** index.html's inline script sets
+// `data-mode` from `prefers-color-scheme` before React hydrates, and the
+// theme resolver then writes that mode's tokens inline. Flipping afterwards
+// does nothing. Playwright defaults to light, which is why an earlier run of
+// this spec only ever saw light and a sibling spec wrongly concluded dark
+// mode was broken in the app.
+const MODES = ["light", "dark"] as const
+
+for (const scheme of MODES) {
+ test.describe(`${scheme} mode`, () => {
+  test.use({ colorScheme: scheme })
+  for (const f of FOCUSES) {
+  test(`contrast · ${f.id} (${f.mode}) · ${scheme}`, async ({ page }) => {
     await signIn(page, f.as)
 
     const scope =
@@ -123,14 +136,14 @@ for (const f of FOCUSES) {
     })
 
     const fs = await import("node:fs/promises")
-    await fs.mkdir(`${SHOTS}/${f.id}`, { recursive: true })
+    await fs.mkdir(`${SHOTS}/${scheme}/${f.id}`, { recursive: true })
     for (const [i, probe] of texts.entries()) {
       await page
         .locator(probe.sel)
-        .screenshot({ path: `${SHOTS}/${f.id}/${String(i).padStart(2, "0")}.png` })
+        .screenshot({ path: `${SHOTS}/${scheme}/${f.id}/${String(i).padStart(2, "0")}.png` })
     }
     await fs.writeFile(
-      `${SHOTS}/${f.id}/labels.json`,
+      `${SHOTS}/${scheme}/${f.id}/labels.json`,
       JSON.stringify(texts.map((t) => t.text), null, 1),
     )
     await page.screenshot({
@@ -138,6 +151,8 @@ for (const f of FOCUSES) {
       clip: { x: box.x, y: box.y, width: box.width, height: box.height },
     })
     // eslint-disable-next-line no-console
-    console.log(`PROBES ${f.id} ${texts.length}`)
+    console.log(`PROBES ${scheme} ${f.id} ${texts.length}`)
   })
+  }
+ })
 }

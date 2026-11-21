@@ -18,104 +18,76 @@ const GREYS = ["content-base", "content-muted", "content-subtle"] as const
 const SURFACES = ["surface-base", "surface-sunken", "surface-elevated", "surface-raised"] as const
 
 for (const mode of ["light", "dark"] as const) {
-  test(`the three greys on four surfaces — ${mode}`, async ({ page }) => {
-    // ⚠️ **LIGHT IS MEASURED SIGNED IN; DARK IS MEASURED PRE-AUTH, AND THE
-    // REASON IS A FINDING RATHER THAN A CONVENIENCE.**
-    //
-    // Inside the signed-in app the theme resolver writes the resolved tokens
-    // as INLINE STYLES on `documentElement`. Inline beats the
-    // `[data-mode="dark"]` stylesheet rule, and the resolver does not
-    // re-resolve for dark — so dark mode does not take effect at all for a
-    // tenant with a resolved theme. Verified by a control that fails loudly
-    // when the swatch is still light.
-    //
-    // Signed in is the right place to measure LIGHT, because that is where
-    // the values actually come from (`base-tokens.ts`, not `tokens.css`).
-    // For DARK the pre-auth page is the only place the dark values render at
-    // all, and it renders them from the same stylesheet the app ships.
-    await page.goto("/?slug=testco")
-    if (mode === "light") {
+  // ⚠️ **THE MODE IS SET BY THE OS PREFERENCE, BEFORE THE PAGE LOADS.**
+  //
+  // index.html's inline boot script sets `data-mode="dark"` from
+  // `localStorage['bridgeable-mode']` or `prefers-color-scheme` BEFORE React
+  // hydrates, and the theme resolver then writes the tokens for THAT mode as
+  // inline styles on documentElement. Flipping the attribute afterwards does
+  // nothing, because the resolver does not re-resolve and inline beats the
+  // stylesheet.
+  //
+  // ⚠️ **AN EARLIER VERSION OF THIS SPEC CONCLUDED DARK MODE WAS BROKEN IN
+  // THE SIGNED-IN APP. IT IS NOT.** Playwright defaults to
+  // `colorScheme: "light"`, so the app never booted dark and every attempt
+  // to toggle it afterwards hit the post-load path, which genuinely does not
+  // work. James renders dark every day. The finding was true of the toggle
+  // and false of the app, and it was reported as the latter.
+  test.describe(`${mode} mode`, () => {
+    test.use({ colorScheme: mode })
+
+    test(`the three greys on four surfaces — signed in, ${mode}`, async ({ page }) => {
+      await page.goto("/?slug=testco")
       await page.getByLabel(/email/i).fill("susan.walkthrough@testco.example.com")
       await page.getByLabel(/password/i).fill("WalkThrough123!")
       await page.getByRole("button", { name: /sign in/i }).click()
       await page.waitForURL(/\/(home|note)/, { timeout: 30_000 })
-    }
+      await page.waitForTimeout(600)
 
-    // ⚠️ **SWITCH VIA THE APP'S OWN API, THEN PROVE IT TOOK BY A RENDERED
-    // PIXEL — NOT BY READING THE VARIABLE.**
-    //
-    // Setting `data-mode` by hand does not switch this app: the theme
-    // resolver writes the resolved tokens as INLINE STYLES on
-    // `documentElement`, and inline beats the `[data-mode="dark"]`
-    // stylesheet rule. It re-resolves on `bridgeable-mode-change`, which
-    // only `theme-mode.setMode` dispatches.
-    //
-    // The first version set the attribute and read the variable back, which
-    // returned the dark value — then the resolver re-applied light inline a
-    // tick later and the screenshots came out light. The light and dark
-    // tables were IDENTICAL TO TWO DECIMALS and the spec passed, because the
-    // control was reading a different thing from the one being measured.
-    // The control is now a pixel from the same screenshot pipeline.
-    await page.evaluate((m) => {
-      window.dispatchEvent(
-        new CustomEvent("bridgeable-mode-change", { detail: m }),
+      // ⚠️ THE CONTROL, BEFORE ANY MEASURING: the app must actually be in the
+      // mode this test claims. Read from the rendered page canvas, which is
+      // the same thing the swatches below are made of.
+      const canvas = await page.evaluate(
+        () => getComputedStyle(document.body).backgroundColor,
       )
-      const root = document.documentElement
-      if (m === "dark") root.setAttribute("data-mode", "dark")
-      else root.removeAttribute("data-mode")
-      localStorage.setItem("bridgeable-mode", m)
-    }, mode)
-    await page.waitForTimeout(800)
+      const EXPECT = mode === "dark" ? "oklch(0.13 0.004 255)" : "oklch(0.94 0.003 250)"
+      expect(canvas, `the signed-in app did not boot in ${mode} mode`).toBe(EXPECT)
 
-    // Build a swatch grid from the real tokens, inside the real app, so the
-    // theme layer's values are the ones rendered.
-    await page.evaluate(
-      ({ greys, surfaces }) => {
-        const host = document.createElement("div")
-        host.id = "grey-probe"
-        host.style.cssText =
-          "position:fixed;inset:0;z-index:99999;display:grid;" +
-          `grid-template-columns:repeat(${greys.length},1fr);`
-        for (const s of surfaces) {
-          for (const g of greys) {
-            const cell = document.createElement("div")
-            cell.setAttribute("data-probe", `${s}__${g}`)
-            cell.style.cssText =
-              `background:var(--${s});color:var(--${g});` +
-              "font:600 20px system-ui;padding:14px;"
-            cell.textContent = "Agh"
-            host.appendChild(cell)
+      await page.evaluate(
+        ({ greys, surfaces }) => {
+          const host = document.createElement("div")
+          host.id = "grey-probe"
+          host.style.cssText =
+            "position:fixed;inset:0;z-index:99999;display:grid;" +
+            `grid-template-columns:repeat(${greys.length},1fr);`
+          for (const s of surfaces) {
+            for (const g of greys) {
+              const cell = document.createElement("div")
+              cell.setAttribute("data-probe", `${s}__${g}`)
+              cell.style.cssText =
+                `background:var(--${s});color:var(--${g});` +
+                "font:600 20px system-ui;padding:14px;"
+              cell.textContent = "Agh"
+              host.appendChild(cell)
+            }
           }
-        }
-        document.body.appendChild(host)
-      },
-      { greys: GREYS, surfaces: SURFACES },
-    )
-
-    const fs = await import("node:fs/promises")
-    await fs.mkdir(`${SHOTS}/${mode}`, { recursive: true })
-    for (const s of SURFACES) {
-      for (const g of GREYS) {
-        await page
-          .locator(`[data-probe="${s}__${g}"]`)
-          .screenshot({ path: `${SHOTS}/${mode}/${s}__${g}.png` })
-      }
-    }
-    expect(await page.locator("[data-probe]").count()).toBe(
-      GREYS.length * SURFACES.length,
-    )
-
-    // ⚠️ THE CONTROL, read from the SAME pipeline that produced the numbers:
-    // the page-canvas swatch must actually be dark in dark mode. Without
-    // this the two tables can be identical and the spec still green.
-    const bg = await page.locator('[data-probe="surface-base__content-base"]')
-      .evaluate((el) => getComputedStyle(el).backgroundColor)
-    if (mode === "dark") {
-      expect(bg, "dark mode did not apply — the swatch is still light").not.toBe(
-        "oklch(0.94 0.003 250)",
+          document.body.appendChild(host)
+        },
+        { greys: GREYS, surfaces: SURFACES },
       )
-    } else {
-      expect(bg).toBe("oklch(0.94 0.003 250)")
-    }
+
+      const fs = await import("node:fs/promises")
+      await fs.mkdir(`${SHOTS}/${mode}`, { recursive: true })
+      for (const s of SURFACES) {
+        for (const g of GREYS) {
+          await page
+            .locator(`[data-probe="${s}__${g}"]`)
+            .screenshot({ path: `${SHOTS}/${mode}/${s}__${g}.png` })
+        }
+      }
+      expect(await page.locator("[data-probe]").count()).toBe(
+        GREYS.length * SURFACES.length,
+      )
+    })
   })
 }
