@@ -81,7 +81,8 @@ export const BASE_TOKENS: Record<BaseTokenMode, BaseTokenMap> = {
     // Content
     "content-strong": "oklch(0.17 0.004 260)",
     "content-base": "oklch(0.22 0.004 260)",
-    "content-muted": "oklch(0.52 0.006 258)",
+    // ⚠️ DARKENED 2026-11-21 — 4.36:1 on sunken before. See §4.
+    "content-muted": "oklch(0.44 0.006 258)",
     // ⚠️ RAISED 2026-11-21 to meet AA. The old value reached 2.94:1 on
     // --surface-base and 2.77:1 on --surface-sunken. ⚠️ THIS FILE IS THE
     // ONE THE SIGNED-IN APP ACTUALLY READS — tokens.css alone changes the
@@ -130,7 +131,8 @@ export const BASE_TOKENS: Record<BaseTokenMode, BaseTokenMap> = {
     // Content (DL §4)
     "content-strong": "oklch(0.97 0.003 260)",
     "content-base": "oklch(0.95 0.003 260)",
-    "content-muted": "oklch(0.63 0.010 255)",
+    // ⚠️ LIGHTENED 2026-11-21 — was identical to subtle. See §4.
+    "content-muted": "oklch(0.70 0.010 255)",
     // ⚠️ RAISED 2026-11-21 — 2.90:1 on --surface-raised. See §4.
     "content-subtle": "oklch(0.63 0.008 255)",
     "content-on-accent": "oklch(0.13 0.004 255)",

@@ -85,7 +85,7 @@ panels; the stack is baked into the card-family primitives keyed by an
 ```
                                   DARK                        LIGHT
 --content-base    (text-primary)  oklch(0.95 0.003 260)       oklch(0.22 0.004 260)
---content-muted   (text-secondary)oklch(0.63 0.010 255)       oklch(0.52 0.006 258)
+--content-muted   (text-secondary)oklch(0.70 0.010 255)       oklch(0.44 0.006 258)
 --content-subtle  (text-muted)    oklch(0.63 0.008 255)       oklch(0.51 0.006 258)
 (--content-strong = one step beyond text-primary, derived:
                                   oklch(0.97 0.003 260)       oklch(0.17 0.004 260))
@@ -108,18 +108,44 @@ light       sunken           2.77     4.55
 dark        raised           2.90     4.55
 ```
 
-⚠️ **AND IT NOW COLLAPSES INTO `--content-muted`, WHICH IS A REAL LOSS AND
-IS NOT RESOLVED HERE.** In dark mode the two are now identical (both
-`L 0.63`); in light mode subtle at `0.51` is a hair DARKER than muted at
-`0.52`, which inverts the prominence they encode. The hierarchy cannot
-survive both tokens meeting 4.5:1 while muted stays where it is.
+⚠️ **[SETTLED 2026-11-21 — THE TWO PARAGRAPHS BELOW DESCRIBED THE STATE
+AFTER `--content-subtle` MOVED ALONE. BOTH ARE NOW RESOLVED; THE TEXT IS KEPT
+BECAUSE IT RECORDS WHAT THE SINGLE-TOKEN CHANGE COST.]**
 
-⚠️ **`--content-muted` ALSO FAILS AA IN LIGHT MODE: 4.36:1 on
-`--surface-sunken`.** Found in the same measurement and deliberately NOT
-changed — the ruling of 2026-11-21 authorised `--content-subtle` only. Until
-muted moves too, the sensible end state (muted darker, subtle a visible step
-above it, both clearing the floor) is unreachable. Recorded in STATE as open.
+> ⚠️ **AND IT NOW COLLAPSES INTO `--content-muted`, WHICH IS A REAL LOSS AND
+> IS NOT RESOLVED HERE.** In dark mode the two are now identical (both
+> `L 0.63`); in light mode subtle at `0.51` is a hair DARKER than muted at
+> `0.52`, which inverts the prominence they encode.
+>
+> ⚠️ **`--content-muted` ALSO FAILS AA IN LIGHT MODE: 4.36:1 on
+> `--surface-sunken`.** Found in the same measurement and deliberately NOT
+> changed — the ruling of 2026-11-21 authorised `--content-subtle` only.
 
+**`--content-muted` has now moved too, and the order is restored.** James
+ruled that all three greys stay visibly ordered and all three clear the
+floor:
+
+```
+                 light                      dark
+                 L      worst  surface      L      worst  surface
+--content-base   0.22   13.68  sunken       0.95   13.77  raised
+--content-muted  0.44    6.13  sunken       0.70    6.00  raised
+--content-subtle 0.51    4.55  sunken       0.63    4.55  raised
+```
+
+All three clear 4.5:1 against **all four** surfaces in **both** modes, with a
+**0.07 lightness step** between muted and subtle — perceptible, and the same
+step in each mode so the hierarchy reads the same way in both.
+
+⚠️ **ONLY `--content-muted` MOVED.** `--content-subtle` was already at the
+lightest value that clears the floor, so there was no room to make it
+fainter; the step had to come from darkening muted. The order is restored by
+moving the MORE PROMINENT token, which is the opposite of the instinct.
+
+⚠️ **AND `--content-muted`'s FAILURE WAS MISSED BY A ONE-SURFACE CHECK.** It
+was reported as "4.62, passing barely" — true against `--surface-base` and
+false against `--surface-sunken`, where it was 4.36. A contrast figure
+without the surface it was measured against is not a figure.
 
 ## 5. Chrome accent — INVERTS to ink in light mode
 

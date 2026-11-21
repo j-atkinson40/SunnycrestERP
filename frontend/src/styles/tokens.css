@@ -90,7 +90,13 @@
    *   Cool ink (#17181A primary); calibrated set. */
   --content-strong: oklch(0.17 0.004 260);
   --content-base: oklch(0.22 0.004 260);
-  --content-muted: oklch(0.52 0.006 258);
+  /* ⚠️ DARKENED 2026-11-21. At 0.52 it rendered (103,105,108) and reached
+     4.36:1 on --surface-sunken — below AA, which the one-surface check that
+     called it "4.62, passing" had missed. 0.44 clears 4.5 on all four
+     (worst 6.13) AND restores the order against --content-subtle, which the
+     previous change had collapsed: primary 0.22 < muted 0.44 < subtle 0.51,
+     a 0.07 step. See DESIGN_LANGUAGE §4. */
+  --content-muted: oklch(0.44 0.006 258);
   /* ⚠️ RAISED 2026-11-21 from oklch(0.63 …), which rendered (135,137,141)
      and reached 2.94:1 on --surface-base, 2.77:1 on --surface-sunken —
      below AA's 4.5:1 for body text, on every screen using it. 0.51 is the
@@ -304,7 +310,10 @@
    *   subtle = --text-muted; strong extends one step brighter. */
   --content-strong: oklch(0.97 0.003 260);
   --content-base: oklch(0.95 0.003 260);
-  --content-muted: oklch(0.63 0.010 255);
+  /* ⚠️ LIGHTENED 2026-11-21 from 0.63, which was the SAME value --content-
+     subtle now holds — the two were indistinguishable. 0.70 clears 4.5 on
+     all four (worst 6.00) and restores a 0.07 step. See DESIGN_LANGUAGE §4. */
+  --content-muted: oklch(0.70 0.010 255);
   /* ⚠️ RAISED 2026-11-21 from oklch(0.52 …) — 2.90:1 on --surface-raised.
      0.63 clears 4.5 against all four (worst: raised, 4.55), and is now the
      SAME value as dark --content-muted. See DESIGN_LANGUAGE §4. */
