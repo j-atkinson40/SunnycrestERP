@@ -198,8 +198,8 @@ export const TOKEN_CATALOG: TokenEntry[] = [
     description: "Secondary text, helper copy, captions (§4 --text-secondary).",
     valueType: "oklch",
     defaults: {
-      light: "oklch(0.52 0.006 258)",
-      dark: "oklch(0.63 0.010 255)",
+      light: "oklch(0.44 0.006 258)",
+      dark: "oklch(0.70 0.010 255)",
     },
   },
   {
