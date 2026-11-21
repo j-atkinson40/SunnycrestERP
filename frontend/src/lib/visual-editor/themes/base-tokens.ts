@@ -82,7 +82,12 @@ export const BASE_TOKENS: Record<BaseTokenMode, BaseTokenMap> = {
     "content-strong": "oklch(0.17 0.004 260)",
     "content-base": "oklch(0.22 0.004 260)",
     "content-muted": "oklch(0.52 0.006 258)",
-    "content-subtle": "oklch(0.63 0.006 258)",
+    // ⚠️ RAISED 2026-11-21 to meet AA. The old value reached 2.94:1 on
+    // --surface-base and 2.77:1 on --surface-sunken. ⚠️ THIS FILE IS THE
+    // ONE THE SIGNED-IN APP ACTUALLY READS — tokens.css alone changes the
+    // pre-auth page only, because the tenant theme re-declares the token
+    // at runtime from here. See DESIGN_LANGUAGE §4.
+    "content-subtle": "oklch(0.51 0.006 258)",
     "content-on-accent": "oklch(0.98 0.002 250)",
     // Borders
     "border-subtle": "oklch(0 0 0 / 0.08)",
@@ -126,7 +131,8 @@ export const BASE_TOKENS: Record<BaseTokenMode, BaseTokenMap> = {
     "content-strong": "oklch(0.97 0.003 260)",
     "content-base": "oklch(0.95 0.003 260)",
     "content-muted": "oklch(0.63 0.010 255)",
-    "content-subtle": "oklch(0.52 0.008 255)",
+    // ⚠️ RAISED 2026-11-21 — 2.90:1 on --surface-raised. See §4.
+    "content-subtle": "oklch(0.63 0.008 255)",
     "content-on-accent": "oklch(0.13 0.004 255)",
     // Borders (§9 hairlines)
     "border-subtle": "oklch(1 0 0 / 0.05)",
