@@ -67,7 +67,7 @@ the seed. It says so when the finding is already answered.
   {
     "walk": "payroll-week44-walkthrough.spec.ts",
     "what": "Susan's week, start to finish: sign in, the note, both entrances, the finding, a correction, approve, the deduction list, the panes. Plus a real Employee Hours export through the real input.",
-    "verified_at": "86fe0e1224737fd79a0ecd99bc5935cccfb06bca",
+    "verified_at": "94665dee189a4b6769f8f355f052f31edbd06420",
     "verified_on": "2026-11-23",
     "depends_on": [
       "src/components/layout/limited-shell.tsx",
@@ -81,7 +81,7 @@ the seed. It says so when the finding is already answered.
   {
     "walk": "opas-shell-walkthrough.spec.ts",
     "what": "The shell she gets and Opas as her only entrance: no sidebar, the sphere quiet, payroll-only capabilities, cmd-K.",
-    "verified_at": "86fe0e1224737fd79a0ecd99bc5935cccfb06bca",
+    "verified_at": "94665dee189a4b6769f8f355f052f31edbd06420",
     "verified_on": "2026-11-23",
     "depends_on": [
       "src/components/layout/limited-shell.tsx",
@@ -92,7 +92,7 @@ the seed. It says so when the finding is already answered.
   {
     "walk": "union-form-walkthrough.spec.ts",
     "what": "The R-115: filling to sent, the print view, the copies record, and a copy going stale underneath a figure.",
-    "verified_at": "86fe0e1224737fd79a0ecd99bc5935cccfb06bca",
+    "verified_at": "94665dee189a4b6769f8f355f052f31edbd06420",
     "verified_on": "2026-11-23",
     "depends_on": [
       "src/components/payroll/UnionFormCore.tsx",
@@ -102,7 +102,7 @@ the seed. It says so when the finding is already answered.
   {
     "walk": "employee-status-walkthrough.spec.ts",
     "what": "Recording an employee's payroll status, and the union form's line 1 coming off its check-counting fallback.",
-    "verified_at": "86fe0e1224737fd79a0ecd99bc5935cccfb06bca",
+    "verified_at": "94665dee189a4b6769f8f355f052f31edbd06420",
     "verified_on": "2026-11-23",
     "depends_on": [
       "src/components/payroll/panes/EmployeeStatusRow.tsx",
