@@ -85,7 +85,7 @@ the seed. It says so when the finding is already answered.
     "walk": "payroll-week44-walkthrough.spec.ts",
     "what": "Susan's week, start to finish: sign in, the note, both entrances, the finding, a correction, approve, the deduction list, the panes. Plus a real Employee Hours export through the real input.",
     "verified_on": "2026-11-23",
-    "verified_at_commit": "a4e5eaff695e217974d7a638196f00d976d42dff",
+    "verified_at_commit": "f8290b803fdbf0504cff6c9a613e0f0f449d11f6",
     "fingerprints": {
       "src/App.tsx": "991b7ac4e5dd873bad9fa734e25ee4ab6c122447877cf2de1bee5b1d2d722b49",
       "src/components/layout/limited-shell.tsx": "768c5ddc6adc319d9065adc2471c3d44d816c8c2563e47689a2206840d397074",
@@ -94,7 +94,7 @@ the seed. It says so when the finding is already answered.
       "src/components/payroll/panes/PayrollPaneStack.tsx": "d4d31133681d201c82d43f3deca9204935257669b29320d2b7294706ec368aba",
       "src/components/payroll/panes/VacationPaneBody.tsx": "baa400a5c1b6d6ada22b2b55d7cd79327c68406c26e9b106390fe77bf44dbba5",
       "src/components/payroll/panes/panes.tsx": "06c720cfab5bb57ae3464fb42377a25ae9cd0d84ee20e2ed31d30775fe79ba87",
-      "src/lib/payroll/focus-api.ts": "140c12bd7a453e3927a3a5761e22eeec5572bdf8077bd78e2433d85257510eea",
+      "src/lib/payroll/focus-api.ts": "74c5397b5ea382a6aa3a04ec6437f8fc39955b7cc3bda7902b47b4de29180f68",
       "tests/local/payroll-week44-walkthrough.spec.ts": "887e2a51fdc8e578d7f878aa6f0e0e97b2e155f3adeb6f55e6467b1ba63ae57b"
     }
   },
@@ -102,7 +102,7 @@ the seed. It says so when the finding is already answered.
     "walk": "opas-shell-walkthrough.spec.ts",
     "what": "The shell she gets and Opas as her only entrance: no sidebar, the sphere quiet, payroll-only capabilities, cmd-K.",
     "verified_on": "2026-11-23",
-    "verified_at_commit": "a4e5eaff695e217974d7a638196f00d976d42dff",
+    "verified_at_commit": "f8290b803fdbf0504cff6c9a613e0f0f449d11f6",
     "fingerprints": {
       "src/App.tsx": "991b7ac4e5dd873bad9fa734e25ee4ab6c122447877cf2de1bee5b1d2d722b49",
       "src/components/layout/limited-shell.tsx": "768c5ddc6adc319d9065adc2471c3d44d816c8c2563e47689a2206840d397074",
@@ -115,10 +115,10 @@ the seed. It says so when the finding is already answered.
     "walk": "union-form-walkthrough.spec.ts",
     "what": "The R-115: filling to sent, the print view, the copies record, and a copy going stale underneath a figure.",
     "verified_on": "2026-11-23",
-    "verified_at_commit": "a4e5eaff695e217974d7a638196f00d976d42dff",
+    "verified_at_commit": "f8290b803fdbf0504cff6c9a613e0f0f449d11f6",
     "fingerprints": {
       "src/components/payroll/UnionFormCore.tsx": "ee6b33022247d82100dc886c4dd51d052637361e200a285c477625b51ca44c35",
-      "src/lib/payroll/focus-api.ts": "140c12bd7a453e3927a3a5761e22eeec5572bdf8077bd78e2433d85257510eea",
+      "src/lib/payroll/focus-api.ts": "74c5397b5ea382a6aa3a04ec6437f8fc39955b7cc3bda7902b47b4de29180f68",
       "tests/local/union-form-walkthrough.spec.ts": "068f82b413439d00f2fd52a55051942d1482dc74bbddde4aaaffd54cdbb8acd1"
     }
   },
@@ -126,27 +126,39 @@ the seed. It says so when the finding is already answered.
     "walk": "employee-status-walkthrough.spec.ts",
     "what": "Recording an employee's payroll status, and the union form's line 1 coming off its check-counting fallback.",
     "verified_on": "2026-11-23",
-    "verified_at_commit": "a4e5eaff695e217974d7a638196f00d976d42dff",
+    "verified_at_commit": "f8290b803fdbf0504cff6c9a613e0f0f449d11f6",
     "fingerprints": {
       "src/components/payroll/UnionFormCore.tsx": "ee6b33022247d82100dc886c4dd51d052637361e200a285c477625b51ca44c35",
       "src/components/payroll/panes/EmployeeStatusRow.tsx": "b46eceb5f4abe7c4f725ec7a928711d5df5b3a8ba5dd606293bada9d1ab0f908",
       "src/components/payroll/panes/PayrollPaneStack.tsx": "d4d31133681d201c82d43f3deca9204935257669b29320d2b7294706ec368aba",
       "src/components/payroll/panes/panes.tsx": "06c720cfab5bb57ae3464fb42377a25ae9cd0d84ee20e2ed31d30775fe79ba87",
-      "src/lib/payroll/focus-api.ts": "140c12bd7a453e3927a3a5761e22eeec5572bdf8077bd78e2433d85257510eea",
+      "src/lib/payroll/focus-api.ts": "74c5397b5ea382a6aa3a04ec6437f8fc39955b7cc3bda7902b47b4de29180f68",
       "tests/local/employee-status-walkthrough.spec.ts": "47c7d40455d76de59142f54834e29a6e6e07d7bdcc8c67d42d8ff0855695ceb5"
     }
   },
   {
     "walk": "vacation-pay-walkthrough.spec.ts",
     "what": "Vacation pay: the note line, the working with the rate's derivation (900.46 + 75.00 at a rate truncated to 4dp), approving both lines, and the line withdrawing afterwards.",
-    "verified_at_commit": "a4e5eaff695e217974d7a638196f00d976d42dff",
+    "verified_at_commit": "f8290b803fdbf0504cff6c9a613e0f0f449d11f6",
     "verified_on": "2026-11-23",
     "fingerprints": {
       "src/components/payroll/VacationPayCore.tsx": "0a345ca7e9da0c2ffac328d03a37ef0757acb1b1c7dd862982ea79f993a2e528",
       "src/components/payroll/panes/VacationPaneBody.tsx": "baa400a5c1b6d6ada22b2b55d7cd79327c68406c26e9b106390fe77bf44dbba5",
-      "src/lib/payroll/focus-api.ts": "140c12bd7a453e3927a3a5761e22eeec5572bdf8077bd78e2433d85257510eea",
+      "src/lib/payroll/focus-api.ts": "74c5397b5ea382a6aa3a04ec6437f8fc39955b7cc3bda7902b47b4de29180f68",
       "src/pages/note/NotePage.tsx": "f09773b2350e5acf865653c0616a418ba92c7fbed6c4f8064535a35e683d5e7b",
       "tests/local/vacation-pay-walkthrough.spec.ts": "4911151e4dae7a0f35d22a52b34cd7cb4dc5a6e0b1472501b5490c8fbd79bf94"
+    }
+  },
+  {
+    "walk": "register-backfill-walkthrough.spec.ts",
+    "what": "Card 2's reply on the upload that inserts NOTHING: every check a duplicate, and the rate count the only number that says the backfill worked. The page had no walk at all until #53's rates_written reached no surface.",
+    "verified_on": "2026-11-23",
+    "verified_at_commit": "f8290b803fdbf0504cff6c9a613e0f0f449d11f6",
+    "fingerprints": {
+      "src/lib/payroll/focus-api.ts": "74c5397b5ea382a6aa3a04ec6437f8fc39955b7cc3bda7902b47b4de29180f68",
+      "src/lib/payroll/setup-api.ts": "61c4158fea9f13ec925a7ec624213246ca9306e90251f5c763adafec5554b890",
+      "src/pages/payroll/payroll-setup.tsx": "fbea83f9ef803ee3ad71d487db6a41b2a0ff425a9d68c538698f90bb7b2a4b13",
+      "tests/local/register-backfill-walkthrough.spec.ts": "99edf39e1de1995259172b20b8c3a2feddf5cb8e3742f51f05ad45e2684735a6"
     }
   }
 ]

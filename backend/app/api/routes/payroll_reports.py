@@ -902,9 +902,23 @@ async def upload_register(
 ):
     """Import a Payentry Payroll Register PDF.
 
-    Admin only, and refused outright for a tenant whose payroll data switch is
-    off. Idempotent on (check number, check date, employee id): re-uploading an
-    overlapping range counts the duplicates and changes nothing.
+    ⚠️ **NOT ADMIN ONLY — this line said so until 2026-11-23, six commits
+    after it stopped being true.** The gate above was deliberately widened to
+    `payroll.upload` on 2026-11-13 so Susan could import the register, with a
+    comment saying why, and the docstring directly beneath it went on claiming
+    the old rule. Untested prose, in the place a reader checks first.
+
+    ⚠️ And the PAGE that calls this is still `adminOnly`
+    (`App.tsx`, `/payroll/setup`), so the permission this endpoint now accepts
+    cannot actually reach it through the only surface that calls it. Recorded
+    rather than resolved: who administers payroll data is a decision, not a
+    defect to quietly fix inside a route.
+
+    Refused outright for a tenant whose payroll data switch is off. Idempotent
+    on (check number, check date, employee id): re-uploading an overlapping
+    range counts the duplicates and changes nothing — and that re-upload is
+    the one that writes rates onto checks loaded before the rate writer
+    existed, which is why `rates_written` is in the response.
 
     The response carries the import report — unknown codes, employee ids with
     more than one candidate name, checks carrying both salary and union dues,
