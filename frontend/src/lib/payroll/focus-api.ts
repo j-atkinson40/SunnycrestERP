@@ -494,3 +494,181 @@ export async function setEmployeeStatus(
   )
   return r.data
 }
+
+
+/* ── vacation (Payroll 5c) ───────────────────────────────────────────────
+ *
+ * ⚠️ **BEFORE 5c, VACATION PAY WAS COMPUTED NOWHERE.** The rulebook keys, the
+ * engine and the goldens existed; no table, no writer, no surface and no
+ * caller. Fourth unprovisioned entrance of the arc.
+ */
+
+export interface VacationEntitlement {
+  /** ⚠️ `null` IS NOT ZERO. Nobody has a hire date yet, so for most people
+   *  this is "not established" and the pane must not render it as "0 left". */
+  hours: string | null
+  basis: "override" | "service_tiers" | "unavailable"
+  source: string | null
+  years_of_service: number | null
+  why_not: string | null
+}
+
+export interface PriorYearBasis {
+  year: number
+  basis: "registers" | "entered" | "unavailable"
+  gross: string | null
+  hours: string | null
+  source: string | null
+  usable: boolean
+  /** ⚠️ ALWAYS PRESENT. "Registers cover 2025-11-13 – 2025-12-31 only" is what
+   *  turns a refusal into something a person can act on. */
+  coverage: string
+  covers_year: boolean
+  register_gross: string | null
+  register_hours: string | null
+}
+
+export interface VacationRow {
+  id: string
+  start_date: string
+  end_date: string
+  hours: string
+  status: "scheduled" | "paid" | "cancelled"
+  source: string
+}
+
+export interface VacationPaymentRow {
+  id: string
+  vacation_id: string
+  part_index: number
+  part_count: number
+  week_end_date: string
+  vac_pay: string
+  vac_bonus: string
+  rate: string | null
+  hours: string
+}
+
+export interface VacationYear {
+  employee_id: string
+  display_name: string | null
+  union_member: boolean
+  hire_date: string | null
+  year: number
+  entitlement: VacationEntitlement
+  used_hours: string
+  scheduled_hours: string
+  /** `null` when the allowance is not known — never a bare number. */
+  remaining_hours: string | null
+  vacations: VacationRow[]
+  payments: VacationPaymentRow[]
+  prior_year: PriorYearBasis
+}
+
+export interface VacationPayPart {
+  index: number
+  count: number
+  hours: string
+  vac_pay: string
+  vac_bonus: string
+  total: string
+}
+
+export interface VacationWorking {
+  union: boolean
+  hours: string
+  rate: string | null
+  rate_truncate_dp: number | null
+  prior_year_gross: string | null
+  prior_year_hours: string | null
+  entitlement_hours: string | null
+  bonus_year_total: string | null
+  vac_total: string
+  bonus_total: string
+  parts: VacationPayPart[]
+}
+
+export interface VacationPayView {
+  vacation: VacationRow
+  checks: number
+  union: boolean | null
+  working: VacationWorking | null
+  /** ⚠️ A SENTENCE, not a bare null — it names what is missing and who can
+   *  supply it. The Focus renders this instead of the working. */
+  unavailable: string | null
+  already_paid_parts: number
+}
+
+export async function getVacationYear(employeeId: string, year?: number) {
+  const r = await apiClient.get<VacationYear>(
+    `${BASE}/employees/${encodeURIComponent(employeeId)}/vacation`,
+    { params: year ? { year } : undefined },
+  )
+  return r.data
+}
+
+export async function addVacation(
+  employeeId: string,
+  input: { startDate: string; endDate: string; hours: string; source: string },
+) {
+  const r = await apiClient.post<VacationRow>(
+    `${BASE}/employees/${encodeURIComponent(employeeId)}/vacation`,
+    form({
+      start_date: input.startDate,
+      end_date: input.endDate,
+      hours: input.hours,
+      source: input.source,
+    }),
+    { headers: FORM_HEADERS },
+  )
+  return r.data
+}
+
+export async function setPriorYear(
+  employeeId: string,
+  year: number,
+  input: { gross: string; hours: string; source: string },
+) {
+  const r = await apiClient.put(
+    `${BASE}/employees/${encodeURIComponent(employeeId)}/prior-year/${year}`,
+    form(input),
+    { headers: FORM_HEADERS },
+  )
+  return r.data
+}
+
+export async function setEntitlement(
+  employeeId: string,
+  year: number,
+  input: { hours: string; source: string },
+) {
+  const r = await apiClient.put(
+    `${BASE}/employees/${encodeURIComponent(employeeId)}/entitlement/${year}`,
+    form(input),
+    { headers: FORM_HEADERS },
+  )
+  return r.data
+}
+
+export async function getVacationPay(vacationId: string, checks: number) {
+  const r = await apiClient.get<VacationPayView>(
+    `${BASE}/vacations/${encodeURIComponent(vacationId)}/pay`,
+    { params: { checks } },
+  )
+  return r.data
+}
+
+export async function approveVacationPay(
+  vacationId: string,
+  input: { checks: number; weekEndDate: string },
+) {
+  const r = await apiClient.post<{
+    vacation: VacationRow
+    payments: VacationPaymentRow[]
+  }>(
+    `${BASE}/vacations/${encodeURIComponent(vacationId)}/approve`,
+    form({ checks: String(input.checks), week_end_date: input.weekEndDate }),
+    { headers: FORM_HEADERS },
+  )
+  return r.data
+}

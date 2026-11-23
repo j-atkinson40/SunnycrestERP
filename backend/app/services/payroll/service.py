@@ -97,8 +97,30 @@ def rules_from_row(row: PayrollRuleSet) -> PayrollRules:
 
     Reads `RULE_FIELDS` rather than listing the names again — two producers of
     one field list is two things waiting to drift apart.
+
+    ⚠️ **A NULL `vacation_entitlement_tiers` MEANS "USE THE CODE DEFAULT", AND
+    THAT IS THE OPPOSITE OF WHAT A NULL MEANS FOR THE BONUS TIERS.** The
+    difference is real and worth the exception:
+
+      `vacation_bonus_day_tiers`    NULL means the rule set PREDATES the
+          tiers, and the engine must fall back to the flat `vacation_bonus` so
+          a week already calculated under it still re-derives its own figure.
+          Preserving that is the whole point of the NULL.
+
+      `vacation_entitlement_tiers`  NULL means the rule set predates `r239`
+          and **nothing has ever computed an entitlement under it** — there is
+          no older behaviour to preserve. Treating it as "no tiers" would make
+          every existing rule set unable to work out an allowance, which is
+          not a decision anybody made.
+
+    So the entitlement tiers fall through to the dataclass default. ⚠️ No value
+    is WRITTEN to any existing row — §5: a migration that cannot measure has no
+    business claiming. The default is the placeholder set James supplied,
+    status `assumed`.
     """
     kwargs = {f: getattr(row, f) for f in RULE_FIELDS}
+    if kwargs.get("vacation_entitlement_tiers") is None:
+        kwargs.pop("vacation_entitlement_tiers")
     return PayrollRules(effective_date=row.effective_date, **kwargs)
 
 

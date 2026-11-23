@@ -46,6 +46,34 @@ class PayrollRules:
         {"through_day": 10, "per_day": Decimal("10.00")},
         {"through_day": 15, "per_day": Decimal("6.00")},
     )
+    #: ⚠️ **MADE A KEY ON 2026-11-23, BECAUSE §11.13 ASKED FOR IT AND JAMES
+    #: SAID SO.** `engine.vacation_rate` truncates the hourly rate to four
+    #: decimals, and that truncation is the whole of the 975.47 -> 975.46
+    #: correction. It lived as a constant in the engine, which meant it was NOT
+    #: effective-dated: changing it would have silently reached backwards
+    #: through every recomputed vacation figure, with nothing to say which rule
+    #: produced the old ones. As a key it is per-tenant and per-date like every
+    #: other money rule.
+    #:
+    #: PROVENANCE: `from_registers` — "Hunt Vac line 2026 + workbook Vac Calc".
+    #: The register's behaviour adopted as the rule; the contract is still to
+    #: be read. See spec §11.13.
+    vacation_rate_truncate_dp: int = 4
+    #: Vacation ENTITLEMENT in hours by completed years of service, ascending
+    #: and inclusive on `through_years`; service beyond the last tier earns the
+    #: last tier's hours.
+    #:
+    #: ⚠️ **THESE ARE PLACEHOLDERS AND THE STATUS SAYS SO — `assumed`.** James,
+    #: 2026-11-23: "the example tiers until I supply Sunnycrest's real list."
+    #: They are NOT read off any register and nobody has checked them against
+    #: the contract. A per-person override exists precisely because some
+    #: allowances are set by agreement rather than by service.
+    vacation_entitlement_tiers: tuple = (
+        {"through_years": 1, "hours": Decimal("40")},
+        {"through_years": 5, "hours": Decimal("80")},
+        {"through_years": 15, "hours": Decimal("120")},
+        {"through_years": 99, "hours": Decimal("160")},
+    )
     stonebucks_per_ton: Decimal = Decimal("11.00")
 
     #: ⚠️ **WHEN PAYENTRY MUST HAVE THE WEEK. Wednesday 17:00, and NOBODY HAS
@@ -112,6 +140,39 @@ class PayrollRules:
                 )
             object.__setattr__(self, "vacation_bonus_day_tiers", tiers)
 
+        # ⚠️ Same coercion and ordering discipline as the bonus tiers, and for
+        # the same reason: these arrive from a JSON column, so a float would
+        # poison the hours it produced.
+        if self.vacation_entitlement_tiers:
+            tiers = tuple(
+                {"through_years": int(t["through_years"]),
+                 "hours": to_decimal(t["hours"], "hours")}
+                for t in self.vacation_entitlement_tiers
+            )
+            years = [t["through_years"] for t in tiers]
+            if years != sorted(years) or len(set(years)) != len(years):
+                raise ValueError(
+                    f"vacation_entitlement_tiers must be in ascending order of "
+                    f"through_years with no repeats, got {years}"
+                )
+            if years and years[0] < 0:
+                raise ValueError(
+                    f"through_years counts completed years and starts at 0, "
+                    f"got {years[0]}"
+                )
+            object.__setattr__(self, "vacation_entitlement_tiers", tiers)
+
+        # ⚠️ A SANE BOUND, NOT A FREE INT. `quantize` raises on an exponent
+        # outside the Decimal context, and a rule set carrying 50 would turn
+        # every vacation rate into an InvalidOperation at calculate time rather
+        # than at the moment somebody typed it.
+        dp = int(self.vacation_rate_truncate_dp)
+        if not 0 <= dp <= 8:
+            raise ValueError(
+                f"vacation_rate_truncate_dp must be between 0 and 8, got {dp}"
+            )
+        object.__setattr__(self, "vacation_rate_truncate_dp", dp)
+
         if self.remittance_group_by not in ("week_end_date", "check_date"):
             raise ValueError(
                 f"remittance_group_by must be 'week_end_date' or 'check_date', "
@@ -126,6 +187,8 @@ DEFAULT_RULES = PayrollRules()
 #: rather than each spelling it out.
 RULE_FIELDS: tuple[str, ...] = (
     "vacation_bonus_day_tiers",
+    "vacation_entitlement_tiers",
+    "vacation_rate_truncate_dp",
     "dues_pct",
     "dues_cap_multiplier",
     "dues_per_hour",

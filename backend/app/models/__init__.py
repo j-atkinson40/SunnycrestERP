@@ -5,7 +5,12 @@ from app.models.agent_schedule import AgentSchedule
 from app.models.outgoing_copy import OutgoingCopy
 from app.models.payroll_report import (
     PAYROLL_EMPLOYEE_STATUSES,
+    VACATION_STATUSES,
     PayrollEmployeeStatusChange,
+    PayrollPriorYearFigures,
+    PayrollVacation,
+    PayrollVacationEntitlement,
+    PayrollVacationPayment,
     PayrollRate,
     PayrollReportEmployee,
     PayrollRuleSet,
@@ -514,6 +519,11 @@ from app.models.triage import TriageSession, TriageSnooze
 from app.models.briefing import Briefing, BRIEFING_TYPES
 
 __all__ = [
+    "PayrollVacation",
+    "PayrollVacationEntitlement",
+    "PayrollVacationPayment",
+    "PayrollPriorYearFigures",
+    "VACATION_STATUSES",
     "PayrollEmployeeStatusChange",
     "PAYROLL_EMPLOYEE_STATUSES",
     "OutgoingCopy",

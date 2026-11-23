@@ -69,7 +69,7 @@ from __future__ import annotations
 
 import logging
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Sequence
 
@@ -98,6 +98,7 @@ TASKS_DUE_TODAY = "tasks_due_today"
 WEEKLY_DUES = "weekly_dues"
 PAYROLL_WEEK_OPEN = "payroll_week_open"
 PAYROLL_UNION_FORM = "payroll_union_form_due"
+PAYROLL_VACATION_PAY = "payroll_vacation_pay"
 
 
 # ── (2) CONDITIONS ───────────────────────────────────────────────────
@@ -962,6 +963,85 @@ def _weekly_dues_condition(
 # ── Seed ─────────────────────────────────────────────────────────────
 
 
+def _payroll_vacation_pay_condition(
+    db: Session, *, user: User
+) -> Sequence[FragmentInstance]:
+    """A recorded vacation whose week has come up, and whose pay is unapproved.
+
+    ⚠️ **ONE LINE PER VACATION, NOT ONE PER PERSON.** Two vacations in the same
+    fortnight are two decisions with two different weeks and two different
+    amounts; collapsing them into "2 vacations to pay" would make the reader
+    open a surface to find out what they are being asked.
+
+    ⚠️ **IT APPEARS WHEN THE WEEK COMES UP, NOT WHEN THE VACATION IS
+    RECORDED.** A pick made in January is not a January decision. The window
+    opens `LEAD_DAYS` before the vacation starts, which is the point at which
+    the pay has to be on that week's Payentry list.
+    """
+    from app.models.company import Company
+    from app.models.payroll_report import PayrollReportEmployee, PayrollVacation
+    from app.services.payroll.data_gate import is_payroll_data_enabled
+
+    company = db.query(Company).filter(Company.id == user.company_id).first()
+    if company is None or not is_payroll_data_enabled(company):
+        return []
+
+    today = date.today()
+    #: How far ahead a vacation's pay becomes this week's business. One pay
+    #: cycle: the hours have to reach Payentry before the week is run.
+    LEAD_DAYS = 7
+    horizon = today + timedelta(days=LEAD_DAYS)
+
+    rows = (
+        db.query(PayrollVacation, PayrollReportEmployee)
+        .join(PayrollReportEmployee,
+              PayrollReportEmployee.id == PayrollVacation.employee_id)
+        .filter(PayrollVacation.tenant_id == user.company_id,
+                # ⚠️ `scheduled` ONLY — `paid` is the END TRANSITION and
+                # `cancelled` is not a decision. The line withdraws itself by
+                # the status moving, which is what an end transition means.
+                PayrollVacation.status == "scheduled",
+                PayrollVacation.start_date <= horizon)
+        .order_by(PayrollVacation.start_date)
+        .all()
+    )
+
+    out: list[FragmentInstance] = []
+    for vacation, employee in rows:
+        who = (employee.display_name or employee.payentry_file_number or "").strip()
+        # "Hunt, Michael" -> "Hunt". The note is read quickly and the surname
+        # is how Susan refers to people.
+        surname = who.split(",")[0].strip() or who
+        start, end = vacation.start_date, vacation.end_date
+        when = (f"{start:%b} {start.day}–{end.day}" if start.month == end.month
+                else f"{start:%b} {start.day} – {end:%b} {end.day}")
+        spans = [plain(
+            f"{surname}'s vacation {when}: {int(float(vacation.hours))} hours "
+            "to pay."
+        )]
+        out.append(FragmentInstance(
+            # (5) IDENTITY: the vacation row. Unlike a week or a month, a
+            # recorded vacation IS a row and keeps its id through every
+            # change to its pay.
+            subject_id=vacation.id,
+            payload=compose(
+                spans,
+                title="Vacation pay",
+                priority=80,
+                # The act, not the surface.
+                action_label="Work out the pay",
+                defer_not_after=start,
+            ),
+            predicate={"vacation_id": vacation.id},
+            condition_inputs={
+                "vacation_id": vacation.id,
+                "start_date": start.isoformat(),
+                "status": vacation.status,
+            },
+        ))
+    return out
+
+
 def seed() -> None:
     """Register the platform fragment types. Called by `registry._ensure_seeded`."""
 
@@ -1122,6 +1202,41 @@ def seed() -> None:
                 resolved_when="payroll_union_form_sent",
                 outcomes=(
                     Outcome("filed", "{actor} sent the union form"),
+                ),
+            ),
+        )
+    )
+
+    register_fragment(
+        FragmentDeclaration(
+            fragment_id=PAYROLL_VACATION_PAY,
+            label="Vacation pay",
+            # (1) AUDIENCE — reading the working is `payroll.view`; APPROVING
+            # is `payroll.approve`, gated by the Focus and by the server. A
+            # reviewer who cannot approve should still be told it is waiting.
+            audience=Audience(required_permission="payroll.view"),
+            # (6) AREA — payroll, so it reaches the payroll-limited reader and
+            # nobody else's note gains a vacation line.
+            area="payroll",
+            kind="prompt",
+            condition=_payroll_vacation_pay_condition,
+            # (3) TARGET — the vacation pay Focus, scoped to the vacation.
+            target_surface="focus",
+            target_key="vacation-pay",
+            # ⚠️ ITS OWN KIND, like `payroll_week_end` and
+            # `payroll_form_period`. `focusTarget` switches on this to build
+            # `vacation_id=<id>`; a generic kind would send the id as whatever
+            # parameter that kind means.
+            subject_kind="payroll_vacation",
+            # (4) END TRANSITION — it ends when the pay is APPROVED, which is
+            # the thing it asks for. Recording the vacation is not the end:
+            # a vacation on the calendar with no pay approved is exactly the
+            # state this line exists to report.
+            end_transition=EndTransition(
+                entity_kind="payroll_vacation",
+                resolved_when="payroll_vacation_paid",
+                outcomes=(
+                    Outcome("paid", "{actor} approved the vacation pay"),
                 ),
             ),
         )

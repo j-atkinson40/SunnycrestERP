@@ -115,6 +115,16 @@ class PayrollReportEmployee(Base):
     # Measured need: Staring has been on workers_comp since the 2026-10-08
     # check, so he appears in the last four registers and has no week-44
     # hours, and without this column he would be flagged every week forever.
+    #: ⚠️ **NULL MEANS NOBODY HAS SAID, AND IT IS NULL FOR EVERYONE TODAY.**
+    #: Years of service drive the vacation entitlement tiers, so a missing hire
+    #: date is a stated absence rather than "hired today" — `entitlement_for`
+    #: refuses to guess and says which person it needs a date for.
+    #:
+    #: ⚠️ Declared here as well as in `r239`, because a DB column the model
+    #: omits is UNREACHABLE — CLAUDE.md §5 records exactly that happening to
+    #: `products.variant_template_id`, and the drift guard cannot see it in
+    #: either direction.
+    hire_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     payroll_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     payroll_status_since: Mapped[date | None] = mapped_column(Date, nullable=True)
 
@@ -277,6 +287,20 @@ class PayrollRuleSet(Base):
     #
     # NULLABLE: a NULL means "this rule set predates the tiers", which is a
     # real and different thing from an empty tier table.
+    #: ⚠️ **ADDED WITH `r239`, AND DECLARED HERE TOO — I FORGOT, AND THE
+    #: ENDPOINT TESTS CAUGHT IT WITH `'PayrollRuleSet' object has no attribute
+    #: 'vacation_entitlement_tiers'`.** I had written the guard for exactly
+    #: this two files earlier, on `hire_date`: a DB column the model omits is
+    #: UNREACHABLE, and the drift guard cannot see it in either direction
+    #: (CLAUDE.md §5). Knowing the rule did not stop me breaking it; the tests
+    #: did, which is the argument for driving the endpoint rather than the
+    #: service.
+    vacation_rate_truncate_dp: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=4, server_default="4")
+    #: Hours by completed years of service. NULL on a rule set made before 5c,
+    #: which means NOBODY CHOSE — not "no vacation".
+    vacation_entitlement_tiers: Mapped[list | None] = mapped_column(
+        JSON, nullable=True)
     vacation_bonus_day_tiers: Mapped[list | None] = mapped_column(
         JSON, nullable=True
     )
@@ -1032,3 +1056,136 @@ class PayrollWeekDecision(Base):
         String(36), ForeignKey("payroll_week_decisions.id", ondelete="SET NULL"),
         nullable=True
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Payroll 5c — vacation.
+#
+# ⚠️ **BEFORE THIS, VACATION PAY WAS COMPUTED NOWHERE.** The rulebook keys, the
+# engine and the goldens all existed; no table, no writer, no surface, and no
+# caller in `app/` or `scripts/`. These four tables are the data model the rule
+# never had.
+# ─────────────────────────────────────────────────────────────────────────────
+
+#: A recorded vacation's life. `cancelled` keeps the row rather than deleting
+#: it — "she cancelled" is a fact somebody will ask about.
+VACATION_STATUSES = ("scheduled", "paid", "cancelled")
+
+
+class PayrollVacation(Base):
+    """A vacation somebody has picked or been approved for."""
+
+    __tablename__ = "payroll_vacations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False, index=True)
+    employee_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("payroll_report_employees.id", ondelete="CASCADE"),
+        nullable=False)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    hours: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False,
+                                        default="scheduled")
+    #: Why it is on the calendar — a union pick, or an approved request.
+    source: Mapped[str] = mapped_column(String(300), nullable=False)
+    created_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),
+                                                 default=_now)
+
+
+class PayrollVacationEntitlement(Base):
+    """A per-person allowance override, because some are set by agreement.
+
+    ⚠️ ONE PER PERSON PER YEAR, enforced by a unique constraint. A second is an
+    EDIT and the service replaces, so "what is her allowance" has one answer.
+    """
+
+    __tablename__ = "payroll_vacation_entitlements"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False, index=True)
+    employee_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("payroll_report_employees.id", ondelete="CASCADE"),
+        nullable=False)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    hours: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
+    source: Mapped[str] = mapped_column(String(300), nullable=False)
+    set_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    set_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),
+                                             default=_now)
+
+
+class PayrollPriorYearFigures(Base):
+    """Prior-year gross and hours ENTERED, when the registers cannot give them.
+
+    ⚠️ **THE SOURCE IS REQUIRED AND NON-BLANK.** "2025 Vac Calc tab" is the
+    whole value of the record: a typed figure whose origin nobody can name is a
+    figure nobody can check a year later. Same rule as a status change's
+    `reason`, for the same reason.
+    """
+
+    __tablename__ = "payroll_prior_year_figures"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False, index=True)
+    employee_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("payroll_report_employees.id", ondelete="CASCADE"),
+        nullable=False)
+    #: The year the figures are ABOUT — 2025 for a 2026 vacation.
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    gross: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    hours: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
+    source: Mapped[str] = mapped_column(String(300), nullable=False)
+    entered_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    entered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),
+                                                 default=_now)
+
+
+class PayrollVacationPayment(Base):
+    """One approved part of a vacation's pay — a `Vac` and a `VacBonus` line.
+
+    ⚠️ **TWO SEPARATELY-ROUNDED AMOUNTS, because that is what the register
+    pays** (spec §3.1). Folding them into one total is the superseded form.
+
+    ⚠️ `part_index` AND `part_count` are both stored: the bonus cent placement
+    is `round2(total*i/n) - round2(total*(i-1)/n)`, so a part cannot be
+    re-derived without knowing which of how many it is.
+    """
+
+    __tablename__ = "payroll_vacation_payments"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False, index=True)
+    vacation_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("payroll_vacations.id", ondelete="CASCADE"),
+        nullable=False)
+    part_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    part_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    week_end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    vac_pay: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    vac_bonus: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    #: Stored so a line reads back without re-deriving it from figures that may
+    #: since have changed.
+    rate: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
+    hours: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
+    #: ⚠️ WHICH RULES MADE IT — the same discipline as
+    #: `payroll_week_results.rule_set_id`, so a figure can always name them.
+    rule_set_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("payroll_rule_sets.id", ondelete="SET NULL"),
+        nullable=True)
+    approved_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),
+                                                  default=_now)

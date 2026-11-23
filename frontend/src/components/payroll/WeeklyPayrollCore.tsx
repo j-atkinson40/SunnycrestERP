@@ -18,6 +18,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useNavigate } from "react-router-dom"
 
 import {
   didWriteLand,
@@ -45,6 +46,7 @@ import {
   UnionDuesPaneBody,
   UnionMemberPaneBody,
 } from "./panes/panes"
+import { VacationPaneBody } from "./panes/VacationPaneBody"
 import {
   PayrollPaneStack,
   type PayrollPaneSpec,
@@ -175,6 +177,11 @@ export function WeeklyPayrollCore({
   /** Set once the upload creates the row, so the Focus switches to the real
    *  week without a reload. */
   const [resolvedId, setResolvedId] = useState<string | null>(null)
+  /** ⚠️ **A URL, NOT A SECOND PANE.** The vacation pay Focus is a Focus — it
+   *  has its own two entrances (this one and the note line) and its own
+   *  read-only answer from the dispatcher. Rendering it inside a pane would
+   *  give it neither. */
+  const navigate = useNavigate()
   /** ⚠️ **WHETHER THE LAST MESSAGE IS GOOD NEWS, CARRIED WITH IT.** The upload
    *  reports through the same slot as every failure, and that slot is styled
    *  `text-status-error` — so the first successful Employee Hours upload
@@ -511,6 +518,24 @@ export function WeeklyPayrollCore({
                       weekId={weekId}
                       employeeId={empId}
                       readOnly={readOnly}
+                      onOpenVacation={() =>
+                        openPane({
+                          key: `vacation-${empId}`,
+                          title: `Vacation · ${name ?? empId}`,
+                          subtitle: "allowance, picks and pay",
+                          body: (
+                            <VacationPaneBody
+                              employeeId={empId}
+                              readOnly={readOnly}
+                              onOpenPay={(vid) =>
+                                navigate(
+                                  `/home?focus=vacation-pay&vacation_id=${vid}`,
+                                )
+                              }
+                            />
+                          ),
+                        })
+                      }
                       onOpenTimecard={() =>
                         openPane({
                           key: `timecard-${empId}`,

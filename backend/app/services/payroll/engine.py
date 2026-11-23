@@ -450,10 +450,20 @@ def vacation_rate(prior_year_gross: object, prior_year_hours: object,
     "Hunt Vac line 2026 + workbook Vac Calc".
 
     ⚠️ `from_registers`, not `confirmed`: this is the register's behaviour
-    adopted as the rule. It is not a rule-set COLUMN, so it carries its
-    provenance here and in spec §11.13 rather than in `rule_provenance`. If it
-    should be effective-dated like the other money rules, it needs to become a
-    key — say so and it will.
+    adopted as the rule.
+
+    ⚠️ **IT IS NOW A RULE-SET KEY — `vacation_rate_truncate_dp`, ADDED
+    2026-11-23.** This docstring used to end "If it should be effective-dated
+    like the other money rules, it needs to become a key — say so and it will",
+    and James did (5c brief). It was a constant here, which meant a change to
+    it would have reached BACKWARDS through every recomputed vacation figure
+    with nothing to say which rule produced the old ones. The provenance moves
+    with it into `rule_provenance`; §11.13 keeps the derivation.
+
+    ⚠️ It was the cheapest possible moment to move it: measured the same day,
+    **nothing has ever computed a vacation figure** — `compute_vacation_pay`
+    and its corrected successors have zero callers in `app/` or `scripts/` —
+    so there are no stored figures for the change to reach back through.
     """
     gross = to_decimal(prior_year_gross, "prior_year_gross")
     hours = to_decimal(prior_year_hours, "prior_year_hours")
@@ -462,8 +472,9 @@ def vacation_rate(prior_year_gross: object, prior_year_hours: object,
             "prior_year_hours is zero; the average hourly rate is undefined. "
             "An employee with no prior-year hours needs a rule, not a division."
         )
+    places = Decimal(1).scaleb(-int(rules.vacation_rate_truncate_dp))
     return (gross / hours + rules.vacation_increment).quantize(
-        RATE_PLACES, rounding=ROUND_DOWN)
+        places, rounding=ROUND_DOWN)
 
 
 def compute_vacation_pay_only(
