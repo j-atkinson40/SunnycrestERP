@@ -161,6 +161,7 @@ export function UnionMemberPaneBody({
   employeeId,
   readOnly,
   onOpenTimecard,
+  onOpenVacation,
 }: {
   weekId: string
   employeeId: string
@@ -169,6 +170,9 @@ export function UnionMemberPaneBody({
    *  surface around it obeys. */
   readOnly: boolean
   onOpenTimecard: () => void
+  /** ⚠️ The vacation pane's UNION entrance. The timecard pane carries the
+   *  non-union one; James, 2026-11-23, named both. */
+  onOpenVacation?: () => void
 }) {
   const d = usePane<MemberPane>(
     () => getMemberPane(weekId, employeeId),
@@ -217,14 +221,26 @@ export function UnionMemberPaneBody({
       ) : null}
       <Row label="Union member" value={d.union_member ? "Yes" : "No"} />
       <EmployeeStatusRow employeeId={employeeId} readOnly={readOnly} />
-      <button
-        type="button"
-        data-testid="pane-open-timecard"
-        className="mt-3 rounded-lg border border-border-subtle bg-surface-elevated px-3 py-1.5 text-body-sm text-content-strong hover:border-border-strong"
-        onClick={onOpenTimecard}
-      >
-        Timecard
-      </button>
+      <div className="mt-3 flex gap-2">
+        <button
+          type="button"
+          data-testid="pane-open-timecard"
+          className="rounded-lg border border-border-subtle bg-surface-elevated px-3 py-1.5 text-body-sm text-content-strong hover:border-border-strong"
+          onClick={onOpenTimecard}
+        >
+          Timecard
+        </button>
+        {onOpenVacation ? (
+          <button
+            type="button"
+            data-testid="pane-open-vacation"
+            className="rounded-lg border border-border-subtle bg-surface-elevated px-3 py-1.5 text-body-sm text-content-strong hover:border-border-strong"
+            onClick={onOpenVacation}
+          >
+            Vacation
+          </button>
+        ) : null}
+      </div>
     </div>
   )
 }
@@ -234,12 +250,16 @@ export function TimecardPaneBody({
   weekId,
   empId,
   readOnly,
+  onOpenVacation,
   corrections,
 }: {
   weekId: string
   empId: string
   /** From the Focus dispatcher, passed down rather than re-derived. */
   readOnly: boolean
+  /** ⚠️ The vacation pane's NON-UNION entrance. A non-union person is reached
+   *  through the timecard, never through the union member pane. */
+  onOpenVacation?: () => void
   /** From the Focus, so a correction is labelled with who, when and why
    *  without this pane needing a second endpoint for it. */
   corrections: { work_date: string; hours: string; reason: string; entered_at: string | null }[]
@@ -257,7 +277,21 @@ export function TimecardPaneBody({
      appeared only alongside a populated timecard would be missing from every
      instance of the situation it exists for. This pane is the non-union
      entrance; the union one is `UnionMemberPaneBody`. */
-  const statusRow = <EmployeeStatusRow employeeId={empId} readOnly={readOnly} />
+  const statusRow = (
+    <>
+      <EmployeeStatusRow employeeId={empId} readOnly={readOnly} />
+      {onOpenVacation ? (
+        <button
+          type="button"
+          data-testid="pane-open-vacation-timecard"
+          className="my-2 rounded-lg border border-border-subtle bg-surface-elevated px-3 py-1 text-caption text-content-strong hover:border-border-strong"
+          onClick={onOpenVacation}
+        >
+          Vacation
+        </button>
+      ) : null}
+    </>
+  )
 
   if (d.days.length === 0) {
     return (

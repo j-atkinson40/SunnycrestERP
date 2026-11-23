@@ -7796,3 +7796,19 @@ the other.
   ⚠️ **`column_mappings/payentry.json` IS LEFT `verified: false` DELIBERATELY** (James, 2026-11-23): it is the old MappedCsvParser path for a CSV nobody exports, so flipping it would assert something about a real export nobody measured. **My earlier report framed this as "the Monday upload is blocked until somebody confirms those headers" — that was the right measurement and the wrong conclusion**, and James corrected it: the file Susan actually downloads is the PDF, which Payroll 3 already reads. The blocker was wiring, not Payentry.
 
   **Still open:** `PayrollPunch` has no writer — punch ingestion needs the name-resolution ruling ("a person confirms each alias; nothing is fuzzy-matched silently") before it can be built. The other 11 Focus cores below AA. The post-load dark-mode resolver bug.
+
+  ⚠️ **2026-11-23 — PAYROLL 5c SHIPPED: VACATION PAY, WHICH WAS COMPUTED NOWHERE.** The rulebook keys, the engine and the goldens all existed; no table, no writer, no surface, no caller. `r239` adds the data model (recorded vacations, per-person entitlement overrides, entered prior-year figures, approved payments), `hire_date` (NULLABLE — nobody has measured one), and two effective-dated rule keys. The pane and the vacation pay Focus are the surfaces; the note line is the Focus's second entrance.
+
+  **⚠️ THE RATE TRUNCATION IS NOW AN EFFECTIVE-DATED KEY** (`vacation_rate_truncate_dp`). §11.13 asked for it and `engine.vacation_rate`'s own docstring ended *"say so and it will"*; James did, in the 5c brief. It was a constant, so a change would have reached BACKWARDS through every recomputed figure with nothing to say which rule made the old ones — and it was the cheapest possible moment to move it, because nothing had ever computed a vacation figure.
+
+  **Goldens, all reproduced:** Hunt 40 h → 900.46 + 75.00 at rate 22.5116; 48 h → 85.00; 80 h → 62.50 ×2; 120 h → 51.67/51.66/51.67; 160 h → 38.75 ×4; non-union 16 h @ $20.00 → 320.00 with no bonus.
+
+  ⚠️ **THE COVERAGE RULE, MEASURED AGAINST THE REAL REGISTER:** "Registers cover 2025-11-13 – 2025-12-31 only, not the whole of 2025" — almost exactly the sentence the brief predicted. So 2026 vacations take an entered figure with a required, non-blank source. The 2026-to-date per-person totals were printed so the definition question is visible with numbers; the existing bonus measurement re-ran on today's code and matched its recorded baseline (13 groups, cumulative 13 of 13, largest-remainder 12 of 13).
+
+  ⚠️ **OPEN CHECK, FOR 2027 VACATIONS** (James, 2026-11-23): the prior-year definition — gross as printed total earnings on every check dated in the year, all codes, off-cycle included — is **`assumed`, source "registers, definition unconfirmed against the workbook"**. It becomes checkable once the 2026 weekly uploads run through December, at which point the 2026 register totals must be compared against the accountant's 2027 Vac Calc tab. **Not checkable before then**: 2025 has seven weeks of register.
+
+  ⚠️ **AND I SILENTLY DELETED FIVE FRAGMENTS WHILE ADDING ONE.** The vacation condition's `def` went inside `seed()`'s body; a top-level `def` ENDS the enclosing function, so `seed()` returned early and registered one fragment instead of nine — the union form, the weekly dues, the anomaly watchlist, the compliance flags and the tasks line all stopped existing. **Nothing went red; the whole backend suite passed.** It surfaced only when I probed `/note/today` during the walk-through. A set-membership guard now holds all nine, and break-tests red when a `def` is put back inside `seed()`.
+
+  **Queued, after 5c** (James, 2026-11-23): **the year-end run** (unused-time payout, health stipend, Christmas bonus) and **the office time-off request form**. Neither is in 5c. Punch Location ingestion remains queued ahead of them.
+
+  **Still open:** the other 11 Focus cores below AA; the post-load dark-mode resolver bug; `PayrollPunch` has no writer.

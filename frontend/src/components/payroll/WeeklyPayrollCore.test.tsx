@@ -8,6 +8,7 @@
  */
 
 import { render, screen, waitFor } from "@testing-library/react"
+import { MemoryRouter } from "react-router-dom"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -126,14 +127,26 @@ vi.mock("@/lib/payroll/focus-api", () => ({
     [k, e ?? "", d ?? ""].join(":"),
 }))
 
+/**
+ * ⚠️ **RENDERED INSIDE A ROUTER, BECAUSE THE APP ALWAYS IS.** Added
+ * 2026-11-23 when the core gained `useNavigate` — the vacation pane opens the
+ * vacation pay Focus by URL, since a Focus needs its own entrances and its own
+ * read-only answer and would get neither nested in a pane.
+ *
+ * All 30 tests here failed at once on the missing context. That is the harness
+ * having rendered the component in a world that does not exist rather than a
+ * defect in the change: nothing mounts this outside a router.
+ */
 function renderCore(over: { readOnly?: boolean; scope?: Record<string, unknown> } = {}) {
   return render(
-    <WeeklyPayrollCore
-      focusId="weekly-payroll"
-      config={{}}
-      readOnly={over.readOnly ?? false}
-      scope={over.scope ?? { week_id: WEEK_ID }}
-    />,
+    <MemoryRouter>
+      <WeeklyPayrollCore
+        focusId="weekly-payroll"
+        config={{}}
+        readOnly={over.readOnly ?? false}
+        scope={over.scope ?? { week_id: WEEK_ID }}
+      />
+    </MemoryRouter>,
   )
 }
 
@@ -587,13 +600,19 @@ describe("a write whose reply never arrived", () => {
 
 describe("opening the Focus on a week END rather than an id", () => {
   function renderPending(over: Record<string, unknown> = {}) {
+    // ⚠️ A SECOND RENDER HELPER IN THE SAME FILE, and it needed the router
+    // too. I fixed the first and re-ran: 30 failures became 7, all of them
+    // here. CLAUDE.md §11 — "ask where else this pattern appears OF THE FILE
+    // before closing" — and the siblings are 460 lines apart.
     return render(
-      <WeeklyPayrollCore
-        focusId="weekly-payroll"
-        config={{}}
-        readOnly={false}
-        scope={{ week_end: "2026-11-14", ...over }}
-      />,
+      <MemoryRouter>
+        <WeeklyPayrollCore
+          focusId="weekly-payroll"
+          config={{}}
+          readOnly={false}
+          scope={{ week_end: "2026-11-14", ...over }}
+        />
+      </MemoryRouter>,
     )
   }
 

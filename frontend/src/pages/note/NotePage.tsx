@@ -172,6 +172,13 @@ export function focusTarget(f: ProseFragment): string | null {
   // and a correction supersedes the row while the month's obligation is
   // unchanged. `${subject_kind}_id` would send `payroll_form_period_id`,
   // which no Focus reads.
+  // ⚠️ **`payroll_vacation` CARRIES A ROW ID AND STILL NEEDS A MAPPING.**
+  // Added 2026-11-23 with vacation pay. Unlike the two above, this subject IS
+  // a row — but the fallback builds `${subject_kind}_id`, which would send
+  // `payroll_vacation_id` where the Focus reads `vacation_id`, and
+  // `focusTarget` fails CLOSED: the link silently would not render. That is
+  // the exact failure the `weekly_payroll`/`weekly-payroll` hyphen bug
+  // produced, found by walking the page rather than by any test.
   const param =
     f.subject_kind === "payroll_week"
       ? "week_id"
@@ -179,7 +186,9 @@ export function focusTarget(f: ProseFragment): string | null {
         ? "week_end"
         : f.subject_kind === "payroll_form_period"
           ? "period"
-          : `${f.subject_kind}_id`;
+          : f.subject_kind === "payroll_vacation"
+            ? "vacation_id"
+            : `${f.subject_kind}_id`;
   // ⚠️ `/home`, NOT `/`. The root route is a role-based redirect, and
   // redirecting DROPS THE QUERY STRING — the Focus opened with no scope and
   // showed "No week chosen". Linking straight at the landing route keeps the

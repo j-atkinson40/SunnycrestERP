@@ -32,6 +32,7 @@
  *  entries here + add a MODE_RENDERERS row in mode-dispatcher.tsx. */
 import { UnionFormCore } from "@/components/payroll/UnionFormCore"
 import { WeeklyPayrollCore } from "@/components/payroll/WeeklyPayrollCore"
+import { VacationPayCore } from "@/components/payroll/VacationPayCore"
 
 export type CoreMode =
   | "kanban"
@@ -553,4 +554,21 @@ registerFocus({
   displayName: "Weekly payroll",
   editPermission: "payroll.approve",
   coreComponent: WeeklyPayrollCore,
+})
+
+// ⚠️ `editPermission: "payroll.approve"` — a look-only reviewer reads the
+// working, including the rate's derivation, and cannot approve the pay. The
+// server gates the approval on the same key.
+//
+// ⚠️ **ITS OWN FOCUS RATHER THAN A PANE, AND THE REASON IS THE TWO-ENTRANCES
+// RULE.** The vacation pay surface is reached from the note line ("Hunt's
+// vacation Nov 16–20: pay to approve") AND from the vacation pane. A pane
+// nested inside the weekly Focus would have one entrance and would inherit
+// that Focus's read-only answer rather than being given its own.
+registerFocus({
+  id: "vacation-pay",
+  mode: "singleRecord",
+  displayName: "Vacation pay",
+  editPermission: "payroll.approve",
+  coreComponent: VacationPayCore,
 })

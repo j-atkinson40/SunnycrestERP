@@ -458,3 +458,47 @@ def test_the_data_switch_gates_the_whole_surface(client, tokens, member):
         r = client.get(f"{BASE}/employees/{member}/vacation",
                        headers=_auth(tokens["payroll"]))
         assert r.status_code == 403, r.text[:200]
+
+
+# ── the registry itself ──────────────────────────────────────────────────
+
+
+def test_EVERY_platform_fragment_registers_and_the_payroll_four_are_there():
+    """⚠️ **WRITTEN BECAUSE I SILENTLY DELETED FIVE FRAGMENTS AND NO TEST
+    NOTICED.**
+
+    Adding the vacation-pay fragment, I put its condition `def` in the middle
+    of `seed()`'s body. A top-level `def` ENDS the enclosing function, so
+    `seed()` returned early and registered one fragment instead of nine — the
+    union form, the weekly dues, the anomaly watchlist, the compliance flags
+    and the tasks line all stopped existing.
+
+    Nothing went red. The whole backend suite passed. It surfaced only when I
+    probed `/note/today` during the walk-through and saw one line where there
+    should have been two, which is the *reading the screenshot* lesson arriving
+    through a different door.
+
+    ⚠️ A COUNT ALONE WOULD NOT HAVE CAUGHT IT EITHER, had I written one
+    carelessly: `>= 1` passes. The assertion is on the SET, because membership
+    is the property that matters and equal cardinality is not identity — this
+    repo has a recorded instance of two parties counting six and meaning
+    different sixes.
+    """
+    from app.services.fragments.registry import get_registry
+
+    ids = set(get_registry())
+    expected_payroll = {
+        "payroll_week_open",
+        "payroll_union_form_due",
+        "payroll_vacation_pay",
+        "weekly_dues",
+    }
+    missing = expected_payroll - ids
+    assert not missing, (
+        f"these payroll fragments did not register: {sorted(missing)}. A "
+        "top-level `def` inside `seed()` ends the function and silently drops "
+        "everything after it."
+    )
+    # And the non-payroll ones, so a future edit cannot truncate `seed()`
+    # past them either.
+    assert {"anomaly_watchlist", "compliance_flags", "tasks_due_today"} <= ids
