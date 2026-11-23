@@ -62,10 +62,6 @@ interface WalkEntry {
   fingerprints: Record<string, string>
 }
 
-function sha256(buf: Buffer | string): string {
-  return createHash("sha256").update(buf).digest("hex")
-}
-
 /** Every file under a path, sorted, so a directory hashes deterministically. */
 function filesUnder(abs: string): string[] {
   if (!statSync(abs).isDirectory()) return [abs]
