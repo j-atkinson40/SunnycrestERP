@@ -259,23 +259,54 @@ export function EmployeeStatusRow({
       className="border-b border-border-subtle py-2 last:border-0"
       data-testid="employee-status-row"
     >
-      <div className="flex items-baseline justify-between gap-4">
+      {/* ⚠️ **THE ACTION SITS ON THE VALUE LINE, AND THAT IS NOT A STYLE
+          CHOICE.** The row shipped with the button on its own line below a
+          three-line explanation, and the walk-through's screenshot showed the
+          result: the member pane, which had always fit, now overflowed its
+          clip and BOTH this button and the long-standing Timecard button were
+          below the fold with no scrollbar visible — the pane stack is
+          `absolute inset-0 overflow-hidden`, so the body's own scrollbar is
+          clipped away too. Every test passed, because Playwright and
+          testing-library both scroll to an element before clicking it. Caught
+          by reading the picture, which is the only thing that could have. */}
+      <div className="flex items-baseline justify-between gap-3">
         <span className="text-body-sm text-content-muted">Status</span>
-        <span className="text-body-sm text-content-strong" data-testid="employee-status-value">
-          {recorded
-            ? `${LABELS[data.status!] ?? data.status} · since ${statusDate(data.since)}`
-            : "Not recorded"}
+        <span className="flex items-baseline gap-2">
+          <span
+            className="text-body-sm text-content-strong"
+            data-testid="employee-status-value"
+          >
+            {recorded
+              ? `${LABELS[data.status!] ?? data.status} · since ${statusDate(data.since)}`
+              : "Not recorded"}
+          </span>
+          {!readOnly && !editing ? (
+            <button
+              type="button"
+              data-testid="employee-status-change"
+              className="rounded border border-border-subtle bg-surface-elevated px-2 py-0.5 text-caption text-content-strong hover:border-border-strong"
+              onClick={() => {
+                setStatus(data.status ?? "left")
+                setSince(data.since ?? "")
+                setReason("")
+                setMessage(null)
+                setEditing(true)
+              }}
+            >
+              {recorded ? "Change" : "Record"}
+            </button>
+          ) : null}
         </span>
       </div>
 
       {/* ⚠️ "NOT RECORDED" IS NOT "WORKING", and the difference is load-bearing
           rather than pedantic: with no status recorded anywhere the R-115
-          counts line 1 by checks and says so. The row explains what recording
-          one changes, so nobody enters a leaving date believing it is a note. */}
+          counts line 1 by checks and says so. The row says what recording one
+          changes, so nobody enters a leaving date believing it is a note. */}
       {!recorded ? (
         <span className="block text-caption text-content-muted">
-          Nobody has recorded one. Until a status is set the union form counts
-          line 1 from who had a check that month, and says so on the form.
+          Nobody has said. The union form counts line 1 from who had a check
+          that month, and says so on the form.
         </span>
       ) : null}
 
@@ -377,22 +408,7 @@ export function EmployeeStatusRow({
             </button>
           </div>
         </div>
-      ) : (
-        <button
-          type="button"
-          data-testid="employee-status-change"
-          className="mt-1 rounded-lg border border-border-subtle bg-surface-elevated px-3 py-1 text-caption text-content-strong hover:border-border-strong"
-          onClick={() => {
-            setStatus(data.status ?? "left")
-            setSince(data.since ?? "")
-            setReason("")
-            setMessage(null)
-            setEditing(true)
-          }}
-        >
-          {recorded ? "Change status" : "Record a status"}
-        </button>
-      )}
+      ) : null}
 
       {footer}
     </div>

@@ -81,10 +81,15 @@ describe("what the row says before anybody has said anything", () => {
       "Not recorded",
     )
     expect(screen.getByTestId("employee-status-row")).toHaveTextContent(
-      /union form counts line 1 from who had a check that month/i,
+      /counts line 1 from who had a check that month/i,
     )
+    // ⚠️ THE ACTION IS ON THE VALUE LINE, so its label is a word rather than
+    // a sentence. It moved there because the first version pushed the member
+    // pane past its clip and hid both this button and the Timecard button —
+    // found in the walk-through screenshot, invisible to every test, because
+    // Playwright and testing-library both scroll before they click.
     expect(screen.getByTestId("employee-status-change")).toHaveTextContent(
-      "Record a status",
+      "Record",
     )
   })
 
