@@ -829,3 +829,10 @@ tests/test_payroll_r115_line_1.py
 # kind will depend on and cannot discover for itself — that is what this
 # holds, as much as the payroll surface it is driven through.
 tests/test_outgoing_copies.py
+# Setting an employee's payroll status (2026-11-23) — the entrance `r234`
+# shipped without. It belongs in the gate rather than the excluded list for one
+# reason worth stating: the columns had TWO production readers and no writer,
+# so what this pins is not the write but the AGREEMENT between the write and
+# those readers — the last test sets one status and asserts the R-115's line 1
+# stops counting checks. A suite outside the gate cannot hold an agreement.
+tests/test_payroll_employee_status.py
