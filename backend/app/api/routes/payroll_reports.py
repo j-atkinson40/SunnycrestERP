@@ -322,25 +322,29 @@ async def upload_export(
     company = db.query(Company).filter(Company.id == current_user.company_id).first()
     assert_payroll_data_enabled(company)
 
-    # ⚠️ **SAID OUT LOUD RATHER THAN DROPPED.** Attaching the Punch Location
-    # workbook and getting a success with no mention of it is how somebody
-    # comes to believe punches were loaded. `stored` is false and the reason
-    # says why, until punch ingestion exists.
+    # ⚠️ **STORED NOW — the "not stored yet" reply added on 2026-11-23 is
+    # retired by this.** `PayrollPunch` had no writer anywhere in `app/`, so
+    # the three questions that need clock times could not run. The file is
+    # read here and written after the hours, because resolving a punch name
+    # needs THIS WEEK'S hours names as its first source (the ruling's step 1).
+    punch_bytes: bytes | None = None
     punch_outcome: dict | None = None
     if punch_file is not None:
         punch_bytes = await punch_file.read()
-        punch_kind = export_sniff.detect(
-            punch_bytes, filename=punch_file.filename).kind
-        punch_outcome = {
-            "filename": punch_file.filename,
-            "stored": False,
-            "recognised_as": punch_kind,
-            "reason": (
-                "Punch Location files are not stored yet. The hours above "
-                "came from the Employee Hours PDF; nothing in this upload "
-                "used the punch file."
-            ),
-        }
+        detected_punch = export_sniff.detect(
+            punch_bytes, filename=punch_file.filename)
+        if detected_punch.kind != export_sniff.PUNCH_LOCATION_WORKBOOK:
+            # ⚠️ REFUSED BY CONTENT, like the hours file, and the sentence
+            # names what was expected. Silently ignoring the wrong file is how
+            # somebody believes punches loaded when they attached a PDF.
+            raise HTTPException(422, {
+                "code": "punch_file_not_recognised",
+                "message": (
+                    f"{punch_file.filename or 'the punch file'} is not a Punch "
+                    "Location workbook. That export is a spreadsheet; the "
+                    "Employee Hours export is the PDF and goes in the other "
+                    "field."
+                )})
 
     # ─────────────────────────────────────────────────────────────────────────
     # Payroll 3: Payentry's own Employee Hours PDF.
@@ -388,6 +392,50 @@ async def upload_export(
         except HoursParseError as exc:
             raise HTTPException(422, {"code": "hours_unreadable",
                                       "message": str(exc)}) from exc
+        # ⚠️ **BEFORE THE COMMIT, AND I HAD IT AFTER.** The first version ran
+        # the punch import below `db.commit()`: the rows were flushed, never
+        # committed, and vanished when the session closed — while the reply
+        # cheerfully said `stored: 168`. The response counted what the service
+        # had ADDED, not what persisted, so the screen would have reported a
+        # successful punch load over an empty table.
+        #
+        # Caught by an end-to-end probe that read the DATABASE rather than the
+        # response — the same lesson as the hours upload four days ago, and I
+        # reproduced it anyway.
+        #
+        # Here, hours and punches commit together: a week whose punches failed
+        # should not keep half the import.
+        # ⚠️ **AFTER THE HOURS, AND THAT ORDER IS THE RULING.** Step 1 is
+        # "match Punch Location names via the same week's Employee Hours
+        # names" — so the hours must be parsed before a punch name can be
+        # resolved. The register and the confirmed aliases follow.
+        if punch_bytes is not None:
+            from app.services.payroll import punch_import
+
+            try:
+                punched = punch_import.import_punches(
+                    db, tenant_id=current_user.company_id, content=punch_bytes,
+                    import_id=result.import_id,
+                    week_end_date=result.week_end_date,
+                    hours_names_by_emp=(result.report or {}).get(
+                        "names_by_emp") or {})
+            except punch_import.PunchParseError as exc:
+                raise HTTPException(422, {"code": "punch_unreadable",
+                                          "message": str(exc)}) from exc
+            punch_outcome = {
+                "filename": punch_file.filename if punch_file else None,
+                "stored": True,
+                **punched.as_dict(),
+            }
+            audit_service.log_action(
+                db, current_user.company_id, "payroll_punches_imported",
+                "payroll_hours_import", result.import_id,
+                user_id=current_user.id,
+                changes={"stored": punched.stored,
+                         "unattached": punched.unattached,
+                         "people_matched": punched.people_matched,
+                         "name_findings": len(punched.findings)})
+
         audit_service.log_action(
             db, current_user.company_id, "payroll_hours_imported",
             "payroll_hours_import", result.import_id, user_id=current_user.id,

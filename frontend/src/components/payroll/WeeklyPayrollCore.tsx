@@ -733,10 +733,20 @@ function UploadCard({
                 // attach one; nothing stores it yet. A success sentence that
                 // does not mention a file she attached is how somebody comes
                 // to believe punches were loaded.
-                const punchNote =
-                  r.punch_file && !r.punch_file.stored
-                    ? ` ${r.punch_file.reason}`
-                    : ""
+                // ⚠️ **THE PUNCH FILE NOW REPORTS WHAT IT DID**, and names
+                // anybody it could not attach. An unresolved name is a
+                // finding, not a silence: the punches are stored with nobody
+                // attached and stay that way until a person confirms who they
+                // are.
+                const pf = r.punch_file
+                const punchNote = !pf
+                  ? ""
+                  : pf.unattached > 0
+                    ? ` ${pf.punches_stored} punches loaded; ${pf.unattached} `
+                      + `could not be matched to anybody — `
+                      + `${pf.findings.map((f) => f.raw_name).join(", ")}.`
+                    : ` ${pf.punches_stored} punches loaded for `
+                      + `${pf.people_matched} people.`
                 onDone(
                   blocking
                     ? blocking.message
