@@ -105,14 +105,29 @@ test("3 · Opas offers payroll and nothing else", async ({ page }) => {
   await signIn(page)
   await page.getByTestId("opas-sphere").click()
 
-  // The server's three entries, by the labels the server sent.
-  await expect(page.getByText("This week's payroll")).toBeVisible()
-  await expect(page.getByText("Upload hours")).toBeVisible()
-  await expect(page.getByText("Dues reports")).toBeVisible()
+  // ⚠️ **SCOPED TO OPAS'S OWN LIST, NOT THE PAGE** — fixed 2026-11-23. These
+  // were page-wide `getByText`, and "Upload hours" began matching TWICE when
+  // #40 reworded the note's week line to name the act rather than the surface:
+  // one hit is Opas's pill, the other is `prose-open-payroll_week_open` sitting
+  // behind the veil. Strict mode refused, correctly, and this walk went red —
+  // red on a copy change in a different surface, which is the same staleness
+  // that took the 5a walk down.
+  //
+  // Scoping also makes the assertion say what it means: these are the entries
+  // OPAS offers, and a label that happens to appear elsewhere on the note is
+  // not evidence either way.
+  // ⚠️ `opas-guided-pills`, NOT `opas-guided-pane`. The pane is the question
+  // and the hint; the PILLS are the entries, and they are a sibling rather
+  // than a child — measured from the DOM, not assumed from the names.
+  const opas = page.getByTestId("opas-guided-pills")
+  await expect(opas).toBeVisible()
+  await expect(opas.getByText("This week's payroll")).toBeVisible()
+  await expect(opas.getByText("Upload hours")).toBeVisible()
+  await expect(opas.getByText("Dues reports")).toBeVisible()
 
   // ⚠️ AND NOT THE ORDERS ENTRANCE. "New order" is the hardcoded pill every
   // other Opas shows; for her it is another area's offering.
-  await expect(page.getByText("New order")).toHaveCount(0)
+  await expect(opas.getByText("New order")).toHaveCount(0)
   await page.screenshot({ path: `${SHOTS}/c04-opas-payroll-only.png`, fullPage: true })
 })
 
@@ -154,8 +169,30 @@ test("5 · typing a request opens the surface it names", async ({ page }) => {
 
 test("6 · and the week itself still opens, from Opas", async ({ page }) => {
   await signIn(page)
+
+  /* ⚠️ **THE WEEK NUMBER IS READ FROM THE SERVER, NOT TYPED** — fixed
+     2026-11-23. This step asserted "Week 46" as a literal, so it went red the
+     moment the calendar moved past it: the week being worked is now 47, and
+     will be 48 next Monday. A walk that expires on a date is a walk that will
+     be red more often than the product is broken, and a walk that is usually
+     red is a channel nobody reads.
+
+     "Week 46" looked like a fact about the app and was a fact about the week
+     it was written in — CLAUDE.md §11's expired premise, in a test literal. */
+  const token = await page.evaluate(() => localStorage.getItem("access_token"))
+  const current = await (await page.request.get(
+    `${process.env.PW_API ?? "http://localhost:8000"}/api/v1/payroll-reports/weeks/current`,
+    { headers: { Authorization: `Bearer ${token}`, "X-Company-Slug": SLUG } },
+  )).json()
+  const wk = current.week_number as number
+  expect(
+    current.exists,
+    `week ${wk} already has a row, so Opas opens the week core rather than the ` +
+      "upload card and this step's shape no longer applies",
+  ).toBe(false)
+
   await page.getByTestId("opas-sphere").click()
-  await page.getByText("This week's payroll").click()
+  await page.getByTestId("opas-guided-pills").getByText("This week's payroll").click()
   /* ⚠️ ASSERTS THE FOCUS RENDERED, NOT JUST THAT THE URL CHANGED. The first
      version waited on the URL and screenshotted; the Focus had not opened at
      all — `/home?focus=weekly-payroll` with no scope renders the note and
@@ -166,12 +203,12 @@ test("6 · and the week itself still opens, from Opas", async ({ page }) => {
   /* ⚠️ THE PENDING WEEK RENDERS THE UPLOAD CARD, NOT THE WEEK CORE. My first
      assertion waited for `weekly-payroll-core` and failed — correctly, and not
      because the product was wrong: the week being worked has no row yet, so
-     PR B's step-1 branch renders "No hours for week 46 yet" with the file
+     PR B's step-1 branch renders "No hours for week N yet" with the file
      input. Asserting the SCOPE is what this step is about, so it asserts the
      week it opened on. */
-  await expect(page.getByText("Week 46").first()).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText(`Week ${wk}`).first()).toBeVisible({ timeout: 15_000 })
   await expect(
-    page.getByRole("heading", { name: /No hours for week 46 yet/ }),
+    page.getByRole("heading", { name: new RegExp(`No hours for week ${wk} yet`) }),
   ).toBeVisible()
   await page.screenshot({ path: `${SHOTS}/c08-week-from-opas.png`, fullPage: true })
 })
