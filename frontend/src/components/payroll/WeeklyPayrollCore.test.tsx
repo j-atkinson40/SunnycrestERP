@@ -108,6 +108,13 @@ const api = vi.hoisted(() => ({
   uploadRegister: vi.fn(),
   listWeeks: vi.fn(),
   getCurrentWeek: vi.fn(),
+  // ⚠️ THE STATUS ROW'S TWO CALLS. Omitting them did not make the row inert —
+  // vitest threw "No getEmployeeStatus export is defined on the mock" as an
+  // UNHANDLED error, which failed the pane test with "unable to find
+  // payroll-pane-member-emp-1" and said nothing about the real cause. The
+  // mock is a hand-kept list of exports, so every new export lands here.
+  getEmployeeStatus: vi.fn(),
+  setEmployeeStatus: vi.fn(),
 }))
 
 const setupApi = vi.hoisted(() => ({ listRegisterImports: vi.fn() }))
@@ -139,6 +146,15 @@ beforeEach(() => {
   api.getCurrentWeek.mockResolvedValue(PENDING_WEEK)
   setupApi.listRegisterImports.mockResolvedValue({ imports: [], count: 0 })
   api.postHourCorrection.mockResolvedValue({})
+  // No status recorded — which is what every employee on production carries,
+  // so it is the right default for a pane test rather than the convenient one.
+  api.getEmployeeStatus.mockResolvedValue({
+    employee_id: "emp-1",
+    display_name: "Nobody, Test",
+    status: null,
+    since: null,
+    history: [],
+  })
 })
 
 

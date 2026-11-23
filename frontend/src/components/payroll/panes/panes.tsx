@@ -1,7 +1,18 @@
 /**
  * The three pane bodies: the week's union dues, one member's working, and one
- * person's timecard. All READ-ONLY — corrections are made only through the
- * Focus, so a pane can never be the thing that changed a number.
+ * person's timecard.
+ *
+ * ⚠️ **EVERY FIGURE HERE IS READ-ONLY** — corrections are made only through
+ * the Focus, so a pane can never be the thing that changed a number.
+ *
+ * ⚠️ **ONE EXCEPTION, ADDED 2026-11-21: THE STATUS ROW.** This header said
+ * "all read-only" and is corrected rather than left standing, because a
+ * docstring that contradicts a write in its own file is the stale-prose defect
+ * this repo keeps catching. `EmployeeStatusRow` writes one thing, and the rule
+ * above still holds as written: a status is not a figure and is not
+ * week-scoped — it is a fact about a person that outlives every week in the
+ * pane. It does move the R-115's line 1, which the row says on its face.
+ * James ruled the row belongs in these two panes on 2026-11-21.
  *
  * ⚠️ EVERY ONE HAS A WRITTEN EMPTY STATE. Never a blank table: "nothing here"
  * and "this did not load" are different facts and a reader must be able to
@@ -18,6 +29,8 @@ import {
   type TimecardPane,
   type UnionDuesPane,
 } from "@/lib/payroll/focus-api"
+
+import { EmployeeStatusRow } from "./EmployeeStatusRow"
 
 
 function Empty({ children }: { children: React.ReactNode }) {
@@ -146,10 +159,15 @@ export function UnionDuesPaneBody({ weekId }: { weekId: string }) {
 export function UnionMemberPaneBody({
   weekId,
   employeeId,
+  readOnly,
   onOpenTimecard,
 }: {
   weekId: string
   employeeId: string
+  /** From the Focus dispatcher, passed down rather than re-derived — the
+   *  status row is the one write in this file and obeys the same answer the
+   *  surface around it obeys. */
+  readOnly: boolean
   onOpenTimecard: () => void
 }) {
   const d = usePane<MemberPane>(
@@ -198,6 +216,7 @@ export function UnionMemberPaneBody({
         <Row label="Initiation fee" value={money(d.working.initiation_fee)} />
       ) : null}
       <Row label="Union member" value={d.union_member ? "Yes" : "No"} />
+      <EmployeeStatusRow employeeId={employeeId} readOnly={readOnly} />
       <button
         type="button"
         data-testid="pane-open-timecard"
@@ -214,10 +233,13 @@ export function UnionMemberPaneBody({
 export function TimecardPaneBody({
   weekId,
   empId,
+  readOnly,
   corrections,
 }: {
   weekId: string
   empId: string
+  /** From the Focus dispatcher, passed down rather than re-derived. */
+  readOnly: boolean
   /** From the Focus, so a correction is labelled with who, when and why
    *  without this pane needing a second endpoint for it. */
   corrections: { work_date: string; hours: string; reason: string; entered_at: string | null }[]
@@ -228,14 +250,26 @@ export function TimecardPaneBody({
   )
   if (d === null) return <Empty>Loading the timecard…</Empty>
   if (d === false) return <Failed what="The timecard" />
+
+  /* ⚠️ THE STATUS ROW RENDERS EVEN WHEN THERE ARE NO HOURS, and that is the
+     case it matters in. Somebody with no hours is exactly the person whose
+     status wants recording — they left, or they are on comp — so a row that
+     appeared only alongside a populated timecard would be missing from every
+     instance of the situation it exists for. This pane is the non-union
+     entrance; the union one is `UnionMemberPaneBody`. */
+  const statusRow = <EmployeeStatusRow employeeId={empId} readOnly={readOnly} />
+
   if (d.days.length === 0) {
     return (
-      <Empty>
-        No hours and no corrections for this person on week {d.week_number}.
-        {d.punch_data_present
-          ? " There are punches, so the hours may not have reached Payentry's export."
-          : " No punch file was loaded for this week either, so there is nothing to compare against."}
-      </Empty>
+      <div>
+        {statusRow}
+        <Empty>
+          No hours and no corrections for this person on week {d.week_number}.
+          {d.punch_data_present
+            ? " There are punches, so the hours may not have reached Payentry's export."
+            : " No punch file was loaded for this week either, so there is nothing to compare against."}
+        </Empty>
+      </div>
     )
   }
   const byDate = new Map<string, typeof corrections>()
@@ -244,6 +278,7 @@ export function TimecardPaneBody({
   }
   return (
     <div>
+      {statusRow}
       {d.days.map((day) => (
         <div
           key={`${day.work_date}:${day.pay_type}`}

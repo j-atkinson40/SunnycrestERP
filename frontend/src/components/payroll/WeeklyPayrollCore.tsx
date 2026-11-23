@@ -425,6 +425,7 @@ export function WeeklyPayrollCore({
                     <TimecardPaneBody
                       weekId={weekId}
                       empId={empId}
+                      readOnly={readOnly}
                       corrections={focus.corrections.filter(
                         (c) => c.emp_id === empId,
                       )}
@@ -487,6 +488,7 @@ export function WeeklyPayrollCore({
                     <UnionMemberPaneBody
                       weekId={weekId}
                       employeeId={empId}
+                      readOnly={readOnly}
                       onOpenTimecard={() =>
                         openPane({
                           key: `timecard-${empId}`,
@@ -496,6 +498,7 @@ export function WeeklyPayrollCore({
                             <TimecardPaneBody
                               weekId={weekId}
                               empId={empId}
+                              readOnly={readOnly}
                               corrections={focus.corrections.filter(
                                 (c) => c.emp_id === empId,
                               )}
