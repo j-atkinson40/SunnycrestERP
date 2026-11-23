@@ -314,6 +314,20 @@ def test_setting_statuses_flips_line_1_off_the_CHECK_FALLBACK(
 
     db = SessionLocal()
     try:
+        # ⚠️ THE PRECONDITION IS STATED, BECAUSE THIS TEST PASSES OR FAILS ON
+        # DATA IT DOES NOT OWN. The fallback is tenant-wide: ONE employee
+        # anywhere in testco carrying a status flips the basis, so a sibling
+        # suite that sets one and does not clear it would make this fail with
+        # a message about a basis rather than about residue.
+        stray = db.execute(text(
+            "SELECT count(*) FROM payroll_report_employees "
+            "WHERE tenant_id=:c AND payroll_status IS NOT NULL"
+        ), {"c": TESTCO_ID}).scalar()
+        assert stray == 0, (
+            f"{stray} testco employee(s) already carry a payroll status, so "
+            "the check-counting fallback this test measures is already off. "
+            "That is leftover state from another suite, not a defect here."
+        )
         before = r115_form.build_lines(db, tenant_id=TESTCO_ID, year=2026,
                                        month=10, rules=DEFAULT_RULES)
         assert before["unit"]["basis"] == "checks_in_month", before["unit"]
