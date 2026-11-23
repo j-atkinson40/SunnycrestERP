@@ -843,3 +843,10 @@ tests/test_payroll_employee_status.py
 # refusal that stops naming what it expected is exactly the regression nobody
 # would notice. The golden path is held locally and by the walk-through.
 tests/test_payroll_hours_upload_wiring.py
+# Vacation pay (Payroll 5c, 2026-11-23). The goldens James stated as literals —
+# Hunt 900.46 + 75.00, the five bonus splits, non-union 320.00 with no bonus —
+# plus the entitlement tiers, the coverage rule that decides whether a computed
+# prior-year figure may be used at all, and the endpoints driven over HTTP.
+# ⚠️ Over HTTP deliberately: a service-level suite would have passed throughout
+# the entire period the hours upload was broken, which was four days ago.
+tests/test_payroll_vacation_5c.py

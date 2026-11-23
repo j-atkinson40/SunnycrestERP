@@ -1338,6 +1338,415 @@ def set_employee_status(
         by_name=f"{current_user.first_name} {current_user.last_name}".strip())
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Payroll 5c — vacation.
+#
+# ⚠️ **ONE GET FOR THE PANE, AS 5b DID FOR THE FORM.** Allowance, used,
+# scheduled, remaining, this year's pay lines and the prior-year basis arrive
+# together. A pane assembled from five calls renders five times and shows four
+# intermediate states that are each briefly wrong.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _vacation_rules(db: Session, tenant_id: str):
+    """The rule set in force today, or the code defaults.
+
+    Mirrors `current_week`'s handling: `resolve_rule_set` RAISES when no set
+    covers the date, and a tenant with no rulebook must still be able to open
+    the pane and be told what is missing.
+    """
+    if _has_rule_set(db, tenant_id):
+        return payroll_service.rules_from_row(
+            payroll_service.resolve_rule_set(db, tenant_id, date.today()))
+    return DEFAULT_RULES
+
+
+def _shape_vacation(v) -> dict:
+    return {"id": v.id, "start_date": str(v.start_date),
+            "end_date": str(v.end_date), "hours": str(v.hours),
+            "status": v.status, "source": v.source}
+
+
+def _shape_payment(p) -> dict:
+    return {"id": p.id, "vacation_id": p.vacation_id,
+            "part_index": p.part_index, "part_count": p.part_count,
+            "week_end_date": str(p.week_end_date),
+            "vac_pay": str(p.vac_pay), "vac_bonus": str(p.vac_bonus),
+            "rate": str(p.rate) if p.rate is not None else None,
+            "hours": str(p.hours)}
+
+
+@router.get("/employees/{employee_id}/vacation")
+def get_vacation(
+    employee_id: str,
+    year: int | None = None,
+    current_user: User = Depends(require_permission(PAYROLL_READ)),
+    db: Session = Depends(get_db),
+):
+    """One person's vacation year — the pane, in a single call."""
+    from app.services.payroll.vacation import service as vac_service
+
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    assert_payroll_data_enabled(company)
+    emp = _employee_or_404(db, current_user.company_id, employee_id)
+    yr = year or date.today().year
+    rules = _vacation_rules(db, current_user.company_id)
+    view = vac_service.year_view(db, tenant_id=current_user.company_id,
+                                 employee=emp, year=yr, rules=rules)
+
+    ent = view.entitlement
+    prior = view.prior
+    return {
+        "employee_id": emp.id,
+        "display_name": emp.display_name,
+        "union_member": bool(emp.is_union_member),
+        "hire_date": str(emp.hire_date) if emp.hire_date else None,
+        "year": yr,
+        "entitlement": {
+            # ⚠️ `null` HOURS IS A STATE, not zero. Nobody has a hire date yet.
+            "hours": str(ent.hours) if ent.hours is not None else None,
+            "basis": ent.basis, "source": ent.source,
+            "years_of_service": ent.years_of_service,
+            "why_not": ent.why_not,
+        },
+        "used_hours": str(view.used_hours),
+        "scheduled_hours": str(view.scheduled_hours),
+        "remaining_hours": (str(view.remaining_hours)
+                            if view.remaining_hours is not None else None),
+        "vacations": [_shape_vacation(v) for v in view.vacations],
+        "payments": [_shape_payment(p) for p in view.payments],
+        "prior_year": {
+            "year": prior.year, "basis": prior.basis,
+            "gross": str(prior.gross) if prior.gross is not None else None,
+            "hours": str(prior.hours) if prior.hours is not None else None,
+            "source": prior.source,
+            "usable": prior.usable,
+            # ⚠️ THE COVERAGE SENTENCE, ALWAYS — it is what turns "we cannot
+            # compute this" from a refusal into something actionable.
+            "coverage": prior.coverage.sentence(),
+            "covers_year": prior.coverage.covers_year,
+            "register_gross": (str(prior.register_gross)
+                               if prior.register_gross is not None else None),
+            "register_hours": (str(prior.register_hours)
+                               if prior.register_hours is not None else None),
+        },
+    }
+
+
+@router.post("/employees/{employee_id}/vacation", status_code=201)
+def add_vacation(
+    employee_id: str,
+    start_date: date = Form(...),
+    end_date: date = Form(...),
+    hours: Decimal = Form(...),
+    source: str = Form(...),
+    current_user: User = Depends(require_permission(PAYROLL_WRITE)),
+    db: Session = Depends(get_db),
+):
+    """Record a union pick or an approved request. Audited."""
+    from app.services.payroll.vacation import service as vac_service
+
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    assert_payroll_data_enabled(company)
+    emp = _employee_or_404(db, current_user.company_id, employee_id)
+    try:
+        row = vac_service.record_vacation(
+            db, tenant_id=current_user.company_id, employee=emp,
+            start=start_date, end=end_date, hours=hours, source=source,
+            user_id=current_user.id)
+    except vac_service.VacationError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    audit_service.log_action(
+        db, current_user.company_id, "payroll_vacation_recorded",
+        "payroll_vacation", row.id, user_id=current_user.id,
+        changes={"employee_id": emp.id, "start_date": str(start_date),
+                 "end_date": str(end_date), "hours": str(hours),
+                 "source": row.source})
+    db.commit()
+    return _shape_vacation(row)
+
+
+@router.put("/employees/{employee_id}/prior-year/{year}", status_code=201)
+def set_prior_year(
+    employee_id: str,
+    year: int,
+    gross: Decimal = Form(...),
+    hours: Decimal = Form(...),
+    source: str = Form(...),
+    current_user: User = Depends(require_permission(PAYROLL_WRITE)),
+    db: Session = Depends(get_db),
+):
+    """Enter prior-year gross and hours when the registers cannot give them.
+
+    ⚠️ **THE SOURCE IS REQUIRED AND NON-BLANK** — "2025 Vac Calc tab". A typed
+    figure whose origin nobody can name is a figure nobody can check, and this
+    one sets somebody's vacation rate for a year.
+    """
+    from app.models.payroll_report import PayrollPriorYearFigures
+
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    assert_payroll_data_enabled(company)
+    emp = _employee_or_404(db, current_user.company_id, employee_id)
+    if not (source or "").strip():
+        raise HTTPException(400, "An entered prior-year figure needs its source.")
+    if hours is None or hours <= 0:
+        raise HTTPException(400, "Prior-year hours must be more than zero; the "
+                                 "average hourly rate divides by them.")
+
+    row = (db.query(PayrollPriorYearFigures)
+           .filter(PayrollPriorYearFigures.tenant_id == current_user.company_id,
+                   PayrollPriorYearFigures.employee_id == emp.id,
+                   PayrollPriorYearFigures.year == year).first())
+    before = {"gross": str(row.gross), "hours": str(row.hours)} if row else None
+    if row is None:
+        row = PayrollPriorYearFigures(
+            tenant_id=current_user.company_id, employee_id=emp.id, year=year,
+            gross=gross, hours=hours, source=source.strip(),
+            entered_by_user_id=current_user.id)
+        db.add(row)
+    else:
+        # ⚠️ ONE ROW PER PERSON PER YEAR — a second entry is an EDIT, so "what
+        # is her prior year" has one answer. The audit record carries the old
+        # values; the figure itself is not a history.
+        row.gross, row.hours = gross, hours
+        row.source, row.entered_by_user_id = source.strip(), current_user.id
+    db.flush()
+    audit_service.log_action(
+        db, current_user.company_id, "payroll_prior_year_entered",
+        "payroll_prior_year_figures", row.id, user_id=current_user.id,
+        changes={"employee_id": emp.id, "year": year, "before": before,
+                 "after": {"gross": str(gross), "hours": str(hours)},
+                 "source": row.source})
+    db.commit()
+    return {"employee_id": emp.id, "year": year, "gross": str(row.gross),
+            "hours": str(row.hours), "source": row.source}
+
+
+@router.put("/employees/{employee_id}/entitlement/{year}", status_code=201)
+def set_entitlement(
+    employee_id: str,
+    year: int,
+    hours: Decimal = Form(...),
+    source: str = Form(...),
+    current_user: User = Depends(require_permission(PAYROLL_WRITE)),
+    db: Session = Depends(get_db),
+):
+    """Override the allowance for one person for one year, with its source."""
+    from app.models.payroll_report import PayrollVacationEntitlement
+
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    assert_payroll_data_enabled(company)
+    emp = _employee_or_404(db, current_user.company_id, employee_id)
+    if not (source or "").strip():
+        raise HTTPException(
+            400, "An allowance set by hand needs its source — these are set by "
+                 "agreement, and the agreement is what somebody checks later.")
+    if hours is None or hours < 0:
+        raise HTTPException(400, "An allowance cannot be negative.")
+
+    row = (db.query(PayrollVacationEntitlement)
+           .filter(PayrollVacationEntitlement.tenant_id == current_user.company_id,
+                   PayrollVacationEntitlement.employee_id == emp.id,
+                   PayrollVacationEntitlement.year == year).first())
+    before = str(row.hours) if row else None
+    if row is None:
+        row = PayrollVacationEntitlement(
+            tenant_id=current_user.company_id, employee_id=emp.id, year=year,
+            hours=hours, source=source.strip(), set_by_user_id=current_user.id)
+        db.add(row)
+    else:
+        row.hours, row.source = hours, source.strip()
+        row.set_by_user_id = current_user.id
+    db.flush()
+    audit_service.log_action(
+        db, current_user.company_id, "payroll_vacation_entitlement_set",
+        "payroll_vacation_entitlements", row.id, user_id=current_user.id,
+        changes={"employee_id": emp.id, "year": year, "before": before,
+                 "after": str(hours), "source": row.source})
+    db.commit()
+    return {"employee_id": emp.id, "year": year, "hours": str(row.hours),
+            "source": row.source}
+
+
+def _vacation_or_404(db: Session, tenant_id: str, vacation_id: str):
+    from app.models.payroll_report import PayrollVacation
+
+    row = (db.query(PayrollVacation)
+           .filter(PayrollVacation.tenant_id == tenant_id,
+                   PayrollVacation.id == vacation_id).first())
+    if row is None:
+        raise HTTPException(404, "no such vacation for this company")
+    return row
+
+
+def _working_for(db: Session, tenant_id: str, vacation, checks: int):
+    """The Focus's step 2: the working, or why it cannot be shown."""
+    from app.services.payroll.vacation import pay as pay_service
+    from app.services.payroll.vacation import service as vac_service
+
+    emp = _employee_or_404(db, tenant_id, vacation.employee_id)
+    rules = _vacation_rules(db, tenant_id)
+    year = vacation.start_date.year
+    view = vac_service.year_view(db, tenant_id=tenant_id, employee=emp,
+                                 year=year, rules=rules)
+
+    # ⚠️ **THE BONUS DIVISOR IS THE YEAR'S PAYMENT COUNT, AND THIS VACATION'S
+    # CHECKS ARE PART OF IT.** Already-approved payments plus the ones about to
+    # be made. Counting only this vacation's checks would pay the whole year's
+    # bonus with every vacation.
+    already = vac_service.payments_in_year(db, tenant_id=tenant_id,
+                                           employee_id=emp.id, year=year)
+    try:
+        if emp.is_union_member:
+            if not view.prior.usable:
+                return None, view, (
+                    f"{view.prior.coverage.sentence()} Enter "
+                    f"{view.prior.year}'s gross and hours, with their source, "
+                    "before this can be worked out.")
+            if view.entitlement.hours is None:
+                return None, view, view.entitlement.why_not
+            working = pay_service.union_pay(
+                hours=vacation.hours,
+                prior_year_gross=view.prior.gross,
+                prior_year_hours=view.prior.hours,
+                entitlement_hours=view.entitlement.hours,
+                rules=rules, checks=checks,
+                bonus_part_start=already + 1,
+                bonus_part_count=already + checks)
+        else:
+            rate = _regular_rate_for(db, tenant_id, emp, vacation.start_date)
+            if rate is None:
+                return None, view, (
+                    "No pay rate is on file for this person on or before "
+                    f"{vacation.start_date}, so vacation pay cannot be worked "
+                    "out.")
+            working = pay_service.non_union_pay(
+                hours=vacation.hours, regular_rate=rate, checks=checks)
+    except pay_service.VacationPayUnavailable as exc:
+        return None, view, str(exc)
+    return working, view, None
+
+
+def _regular_rate_for(db: Session, tenant_id: str, emp, on: date):
+    """The most recent effective rate on or before `on`."""
+    from app.models.payroll_report import PayrollRate
+
+    row = (db.query(PayrollRate)
+           .filter(PayrollRate.tenant_id == tenant_id,
+                   PayrollRate.emp_id == emp.payentry_file_number,
+                   PayrollRate.effective_date <= on)
+           .order_by(PayrollRate.effective_date.desc())
+           .first())
+    return Decimal(str(row.hourly_rate)) if row else None
+
+
+def _shape_working(w) -> dict:
+    return {
+        "union": w.union, "hours": str(w.hours),
+        "rate": str(w.rate) if w.rate is not None else None,
+        "rate_truncate_dp": w.rate_truncate_dp,
+        "prior_year_gross": (str(w.prior_year_gross)
+                             if w.prior_year_gross is not None else None),
+        "prior_year_hours": (str(w.prior_year_hours)
+                             if w.prior_year_hours is not None else None),
+        "entitlement_hours": (str(w.entitlement_hours)
+                              if w.entitlement_hours is not None else None),
+        "bonus_year_total": (str(w.bonus_year_total)
+                             if w.bonus_year_total is not None else None),
+        "vac_total": str(w.vac_total), "bonus_total": str(w.bonus_total),
+        "parts": [{"index": p.index, "count": p.count, "hours": str(p.hours),
+                   "vac_pay": str(p.vac_pay), "vac_bonus": str(p.vac_bonus),
+                   "total": str(p.total)} for p in w.parts],
+    }
+
+
+@router.get("/vacations/{vacation_id}/pay")
+def vacation_pay_working(
+    vacation_id: str,
+    checks: int = 1,
+    current_user: User = Depends(require_permission(PAYROLL_READ)),
+    db: Session = Depends(get_db),
+):
+    """The Focus: how it would be paid in `checks` checks, and the working."""
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    assert_payroll_data_enabled(company)
+    vacation = _vacation_or_404(db, current_user.company_id, vacation_id)
+    working, view, unavailable = _working_for(
+        db, current_user.company_id, vacation, checks)
+    return {
+        "vacation": _shape_vacation(vacation),
+        "checks": checks,
+        # ⚠️ Read off the EMPLOYEE, not inferred. My first version wrote
+        # `bool(view.entitlement is not None) and None`, which is `None`
+        # always — a field that can only ever be null, which §11 names as
+        # worse than an absent one because null reads as measured-and-empty.
+        "union": bool(working.union) if working else None,
+        "working": _shape_working(working) if working else None,
+        # ⚠️ A SENTENCE, NOT A BARE null. The Focus renders this instead of the
+        # working, and it names what is missing and who can supply it.
+        "unavailable": unavailable,
+        "already_paid_parts": len(view.payments),
+    }
+
+
+@router.post("/vacations/{vacation_id}/approve", status_code=201)
+def approve_vacation_pay(
+    vacation_id: str,
+    checks: int = Form(1),
+    week_end_date: date = Form(...),
+    current_user: User = Depends(require_permission(PAYROLL_WRITE)),
+    db: Session = Depends(get_db),
+):
+    """Approve the pay. Writes the `Vac` and `VacBonus` lines for the week."""
+    from app.models.payroll_report import PayrollVacationPayment
+
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    assert_payroll_data_enabled(company)
+    vacation = _vacation_or_404(db, current_user.company_id, vacation_id)
+    if vacation.status == "paid":
+        # ⚠️ 409, NOT A SECOND SET OF LINES. Approving twice would pay the week
+        # twice AND move every other bonus part's cents, because the divisor
+        # is the year's payment count.
+        raise HTTPException(409, "This vacation has already been approved.")
+    if vacation.status == "cancelled":
+        raise HTTPException(409, "This vacation was cancelled.")
+
+    working, _view, unavailable = _working_for(
+        db, current_user.company_id, vacation, checks)
+    if working is None:
+        raise HTTPException(422, {"code": "vacation_pay_unavailable",
+                                  "message": unavailable})
+
+    rule_row = (payroll_service.resolve_rule_set(
+        db, current_user.company_id, vacation.start_date)
+        if _has_rule_set(db, current_user.company_id) else None)
+
+    written = []
+    for part in working.parts:
+        row = PayrollVacationPayment(
+            tenant_id=current_user.company_id, vacation_id=vacation.id,
+            part_index=part.index, part_count=part.count,
+            week_end_date=week_end_date, vac_pay=part.vac_pay,
+            vac_bonus=part.vac_bonus, rate=working.rate, hours=part.hours,
+            rule_set_id=rule_row.id if rule_row is not None else None,
+            approved_by_user_id=current_user.id)
+        db.add(row)
+        written.append(row)
+    vacation.status = "paid"
+    db.flush()
+
+    audit_service.log_action(
+        db, current_user.company_id, "payroll_vacation_pay_approved",
+        "payroll_vacation", vacation.id, user_id=current_user.id,
+        changes={"checks": checks, "week_end_date": str(week_end_date),
+                 "vac_total": str(working.vac_total),
+                 "bonus_total": str(working.bonus_total)})
+    db.commit()
+    return {"vacation": _shape_vacation(vacation),
+            "payments": [_shape_payment(p) for p in written]}
+
+
 def _r115_subject(year: int, month: int) -> str:
     """What an R-115 copy is ABOUT. One producer — the writer and every
     reader derive the subject here, so a copy cannot be filed under
