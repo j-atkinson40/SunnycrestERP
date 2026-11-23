@@ -61,6 +61,8 @@ const BACKEND =
  *  payroll export: real names, real rates. Points outside the tree, the way
  *  the register is handled. */
 const HOURS_PDF = process.env.PW_HOURS_PDF ?? ""
+/** The optional Punch Location workbook. Read in place, never committed. */
+const PUNCH_XLS = process.env.PW_PUNCH_XLS ?? ""
 
 test.describe.configure({ mode: "serial" })
 
@@ -482,6 +484,10 @@ test("the REAL Employee Hours PDF, through the Focus, reaches the Payroll 3 pars
   await page.goto("/home?focus=weekly-payroll&week_end=2026-10-31")
   await expect(page.getByTestId("upload-card")).toBeVisible({ timeout: 20_000 })
   await page.getByTestId("hours-file").setInputFiles(HOURS_PDF)
+  // ⚠️ **AND THE PUNCH FILE, since 2026-11-23.** It used to be dropped by the
+  // endpoint in silence, then reported as "not stored yet", and now it is
+  // stored — which is what makes the three clock-time questions answerable.
+  if (PUNCH_XLS) await page.getByTestId("punch-file").setInputFiles(PUNCH_XLS)
   await page.getByTestId("upload-hours").click()
 
   // ⚠️ **THE SENTENCE ON SCREEN IS PART OF THE FIX.** The PDF branch returned
@@ -545,6 +551,41 @@ test("the REAL Employee Hours PDF, through the Focus, reaches the Payroll 3 pars
   )
   console.log(`[walk] week 44 on the server: ${weekRow}`)
   expect(weekRow).toBe("imported")
+
+  // ⚠️ **THE THREE CLOCK-TIME QUESTIONS, WHICH COULD NOT RUN BEFORE.**
+  // `punch_findings` has had all four since Payroll 3 and `all_findings` had
+  // no caller, because `PayrollPunch` had no writer. Asserted from the
+  // SERVER's stored rows, not from the screen.
+  if (PUNCH_XLS) {
+    const punches = sql(py(
+      "n = db.execute(text(\"SELECT count(*) FROM payroll_punches WHERE \"\n"
+      + "    \"tenant_id=:c AND week_end_date='2026-10-31'\"), {'c': C}).scalar()\n"
+      + "u = db.execute(text(\"SELECT count(*) FROM payroll_punches WHERE \"\n"
+      + "    \"tenant_id=:c AND week_end_date='2026-10-31' AND emp_id IS NULL\"),\n"
+      + "    {'c': C}).scalar()\n"
+      + "print(f'{n} punches, {u} unattached')",
+    ))
+    console.log(`[walk] ${punches}`)
+    expect(punches).toMatch(/^[1-9]\d* punches, 0 unattached$/)
+
+    await page.goto("/home?focus=weekly-payroll&week_end=2026-10-31")
+    await expect(page.getByTestId("findings")).toBeVisible({ timeout: 20_000 })
+    const kinds = sql(py(
+      "from datetime import date\n"
+      + "from collections import Counter\n"
+      + "from app.models.payroll_report import PayrollWeek\n"
+      + "from app.services.payroll.week_focus import week_focus\n"
+      + "w = db.query(PayrollWeek).filter(PayrollWeek.tenant_id==C,\n"
+      + "    PayrollWeek.week_end_date==date(2026,10,31)).first()\n"
+      + "c = Counter(f['code'] for f in week_focus(db, w)['findings'])\n"
+      + "print(','.join(sorted(k for k in c if k in "
+      + "('early_clock_in','clustered_early_departure','saturday_overtime_worked'))))",
+    ))
+    console.log(`[walk] clock findings now live: ${kinds}`)
+    expect(kinds).toContain("early_clock_in")
+    expect(kinds).toContain("saturday_overtime_worked")
+    await shot(page, "12-clock-findings-from-punches")
+  }
 
   // ⚠️ UNDONE, so the walk is repeatable and leaves the fixture as found.
   const undone = sql(

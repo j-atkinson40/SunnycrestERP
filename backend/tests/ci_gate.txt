@@ -850,3 +850,9 @@ tests/test_payroll_hours_upload_wiring.py
 # ⚠️ Over HTTP deliberately: a service-level suite would have passed throughout
 # the entire period the hours upload was broken, which was four days ago.
 tests/test_payroll_vacation_5c.py
+# Punch Location ingestion (2026-11-23) — the writer `PayrollPunch` never had,
+# and the entrance `punch_findings.all_findings` never had. ⚠️ The name ruling
+# is the subject: normalisation, source order, and that unmatched or ambiguous
+# is a FINDING rather than a guess. Those run in CI; the real-file goldens skip
+# without the exports and are covered by the walk-through.
+tests/test_payroll_punch_ingestion.py

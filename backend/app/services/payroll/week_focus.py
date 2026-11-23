@@ -371,6 +371,25 @@ def week_focus(db: Session, week: PayrollWeek) -> dict:
         }
         flags.extend(reconcile_roster(with_lines, configured))
 
+        # ⚠️ **THE CLOCK-TIME QUESTIONS, TURNED ON 2026-11-23.** `punch_findings`
+        # has had all four since Payroll 3 — unpaired punches, early clock-ins,
+        # clustered early departures and the Saturday rule — and **nothing had
+        # ever called `all_findings`**, because `PayrollPunch` had no writer.
+        # Complete machinery behind an unprovisioned entrance; the writer
+        # landed with the punch import and this is the entrance.
+        #
+        # ⚠️ **SILENT WHEN NO PUNCH FILE WAS LOADED, WHICH IS NOT THE SAME AS
+        # NOTHING TO REPORT.** A week with no punches yields no clock findings
+        # — correctly — and the timecard pane already says a punch file was
+        # not loaded, so the absence is stated somewhere a reader will see it
+        # rather than read as "all clear".
+        from app.services.payroll import punch_findings, punch_import
+
+        punch_days = punch_import.stored_days(
+            db, tenant_id=week.tenant_id, week_end_date=week.week_end_date)
+        clock_findings = (punch_findings.all_findings(punch_days)
+                          if punch_days else [])
+
         findings = [
             {
                 "key": finding_key(f.code, emp_id=f.file_number or None),
@@ -383,6 +402,25 @@ def week_focus(db: Session, week: PayrollWeek) -> dict:
             }
             for f in flags
         ]
+        findings.extend({
+            # ⚠️ KEYED ON THE DATE AS WELL AS THE KIND. A missed punch on
+            # Tuesday and one on Thursday are two decisions; `finding_key`
+            # keeps the separators so a kind with no date cannot collide with
+            # the same kind that has one.
+            "key": finding_key(f.kind, on_date=f.on_date),
+            "code": f.kind,
+            "severity": "warning",
+            "message": f.detail,
+            "file_number": None,
+            "employee_id": None,
+            # ⚠️ `shift_status` TRAVELS WITH IT so a reader can tell a
+            # conclusion from a guess without looking up the rule — and the
+            # Saturday rule is exactly where that matters, since Saturday has
+            # no regular shift to be early or late against.
+            "detail": {"on_date": f.on_date.isoformat(),
+                       "people": list(f.people),
+                       "shift_status": f.shift_status},
+        } for f in clock_findings)
     except Exception:
         # A week that cannot be recalculated still has a Focus: its dues and
         # decisions are stored and readable. Reported as a flag of its own

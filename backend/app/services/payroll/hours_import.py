@@ -123,6 +123,14 @@ def import_hours(db: Session, *, tenant_id: str, content: bytes, filename: str,
                               parsed.hours_by_pay_type().items()},
         "emp_ids": sorted(parsed.emp_ids, key=lambda e: (len(e), e)),
         "listed_without_hours": parsed.listed_without_hours,
+        # ⚠️ **CARRIED SO PUNCH NAMES CAN BE RESOLVED AGAINST THIS WEEK.** The
+        # name-resolution ruling's first source is "the same week's Employee
+        # Hours names", and the parser has had them all along as
+        # `names_by_emp` — they were simply never shaped into the report, so a
+        # caller asking for them got `{}` and every punch name would have come
+        # back unmatched. Sorted for a stable payload.
+        "names_by_emp": {e: sorted(n) for e, n in
+                         sorted(parsed.names_by_emp.items())},
     }
     if not report.ok:
         raise HoursImportRefused(

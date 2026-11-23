@@ -371,29 +371,42 @@ def test_the_legacy_CSV_path_still_works_and_still_refuses_the_guessed_mapping(
 # ── the punch file, which was being thrown away in silence ───────────────
 
 
-def test_an_attached_PUNCH_file_is_reported_rather_than_silently_dropped(
+def test_an_attached_PUNCH_file_is_STORED_and_says_what_it_did(
         client, token, switch_on, clean_week, roster_knows_the_file):
-    """⚠️ **THE FOCUS HAS BEEN SENDING THIS SINCE PAYROLL 5a AND THE ENDPOINT
-    HAD NO SUCH PARAMETER**, so FastAPI dropped it and the response said
-    nothing. A success with no mention of the file is how somebody comes to
-    believe punches were loaded. `PayrollPunch` has no writer anywhere in
-    `app/` — ingestion is unbuilt, and that is now stated in the reply."""
+    """⚠️ **SUPERSEDED 2026-11-23, AND THE OLD WORDING IS KEPT BECAUSE IT WAS
+    HONEST.** This test asserted `stored is False` and the sentence "Punch
+    Location files are not stored yet" — which was true, and was the right
+    thing to assert while `PayrollPunch` had no writer anywhere in `app/`. A
+    success that does not mention a file somebody attached is how they come to
+    believe punches were loaded, so saying so was better than silence.
+
+    The writer landed with punch ingestion, so the assertion inverts: the
+    punches ARE stored now, and the reply says how many and for how many
+    people. ⚠️ `stored` is a BOOLEAN and `punches_stored` is a COUNT — they
+    were briefly one field, and a dict spread silently replaced the boolean
+    with the count.
+    """
     pdf = _real_pdf()
+    punch = os.environ.get("PAYROLL_PUNCH_LOCATION")
+    if not punch:
+        pytest.skip("PAYROLL_PUNCH_LOCATION must point at the real .xls")
     r = client.post(
         f"{BASE}/weeks/upload",
         files={"file": (pdf.name, pdf.read_bytes(), "application/pdf"),
                "punch_file": ("Punch_Location.xls",
-                              b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 64,
+                              Path(punch).expanduser().read_bytes(),
                               "application/vnd.ms-excel")},
         data={"week_number": 44, "week_end_date": WEEK_END.isoformat()},
         headers=_auth(token),
     )
     assert r.status_code == 201, r.text[:400]
-    punch = r.json()["punch_file"]
-    assert punch is not None, "the punch file was dropped in silence again"
-    assert punch["stored"] is False
-    assert punch["filename"] == "Punch_Location.xls"
-    assert "not stored yet" in punch["reason"]
+    pf = r.json()["punch_file"]
+    assert pf is not None, "the punch file was dropped in silence again"
+    assert pf["stored"] is True
+    assert pf["punches_stored"] > 0
+    assert pf["people_matched"] > 0
+    # Every name resolved against this week's own hours.
+    assert pf["unattached"] == 0, pf["findings"]
 
 
 def test_no_punch_file_reports_nothing_rather_than_a_false_negative(

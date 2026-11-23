@@ -340,11 +340,25 @@ export interface WeekUploadResult {
    *  FALSE — ingestion is unbuilt — and the reason says so, because a success
    *  that does not mention the file is how somebody comes to believe it
    *  loaded. */
+  /** ⚠️ `stored` IS A BOOLEAN AND `punches_stored` IS A COUNT. They were one
+   *  field called `stored` and the server's dict spread silently replaced the
+   *  boolean with the count — one name for two meanings, decided by which
+   *  spread won. */
   punch_file?: {
     filename: string | null
     stored: boolean
-    recognised_as: string
-    reason: string
+    punches_stored: number
+    /** ⚠️ Punches whose name nobody has confirmed. They ARE stored, with no
+     *  employee attached — dropping them would delete the evidence along with
+     *  the finding. */
+    unattached: number
+    people_matched: number
+    findings: {
+      kind: string
+      raw_name: string
+      candidates: string[]
+      detail: string
+    }[]
   } | null
 }
 
