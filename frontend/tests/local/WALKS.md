@@ -85,23 +85,23 @@ the seed. It says so when the finding is already answered.
     "walk": "payroll-week44-walkthrough.spec.ts",
     "what": "Susan's week, start to finish: sign in, the note, both entrances, the finding, a correction, approve, the deduction list, the panes. Plus a real Employee Hours export through the real input.",
     "verified_on": "2026-11-23",
-    "verified_at_commit": "109f9c2c83071cfdc6db57ed03abb6b7eb449cb2",
+    "verified_at_commit": "b8453c1563b18577c4bf3aa105dee71c1b2d80c3",
     "fingerprints": {
       "src/App.tsx": "991b7ac4e5dd873bad9fa734e25ee4ab6c122447877cf2de1bee5b1d2d722b49",
       "src/components/layout/limited-shell.tsx": "768c5ddc6adc319d9065adc2471c3d44d816c8c2563e47689a2206840d397074",
       "src/components/layout/tenant-shell.tsx": "91b2f54ed5e5bd9f60adcfed4403f0c699c54f169cd48c02f2675fd4a258b5e5",
-      "src/components/payroll/WeeklyPayrollCore.tsx": "16e360649a56109586a82a814e62ef5268483aa87ef054602ffaa0f84b66d638",
+      "src/components/payroll/WeeklyPayrollCore.tsx": "7f6272292f11e5e3b321acdd4ada94e511ed8be8737420d8a06a709a5490511b",
       "src/components/payroll/panes/PayrollPaneStack.tsx": "d4d31133681d201c82d43f3deca9204935257669b29320d2b7294706ec368aba",
       "src/components/payroll/panes/panes.tsx": "04553b5a5255ffeaaeb2c7d0675501c96c16b51a8f8e03414d1fa10f35808c43",
-      "src/lib/payroll/focus-api.ts": "061ca9b83d5c374dd049b70588e56cbc5e3a61ab187c7d127f80ad77222e4f35",
-      "tests/local/payroll-week44-walkthrough.spec.ts": "ec3a1fdd1597789478b6f8487e509babb53eeb5f4e6a1f9787cabab3544e24cb"
+      "src/lib/payroll/focus-api.ts": "7217e5e44584e7f7adbe8d1bc908864832e0cf1da1c37a7b5e80ccbde6f269d0",
+      "tests/local/payroll-week44-walkthrough.spec.ts": "900d09a06d25e62cd49d707bd9ad2430e5e8990aa7762f995883fe33f1f0c8ae"
     }
   },
   {
     "walk": "opas-shell-walkthrough.spec.ts",
     "what": "The shell she gets and Opas as her only entrance: no sidebar, the sphere quiet, payroll-only capabilities, cmd-K.",
     "verified_on": "2026-11-23",
-    "verified_at_commit": "109f9c2c83071cfdc6db57ed03abb6b7eb449cb2",
+    "verified_at_commit": "b8453c1563b18577c4bf3aa105dee71c1b2d80c3",
     "fingerprints": {
       "src/App.tsx": "991b7ac4e5dd873bad9fa734e25ee4ab6c122447877cf2de1bee5b1d2d722b49",
       "src/components/layout/limited-shell.tsx": "768c5ddc6adc319d9065adc2471c3d44d816c8c2563e47689a2206840d397074",
@@ -114,10 +114,10 @@ the seed. It says so when the finding is already answered.
     "walk": "union-form-walkthrough.spec.ts",
     "what": "The R-115: filling to sent, the print view, the copies record, and a copy going stale underneath a figure.",
     "verified_on": "2026-11-23",
-    "verified_at_commit": "109f9c2c83071cfdc6db57ed03abb6b7eb449cb2",
+    "verified_at_commit": "b8453c1563b18577c4bf3aa105dee71c1b2d80c3",
     "fingerprints": {
       "src/components/payroll/UnionFormCore.tsx": "ee6b33022247d82100dc886c4dd51d052637361e200a285c477625b51ca44c35",
-      "src/lib/payroll/focus-api.ts": "061ca9b83d5c374dd049b70588e56cbc5e3a61ab187c7d127f80ad77222e4f35",
+      "src/lib/payroll/focus-api.ts": "7217e5e44584e7f7adbe8d1bc908864832e0cf1da1c37a7b5e80ccbde6f269d0",
       "tests/local/union-form-walkthrough.spec.ts": "068f82b413439d00f2fd52a55051942d1482dc74bbddde4aaaffd54cdbb8acd1"
     }
   },
@@ -125,13 +125,13 @@ the seed. It says so when the finding is already answered.
     "walk": "employee-status-walkthrough.spec.ts",
     "what": "Recording an employee's payroll status, and the union form's line 1 coming off its check-counting fallback.",
     "verified_on": "2026-11-23",
-    "verified_at_commit": "109f9c2c83071cfdc6db57ed03abb6b7eb449cb2",
+    "verified_at_commit": "b8453c1563b18577c4bf3aa105dee71c1b2d80c3",
     "fingerprints": {
       "src/components/payroll/UnionFormCore.tsx": "ee6b33022247d82100dc886c4dd51d052637361e200a285c477625b51ca44c35",
       "src/components/payroll/panes/EmployeeStatusRow.tsx": "b46eceb5f4abe7c4f725ec7a928711d5df5b3a8ba5dd606293bada9d1ab0f908",
       "src/components/payroll/panes/PayrollPaneStack.tsx": "d4d31133681d201c82d43f3deca9204935257669b29320d2b7294706ec368aba",
       "src/components/payroll/panes/panes.tsx": "04553b5a5255ffeaaeb2c7d0675501c96c16b51a8f8e03414d1fa10f35808c43",
-      "src/lib/payroll/focus-api.ts": "061ca9b83d5c374dd049b70588e56cbc5e3a61ab187c7d127f80ad77222e4f35",
+      "src/lib/payroll/focus-api.ts": "7217e5e44584e7f7adbe8d1bc908864832e0cf1da1c37a7b5e80ccbde6f269d0",
       "tests/local/employee-status-walkthrough.spec.ts": "47c7d40455d76de59142f54834e29a6e6e07d7bdcc8c67d42d8ff0855695ceb5"
     }
   }

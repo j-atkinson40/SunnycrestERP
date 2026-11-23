@@ -57,6 +57,7 @@ from app.models.payroll_report import (
 from app.models.user import User
 from app.services.payroll import service as payroll_service
 from app.services.payroll import week_focus
+from app.services.payroll import export_sniff
 from app.services.payroll.column_mapping import UnverifiedMapping, available_mappings
 from app.services.payroll.parsers import ExportParseError, ExportPayload
 from app.services.payroll.hours_import import (
@@ -196,6 +197,18 @@ def list_weeks(
 
 @router.get("/weeks/current")
 def current_week(
+    # ⚠️ **ADDED 2026-11-23 BECAUSE `week_end` WAS HONOURED AS A FLAG AND
+    # IGNORED AS A VALUE.** The Focus reads `?week_end=` from the URL to decide
+    # it is on a week with no row — and then uploaded against whatever THIS
+    # endpoint said today's week was. So `week_end=2026-10-31` rendered "Week
+    # 47" and posted week 47, and the importer refused with "the file covers
+    # the week ending 2026-10-31, not the requested 2026-11-21" — correctly,
+    # about a week nobody had asked for. A late week could not be uploaded at
+    # all.
+    #
+    # Named `week_end` to match what the caller already has. Absent, the
+    # behaviour is exactly what it was: the week being worked today.
+    week_end: date | None = None,
     current_user: User = Depends(require_permission(PAYROLL_READ)),
     db: Session = Depends(get_db),
 ):
@@ -215,8 +228,11 @@ def current_week(
         payroll_service.resolve_rule_set(db, current_user.company_id, date.today())
     ) if _has_rule_set(db, current_user.company_id) else DEFAULT_RULES
 
+    # ⚠️ ANY DAY INSIDE THE REQUESTED WEEK RESOLVES TO THAT WEEK, so a caller
+    # may pass the week END it already holds and get that week's descriptor —
+    # same single producer, one argument different.
     desc = current_payroll_week(
-        date.today(),
+        week_end or date.today(),
         cutoff_weekday=rules.payentry_cutoff_weekday,
         cutoff_time=rules.payentry_cutoff_time,
     )
@@ -251,7 +267,26 @@ async def upload_export(
     file: UploadFile = File(...),
     week_number: int = Form(...),
     week_end_date: date = Form(...),
+    # ⚠️ **NO LONGER THE SELECTOR, AND THAT IS THE FIX.** This defaulted to
+    # `"payentry"` — the key of an old GUESSED CSV mapping — and the Focus
+    # never sent it, so every upload Susan made was routed to a parser for a
+    # file nobody exports and refused by the unverified-mapping guard. The
+    # Employee Hours PDF reader sat behind a key that appeared exactly once in
+    # the tree, at its own definition: nothing ever passed it.
+    #
+    # The bytes now choose (see `export_sniff`). This is kept only to pick
+    # among the legacy DELIMITED-TEXT mappings, which is the one case content
+    # cannot settle — two CSVs with different column layouts are both CSVs.
     format_key: str = Form("payentry"),
+    # ⚠️ **ACCEPTED SO IT STOPS BEING SILENTLY DISCARDED.** The Focus has been
+    # appending `punch_file` to the upload since Payroll 5a; this endpoint had
+    # no such parameter, so FastAPI dropped it and the response said nothing.
+    # Punch INGESTION is not built — `PayrollPunch` has no writer anywhere in
+    # `app/` — and wiring it needs the name-resolution ruling ("a person
+    # confirms each alias; nothing is fuzzy-matched silently"), which is not
+    # this fix. So the file is read, classified and REPORTED as not stored,
+    # rather than accepted in silence.
+    punch_file: UploadFile | None = File(None),
     # ⚠️ `payroll.upload`, NOT admin — changed 2026-11-13. The 2026-11-03
     # ruling made this admin-only because "the payroll reviewer never needs to
     # do it: in the finished shape it is the background payroll job running
@@ -287,6 +322,26 @@ async def upload_export(
     company = db.query(Company).filter(Company.id == current_user.company_id).first()
     assert_payroll_data_enabled(company)
 
+    # ⚠️ **SAID OUT LOUD RATHER THAN DROPPED.** Attaching the Punch Location
+    # workbook and getting a success with no mention of it is how somebody
+    # comes to believe punches were loaded. `stored` is false and the reason
+    # says why, until punch ingestion exists.
+    punch_outcome: dict | None = None
+    if punch_file is not None:
+        punch_bytes = await punch_file.read()
+        punch_kind = export_sniff.detect(
+            punch_bytes, filename=punch_file.filename).kind
+        punch_outcome = {
+            "filename": punch_file.filename,
+            "stored": False,
+            "recognised_as": punch_kind,
+            "reason": (
+                "Punch Location files are not stored yet. The hours above "
+                "came from the Employee Hours PDF; nothing in this upload "
+                "used the punch file."
+            ),
+        }
+
     # ─────────────────────────────────────────────────────────────────────────
     # Payroll 3: Payentry's own Employee Hours PDF.
     #
@@ -299,7 +354,19 @@ async def upload_export(
     # BLOCKING FINDING REFUSES THE WHOLE FILE.** A naive read of the real
     # export reproduces every hour total while turning one employee number
     # into 12008; the only thing that can reject that is a roster.
-    if format_key == HOURS_FORMAT_KEY:
+    # ⚠️ **ROUTED ON THE BYTES.** `detect` reads magic numbers, never the
+    # filename — `.pdf` is a claim by whoever named the file, and the case that
+    # matters is the one where it is wrong.
+    detected = export_sniff.detect(content, filename=file.filename)
+
+    if detected.kind in (export_sniff.PUNCH_LOCATION_WORKBOOK,
+                         export_sniff.UNKNOWN):
+        # A plain sentence that NAMES WHAT WAS EXPECTED. "Unsupported file
+        # type" is the shape that tells somebody nothing they can act on.
+        raise HTTPException(422, {"code": "hours_file_not_recognised",
+                                  "message": detected.why})
+
+    if detected.kind == export_sniff.EMPLOYEE_HOURS_PDF:
         known = _known_emp_ids(db, current_user.company_id)
         checks = db.query(PayrollCheck).filter(
             PayrollCheck.tenant_id == current_user.company_id).all()
@@ -328,12 +395,55 @@ async def upload_export(
                      "rows": result.rows_stored,
                      "duplicate_of": result.duplicate_of})
         db.commit()
+        # ⚠️ **THE SAME `summary` AND `flags` THE CSV PATH RETURNS, SO THE
+        # SCREEN DOES NOT HAVE TO KNOW WHICH PARSER RAN.** The upload card
+        # reads `r.summary.people`, `r.summary.hours` and `r.flags`; this
+        # branch returned none of them, so the first successful PDF upload
+        # would have rendered "Week 44 loaded: — people, — hours." — a success
+        # sentence reporting nothing, on the week she just loaded. Two shapes
+        # behind one button is the client's problem only if the server makes
+        # it one.
+        shaped = result.report or {}
+        hours_by_type = shaped.get("hours_by_pay_type") or {}
+        total_hours = sum(Decimal(v) for v in hours_by_type.values())
+        # ⚠️ **COUNTED FROM THE STORED ROWS, NOT GUESSED FROM THE REPORT.** My
+        # first version read a `rows` key the report does not have, so this was
+        # `null` on every upload — and a field that is ALWAYS null is worse
+        # than an absent one, because null reads as "measured, and empty".
+        # Caught by printing the real response rather than by the tests, which
+        # did not assert it.
+        with_hours = db.execute(
+            text("SELECT count(DISTINCT emp_id) FROM payroll_hours_lines "
+                 "WHERE import_id = :i"),
+            {"i": result.import_id},
+        ).scalar()
         return {"import_id": result.import_id, "week_id": result.week_id,
                 "week_end_date": str(result.week_end_date),
                 "rows_stored": result.rows_stored,
                 "week_lines_written": result.week_lines_written,
                 "duplicate_of": result.duplicate_of,
-                "report": result.report}
+                "report": shaped,
+                "punch_file": punch_outcome,
+                "summary": {
+                    # ⚠️ `people` IS EVERYONE THE EXPORT LISTS, not everyone
+                    # with hours — 25 and 18 on week 44, and they are different
+                    # populations. `with_hours` is stated beside it so neither
+                    # can drift into standing for the other.
+                    "people": len(shaped.get("emp_ids") or []),
+                    "with_hours": with_hours,
+                    "listed_without_hours": len(
+                        shaped.get("listed_without_hours") or []),
+                    "hours": str(total_hours),
+                    "rows_stored": result.rows_stored,
+                },
+                # Blocking findings raise 422 before reaching here, so anything
+                # left is a warning — surfaced rather than buried in `report`.
+                "flags": [
+                    {"code": f.get("kind", "finding"), "severity": "warning",
+                     "message": f.get("detail", "")}
+                    for f in (shaped.get("findings") or [])
+                    if not f.get("blocking")
+                ]}
 
     payload = ExportPayload(
         filename=file.filename or "upload",

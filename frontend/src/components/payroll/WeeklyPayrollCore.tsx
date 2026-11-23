@@ -175,6 +175,16 @@ export function WeeklyPayrollCore({
   /** Set once the upload creates the row, so the Focus switches to the real
    *  week without a reload. */
   const [resolvedId, setResolvedId] = useState<string | null>(null)
+  /** ⚠️ **WHETHER THE LAST MESSAGE IS GOOD NEWS, CARRIED WITH IT.** The upload
+   *  reports through the same slot as every failure, and that slot is styled
+   *  `text-status-error` — so the first successful Employee Hours upload
+   *  rendered "Week 44 loaded: 25 people, 708.61 hours." IN RED. A success in
+   *  error colour is a sentence that contradicts itself, and the reader
+   *  believes the colour.
+   *
+   *  Defaults to false, so every existing `setError` path keeps reporting as
+   *  a failure; only a caller that KNOWS it succeeded says so. */
+  const [noticeOk, setNoticeOk] = useState(false)
 
   const weekEnd = useMemo(() => {
     if (typeof scope.week_end === "string" && scope.week_end) return scope.week_end
@@ -201,7 +211,8 @@ export function WeeklyPayrollCore({
     if (!weekId) {
       if (!weekEnd) return
       try {
-        const cur = await getCurrentWeek()
+        // ⚠️ THE WEEK THE CALLER ASKED FOR, not the week it is today.
+                const cur = await getCurrentWeek(weekEnd)
         setPending(cur)
         if (cur.week_id) setResolvedId(cur.week_id)
       } catch {
@@ -283,11 +294,13 @@ export function WeeklyPayrollCore({
             readOnly={readOnly}
             busy={busy}
             setBusy={setBusy}
-            onDone={async (msg) => {
+            onDone={async (msg, ok) => {
               setError(msg)
+              setNoticeOk(Boolean(ok))
               // The upload created the row; pick it up without a reload.
               try {
-                const cur = await getCurrentWeek()
+                // ⚠️ THE WEEK THE CALLER ASKED FOR, not the week it is today.
+                const cur = await getCurrentWeek(weekEnd)
                 if (cur.week_id) setResolvedId(cur.week_id)
                 else setPending(cur)
               } catch {
@@ -300,7 +313,11 @@ export function WeeklyPayrollCore({
               so without this the upload would report into a message nobody
               could see, including a refusal. */}
           {error ? (
-            <p data-testid="focus-error" className="text-body-sm text-content-base">
+            <p
+              data-testid="focus-error"
+              data-ok={noticeOk ? "yes" : "no"}
+              className={`text-body-sm ${noticeOk ? "text-content-base" : "text-status-error"}`}
+            >
               {error}
             </p>
           ) : null}
@@ -376,7 +393,11 @@ export function WeeklyPayrollCore({
         </header>
 
         {error ? (
-          <p data-testid="focus-error" className="text-body-sm text-status-error">
+          <p
+            data-testid="focus-error"
+            data-ok={noticeOk ? "yes" : "no"}
+            className={`text-body-sm ${noticeOk ? "text-content-base" : "text-status-error"}`}
+          >
             {error}
           </p>
         ) : null}
@@ -388,8 +409,9 @@ export function WeeklyPayrollCore({
             weekEndDate={focus.week_end_date}
             readOnly={readOnly}
             busy={busy}
-            onDone={async (msg) => {
+            onDone={async (msg, ok) => {
               setError(msg)
+              setNoticeOk(Boolean(ok))
               await reload()
             }}
             setBusy={setBusy}
@@ -613,7 +635,7 @@ function UploadCard({
   readOnly: boolean
   busy: boolean
   setBusy: (b: boolean) => void
-  onDone: (message: string | null) => void
+  onDone: (message: string | null, ok?: boolean) => void
 }) {
   const hours = useRef<HTMLInputElement>(null)
   const punch = useRef<HTMLInputElement>(null)
@@ -682,12 +704,24 @@ function UploadCard({
                 const blocking = (r.flags ?? []).find(
                   (x) => x.severity === "error",
                 )
+                // ⚠️ **AND IT SAYS WHAT HAPPENED TO THE PUNCH FILE.** She can
+                // attach one; nothing stores it yet. A success sentence that
+                // does not mention a file she attached is how somebody comes
+                // to believe punches were loaded.
+                const punchNote =
+                  r.punch_file && !r.punch_file.stored
+                    ? ` ${r.punch_file.reason}`
+                    : ""
                 onDone(
                   blocking
                     ? blocking.message
                     : `Week ${weekNumber} loaded: ${
                         r.summary?.people ?? r.summary?.rows_stored ?? "—"
-                      } people, ${r.summary?.hours ?? "—"} hours.`,
+                      } people, ${r.summary?.hours ?? "—"} hours.${punchNote}`,
+                  // ⚠️ A BLOCKING FLAG IS STILL BAD NEWS even though the
+                  // request succeeded — the severity follows the OUTCOME, not
+                  // the status code.
+                  !blocking,
                 )
               } catch (err) {
                 // ⚠️ **A FOURTH INSTANCE OF THE SAME DEFECT, FOUND BY ASKING
