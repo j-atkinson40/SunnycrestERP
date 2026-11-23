@@ -175,7 +175,27 @@ export function PayrollPaneStack({
           data-testid={`payroll-pane-${p.spec.key}`}
           aria-label={p.spec.title}
           className="pointer-events-auto absolute flex max-h-[70vh] flex-col overflow-hidden rounded-xl border border-border-subtle bg-surface-raised shadow-lg"
-          style={{ left: p.x, top: p.y, width: WIDTH, zIndex: 10 + i }}
+          // ⚠️ **THE SECOND CAP IS WHAT MAKES THE BODY'S SCROLLBAR REACHABLE.**
+          // `max-h-[70vh]` bounds the pane against the VIEWPORT; this host is
+          // `absolute inset-0 overflow-hidden` inside the Focus, which is
+          // shorter than 70vh, so a pane taller than the host was PAINTED
+          // CLIPPED — its body scrolled, and the scrollbar was cut away with
+          // the content, leaving no cue that anything was below. Capping the
+          // pane at the host's remaining height from its own top makes the
+          // existing `overflow-y-auto` below do the job it was added for.
+          //
+          // Found 2026-11-23 by reading a walk-through screenshot: the member
+          // pane, which had always fit, gained a Status row and both that
+          // row's button and the long-standing Timecard button vanished. No
+          // test could see it — Playwright and testing-library both scroll an
+          // element into view before clicking it.
+          style={{
+            left: p.x,
+            top: p.y,
+            width: WIDTH,
+            zIndex: 10 + i,
+            maxHeight: `calc(100% - ${p.y}px)`,
+          }}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
         >

@@ -390,3 +390,59 @@ export async function uploadRegister(file: File) {
   )
   return r.data
 }
+
+
+/* ── an employee's payroll status ────────────────────────────────────────
+ *
+ * ⚠️ **THE FIRST WRITER THESE COLUMNS HAVE EVER HAD.** `payroll_status` and
+ * `payroll_status_since` shipped with r234; measured on production
+ * 2026-11-21, 0 of 30 employees carried a value, because nothing could set
+ * one. The R-115's line 1 falls back to counting checks and says so, and
+ * `roster_coverage`'s excused branch had never once been taken.
+ */
+
+/** ⚠️ `null` IS NOT `"active"`. `null` means nobody has said; `active` means
+ *  somebody looked and said they are working. The R-115's line-1 fallback
+ *  turns on exactly that difference, so the client never collapses it. */
+export type PayrollEmployeeStatus = "active" | "left" | "workers_comp" | "leave"
+
+export interface StatusChange {
+  id: string
+  status: PayrollEmployeeStatus
+  /** The day the status BEGAN — not the day it was recorded. */
+  since: string
+  previous_status: PayrollEmployeeStatus | null
+  previous_since: string | null
+  reason: string
+  /** The day somebody typed it in. Routinely months after `since`. */
+  changed_at: string | null
+  changed_by_user_id: string | null
+  changed_by_name: string | null
+}
+
+export interface EmployeeStatus {
+  employee_id: string
+  display_name: string | null
+  status: PayrollEmployeeStatus | null
+  since: string | null
+  history: StatusChange[]
+}
+
+export async function getEmployeeStatus(employeeId: string) {
+  const r = await apiClient.get<EmployeeStatus>(
+    `${BASE}/employees/${encodeURIComponent(employeeId)}/status`,
+  )
+  return r.data
+}
+
+export async function setEmployeeStatus(
+  employeeId: string,
+  input: { status: PayrollEmployeeStatus; since: string; reason: string },
+) {
+  const r = await apiClient.put<StatusChange>(
+    `${BASE}/employees/${encodeURIComponent(employeeId)}/status`,
+    form(input),
+    { headers: FORM_HEADERS },
+  )
+  return r.data
+}

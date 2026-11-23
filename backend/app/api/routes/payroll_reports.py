@@ -1127,6 +1127,107 @@ def _form_shape(form: PayrollUnionFormR115) -> dict:
     }
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Payroll employee status — the entrance r234 never had.
+#
+# ⚠️ `r234` added `payroll_status` / `payroll_status_since` and NOTHING COULD
+# WRITE THEM. Measured on production 2026-11-21: 0 of 30 employees carried a
+# value, while the R-115's line 1 and `roster_coverage`'s excused branch both
+# read them — so line 1 fell back to counting checks and the excused branch
+# had never once been taken.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _employee_or_404(db: Session, tenant_id: str, employee_id: str):
+    from app.models.payroll_report import PayrollReportEmployee
+
+    emp = (db.query(PayrollReportEmployee)
+           .filter(PayrollReportEmployee.tenant_id == tenant_id,
+                   PayrollReportEmployee.id == employee_id)
+           .first())
+    if emp is None:
+        # ⚠️ Filtered on tenant FIRST, so another tenant's employee is a 404
+        # and not a 403 — a 403 would confirm the id exists.
+        raise HTTPException(404, "no such employee for this company")
+    return emp
+
+
+@router.get("/employees/{employee_id}/status")
+def get_employee_status(
+    employee_id: str,
+    current_user: User = Depends(require_permission("payroll.view")),
+    db: Session = Depends(get_db),
+):
+    """One employee's current payroll status, and how it got there."""
+    from app.services.payroll import employee_status as status_service
+
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    assert_payroll_data_enabled(company)
+    emp = _employee_or_404(db, current_user.company_id, employee_id)
+    rows = status_service.history(db, employee_id=emp.id)
+
+    names: dict[str, str] = {}
+    ids = {r.changed_by_user_id for r in rows if r.changed_by_user_id}
+    if ids:
+        for u in db.query(User).filter(User.id.in_(ids)).all():
+            names[u.id] = f"{u.first_name} {u.last_name}".strip() or u.email
+
+    status, since = status_service.current(emp)
+    return {
+        "employee_id": emp.id,
+        "display_name": emp.display_name,
+        # ⚠️ `null` MEANS NOBODY HAS SAID, and is not the same as "active".
+        # The client words the difference; the server does not collapse it.
+        "status": status,
+        "since": since.isoformat() if since else None,
+        "history": [status_service.shape_change(r, by_name=names.get(
+            r.changed_by_user_id)) for r in rows],
+    }
+
+
+@router.put("/employees/{employee_id}/status", status_code=201)
+def set_employee_status(
+    employee_id: str,
+    status: str = Form(...),
+    since: date = Form(...),
+    reason: str = Form(...),
+    current_user: User = Depends(require_permission(PAYROLL_WRITE)),
+    db: Session = Depends(get_db),
+):
+    """Record a status change. Appends history; never an overwrite.
+
+    ⚠️ **`payroll.approve`, NOT ADMIN.** Susan is the person who knows that
+    somebody left — she reconciles the roster against the register every
+    week. Requiring an admin would mean the fact is known by one person and
+    recordable only by another, which is how it stays unrecorded.
+    """
+    from app.services.payroll import employee_status as status_service
+
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    assert_payroll_data_enabled(company)
+    emp = _employee_or_404(db, current_user.company_id, employee_id)
+    before = status_service.current(emp)
+    try:
+        change = status_service.set_status(
+            db, employee=emp, status=status, since=since, reason=reason,
+            user_id=current_user.id)
+    except status_service.EmployeeStatusError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    audit_service.log_action(
+        db, current_user.company_id, "payroll_employee_status_changed",
+        "payroll_report_employee", emp.id, user_id=current_user.id,
+        changes={"status": {"before": before[0], "after": change.status},
+                 "since": {"before": before[1].isoformat() if before[1] else None,
+                           "after": change.since.isoformat()},
+                 "reason": change.reason},
+    )
+    db.commit()
+    return status_service.shape_change(
+        change,
+        by_name=f"{current_user.first_name} {current_user.last_name}".strip())
+
+
 def _r115_subject(year: int, month: int) -> str:
     """What an R-115 copy is ABOUT. One producer — the writer and every
     reader derive the subject here, so a copy cannot be filed under
