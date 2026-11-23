@@ -43,6 +43,8 @@
  * ⚠️ `PW_BASE_URL` is needed because vite binds IPv6 `localhost` and the
  * config's default is `127.0.0.1`, which refuses the connection.
  */
+import { execFileSync } from "node:child_process"
+
 import { expect, test, type Page } from "@playwright/test"
 
 const WEEK_ID = process.env.PW_WEEK_ID ?? ""
@@ -51,6 +53,10 @@ const EMAIL = process.env.PW_WALK_EMAIL ?? "susan.walkthrough@testco.example.com
 const PASSWORD = process.env.PW_WALK_PASSWORD ?? "WalkThrough123!"
 const SHOTS = "tests/local/shots"
 const API = process.env.PW_API ?? "http://localhost:8000"
+const PY =
+  process.env.PW_PY ?? "/Users/Jimmy1/Projects/SunnycrestERP-5a/backend/.venv/bin/python"
+const BACKEND =
+  process.env.PW_BACKEND ?? "/Users/Jimmy1/Projects/SunnycrestERP-setup/backend"
 /** ⚠️ **READ IN PLACE AND NEVER COPIED INTO THE REPOSITORY.** It is a real
  *  payroll export: real names, real rates. Points outside the tree, the way
  *  the register is handled. */
@@ -82,6 +88,37 @@ async function asSusan(page: Page) {
   await page.getByLabel(/password/i).fill(PASSWORD)
   await page.getByRole("button", { name: /sign in/i }).click()
   await page.waitForURL(/\/(home|note)/, { timeout: 30_000 })
+}
+
+/**
+ * Run a short python snippet against the same database the server is using.
+ *
+ * ⚠️ **THE WALK TOUCHES REAL DATA, SO IT SAYS SO LOUDLY AND PUTS IT BACK.**
+ * The hours-upload step needs the roster to know the ids in the real export —
+ * a precondition `import_hours` ENFORCES, not a workaround — and no API seeds
+ * a roster. The alternative was to mock the upload, which would have made the
+ * one step that matters prove nothing.
+ */
+function sql(snippet: string): string {
+  return execFileSync(PY, ["-c", snippet], {
+    cwd: BACKEND,
+    encoding: "utf8",
+    env: { ...process.env },
+  }).trim()
+}
+
+const PRELUDE = [
+  "from sqlalchemy import text",
+  "from app.database import SessionLocal",
+  "db = SessionLocal()",
+  "C = 'staging-test-001'",
+].join("\n")
+
+function py(body: string): string {
+  return `${PRELUDE}\ntry:\n${body
+    .split("\n")
+    .map((l) => `    ${l}`)
+    .join("\n")}\nfinally:\n    db.close()`
 }
 
 /** The session's own token, read back from where the app put it, so the
@@ -343,108 +380,182 @@ test("week 44, start to finish, as the payroll user", async ({ page }) => {
 /**
  * ⚠️ **A WALK-THROUGH NEVER MOCKS THE WRITE IT WALKS THROUGH.**
  *
- * Added 2026-11-17, and it is the test whose absence let a never-working
- * upload ship green through an entire arc: `apiClient`'s JSON content-type
- * turned every FormData body into about thirteen bytes of `{"file":{}}`.
+ * ⚠️ **AND ON 2026-11-23 THIS ONE FOUND THAT THE UPLOAD HAD NEVER REACHED ITS
+ * PARSER.** `POST /weeks/upload` chose a parser from a `format_key` form field
+ * defaulting to `"payentry"` — the key of an old GUESSED CSV mapping carrying
+ * `verified: false`. The Focus never sent the field, so every upload Susan
+ * made took that default and was refused, **in every environment**. Payroll 3's
+ * Employee Hours PDF reader sat behind `"payentry_employee_hours"`, a string
+ * that appeared exactly once in the whole tree: at its own definition.
  *
- * ⚠️ **REWRITTEN 2026-11-23, AND WHAT IT FOUND IS WHY.** There were TWO upload
- * tests here, both gated on `PW_HOURS_PDF`. Nothing in the repo, in CI or in
- * any runbook ever set that variable, so **both had been skipping since the day
- * they landed** — a skip with a stated reason, which reads as deliberate and
- * is still a channel that has never once reported. Supplying the real file for
- * the first time, on 2026-11-23, neither could pass:
+ * The endpoint now routes on the BYTES. This step is the proof, and it is the
+ * only instrument that could give it — Phase 3's suite tests the parser and
+ * the rules, and would have stayed green through the entire period the product
+ * was broken. That is not a hypothetical; it is what happened.
  *
- *   "the hours upload sends a REAL file"  Its own precondition is right and
- *       unsatisfiable: the upload card renders only while the week has nobody
- *       on it, and `seed_week44_walkthrough` always populates week 44. It
- *       needed a week in `awaiting_hours` that the fixture never produces.
+ * It sends the real export through the Focus's own file input and then READS
+ * THE SERVER BACK. Not the screen — the screen renders whatever it is given,
+ * which is exactly how a never-working upload shipped green for an arc.
  *
- *   "zero weeks → upload a real file"  Its precondition asserted that the
- *       CURRENT week has no row, which is narrower than its own name: the
- *       tenant holds week 44, so `/payroll` shows that week and offers "Open
- *       weekly payroll" rather than "Upload this week". Measurement and
- *       population disagreeing, CLAUDE.md §11.
- *
- * ⚠️ **AND UNDERNEATH BOTH, THE FINDING THAT MATTERS: THE PAYENTRY UPLOAD
- * CANNOT SUCCEED IN ANY ENVIRONMENT.** Driven through the pending week's own
- * card with the real export, the server answers **422**:
- *
- *   > Column mapping 'payentry' is marked verified=false: its column names
- *   > were written without a sample export and are guesses.
- *
- * `column_mappings/payentry.json` carries `verified: false` and
- * `bridgeable_csv.json` carries `true`. The UI sends `format_key="payentry"`
- * and has no way to pass `allow_unverified_mapping`, which only the test suite
- * uses. That is the import failing CLOSED, which its own docstring argues for
- * — "a guessed mapping that silently works is the worst available outcome" —
- * and it means the Monday upload Susan is meant to run is blocked until
- * somebody confirms those headers against a real export. **Not flipped here:**
- * `verified: true` is an assertion about a real export, and §5 says a value
- * nobody measured does not get written because it would be convenient.
- *
- * So this is what the suite can honestly hold today, and it is not nothing:
- * the real file, through the real input, over real multipart — and the
- * server's refusal **shown on screen, verbatim**. That is the half that has
- * regressed before (four Focus writes claimed "nothing has been changed" when
- * they could not know), and it is the half a person depends on.
+ * ⚠️ **THE FILE IS READ IN PLACE AND IS NEVER COPIED INTO THE REPOSITORY.**
+ * It is a real payroll export: real names, real rates. `PW_HOURS_PDF` points
+ * at it outside the tree, the way the register is handled.
  */
-test("a REAL file through the real input, and the server's answer on screen", async ({
+test("the REAL Employee Hours PDF, through the Focus, reaches the Payroll 3 parser", async ({
   page,
 }) => {
   test.skip(
     HOURS_PDF === "",
     "PW_HOURS_PDF must point at a real Payentry Employee Hours PDF, outside " +
-      "the repo. Skipped rather than faked: a mocked upload is what this " +
-      "exists to replace. Try " +
+      "the repo. Skipped rather than faked: a synthesised PDF would test my " +
+      "idea of the format, which is precisely what the guessed CSV mapping " +
+      "already was. Try " +
       "~/Downloads/Payentry_Employee_Hours_2026-10-25_to_10-31.pdf",
   )
 
   await asSusan(page)
 
-  // ⚠️ THE PENDING WEEK, REACHED BY `week_end` — the week being worked has no
-  // row, and that is the only state in which the upload card renders. The two
-  // tests this replaces both tried to reach it another way and could not.
+  // ⚠️ **THE ROSTER IS A PRECONDITION THE IMPORTER ENFORCES.** `import_hours`
+  // refuses a whole file whose employee ids are not in the register or the
+  // roster — "correct hours against a person who does not exist" is what a
+  // mis-read number looks like, and that guard is why the parser can be
+  // trusted. The walk seeds the ids (NOT the names: nothing here writes a real
+  // employee's name) and removes them again at the end.
+  const seeded = sql(
+    py(
+      "import uuid, pathlib, pdfplumber\n"
+      + "from app.models.payroll_report import PayrollReportEmployee\n"
+      + "from app.services.payroll.hours_parser import parse_employee_hours\n"
+      + `with pdfplumber.open(pathlib.Path(${JSON.stringify(HOURS_PDF)}).expanduser()) as f:\n`
+      + "    ids = sorted(parse_employee_hours(f).emp_ids)\n"
+      + "made = 0\n"
+      + "for e in ids:\n"
+      + "    if db.query(PayrollReportEmployee).filter(\n"
+      + "            PayrollReportEmployee.tenant_id==C,\n"
+      + "            PayrollReportEmployee.payentry_file_number==e).first():\n"
+      + "        continue\n"
+      + "    db.add(PayrollReportEmployee(id=str(uuid.uuid4()), tenant_id=C,\n"
+      + "        payentry_file_number=e, display_name=f'Walk {e}',\n"
+      + "        is_union_member=False))\n"
+      + "    made += 1\n"
+      + "db.execute(text(\"DELETE FROM payroll_hours_imports WHERE tenant_id=:c \"\n"
+      + "    \"AND week_end_date='2026-10-31'\"), {'c': C})\n"
+      + "db.commit()\n"
+      + "print(f'{len(ids)} ids, {made} added')",
+    ),
+  )
+  console.log(`[walk] roster seeded: ${seeded}`)
+
+  // ⚠️ **AIM IT AT THE WEEK THE FILE IS ACTUALLY FOR.** The first version of
+  // this step opened the week being worked (47) and uploaded a week-44 export.
+  // The server refused — "the file covers the week ending 2026-10-31, not the
+  // requested 2026-11-21" — which is the importer being RIGHT, and is worth
+  // asserting rather than designing around. Both are checked below.
   const pending = await (await page.request.get(
     `${API}/api/v1/payroll-reports/weeks/current`,
     { headers: { Authorization: `Bearer ${await tokenOf(page)}`,
                  "X-Company-Slug": SLUG } },
   )).json()
-  expect(
-    pending.exists,
-    `week ${pending.week_number} already has a row, so there is no upload card ` +
-      "to drive — this test needs the week being worked to be empty",
-  ).toBe(false)
-
-  await page.goto(
-    `/home?focus=weekly-payroll&week_end=${pending.week_end_date}`,
-  )
+  await page.goto(`/home?focus=weekly-payroll&week_end=${pending.week_end_date}`)
   await expect(page.getByTestId("upload-card")).toBeVisible({ timeout: 20_000 })
-  await shot(page, "10-upload-card-for-the-pending-week")
+  await page.getByTestId("hours-file").setInputFiles(HOURS_PDF)
+  await page.getByTestId("upload-hours").click()
+  const wrongWeek = page.getByTestId("focus-error")
+  await expect(wrongWeek).toBeVisible({ timeout: 60_000 })
+  await expect(wrongWeek).toContainText("2026-10-31")
+  await expect(wrongWeek).toContainText(pending.week_end_date)
+  // The control for the assertion above: a refusal IS an error, and says so.
+  await expect(wrongWeek).toHaveAttribute("data-ok", "no")
+  console.log("[walk] a week-44 file into week " + pending.week_number +
+    " is refused, and the sentence names both weeks")
+  await shot(page, "09a-upload-into-the-wrong-week")
 
-  // The real file, through the real input, over real multipart.
+  // Now the week the file IS for. The seed already built week 44, so its row
+  // is removed to get back to the state the upload card lives in — which is
+  // why the seed must be re-run before another pass of this walk.
+  console.log(`[walk] clearing week 44: ${sql(py(
+    "n = db.execute(text(\"DELETE FROM payroll_weeks WHERE tenant_id=:c \"\n"
+    + "    \"AND week_end_date='2026-10-31'\"), {'c': C}).rowcount\n"
+    + "db.commit()\n"
+    + "print(f'{n} week row(s)')"))}`)
+
+  await page.goto("/home?focus=weekly-payroll&week_end=2026-10-31")
+  await expect(page.getByTestId("upload-card")).toBeVisible({ timeout: 20_000 })
   await page.getByTestId("hours-file").setInputFiles(HOURS_PDF)
   await page.getByTestId("upload-hours").click()
 
-  // ⚠️ **THE SERVER'S OWN SENTENCE, ON SCREEN.** Not "could not upload" — the
-  // reason, which is the only part that tells anybody what to do next. A
-  // generic line here is the defect `failureText` was written to kill.
-  const err = page.getByTestId("focus-error")
-  await expect(err).toBeVisible({ timeout: 30_000 })
-  await expect(err).toContainText("verified=false")
-  await expect(err).toContainText(/sample export/i)
-  await shot(page, "11-upload-refusal-shown-verbatim")
+  // ⚠️ **THE SENTENCE ON SCREEN IS PART OF THE FIX.** The PDF branch returned
+  // no `summary`, so the card rendered "— people, — hours." on a week that had
+  // loaded correctly. 25 is everyone the export LISTS (18 have hours, 7 do
+  // not) — the figure James stated.
+  const said = page.getByTestId("focus-error")
+  await expect(said).toBeVisible({ timeout: 60_000 })
+  await expect(said).toContainText("25 people")
+  await expect(said).toContainText("708.61 hours")
+  // ⚠️ **AND IT IS NOT RENDERED AS AN ERROR.** The upload reports through the
+  // same slot as every failure, and that slot was styled `text-status-error`
+  // — so the first successful Employee Hours upload said "Week 44 loaded: 25
+  // people, 708.61 hours." IN RED. A success in error colour contradicts
+  // itself and the reader believes the colour. Found by reading the
+  // screenshot, which is the only thing that could see it.
+  await expect(said).toHaveAttribute("data-ok", "yes")
+  await shot(page, "10-real-hours-upload")
 
-  // ⚠️ AND NOTHING WAS WRITTEN. A refusal that still created the week would be
-  // worse than no refusal, and the screen cannot tell you either way.
-  const after = await (await page.request.get(
-    `${API}/api/v1/payroll-reports/weeks/current`,
-    { headers: { Authorization: `Bearer ${await tokenOf(page)}`,
-                 "X-Company-Slug": SLUG } },
-  )).json()
-  expect(after.exists, "the refused upload created a week anyway").toBe(false)
-
-  console.log(
-    `[walk] the payentry mapping is unverified, so the upload is refused and ` +
-      `says so. Week ${pending.week_number} still has no row, correctly.`,
+  // ⚠️ **READ BACK FROM THE SERVER, NOT FROM THE SCREEN.** The screen would
+  // have said "loaded" on any 200 for the whole time this was broken.
+  const stored = sql(
+    py(
+      "row = db.execute(text(\"SELECT count(DISTINCT h.emp_id), coalesce(sum(h.hours),0) \"\n"
+      + "    \"FROM payroll_hours_lines h JOIN payroll_hours_imports i ON i.id=h.import_id \"\n"
+      + "    \"WHERE i.tenant_id=:c AND i.week_end_date='2026-10-31'\"), {'c': C}).fetchone()\n"
+      // ⚠️ **NORMALISED, BECAUSE `hours` IS `Numeric(10,4)` AND COMES BACK
+      // "708.6100".** My first assertion compared it to the string "708.61"
+      // and failed on formatting while the figure was exactly right — the same
+      // trap recorded on 2026-11-17: compare DECIMALS for hours, strings for
+      // money.
+      + "print(f'{row[0]} with hours, {row[1].normalize()} hours')",
+    ),
   )
+  console.log(`[walk] the server holds: ${stored}`)
+  expect(stored).toBe("18 with hours, 708.61 hours")
+
+  // ⚠️ **THE WEEK NOW EXISTS, WHICH A REFUSED UPLOAD CANNOT PRODUCE.** It
+  // opens on week 44 at status `imported`.
+  //
+  // ⚠️ **AND IT DOES NOT SHOW A WEEK TABLE, WHICH IS CORRECT HERE AND WAS MY
+  // FIRST ASSERTION.** Dues need a pay rate, and the roster rows this walk
+  // seeds are ids with no rates — so Opas flags "no effective pay rate on or
+  // before the week end date" for each and no line is calculated. That is the
+  // engine being right about a synthetic roster, not the import failing, and
+  // asserting a table here would have been a claim about the fixture dressed
+  // as a claim about the product.
+  await page.goto("/home?focus=weekly-payroll&week_end=2026-10-31")
+  await expect(
+    page.getByRole("heading", { name: /Week 44/ }),
+  ).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByTestId("findings")).toContainText(/pay rate/i)
+  await shot(page, "11-week-loaded-from-the-real-export")
+
+  const weekRow = sql(
+    py(
+      "r = db.execute(text(\"SELECT status FROM payroll_weeks WHERE tenant_id=:c \"\n"
+      + "    \"AND week_end_date='2026-10-31'\"), {'c': C}).fetchone()\n"
+      + "print(r[0] if r else 'NO ROW')",
+    ),
+  )
+  console.log(`[walk] week 44 on the server: ${weekRow}`)
+  expect(weekRow).toBe("imported")
+
+  // ⚠️ UNDONE, so the walk is repeatable and leaves the fixture as found.
+  const undone = sql(
+    py(
+      "n = db.execute(text(\"DELETE FROM payroll_hours_imports WHERE tenant_id=:c \"\n"
+      + "    \"AND week_end_date='2026-10-31'\"), {'c': C}).rowcount\n"
+      + "m = db.execute(text(\"DELETE FROM payroll_report_employees WHERE tenant_id=:c \"\n"
+      + "    \"AND display_name LIKE 'Walk %'\"), {'c': C}).rowcount\n"
+      + "db.commit()\n"
+      + "print(f'{n} imports, {m} roster rows')",
+    ),
+  )
+  console.log(`[walk] undone: ${undone}`)
 })

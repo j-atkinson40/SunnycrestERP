@@ -171,8 +171,20 @@ export interface CurrentWeek {
   cutoff_provenance: { status: string; source: string }
 }
 
-export async function getCurrentWeek() {
-  const r = await apiClient.get<CurrentWeek>(`${BASE}/weeks/current`)
+/**
+ * The week being worked, or — given `weekEnd` — the descriptor for that week.
+ *
+ * ⚠️ **THE ARGUMENT EXISTS BECAUSE `week_end` WAS HONOURED AS A FLAG AND
+ * IGNORED AS A VALUE.** The Focus reads `?week_end=` to decide it is on a week
+ * with no row, then called this with no argument and uploaded against whatever
+ * today's week was. `week_end=2026-10-31` rendered "Week 47" and posted week
+ * 47; the importer refused, correctly, about a week nobody asked for — and a
+ * late week could not be uploaded at all.
+ */
+export async function getCurrentWeek(weekEnd?: string | null) {
+  const r = await apiClient.get<CurrentWeek>(`${BASE}/weeks/current`, {
+    params: weekEnd ? { week_end: weekEnd } : undefined,
+  })
   return r.data
 }
 
@@ -293,11 +305,47 @@ export interface WeekFinding {
   detail: Record<string, unknown>
 }
 
+/**
+ * ⚠️ **TWO SHAPES BEHIND ONE BUTTON, AND THIS TYPE DESCRIBED ONLY THE DEAD
+ * ONE.** `POST /weeks/upload` has a legacy delimited-text branch (`week`,
+ * `import`) and the Employee Hours PDF branch (`import_id`, `week_id`,
+ * `report`). The PDF branch is the one Susan's upload takes, and it returned
+ * neither `summary` nor `flags` — so the card's sentence rendered "Week 44
+ * loaded: — people, — hours." on a week that had just loaded correctly.
+ *
+ * The server now returns `summary` and `flags` from BOTH branches, so the
+ * screen does not have to know which parser ran. The branch-specific fields
+ * stay optional and are not read by the card.
+ */
 export interface WeekUploadResult {
-  week: { id: string; week_number: number; status: string }
-  import: Record<string, unknown>
-  summary: Record<string, number>
+  /** Legacy delimited-text branch only. */
+  week?: { id: string; week_number: number; status: string }
+  import?: Record<string, unknown>
+  /** Employee Hours PDF branch only. */
+  import_id?: string
+  week_id?: string
+  report?: Record<string, unknown>
+  /** ⚠️ `people` is everyone the export LISTS; `with_hours` is how many of
+   *  them have hours. Week 44 is 25 and 18 — different populations, both
+   *  returned, so neither can drift into standing for the other. */
+  summary: {
+    people?: number
+    with_hours?: number
+    listed_without_hours?: number
+    hours?: string
+    rows_stored?: number
+  } & Record<string, unknown>
   flags: { code: string; severity: string; message: string }[]
+  /** ⚠️ Present only when a Punch Location file was attached. `stored` is
+   *  FALSE — ingestion is unbuilt — and the reason says so, because a success
+   *  that does not mention the file is how somebody comes to believe it
+   *  loaded. */
+  punch_file?: {
+    filename: string | null
+    stored: boolean
+    recognised_as: string
+    reason: string
+  } | null
 }
 
 /** Multipart, because it carries the Employee Hours PDF. Punch Location is
