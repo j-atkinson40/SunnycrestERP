@@ -1677,16 +1677,27 @@ def _working_for(db: Session, tenant_id: str, vacation, checks: int):
 
 
 def _regular_rate_for(db: Session, tenant_id: str, emp, on: date):
-    """The most recent effective rate on or before `on`."""
-    from app.models.payroll_report import PayrollRate
+    """The most recent effective rate on or before `on`.
 
-    row = (db.query(PayrollRate)
-           .filter(PayrollRate.tenant_id == tenant_id,
-                   PayrollRate.emp_id == emp.payentry_file_number,
-                   PayrollRate.effective_date <= on)
-           .order_by(PayrollRate.effective_date.desc())
-           .first())
-    return Decimal(str(row.hourly_rate)) if row else None
+    ⚠️ **THIS FUNCTION WAS BROKEN WHEN IT SHIPPED IN #50 AND NOTHING NOTICED.**
+    It queried `PayrollRate.tenant_id`, `PayrollRate.emp_id` and
+    `PayrollRate.hourly_rate` — **none of which exist**. The real columns are
+    `employee_id` and `reg_rate`, and the table carries no tenant column at
+    all (it is scoped through the employee row). Opening a NON-UNION person's
+    vacation pay would have raised `AttributeError`.
+
+    It shipped because every vacation test used a union member, so the
+    non-union branch was never driven — a guard reasoned from one caller,
+    which this repo has a standing entry about. Found in the week-44 dress
+    rehearsal, by looking at `PayrollRate`'s actual columns for an unrelated
+    reason.
+
+    ⚠️ **AND IT NOW USES `service.resolve_rate` RATHER THAN A SECOND QUERY.**
+    A private copy of "which rate applies on a date" is a second answer to a
+    question the engine already answers, and the two would diverge.
+    """
+    row = payroll_service.resolve_rate(db, emp.id, on)
+    return Decimal(str(row.reg_rate)) if row and row.reg_rate is not None else None
 
 
 def _shape_working(w) -> dict:

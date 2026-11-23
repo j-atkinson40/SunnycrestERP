@@ -502,3 +502,99 @@ def test_EVERY_platform_fragment_registers_and_the_payroll_four_are_there():
     # And the non-payroll ones, so a future edit cannot truncate `seed()`
     # past them either.
     assert {"anomaly_watchlist", "compliance_flags", "tasks_due_today"} <= ids
+
+
+# ── the NON-UNION path, which shipped broken ─────────────────────────────
+
+
+@pytest.fixture
+def non_union_member():
+    """Somebody not in the union, with a pay rate on file."""
+    from app.database import SessionLocal
+    from app.models.payroll_report import PayrollRate, PayrollReportEmployee
+
+    db = SessionLocal()
+    eid = str(uuid.uuid4())
+    try:
+        db.add(PayrollReportEmployee(
+            id=eid, tenant_id=TESTCO_ID, payentry_file_number="VAC-NU",
+            display_name="Office, Test", is_union_member=False,
+            hire_date=date(2020, 1, 6)))
+        db.flush()
+        db.add(PayrollRate(id=str(uuid.uuid4()), employee_id=eid,
+                           reg_rate=D("20.00"), effective_date=date(2026, 1, 1)))
+        db.commit()
+        yield eid
+    finally:
+        db.execute(text("DELETE FROM payroll_vacation_payments WHERE vacation_id IN "
+                        "(SELECT id FROM payroll_vacations WHERE employee_id=:e)"),
+                   {"e": eid})
+        db.execute(text("DELETE FROM payroll_vacations WHERE employee_id=:e"), {"e": eid})
+        db.execute(text("DELETE FROM payroll_rates WHERE employee_id=:e"), {"e": eid})
+        db.execute(text("DELETE FROM payroll_report_employees WHERE id=:e"), {"e": eid})
+        db.commit()
+        db.close()
+
+
+def test_a_NON_UNION_vacation_pays_rate_times_hours_with_no_bonus(
+        client, tokens, switch_on, non_union_member):
+    """⚠️ **THE PATH THAT SHIPPED BROKEN IN #50.** `_regular_rate_for` queried
+    `PayrollRate.tenant_id`, `.emp_id` and `.hourly_rate` — none of which
+    exist — so opening a non-union person's vacation pay raised
+    `AttributeError`. Every vacation test used a UNION member, so the branch
+    was never driven: a guard reasoned from one caller.
+
+    Found in the week-44 dress rehearsal, by reading `PayrollRate`'s actual
+    columns for an unrelated reason. This is the test that would have caught
+    it, and the golden is James's: 16 h at $20.00 → 320.00, no bonus."""
+    made = client.post(f"{BASE}/employees/{non_union_member}/vacation",
+                       data={"start_date": "2026-09-07", "end_date": "2026-09-08",
+                             "hours": "16", "source": "approved request"},
+                       headers=_auth(tokens["payroll"]))
+    assert made.status_code == 201, made.text[:300]
+    vid = made.json()["id"]
+
+    r = client.get(f"{BASE}/vacations/{vid}/pay", params={"checks": 1},
+                   headers=_auth(tokens["payroll"]))
+    assert r.status_code == 200, r.text[:400]
+    body = r.json()
+    w = body["working"]
+    assert w is not None, body["unavailable"]
+    assert body["union"] is False
+    # ⚠️ **`20.0000`, NOT `20.00` — COMPARE THE DECIMAL, NOT THE STRING.**
+    # `reg_rate` is `Numeric(10,4)` and a rate genuinely carries four places
+    # (the union rate is 22.5116). My first expectation encoded a formatting
+    # assumption, which is the trap recorded on 2026-11-17: decimals for
+    # hours and rates, strings for money.
+    assert D(w["rate"]) == D("20"), w["rate"]
+    assert w["parts"][0]["vac_pay"] == "320.00"
+    assert w["parts"][0]["vac_bonus"] == "0.00"
+    assert w["bonus_year_total"] is None
+
+
+def test_a_non_union_person_with_NO_RATE_is_told_so(
+        client, tokens, switch_on, member):
+    """⚠️ The control for the above, and it uses the UNION fixture with its
+    union flag flipped — so the refusal is reached through the same branch
+    rather than through the union one."""
+    from app.database import SessionLocal
+    from app.models.payroll_report import PayrollReportEmployee
+
+    db = SessionLocal()
+    try:
+        emp = db.query(PayrollReportEmployee).filter(
+            PayrollReportEmployee.id == member).first()
+        emp.is_union_member = False
+        db.commit()
+    finally:
+        db.close()
+
+    vid = client.post(f"{BASE}/employees/{member}/vacation",
+                      data={"start_date": "2026-09-14", "end_date": "2026-09-15",
+                            "hours": "16", "source": "approved request"},
+                      headers=_auth(tokens["payroll"])).json()["id"]
+    r = client.get(f"{BASE}/vacations/{vid}/pay",
+                   headers=_auth(tokens["payroll"]))
+    assert r.status_code == 200, r.text[:300]
+    assert r.json()["working"] is None
+    assert "No pay rate is on file" in r.json()["unavailable"]

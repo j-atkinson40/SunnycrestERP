@@ -361,7 +361,18 @@ export function WeeklyPayrollCore({
     )
   }
 
-  const hasHours = dues !== false && dues !== null && dues.members.length > 0
+  // ⚠️ **TWO DIFFERENT FACTS, AND THEY WERE ONE VARIABLE CALLED `hasHours`.**
+  // Found in the week-44 dress rehearsal: the Focus header read "Week 44 ·
+  // imported" with 708.61 hours loaded, and directly beneath it the card said
+  // **"No hours for week 44 yet."** It was testing whether DUES had been
+  // calculated — and nobody had a pay rate, so there were no dues rows and the
+  // screen asserted something false about the hours.
+  //
+  // The week's STATUS is what knows whether hours arrived; `imported` and
+  // everything after it mean they did.
+  const hoursLoaded = focus.status !== "awaiting_hours"
+  const hasDues = dues !== false && dues !== null && dues.members.length > 0
+  const hasHours = hoursLoaded || hasDues
   const decided = new Set(focus.decisions.map((d) => d.finding_key))
   const open = focus.findings.filter((f) => !decided.has(f.key))
   const current = open[0] ?? null
@@ -395,7 +406,16 @@ export function WeeklyPayrollCore({
               })
             }
           >
-            Union dues{focus.dues.total ? ` · $${focus.dues.total}` : ""}
+            {/* ⚠️ "$0.00" AND "NOT CALCULATED" ARE DIFFERENT FACTS. The
+                rehearsal showed "Union dues · $0.00" on a week with 708.61
+                hours where nobody had a pay rate — which reads as "they owe
+                nothing" and meant "this could not be worked out". */}
+            Union dues
+            {hasDues && focus.dues.total
+              ? ` · $${focus.dues.total}`
+              : hoursLoaded
+                ? " · not calculated"
+                : ""}
           </button>
         </header>
 
@@ -410,6 +430,9 @@ export function WeeklyPayrollCore({
         ) : null}
 
         {/* ── 1. no hours yet ─────────────────────────────────────────── */}
+        {/* ⚠️ Shown only when the hours have NOT arrived. A week that is
+            `imported` but has no dues is a different sentence — see
+            `hoursLoaded` above and the rehearsal that found it. */}
         {!hasHours ? (
           <UploadCard
             weekNumber={focus.week_number}
