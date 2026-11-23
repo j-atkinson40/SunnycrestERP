@@ -53,6 +53,10 @@ class ImportResult:
     checks_failed: int
     summary_blocks_skipped: int
     report: dict
+    #: ⚠️ **REPORTED, because James asked to be told.** A backfill upload
+    #: inserts zero checks and writes many rates, and "0 inserted" with no
+    #: other number reads as "nothing happened".
+    rates_written: int = 0
 
 
 def _report(result, inserted_keys, duplicate_keys) -> dict:
@@ -210,6 +214,16 @@ def import_register(
     record.report = _report(result, inserted_keys, duplicate_keys)
     db.flush()
 
+    # ⚠️ **RATES, DERIVED FROM EVERY CHECK THIS TENANT HOLDS.** Not only the
+    # ones just inserted: a re-upload where every check is a duplicate must
+    # still write the rates, because that is exactly the upload meant to
+    # backfill a tenant that has none. See `rate_writer` for the ruling.
+    from app.services.payroll.rate_writer import write_rates
+
+    rates = write_rates(db, tenant_id=tenant_id)
+    record.report = {**record.report, "rates": rates.as_dict()}
+    db.flush()
+
     return ImportResult(
         import_id=record.id,
         pages=result.pages,
@@ -219,4 +233,5 @@ def import_register(
         checks_failed=len(result.failed),
         summary_blocks_skipped=result.summary_blocks,
         report=record.report,
+        rates_written=rates.written,
     )

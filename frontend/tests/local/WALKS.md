@@ -85,7 +85,7 @@ the seed. It says so when the finding is already answered.
     "walk": "payroll-week44-walkthrough.spec.ts",
     "what": "Susan's week, start to finish: sign in, the note, both entrances, the finding, a correction, approve, the deduction list, the panes. Plus a real Employee Hours export through the real input.",
     "verified_on": "2026-11-23",
-    "verified_at_commit": "3188424ebb87c21585c7e89be0dc2ce79e94e049",
+    "verified_at_commit": "a4e5eaff695e217974d7a638196f00d976d42dff",
     "fingerprints": {
       "src/App.tsx": "991b7ac4e5dd873bad9fa734e25ee4ab6c122447877cf2de1bee5b1d2d722b49",
       "src/components/layout/limited-shell.tsx": "768c5ddc6adc319d9065adc2471c3d44d816c8c2563e47689a2206840d397074",
@@ -102,7 +102,7 @@ the seed. It says so when the finding is already answered.
     "walk": "opas-shell-walkthrough.spec.ts",
     "what": "The shell she gets and Opas as her only entrance: no sidebar, the sphere quiet, payroll-only capabilities, cmd-K.",
     "verified_on": "2026-11-23",
-    "verified_at_commit": "3188424ebb87c21585c7e89be0dc2ce79e94e049",
+    "verified_at_commit": "a4e5eaff695e217974d7a638196f00d976d42dff",
     "fingerprints": {
       "src/App.tsx": "991b7ac4e5dd873bad9fa734e25ee4ab6c122447877cf2de1bee5b1d2d722b49",
       "src/components/layout/limited-shell.tsx": "768c5ddc6adc319d9065adc2471c3d44d816c8c2563e47689a2206840d397074",
@@ -115,7 +115,7 @@ the seed. It says so when the finding is already answered.
     "walk": "union-form-walkthrough.spec.ts",
     "what": "The R-115: filling to sent, the print view, the copies record, and a copy going stale underneath a figure.",
     "verified_on": "2026-11-23",
-    "verified_at_commit": "3188424ebb87c21585c7e89be0dc2ce79e94e049",
+    "verified_at_commit": "a4e5eaff695e217974d7a638196f00d976d42dff",
     "fingerprints": {
       "src/components/payroll/UnionFormCore.tsx": "ee6b33022247d82100dc886c4dd51d052637361e200a285c477625b51ca44c35",
       "src/lib/payroll/focus-api.ts": "140c12bd7a453e3927a3a5761e22eeec5572bdf8077bd78e2433d85257510eea",
@@ -126,7 +126,7 @@ the seed. It says so when the finding is already answered.
     "walk": "employee-status-walkthrough.spec.ts",
     "what": "Recording an employee's payroll status, and the union form's line 1 coming off its check-counting fallback.",
     "verified_on": "2026-11-23",
-    "verified_at_commit": "3188424ebb87c21585c7e89be0dc2ce79e94e049",
+    "verified_at_commit": "a4e5eaff695e217974d7a638196f00d976d42dff",
     "fingerprints": {
       "src/components/payroll/UnionFormCore.tsx": "ee6b33022247d82100dc886c4dd51d052637361e200a285c477625b51ca44c35",
       "src/components/payroll/panes/EmployeeStatusRow.tsx": "b46eceb5f4abe7c4f725ec7a928711d5df5b3a8ba5dd606293bada9d1ab0f908",
@@ -139,7 +139,7 @@ the seed. It says so when the finding is already answered.
   {
     "walk": "vacation-pay-walkthrough.spec.ts",
     "what": "Vacation pay: the note line, the working with the rate's derivation (900.46 + 75.00 at a rate truncated to 4dp), approving both lines, and the line withdrawing afterwards.",
-    "verified_at_commit": "3188424ebb87c21585c7e89be0dc2ce79e94e049",
+    "verified_at_commit": "a4e5eaff695e217974d7a638196f00d976d42dff",
     "verified_on": "2026-11-23",
     "fingerprints": {
       "src/components/payroll/VacationPayCore.tsx": "0a345ca7e9da0c2ffac328d03a37ef0757acb1b1c7dd862982ea79f993a2e528",

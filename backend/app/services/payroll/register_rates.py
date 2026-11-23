@@ -27,7 +27,7 @@ one from amount / hours without telling me how many."* Nothing here infers.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 #: The register prints rates on `Reg` earning lines. `OT` lines print their own
@@ -84,6 +84,35 @@ class RateAt:
         return (self.reg_rate * OT_MULTIPLIER).quantize(Decimal("0.0001"))
 
 
+#: ⚠️ **A RATE IS READ FROM THE CHECK AND TAKES EFFECT FROM THE WEEK THAT
+#: CHECK PAYS FOR** (James, Payroll 3; restated 2026-11-23). The check lands
+#: five days after the week it pays, and the week runs Sunday to Saturday:
+#:
+#:     week_end       = check_date - 5
+#:     effective_from = week_end - 6        (the Sunday that week began)
+#:
+#: So a raise first printed on the Thursday 29 October check belongs to the
+#: week ending Saturday 24 October, and is in force from Sunday 18 October.
+#:
+#: ⚠️ **THE CHECK DATE IS NOT THE EFFECTIVE DATE, AND USING IT WAS A REAL
+#: DEFECT.** Measured in the week-44 dress rehearsal: storing rates against
+#: the check date put 17 of 19 one week AFTER the week that produced them, so
+#: `resolve_rate(..., week_end)` found none and every employee came back
+#: `missing_rate` with dues of $0.00.
+CHECK_LAG_DAYS = 5
+WEEK_LENGTH_DAYS = 6
+
+
+def week_end_for_check(check_date: date) -> date:
+    """The week a check pays for."""
+    return check_date - timedelta(days=CHECK_LAG_DAYS)
+
+
+def effective_from_check(check_date: date) -> date:
+    """The first day a rate printed on `check_date` is in force."""
+    return week_end_for_check(check_date) - timedelta(days=WEEK_LENGTH_DAYS)
+
+
 def rate_history(checks) -> dict[str, list[RateAt]]:
     """Every printed Reg rate per employee, oldest first.
 
@@ -101,7 +130,12 @@ def rate_history(checks) -> dict[str, list[RateAt]]:
                 # lines at different rates would be a mid-week change; the
                 # later-read one wins and the disagreement is invisible, so
                 # `rate_conflicts` reports those separately.
-                seen.setdefault(chk.emp_id, {})[chk.check_date] = line.rate
+                #
+                # ⚠️ **KEYED ON THE EFFECTIVE DATE, NOT THE CHECK DATE** — see
+                # the ruling above. `RateAt.effective_date` now means what it
+                # says, so `rate_for(emp, week_end, …)` is the ONE resolver.
+                seen.setdefault(chk.emp_id, {})[
+                    effective_from_check(chk.check_date)] = line.rate
     return {emp: [RateAt(d, r) for d, r in sorted(per.items())]
             for emp, per in seen.items()}
 
@@ -152,10 +186,18 @@ class RateResolution:
         return len(self.missing)
 
 
-def rates_for_week(emp_ids, *, check_date: date,
+def rates_for_week(emp_ids, *, week_end: date,
                    history: dict[str, list[RateAt]],
                    employment: dict | None = None) -> RateResolution:
-    """Resolve every employee's rate for one week's check date.
+    """Resolve every employee's rate for one week, BY WEEK END.
+
+    ⚠️ **THE PARAMETER WAS `check_date` AND THAT WAS THE SECOND RESOLVER.**
+    `calculate_week` has always resolved by `week.week_end_date`; this
+    resolved by the check date, so the two disagreed by five days and nothing
+    said so — the rehearsal found 17 of 19 rates landing a week late. James,
+    2026-11-23: "Keep one resolver, the one that works by week end, and delete
+    the check-date one." This is that one.
+
 
     ⚠️ **A SALARIED PERSON IS NOT `missing_rate`** (James, 2026-11-10). They
     have no hourly rate because they are not paid one, and reporting it as
@@ -169,7 +211,7 @@ def rates_for_week(emp_ids, *, check_date: date,
     missing: list[str] = []
     salaried: list[str] = []
     for emp_id in sorted(emp_ids, key=lambda e: (len(e), e)):
-        found = rate_for(emp_id, check_date, history)
+        found = rate_for(emp_id, week_end, history)
         if found is not None:
             rates[emp_id] = found
             continue

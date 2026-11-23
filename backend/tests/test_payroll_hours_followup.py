@@ -226,7 +226,7 @@ def test_a_salaried_person_is_not_reported_as_missing_a_rate():
     that does not exist."""
     checks = [_Check("22", date(2026, 10, 29), [_Line("Sal", amount="1200.00")])]
     employment = classify_employment(checks, before=date(2026, 11, 5))
-    res = rates_for_week({"22"}, check_date=date(2026, 11, 5),
+    res = rates_for_week({"22"}, week_end=date(2026, 10, 31),
                          history=rate_history(checks), employment=employment)
     assert res.missing == []
     assert res.salaried == ["22"]
@@ -237,7 +237,7 @@ def test_an_hourly_person_with_no_rate_is_still_missing():
     """⚠️ A positive control: the exemption must not swallow a real gap."""
     checks = [_Check("99", date(2026, 10, 29), [_Line("Reg", D("40"))])]
     employment = classify_employment(checks, before=date(2026, 11, 5))
-    res = rates_for_week({"99"}, check_date=date(2026, 11, 5),
+    res = rates_for_week({"99"}, week_end=date(2026, 10, 31),
                          history=rate_history(checks), employment=employment)
     assert res.missing == ["99"]
 
@@ -245,7 +245,7 @@ def test_an_hourly_person_with_no_rate_is_still_missing():
 def test_without_an_employment_map_the_old_behaviour_holds():
     """Additive argument: omitting it must not silently change anything."""
     checks = [_Check("22", date(2026, 10, 29), [_Line("Sal", amount="1200.00")])]
-    res = rates_for_week({"22"}, check_date=date(2026, 11, 5),
+    res = rates_for_week({"22"}, week_end=date(2026, 10, 31),
                          history=rate_history(checks))
     assert res.missing == ["22"] and res.salaried == []
 

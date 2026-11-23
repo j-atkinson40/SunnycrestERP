@@ -76,12 +76,30 @@ class _Hours:
 
 # ── rates from the register ──────────────────────────────────────────────────
 
-def test_the_rate_is_the_most_recent_printed_reg_rate():
+def test_the_rate_is_the_most_recent_printed_reg_rate_BY_WEEK_END():
+    """⚠️ **RESTATED 2026-11-23 TO THE RULING, AND THE OLD VERSION PROBED WITH
+    CHECK DATES.** A rate is read from the check that first prints it and
+    takes effect from the week that check PAYS: `week_end = check_date - 5`.
+    So the probe is a week end, not a check date — asking "what was the rate
+    on 28 October" is asking about a Wednesday, which is not a thing a week
+    has.
+
+    James's golden, directly: the raise printed on the Thursday 29 October
+    check **starts with the week ending Saturday 24 October**.
+    """
     checks = [_Check("1", date(2026, 10, 22), [_RLine("Reg", D("40"), D("26.0400"))]),
               _Check("1", date(2026, 10, 29), [_RLine("Reg", D("40"), D("30.0000"))])]
     hist = rate_history(checks)
-    assert rate_for("1", date(2026, 10, 28), hist).reg_rate == D("26.0400")
-    assert rate_for("1", date(2026, 11, 5), hist).reg_rate == D("30.0000")
+    # The Oct 22 check pays the week ending Oct 17; the Oct 29 check pays the
+    # week ending Oct 24, and that is where the raise starts.
+    assert rate_for("1", date(2026, 10, 17), hist).reg_rate == D("26.0400")
+    assert rate_for("1", date(2026, 10, 24), hist).reg_rate == D("30.0000")
+    # And it is still in force for week 44, whose own check is Nov 5.
+    assert rate_for("1", date(2026, 10, 31), hist).reg_rate == D("30.0000")
+    # ⚠️ The effective dates themselves, so the arithmetic is pinned and not
+    # merely implied by which rate comes back.
+    assert [e.effective_date for e in hist["1"]] == [
+        date(2026, 10, 11), date(2026, 10, 18)]
 
 
 def test_a_raise_arrives_without_anybody_typing_it():
@@ -94,7 +112,7 @@ def test_a_raise_arrives_without_anybody_typing_it():
     """
     checks = [_Check("1", date(2026, 10, 22), [_RLine("Reg", D("40"), D("26.0400"))]),
               _Check("1", date(2026, 10, 29), [_RLine("Reg", D("40"), D("30.0000"))])]
-    res = rates_for_week({"1"}, check_date=date(2026, 11, 5),
+    res = rates_for_week({"1"}, week_end=date(2026, 10, 31),
                          history=rate_history(checks))
     assert res.rates["1"].reg_rate == D("30.0000")
     assert res.missing == []
@@ -106,7 +124,7 @@ def test_the_rule_looks_further_back_than_the_weeks_own_check():
     for a week he was paid at a known rate."""
     checks = [_Check("25", date(2026, 10, 29), [_RLine("Reg", D("22"), D("24.3900"))]),
               _Check("25", date(2026, 11, 5), [_RLine("Vac", D("40"))])]
-    res = rates_for_week({"25"}, check_date=date(2026, 11, 5),
+    res = rates_for_week({"25"}, week_end=date(2026, 10, 31),
                          history=rate_history(checks))
     assert res.rates["25"].reg_rate == D("24.3900")
 
@@ -125,7 +143,7 @@ def test_a_missing_rate_is_counted_and_never_inferred():
     rate; amount over hours would give each of them a plausible wrong number.
     """
     checks = [_Check("15", date(2026, 11, 5), [_RLine("Sal")])]
-    res = rates_for_week({"15"}, check_date=date(2026, 11, 5),
+    res = rates_for_week({"15"}, week_end=date(2026, 10, 31),
                          history=rate_history(checks))
     assert res.rates == {}
     assert res.missing == ["15"]
