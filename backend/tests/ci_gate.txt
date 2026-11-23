@@ -856,3 +856,9 @@ tests/test_payroll_vacation_5c.py
 # is a FINDING rather than a guess. Those run in CI; the real-file goldens skip
 # without the exports and are covered by the walk-through.
 tests/test_payroll_punch_ingestion.py
+# The rate writer (2026-11-23) — `PayrollRate` had no writer in `app/`, which
+# made every dues figure $0.00 on a tenant whose rates were never seeded.
+# ⚠️ The ruling's arithmetic (a check pays the week ending five days earlier;
+# a rate is in force from that week's Sunday) runs in CI; the real-register
+# goldens skip without the export.
+tests/test_payroll_rate_writer.py

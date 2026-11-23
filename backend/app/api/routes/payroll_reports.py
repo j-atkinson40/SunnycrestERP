@@ -963,6 +963,11 @@ async def upload_register(
         "checks_duplicate": result.checks_duplicate,
         "checks_failed": result.checks_failed,
         "summary_blocks_skipped": result.summary_blocks_skipped,
+        # ⚠️ **SAID OUT LOUD, because a backfill upload inserts ZERO checks.**
+        # James re-uploads the register to write rates onto a tenant that has
+        # none: every check is a duplicate, nothing is inserted, and "0
+        # inserted" with no other number reads as "nothing happened".
+        "rates_written": result.rates_written,
         "report": result.report,
     }
 

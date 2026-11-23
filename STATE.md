@@ -7840,3 +7840,15 @@ the other.
   **Smaller, not fixed:** a non-union rate renders as `$20.0000` in the vacation working (four places is right for the union rate of 22.5116 and noisy for a flat $20).
 
   ⚠️ **AND THE REHEARSAL LEFT ITS REGISTER IN THE SUITE'S TENANT AGAIN** — 1,275 checks, three tests red, second time in one day. Purged; 705 passed after.
+
+  ⚠️ **2026-11-23 — THE RATE WRITER: `PayrollRate` IS WRITTEN FROM THE REGISTER, AND THE TWO RESOLVERS BECAME ONE.** The blocker the dress rehearsal found is closed. **The ruling** (James, Payroll 3; restated 2026-11-23): a rate is read from the register check that first prints it and is effective from the start of the pay period that check pays — `week_end = check_date − 5`, `effective_from = week_end − 6`. Resolve **by week end only**; the check-date path is gone.
+
+  ⚠️ **`rate_history` USED TO KEY ON THE CHECK DATE, AND THAT WAS THE DEFECT.** A rate landed five days after the week it belonged to, so `resolve_rate(…, week.week_end_date)` found nothing — measured in the rehearsal as 17 of 19 derived rates invisible to their own week. `rates_for_week(…, check_date=…)` is now `week_end=`, and a test asserts the parameter is gone so a second resolver cannot quietly return.
+
+  **Goldens, all measured against the real register:** the Thursday 29 Oct check pays the week ending Saturday 24 Oct and is in force from Sunday 18 Oct; **exactly 12 rate rows** carry that effective date, matching the spec's record that twelve employees' Reg rate changed on that check; week 44 resolves a rate for **17 of the 18 people with hours**, the eighteenth being salaried and correctly **not** `missing_rate`.
+
+  ⚠️ **THE WRITER DERIVES FROM EVERY CHECK THE TENANT HOLDS, NOT ONLY THE ONES JUST INSERTED — AND THAT IS WHAT MAKES A RE-UPLOAD A BACKFILL.** Measured: a second upload of the same register inserts **0 checks, 1,275 duplicates, and writes 46 rates** when the rates are absent. A writer that looked only at new rows would do nothing on exactly the upload meant to fix the gap. The reply carries `rates_written`, because "0 inserted" alone reads as nothing having happened. **One row per CHANGE**, not per check; a changed rate starts a new effective row and never overwrites; same date with a different rate is a correction in place. A rate for somebody absent from the roster is **reported**, not dropped.
+
+  **For James, after this merges:** re-upload the register in card 2. The reply will show `rates_written`; a duplicate upload is safe.
+
+  ⚠️ **AND A MECHANICAL EDIT OF MINE HIT A SUBSTRING.** Switching `check_date=` to `week_end=` across two test files also rewrote the tail of `week_check_date=` into `week_week_end=` at four sites. Caught by the suite, repaired, and the files re-verified with `ast.parse` — §11: if the edit was placed by a string match, verify it with a parser.
