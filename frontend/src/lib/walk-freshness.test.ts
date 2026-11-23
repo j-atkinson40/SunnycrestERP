@@ -16,20 +16,30 @@
  *
  *     nothing a walk depends on may change without the walk being re-run.
  *
- * Run on `5dd34500` this goes red, because `limited-shell.tsx` is in the 5a
- * walk's declared dependencies and that commit is not in its stamp.
+ * ⚠️ **CONTENT HASHES, NOT COMMIT SHAs — AND THE FIRST VERSION USED SHAs AND
+ * CI CAUGHT IT.** `git merge-base --is-ancestor` reads beautifully and has two
+ * faults that only show up off a developer's laptop:
+ *
+ *   1. `actions/checkout@v4` is shallow by default, so the stamped commits are
+ *      not in the clone at all. CI failed with "<sha> is not a commit in this
+ *      repository" — correctly, because the guard refuses rather than passing
+ *      when it cannot see.
+ *   2. **This repo squash-merges.** The branch commits are discarded on merge,
+ *      so a SHA stamped on a branch is unreachable from `main` afterwards. The
+ *      guard would have gone permanently red one commit after landing, which
+ *      is the dark channel again wearing the opposite colour.
+ *
+ * A hash over the bytes answers the same question — *has any of this changed
+ * since the walk was last run green?* — and is immune to shallow clones,
+ * squashes, rebases and cherry-picks, because it never asks about history.
  *
  * ⚠️ **NO TIME COMPONENT, DELIBERATELY.** "Re-run every N days" would be red
  * whenever nobody happened to run them, which is most weeks — and a check that
  * is usually red is the dark channel again. The trigger is a CHANGE.
- *
- * ⚠️ **AND THE STAMP IS A COMMIT, NOT A DATE.** `git merge-base --is-ancestor`
- * answers "has this dependency moved since?" exactly, where a date comparison
- * would be wrong on every rebase, cherry-pick and out-of-order merge.
  */
-import { execFileSync } from "node:child_process"
-import { readdirSync, readFileSync } from "node:fs"
-import { join } from "node:path"
+import { createHash } from "node:crypto"
+import { readFileSync, readdirSync, statSync } from "node:fs"
+import { join, relative } from "node:path"
 
 import { describe, expect, it } from "vitest"
 
@@ -38,39 +48,56 @@ import { describe, expect, it } from "vitest"
  *  `tests/local/` is never collected, so it would be a check that cannot run
  *  sitting next to the checks it watches. `prod-intercept-fail-closed.test.ts`
  *  is the precedent: a repo-hygiene guard here, reading files from elsewhere. */
-const ROOT = join(__dirname, "..", "..", "..")
-const HERE = join(ROOT, "frontend", "tests", "local")
+const FRONTEND = join(__dirname, "..", "..")
+const WALKS_DIR = join(FRONTEND, "tests", "local")
 
 interface WalkEntry {
   walk: string
   what: string
-  verified_at: string
   verified_on: string
-  depends_on: string[]
+  verified_at_commit: string
+  /** path → sha256 of its bytes, for a file; of its concatenated tree, for a
+   *  directory. Per-path rather than one digest so a failure can NAME what
+   *  moved, which is the whole value of the check. */
+  fingerprints: Record<string, string>
 }
 
-function git(args: string[]): string {
-  return execFileSync("git", args, { cwd: ROOT, encoding: "utf8" }).trim()
+function sha256(buf: Buffer | string): string {
+  return createHash("sha256").update(buf).digest("hex")
+}
+
+/** Every file under a path, sorted, so a directory hashes deterministically. */
+function filesUnder(abs: string): string[] {
+  if (!statSync(abs).isDirectory()) return [abs]
+  const out: string[] = []
+  for (const name of readdirSync(abs).sort()) {
+    out.push(...filesUnder(join(abs, name)))
+  }
+  return out
+}
+
+/** ⚠️ A DIRECTORY'S HASH COVERS ITS FILE NAMES AS WELL AS THEIR BYTES, so
+ *  adding, deleting or renaming a file inside a declared dependency moves the
+ *  hash. Hashing only the contents would miss a new file entirely. */
+export function fingerprintOf(relPath: string): string {
+  const abs = join(FRONTEND, relPath)
+  const h = createHash("sha256")
+  for (const f of filesUnder(abs)) {
+    h.update(relative(FRONTEND, f))
+    h.update("\0")
+    h.update(readFileSync(f))
+    h.update("\0")
+  }
+  return h.digest("hex")
 }
 
 function manifest(): WalkEntry[] {
-  const text = readFileSync(join(HERE, "WALKS.md"), "utf8")
+  const text = readFileSync(join(WALKS_DIR, "WALKS.md"), "utf8")
   const m = /<!-- walks:begin -->\s*```json\s*([\s\S]*?)```\s*<!-- walks:end -->/.exec(
     text,
   )
   expect(m, "WALKS.md has no walks:begin/walks:end JSON block").toBeTruthy()
   return JSON.parse(m![1]) as WalkEntry[]
-}
-
-/** Is this a git checkout at all? A guard that silently passes outside one
- *  would be the absent instrument it was written to replace. */
-function inGitRepo(): boolean {
-  try {
-    git(["rev-parse", "--git-dir"])
-    return true
-  } catch {
-    return false
-  }
 }
 
 
@@ -81,121 +108,78 @@ describe("the walk-through manifest", () => {
 
     // ⚠️ MEMBERSHIP, like the backend's CI gate — and for the same reason. A
     // manifest maintained by adding what somebody remembered converges on
-    // covering what somebody remembered. A new walk that lands unstamped is
-    // a walk nothing is watching, so its absence is the failure.
-    const onDisk = readdirSync(HERE)
+    // covering what somebody remembered. A new walk that lands unstamped is a
+    // walk nothing is watching, so its absence is the failure.
+    const onDisk = readdirSync(WALKS_DIR)
       .filter((f) => f.endsWith("-walkthrough.spec.ts"))
       .sort()
-    const listed = entries.map((e) => e.walk).sort()
     expect(
-      listed,
+      entries.map((e) => e.walk).sort(),
       "every *-walkthrough.spec.ts must be stamped in WALKS.md — a walk that " +
         "is not listed is a walk no check is watching",
     ).toEqual(onDisk)
   })
 
-  it("names a real file for every walk and every dependency", () => {
+  it("fingerprints each walk's own file and at least one dependency", () => {
     for (const e of manifest()) {
+      const paths = Object.keys(e.fingerprints)
       expect(
-        readdirSync(HERE).includes(e.walk),
-        `${e.walk} is stamped but does not exist`,
-      ).toBe(true)
-      for (const dep of e.depends_on) {
-        // ⚠️ A DEPENDENCY THAT NO LONGER EXISTS IS A SILENT HOLE: `git log` on
-        // a deleted path returns nothing, which looks exactly like "nothing
-        // changed". Checked explicitly so a rename cannot blind the guard.
-        const n = git(["ls-files", "--", join("frontend", dep)])
-        expect(
-          n.length,
-          `${e.walk} depends on "${dep}", which git does not track — a stale ` +
-            "dependency path makes this guard pass by seeing nothing",
-        ).toBeGreaterThan(0)
-      }
-    }
-  })
-
-  it("stamps each walk at a commit this repo contains", () => {
-    for (const e of manifest()) {
+        paths,
+        `${e.walk}: its own file must be fingerprinted — an edited walk has ` +
+          "not been re-run",
+      ).toContain(`tests/local/${e.walk}`)
       expect(
-        e.verified_at,
-        `${e.walk}: verified_at must be a full 40-character SHA read from ` +
-          "`git rev-parse HEAD`, never typed",
+        paths.length,
+        `${e.walk}: fingerprint at least one dependency, or this entry ` +
+          "watches nothing but itself",
+      ).toBeGreaterThan(1)
+      expect(
+        e.verified_at_commit,
+        `${e.walk}: record the commit it was run at, read from ` +
+          "`git rev-parse HEAD` — never typed. It is provenance for a human, " +
+          "not an input to this check, because squash-merging discards it.",
       ).toMatch(/^[0-9a-f]{40}$/)
-      const known = (() => {
-        try {
-          git(["cat-file", "-e", `${e.verified_at}^{commit}`])
-          return true
-        } catch {
-          return false
-        }
-      })()
-      expect(
-        known,
-        `${e.walk}: ${e.verified_at} is not a commit in this repository`,
-      ).toBe(true)
     }
   })
 })
 
 
 describe("nothing a walk depends on may change without the walk being re-run", () => {
-  it("reports every dependency that has moved past its walk's stamp", () => {
-    if (!inGitRepo()) {
-      throw new Error(
-        "not a git checkout, so this guard cannot see anything — it fails " +
-          "rather than passing, because a silent pass here is the condition " +
-          "it was written to detect",
-      )
-    }
-
+  it("names every path whose bytes have moved since its walk ran green", () => {
     const stale: string[] = []
+
     for (const e of manifest()) {
-      for (const dep of e.depends_on) {
-        // Commits touching this dependency that the stamp does NOT contain.
-        const since = git([
-          "log",
-          "--format=%h %s",
-          `${e.verified_at}..HEAD`,
-          "--",
-          join("frontend", dep),
-        ])
-        if (since) {
+      for (const [relPath, stamped] of Object.entries(e.fingerprints)) {
+        let actual: string
+        try {
+          actual = fingerprintOf(relPath)
+        } catch {
+          // ⚠️ A DEPENDENCY THAT NO LONGER EXISTS IS A SILENT HOLE: a missing
+          // path hashes to nothing, which looks exactly like "unchanged" if it
+          // is tolerated. Named instead, so a rename cannot blind the guard.
           stale.push(
-            `${e.walk}\n  depends on ${dep}, changed since it was last run ` +
-              `green (${e.verified_at.slice(0, 8)}, ${e.verified_on}):\n` +
-              since
-                .split("\n")
-                .map((l) => `    ${l}`)
-                .join("\n"),
+            `${e.walk}\n  depends on ${relPath}, which no longer exists — a ` +
+              "stale dependency path makes this guard pass by seeing nothing",
+          )
+          continue
+        }
+        if (actual !== stamped) {
+          stale.push(
+            `${e.walk}\n  ${relPath} has changed since the walk was last run ` +
+              `green (${e.verified_on}, ${e.verified_at_commit.slice(0, 8)})\n` +
+              `    stamped ${stamped.slice(0, 16)}…\n` +
+              `    now     ${actual.slice(0, 16)}…`,
           )
         }
-      }
-      // The walk's own file counts too: an edited walk has not been re-run.
-      const own = git([
-        "log",
-        "--format=%h %s",
-        `${e.verified_at}..HEAD`,
-        "--",
-        join("frontend", "tests", "local", e.walk),
-      ])
-      if (own) {
-        stale.push(
-          `${e.walk}\n  was edited since it was last run green ` +
-            `(${e.verified_at.slice(0, 8)}, ${e.verified_on}):\n` +
-            own
-              .split("\n")
-              .map((l) => `    ${l}`)
-              .join("\n"),
-        )
       }
     }
 
     expect(
       stale,
       "These walks may no longer be checking what they claim. Re-run each one " +
-        "locally, confirm it green, and re-stamp `verified_at` in " +
-        "frontend/tests/local/WALKS.md with `git rev-parse HEAD`. See that " +
-        "file for the exact command.\n\n" +
+        "locally, confirm it green, then re-stamp its fingerprints in " +
+        "frontend/tests/local/WALKS.md — `npm run walks:stamp` prints the " +
+        "block to paste. See that file for the exact command.\n\n" +
         stale.join("\n\n"),
     ).toEqual([])
   })

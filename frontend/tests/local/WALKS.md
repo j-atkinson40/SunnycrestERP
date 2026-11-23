@@ -24,13 +24,23 @@ would be the worse answer** — a job that cannot run is a channel that cannot
 report.
 
 So the guard is not "run the walks". It is: **nothing a walk depends on may
-change without the walk being re-run.** Each entry below stamps the commit the
-walk was last seen green at, plus the files it depends on.
-`walk-freshness.test.ts` fails when a dependency has commits the stamp does not
-contain, and NAMES them.
+change without the walk being re-run.** Each entry below stamps a
+**content hash of every file the walk depends on**, taken when it was last seen
+green. `walk-freshness.test.ts` recomputes them and fails when any has moved,
+NAMING the path.
 
-On `5dd34500` that check would have gone red on the PR that caused the problem,
-because `limited-shell.tsx` is in the 5a walk's dependency set.
+On `5dd34500` that check goes red, because `limited-shell.tsx` is in the 5a
+walk's dependency set — it would have fired on the PR that caused the problem.
+
+⚠️ **HASHES, NOT COMMIT SHAs, AND THE FIRST VERSION USED SHAs AND CI CAUGHT
+IT.** `git merge-base --is-ancestor` reads better and fails twice off a
+laptop: `actions/checkout@v4` is shallow, so the stamped commits are not in the
+clone (CI said so, correctly, by refusing rather than passing); and **this repo
+squash-merges**, so a SHA stamped on a branch is unreachable from `main`
+afterwards and the guard would have gone permanently red one commit after
+landing. A hash over the bytes answers the same question and never asks about
+history. `verified_at_commit` is kept as provenance for a human and is not an
+input to the check.
 
 ⚠️ **NO TIME COMPONENT, DELIBERATELY.** A "re-run every N days" rule would go
 red whenever nobody happened to run them, which is most weeks — and a check
@@ -39,9 +49,16 @@ CHANGE, not a calendar.
 
 ## How to re-stamp
 
-Run the walk, confirm it green, then put the commit you ran it at in
-`verified_at`. ⚠️ **READ THE SHA FROM `git rev-parse HEAD`. Never type or
-construct one** — that rule has been broken twice, five days apart.
+Run the walk, confirm it green, then:
+
+    npm run walks:stamp            # prints the block
+    node scripts/stamp-walks.mjs --write   # or rewrites WALKS.md in place
+
+⚠️ **STAMP ONLY AFTER THE WALKS HAVE ACTUALLY RUN GREEN.** The script reads
+bytes off disk and cannot know whether anybody ran anything, so this is the one
+step a person has to mean. A stamp taken from a tree nobody walked is a green
+check over an unverified surface — the exact condition the guard exists to
+detect. The commit is read from `git rev-parse HEAD`, never typed.
 
     cd backend && python scripts/seed_week44_walkthrough.py     # prints week_id
     cd ../frontend
@@ -67,50 +84,56 @@ the seed. It says so when the finding is already answered.
   {
     "walk": "payroll-week44-walkthrough.spec.ts",
     "what": "Susan's week, start to finish: sign in, the note, both entrances, the finding, a correction, approve, the deduction list, the panes. Plus a real Employee Hours export through the real input.",
-    "verified_at": "94665dee189a4b6769f8f355f052f31edbd06420",
     "verified_on": "2026-11-23",
-    "depends_on": [
-      "src/components/layout/limited-shell.tsx",
-      "src/components/layout/tenant-shell.tsx",
-      "src/components/payroll/WeeklyPayrollCore.tsx",
-      "src/components/payroll/panes/panes.tsx",
-      "src/components/payroll/panes/PayrollPaneStack.tsx",
-      "src/lib/payroll/focus-api.ts"
-    ]
+    "verified_at_commit": "109f9c2c83071cfdc6db57ed03abb6b7eb449cb2",
+    "fingerprints": {
+      "src/App.tsx": "991b7ac4e5dd873bad9fa734e25ee4ab6c122447877cf2de1bee5b1d2d722b49",
+      "src/components/layout/limited-shell.tsx": "768c5ddc6adc319d9065adc2471c3d44d816c8c2563e47689a2206840d397074",
+      "src/components/layout/tenant-shell.tsx": "91b2f54ed5e5bd9f60adcfed4403f0c699c54f169cd48c02f2675fd4a258b5e5",
+      "src/components/payroll/WeeklyPayrollCore.tsx": "16e360649a56109586a82a814e62ef5268483aa87ef054602ffaa0f84b66d638",
+      "src/components/payroll/panes/PayrollPaneStack.tsx": "d4d31133681d201c82d43f3deca9204935257669b29320d2b7294706ec368aba",
+      "src/components/payroll/panes/panes.tsx": "04553b5a5255ffeaaeb2c7d0675501c96c16b51a8f8e03414d1fa10f35808c43",
+      "src/lib/payroll/focus-api.ts": "061ca9b83d5c374dd049b70588e56cbc5e3a61ab187c7d127f80ad77222e4f35",
+      "tests/local/payroll-week44-walkthrough.spec.ts": "ec3a1fdd1597789478b6f8487e509babb53eeb5f4e6a1f9787cabab3544e24cb"
+    }
   },
   {
     "walk": "opas-shell-walkthrough.spec.ts",
     "what": "The shell she gets and Opas as her only entrance: no sidebar, the sphere quiet, payroll-only capabilities, cmd-K.",
-    "verified_at": "94665dee189a4b6769f8f355f052f31edbd06420",
     "verified_on": "2026-11-23",
-    "depends_on": [
-      "src/components/layout/limited-shell.tsx",
-      "src/components/layout/tenant-shell.tsx",
-      "src/components/opas"
-    ]
+    "verified_at_commit": "109f9c2c83071cfdc6db57ed03abb6b7eb449cb2",
+    "fingerprints": {
+      "src/App.tsx": "991b7ac4e5dd873bad9fa734e25ee4ab6c122447877cf2de1bee5b1d2d722b49",
+      "src/components/layout/limited-shell.tsx": "768c5ddc6adc319d9065adc2471c3d44d816c8c2563e47689a2206840d397074",
+      "src/components/layout/tenant-shell.tsx": "91b2f54ed5e5bd9f60adcfed4403f0c699c54f169cd48c02f2675fd4a258b5e5",
+      "src/components/opas": "cf7cddfafca39d51d5b133419814948332749d94e4fd924beb9a1af547e985c1",
+      "tests/local/opas-shell-walkthrough.spec.ts": "7ed54f8dc27e0ca863d7dc40529863c541f23970ef4a80f768c6d321d0e727c7"
+    }
   },
   {
     "walk": "union-form-walkthrough.spec.ts",
     "what": "The R-115: filling to sent, the print view, the copies record, and a copy going stale underneath a figure.",
-    "verified_at": "94665dee189a4b6769f8f355f052f31edbd06420",
     "verified_on": "2026-11-23",
-    "depends_on": [
-      "src/components/payroll/UnionFormCore.tsx",
-      "src/lib/payroll/focus-api.ts"
-    ]
+    "verified_at_commit": "109f9c2c83071cfdc6db57ed03abb6b7eb449cb2",
+    "fingerprints": {
+      "src/components/payroll/UnionFormCore.tsx": "ee6b33022247d82100dc886c4dd51d052637361e200a285c477625b51ca44c35",
+      "src/lib/payroll/focus-api.ts": "061ca9b83d5c374dd049b70588e56cbc5e3a61ab187c7d127f80ad77222e4f35",
+      "tests/local/union-form-walkthrough.spec.ts": "068f82b413439d00f2fd52a55051942d1482dc74bbddde4aaaffd54cdbb8acd1"
+    }
   },
   {
     "walk": "employee-status-walkthrough.spec.ts",
     "what": "Recording an employee's payroll status, and the union form's line 1 coming off its check-counting fallback.",
-    "verified_at": "94665dee189a4b6769f8f355f052f31edbd06420",
     "verified_on": "2026-11-23",
-    "depends_on": [
-      "src/components/payroll/panes/EmployeeStatusRow.tsx",
-      "src/components/payroll/panes/panes.tsx",
-      "src/components/payroll/panes/PayrollPaneStack.tsx",
-      "src/components/payroll/UnionFormCore.tsx",
-      "src/lib/payroll/focus-api.ts"
-    ]
+    "verified_at_commit": "109f9c2c83071cfdc6db57ed03abb6b7eb449cb2",
+    "fingerprints": {
+      "src/components/payroll/UnionFormCore.tsx": "ee6b33022247d82100dc886c4dd51d052637361e200a285c477625b51ca44c35",
+      "src/components/payroll/panes/EmployeeStatusRow.tsx": "b46eceb5f4abe7c4f725ec7a928711d5df5b3a8ba5dd606293bada9d1ab0f908",
+      "src/components/payroll/panes/PayrollPaneStack.tsx": "d4d31133681d201c82d43f3deca9204935257669b29320d2b7294706ec368aba",
+      "src/components/payroll/panes/panes.tsx": "04553b5a5255ffeaaeb2c7d0675501c96c16b51a8f8e03414d1fa10f35808c43",
+      "src/lib/payroll/focus-api.ts": "061ca9b83d5c374dd049b70588e56cbc5e3a61ab187c7d127f80ad77222e4f35",
+      "tests/local/employee-status-walkthrough.spec.ts": "47c7d40455d76de59142f54834e29a6e6e07d7bdcc8c67d42d8ff0855695ceb5"
+    }
   }
 ]
 ```
