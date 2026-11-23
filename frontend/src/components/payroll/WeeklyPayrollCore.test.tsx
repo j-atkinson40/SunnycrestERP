@@ -340,11 +340,30 @@ describe("the week and the panes", () => {
 
 
 describe("the upload card", () => {
-  it("appears only when the week has no people on it", async () => {
+  it("appears when the HOURS have not arrived — not when the dues are empty", async () => {
+    // ⚠️ **THIS TEST PINNED THE DEFECT, AND ITS OLD NAME SAID SO: "appears
+    // only when the week has no PEOPLE on it".** People come from calculated
+    // dues; hours come from the import. The week-44 dress rehearsal showed
+    // the Focus header reading "Week 44 · imported" with 708.61 hours loaded
+    // and, directly beneath it, "No hours for week 44 yet" — because nobody
+    // had a pay rate, so there were no dues rows.
     api.getUnionDuesPane.mockResolvedValue({ ...DUES, members: [], members_total: 0 })
+    api.getWeekFocus.mockResolvedValue({ ...FOCUS, status: "awaiting_hours" })
     renderCore()
     expect(await screen.findByTestId("upload-card")).toBeInTheDocument()
     expect(screen.getByText(/No hours for week 44 yet/i)).toBeInTheDocument()
+  })
+
+  it("⚠️ does NOT claim 'no hours' on an imported week with no dues", async () => {
+    // The regression the rehearsal found, stated as its own case.
+    api.getUnionDuesPane.mockResolvedValue({ ...DUES, members: [], members_total: 0 })
+    api.getWeekFocus.mockResolvedValue({ ...FOCUS, status: "imported" })
+    renderCore()
+    await screen.findByTestId("findings")
+    expect(screen.queryByText(/No hours for week 44 yet/i)).not.toBeInTheDocument()
+    // ⚠️ AND THE DUES CHIP SAYS SO RATHER THAN "$0.00", which reads as "they
+    // owe nothing" and means "this could not be worked out".
+    expect(screen.getByText(/not calculated/i)).toBeInTheDocument()
   })
 
   it("is absent once there are people", async () => {
@@ -354,6 +373,10 @@ describe("the upload card", () => {
   })
 
   it("⚠️ reports a blocking flag instead of the row counts", async () => {
+    // ⚠️ The upload card now renders on the HOURS state, not on an
+    // empty dues list — see the rehearsal note above. The week has to
+    // be awaiting hours for the card to be there to drive.
+    api.getWeekFocus.mockResolvedValue({ ...FOCUS, status: "awaiting_hours" })
     const user = userEvent.setup()
     api.getUnionDuesPane.mockResolvedValue({ ...DUES, members: [], members_total: 0 })
     api.uploadWeekHours.mockResolvedValue({
@@ -542,6 +565,10 @@ describe("a write whose reply never arrived", () => {
   })
 
   it("⚠️ the HOURS upload: the fourth site, not named in the ruling", async () => {
+    // ⚠️ The upload card now renders on the HOURS state, not on an
+    // empty dues list — see the rehearsal note above. The week has to
+    // be awaiting hours for the card to be there to drive.
+    api.getWeekFocus.mockResolvedValue({ ...FOCUS, status: "awaiting_hours" })
     const user = userEvent.setup()
     // The upload card appears when the week has NO people on it — the same
     // setup the working upload tests above use.
