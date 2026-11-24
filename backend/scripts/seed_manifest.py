@@ -178,6 +178,37 @@ TIERS: dict[str, tuple[str, str]] = {
         "scripts.seed_payroll_base_rule_set --tenant-slug sunnycrest "
         "--commit`. See docs/runbooks/payroll-production-turn-on.md.",
     ),
+    # ⚠️ **CAUGHT BY CI, AND A LOCAL DATABASE COULD NOT HAVE SEEN IT.** This
+    # seed was written without a manifest entry, so it took the `all` default
+    # and the canonical runner executed it — creating a SECOND tenant with
+    # `payroll_data_enabled` on. `test_the_switch_is_per_company` asserts
+    # exactly one tenant has it and went red: *"1 other tenant(s) have payroll
+    # data enabled"*. The guard is right, and nothing on a laptop runs the
+    # canonical seeds before the suite.
+    #
+    # ⚠️ AND THE DEFAULT IS THE DANGEROUS DIRECTION. An unlisted seed runs
+    # EVERYWHERE. The script's own `_refuse_production` covers production and
+    # covers NOTHING ELSE: staging deliberately boots with ENVIRONMENT=dev —
+    # the reason the `local-only` tier keys off the Railway commit marker
+    # instead — so the refusal is silent exactly where this ran. CI proved it
+    # by running the thing.
+    #
+    # `manual` rather than a second in-script guard, for the reason the
+    # entries above give: the tier is read once per boot and LOGGED WITH THIS
+    # REASON, where an in-script skip is silent and would also hide a real
+    # misuse.
+    "seed_register_backfill_walkthrough": (
+        "manual",
+        "Stages the register BACKFILL that `register-backfill-walkthrough."
+        "spec.ts` reads: its own tenant, an admin, five synthetic checks "
+        "already stored and their rates deleted, so the walk's upload inserts "
+        "nothing and writes three rates. A walk fixture run by hand beside "
+        "two local servers — it creates a company and enables payroll data, "
+        "so no boot should run it on any environment. Run it explicitly: `SECRET_KEY=… "
+        "DATABASE_URL=…note5a_clean python "
+        "scripts/seed_register_backfill_walkthrough.py`. See "
+        "frontend/tests/local/WALKS.md.",
+    ),
     "seed_reconciliation_test": (
         "manual",
         "W-2 reconciliation matcher test substrate — an on-demand ops tool, "
