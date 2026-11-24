@@ -414,6 +414,16 @@ export interface RegisterImportResult {
   checks_duplicate: number
   checks_failed: number
   summary_blocks_skipped: number
+  /**
+   * New effective-dated rate rows this import wrote.
+   *
+   * ⚠️ **THE SERVER HAS RETURNED THIS SINCE #53 AND NO SURFACE READ IT.** The
+   * route's own comment says it is reported "because a backfill upload inserts
+   * ZERO checks" — and the saying-out-loud stopped at the API boundary, so the
+   * one upload this number exists for still read as "0 inserted, nothing
+   * happened". Card 2 renders it unconditionally; see `register-rates`.
+   */
+  rates_written: number
   report: {
     /** Distinct people the file accounts for, inserted and duplicate together. */
     employees?: number
@@ -436,6 +446,21 @@ export interface RegisterImportResult {
       check_date: string | null
       emp_id: string | null
     }[]
+    /**
+     * What the rate writer did, beyond the headline `rates_written`.
+     *
+     * `corrected` is a rate CHANGED on an effective date already recorded —
+     * a repair of stored data rather than a new row, and the one outcome here
+     * that nobody asked for. It is surfaced because a silent repair of a pay
+     * rate is worse than an extra line. `no_roster_row` carries employee
+     * numbers whose rate could not be stored at all.
+     */
+    rates?: {
+      written: number
+      corrected: number
+      unchanged: number
+      no_roster_row: string[]
+    }
   }
 }
 

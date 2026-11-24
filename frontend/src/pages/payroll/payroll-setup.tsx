@@ -324,10 +324,18 @@ function RegisterCard({ enabled }: { enabled: boolean | null }) {
         },
       )
       if (verdict === "landed") {
+        // ⚠️ The rate count belongs here for the same reason it belongs in the
+        // result list: the backfill upload saves ZERO checks, so "0 checks"
+        // alone describes a successful import as a no-op. The import row
+        // carries the rate block, so this path can say it too.
+        const landedRates = landed?.report?.rates?.written
         setFailed(
           `No reply reached this page, but the server DID save the import: ` +
-            `${landed?.checks_inserted ?? 0} checks from ${landed?.filename}. ` +
-            `Nothing needs re-uploading.`,
+            `${landed?.checks_inserted ?? 0} checks from ${landed?.filename}` +
+            (typeof landedRates === "number"
+              ? `, and ${landedRates} ${landedRates === 1 ? "rate" : "rates"} written`
+              : "") +
+            `. Nothing needs re-uploading.`,
         )
       } else if (verdict === "did-not-land") {
         setFailed(
@@ -353,6 +361,11 @@ function RegisterCard({ enabled }: { enabled: boolean | null }) {
   const ambiguous = Object.keys(report.ambiguous_names ?? {})
   const unknownCodes = Object.keys(report.unknown_codes ?? {})
   const anomalies = report.union_salary_anomalies ?? []
+  // ⚠️ `rates` may be absent on an import row stored before #53. A missing
+  // block is NOT zero corrections — it is no record either way, so the
+  // corrected and no-roster lines stay withdrawn rather than claiming "none".
+  const rates = report.rates
+  const noRosterRow = rates?.no_roster_row ?? []
 
   return (
     <section aria-label="Register upload" data-testid="setup-register" className={CARD}>
@@ -449,6 +462,43 @@ function RegisterCard({ enabled }: { enabled: boolean | null }) {
                     result.checks_failed === 1 ? "check" : "checks"
                   } did not add up and were NOT stored. They need looking at in Payentry.`}
             </li>
+            {/* ⚠️ UNCONDITIONAL, and that is the whole point of the line. The
+                upload this number exists for — James re-uploading the register
+                onto a tenant with no rates — inserts ZERO checks, so every
+                other line above reads as "nothing happened" while 46 rates
+                land. A line that renders only when non-zero would be absent on
+                the second re-upload, where "no new rates" is the answer the
+                reader needs rather than silence. */}
+            <li data-testid="register-rates">
+              {/* ⚠️ `typeof`, not `=== 0`. Break-testing this walk by deleting
+                  the field from the route printed "undefined rates written"
+                  on the page — a server older than #53, or a reply that lost
+                  the field, would say the same. A missing number is not zero,
+                  but it is also not a sentence to show somebody, so it falls
+                  back to the no-new-rates wording rather than to `undefined`. */}
+              {typeof result.rates_written !== "number" ||
+              result.rates_written === 0
+                ? "No new rates — every rate this register prints was already recorded. Dues and gross pay keep the rates they had."
+                : `${result.rates_written} ${
+                    result.rates_written === 1 ? "rate" : "rates"
+                  } written. A rate takes effect from the week its check pays for, so each one starts a new effective row rather than overwriting the old.`}
+            </li>
+            {rates && rates.corrected > 0 ? (
+              <li data-testid="register-rates-corrected" className="text-status-warning">
+                {rates.corrected} stored {rates.corrected === 1 ? "rate" : "rates"}{" "}
+                disagreed with this register and {rates.corrected === 1 ? "was" : "were"}{" "}
+                corrected on {rates.corrected === 1 ? "its" : "their"} existing effective
+                date. Worth knowing why the earlier figure was wrong.
+              </li>
+            ) : null}
+            {noRosterRow.length > 0 ? (
+              <li data-testid="register-rates-no-roster">
+                {noRosterRow.length} employee number
+                {noRosterRow.length === 1 ? "" : "s"} printed a rate with no roster row,
+                so no rate could be stored for {noRosterRow.length === 1 ? "it" : "them"}:{" "}
+                {noRosterRow.join(", ")}. Reconcile the people list in step 3.
+              </li>
+            ) : null}
             {ambiguous.length > 0 ? (
               <li data-testid="register-ambiguous">
                 {ambiguous.length} employee{ambiguous.length === 1 ? "" : "s"} printed
@@ -469,10 +519,17 @@ function RegisterCard({ enabled }: { enabled: boolean | null }) {
               </li>
             ) : null}
           </ul>
+          {/* ⚠️ THE RATE FINDINGS JOIN THIS PREDICATE, because "nothing needs
+              your attention" is a FALSE SENTENCE while a stored rate was
+              corrected or an employee's rate could not be stored at all. Both
+              are things only a person can resolve, and this line is the one
+              that tells the reader to stop reading. */}
           {result.checks_failed === 0 &&
           ambiguous.length === 0 &&
           unknownCodes.length === 0 &&
-          anomalies.length === 0 ? (
+          anomalies.length === 0 &&
+          (rates?.corrected ?? 0) === 0 &&
+          noRosterRow.length === 0 ? (
             <p className="mt-2 text-body-sm text-content-muted" data-testid="register-clean">
               Nothing needs your attention on this import. Step 3 is next.
             </p>

@@ -54,7 +54,12 @@ const IMPORT_CLEAN = {
   checks_duplicate: 0,
   checks_failed: 0,
   summary_blocks_skipped: 2,
-  report: { employees: 11, inserted: 11 },
+  rates_written: 11,
+  report: {
+    employees: 11,
+    inserted: 11,
+    rates: { written: 11, corrected: 0, unchanged: 0, no_roster_row: [] },
+  },
 }
 
 const RECONCILE_DRY = {
@@ -302,6 +307,185 @@ describe("the register upload", () => {
     )
     // Not "nothing needs your attention" — five things do.
     expect(screen.queryByTestId("register-clean")).not.toBeInTheDocument()
+  })
+
+  // ── the rate count, which is the whole reason a re-upload is worth doing ──
+  //
+  // ⚠️ **#53 RETURNED `rates_written` AND NO SURFACE READ IT.** The route's own
+  // comment explains that it is reported because a backfill upload inserts
+  // zero checks — and then the number stopped at the API boundary, so the one
+  // upload it exists for still read as "0 checks, nothing happened" on the
+  // page. These tests are the surface the number was missing.
+
+  it("⚠️ the BACKFILL upload — 0 inserted, every check duplicate, 46 rates written", async () => {
+    // This is James's step: re-upload the register onto a tenant whose checks
+    // are all already loaded, to write the rates that were never derived.
+    // Every count on this page except the rate count is zero or a duplicate,
+    // so the rate line is the ONLY thing distinguishing a successful backfill
+    // from an upload that did nothing at all.
+    const user = userEvent.setup()
+    focusApi.uploadRegister.mockResolvedValue({
+      ...IMPORT_CLEAN,
+      checks_parsed: 1275,
+      checks_inserted: 0,
+      checks_duplicate: 1275,
+      rates_written: 46,
+      report: {
+        employees: 30,
+        rates: { written: 46, corrected: 0, unchanged: 0, no_roster_row: [] },
+      },
+    })
+    await switchedOn()
+    await user.upload(
+      screen.getByTestId("register-file"),
+      new File(["%PDF"], "r.pdf", { type: "application/pdf" }),
+    )
+    await user.click(screen.getByTestId("register-upload"))
+    await user.click(screen.getByTestId("register-upload-yes"))
+
+    expect(await screen.findByTestId("register-rates")).toHaveTextContent(
+      /46 rates written/,
+    )
+    // And the surrounding sentences that would otherwise read as a no-op.
+    expect(screen.getByTestId("register-result")).toHaveTextContent("0 checks")
+    expect(screen.getByTestId("register-duplicates")).toHaveTextContent(
+      /1275 already loaded and skipped/,
+    )
+  })
+
+  it("⚠️ the rate line is present at ZERO too, saying so rather than vanishing", async () => {
+    // The second re-upload. A line rendered only when non-zero would be absent
+    // here, and absence is indistinguishable from the pre-#53 page that could
+    // not report rates at all. "No new rates" is the answer; silence is not.
+    const user = userEvent.setup()
+    focusApi.uploadRegister.mockResolvedValue({
+      ...IMPORT_CLEAN,
+      checks_inserted: 0,
+      checks_duplicate: 1275,
+      rates_written: 0,
+      report: {
+        employees: 30,
+        rates: { written: 0, corrected: 0, unchanged: 46, no_roster_row: [] },
+      },
+    })
+    await switchedOn()
+    await user.upload(
+      screen.getByTestId("register-file"),
+      new File(["%PDF"], "r.pdf", { type: "application/pdf" }),
+    )
+    await user.click(screen.getByTestId("register-upload"))
+    await user.click(screen.getByTestId("register-upload-yes"))
+
+    expect(await screen.findByTestId("register-rates")).toHaveTextContent(
+      /No new rates/,
+    )
+  })
+
+  it("⚠️ a CORRECTED rate is surfaced, and withdraws the all-clear", async () => {
+    // A rate changed on an effective date already recorded is a repair of
+    // stored payroll data. Nobody asked for it, so it is the one rate outcome
+    // that must not pass silently — and "nothing needs your attention" is a
+    // false sentence while one is outstanding.
+    const user = userEvent.setup()
+    focusApi.uploadRegister.mockResolvedValue({
+      ...IMPORT_CLEAN,
+      rates_written: 2,
+      report: {
+        employees: 30,
+        rates: { written: 2, corrected: 3, unchanged: 41, no_roster_row: [] },
+      },
+    })
+    await switchedOn()
+    await user.upload(
+      screen.getByTestId("register-file"),
+      new File(["%PDF"], "r.pdf", { type: "application/pdf" }),
+    )
+    await user.click(screen.getByTestId("register-upload"))
+    await user.click(screen.getByTestId("register-upload-yes"))
+
+    expect(
+      await screen.findByTestId("register-rates-corrected"),
+    ).toHaveTextContent(/3 stored rates disagreed with this register/)
+    expect(screen.queryByTestId("register-clean")).not.toBeInTheDocument()
+  })
+
+  it("⚠️ an employee whose rate could NOT be stored is named, not dropped", async () => {
+    // `payroll_rates` hangs off the employee, so a rate printed for somebody
+    // with no roster row cannot be stored at all. That person's dues and gross
+    // pay stay at zero, and this line is the only thing that says why.
+    const user = userEvent.setup()
+    focusApi.uploadRegister.mockResolvedValue({
+      ...IMPORT_CLEAN,
+      rates_written: 44,
+      report: {
+        employees: 30,
+        rates: {
+          written: 44,
+          corrected: 0,
+          unchanged: 0,
+          no_roster_row: ["12077", "12081"],
+        },
+      },
+    })
+    await switchedOn()
+    await user.upload(
+      screen.getByTestId("register-file"),
+      new File(["%PDF"], "r.pdf", { type: "application/pdf" }),
+    )
+    await user.click(screen.getByTestId("register-upload"))
+    await user.click(screen.getByTestId("register-upload-yes"))
+
+    const line = await screen.findByTestId("register-rates-no-roster")
+    expect(line).toHaveTextContent("12077")
+    expect(line).toHaveTextContent("12081")
+    expect(screen.queryByTestId("register-clean")).not.toBeInTheDocument()
+  })
+
+  it("⚠️ a reply with NO rate field says 'no new rates', never 'undefined'", async () => {
+    // Found by break-testing the walk: deleting `rates_written` from the
+    // route printed "undefined rates written" on the page. A server older
+    // than #53 reaching a newer bundle produces exactly that reply.
+    const user = userEvent.setup()
+    const { rates_written: _dropped, ...noRateField } = IMPORT_CLEAN
+    focusApi.uploadRegister.mockResolvedValue(noRateField)
+    await switchedOn()
+    await user.upload(
+      screen.getByTestId("register-file"),
+      new File(["%PDF"], "r.pdf", { type: "application/pdf" }),
+    )
+    await user.click(screen.getByTestId("register-upload"))
+    await user.click(screen.getByTestId("register-upload-yes"))
+
+    const line = await screen.findByTestId("register-rates")
+    expect(line).toHaveTextContent(/No new rates/)
+    expect(line).not.toHaveTextContent(/undefined/)
+  })
+
+  it("⚠️ an import row stored BEFORE #53 claims no corrections, rather than zero", async () => {
+    // `report.rates` is absent on every import that ran before the rate writer
+    // existed. A missing block is not a measurement of zero — it is no record
+    // either way — so the corrected and no-roster lines stay withdrawn.
+    const user = userEvent.setup()
+    focusApi.uploadRegister.mockResolvedValue({
+      ...IMPORT_CLEAN,
+      rates_written: 0,
+      report: { employees: 11, inserted: 11 },
+    })
+    await switchedOn()
+    await user.upload(
+      screen.getByTestId("register-file"),
+      new File(["%PDF"], "r.pdf", { type: "application/pdf" }),
+    )
+    await user.click(screen.getByTestId("register-upload"))
+    await user.click(screen.getByTestId("register-upload-yes"))
+
+    await screen.findByTestId("register-rates")
+    expect(
+      screen.queryByTestId("register-rates-corrected"),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByTestId("register-rates-no-roster"),
+    ).not.toBeInTheDocument()
   })
 
   it("a refusal from the switch is shown verbatim, not as a generic failure", async () => {
@@ -570,6 +754,32 @@ describe("after a no-reply, the page CHECKS the server instead of guessing", () 
     expect(said).toHaveTextContent(/server DID save the import/i)
     expect(said).toHaveTextContent("1275")
     expect(said).toHaveTextContent(/Nothing needs re-uploading/i)
+  })
+
+  it("⚠️ a landed BACKFILL says the rate count, not just '0 checks'", async () => {
+    // The same return-leg loss on the upload that matters most: 0 checks
+    // saved, 46 rates written. Without the rate count this sentence reads
+    // "the server DID save the import: 0 checks" — which describes a
+    // successful backfill as having done nothing.
+    const user = userEvent.setup()
+    focusApi.uploadRegister.mockRejectedValue(new Error("Network Error"))
+    setupApi.listRegisterImports.mockResolvedValue({
+      count: 1,
+      imports: [{
+        import_id: "imp-10", filename: "register.pdf", pages: 262,
+        checks_parsed: 1275, checks_inserted: 0, checks_duplicate: 1275,
+        checks_failed: 0, created_at: "2026-11-23T15:14:25Z",
+        report: {
+          rates: { written: 46, corrected: 0, unchanged: 0, no_roster_row: [] },
+        },
+      }],
+    })
+    await switchedOn()
+    await attempt(user)
+
+    const said = await screen.findByTestId("register-said")
+    expect(said).toHaveTextContent(/server DID save the import/i)
+    expect(said).toHaveTextContent(/46 rates written/)
   })
 
   it("a no-reply whose work did NOT land says so, and that a retry is safe", async () => {
